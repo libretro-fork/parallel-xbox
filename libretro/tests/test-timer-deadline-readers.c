@@ -41,9 +41,9 @@ static __attribute__((unused)) void qemu_event_init(QemuEvent*e,bool set){e->set
 static __attribute__((unused)) void qemu_event_reset(QemuEvent*e){e->set=false;}
 static __attribute__((unused)) void qemu_event_set(QemuEvent*e){e->set=true;}
 static __attribute__((unused)) void qemu_event_wait(QemuEvent*e){assert(e->set);}
-static bool icount_enabled(void){return false;}
+static __attribute__((unused)) bool icount_enabled(void){return false;}
 static int64_t get_clock(void){return 0;}
-static int64_t get_clock_realtime(void){return 0;}
+static __attribute__((unused)) int64_t get_clock_realtime(void){return 0;}
 static int64_t cpus_get_virtual_clock(void){return 0;}
 static int64_t cpu_get_clock(void){return 0;}
 static int64_t qemu_soonest_timeout(int64_t a,int64_t b){return a<0?b:b<0?a:MIN(a,b);}

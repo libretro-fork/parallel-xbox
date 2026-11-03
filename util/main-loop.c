@@ -95,13 +95,10 @@ static retro_eventcount_t main_loop_ec;
 
 int qemu_init_main_loop(Error **errp)
 {
-    int ret, key;
+    int ret;
     GSource *src;
 
     retro_eventcount_init(&main_loop_ec);
-    /* Create this owner's reusable timed-wait resources before guest boot. */
-    key = retro_eventcount_prepare_wait(&main_loop_ec);
-    retro_eventcount_commit_wait_timeout(&main_loop_ec, key, 1);
     qemu_main_context = g_main_context_new();
     assert(qemu_main_context != NULL);
     g_main_context_push_thread_default(qemu_main_context);
@@ -215,11 +212,9 @@ static void glib_pollfds_fill(int64_t *cur_timeout)
                                  glib_n_poll_fds);
     } while (n != glib_n_poll_fds);
 
-    if (timeout < 0) {
-        timeout_ns = -1;
-    } else {
-        timeout_ns = (int64_t)timeout * (int64_t)SCALE_MS;
-    }
+    /* GSource timeouts use service time: only an already-ready source
+     * shortens an OS wait. Future service time advances in retro_run. */
+    timeout_ns = timeout == 0 ? 0 : -1;
 
     *cur_timeout = qemu_soonest_timeout(timeout_ns, *cur_timeout);
 }
@@ -440,11 +435,8 @@ static int os_host_main_loop_wait(int64_t timeout)
         poll_fds[n_poll_fds + i].events = G_IO_IN;
     }
 
-    if (poll_timeout < 0) {
-        poll_timeout_ns = -1;
-    } else {
-        poll_timeout_ns = (int64_t)poll_timeout * (int64_t)SCALE_MS;
-    }
+    /* Future service-clock deadlines are not host wait durations. */
+    poll_timeout_ns = poll_timeout == 0 ? 0 : -1;
 
     poll_timeout_ns = qemu_soonest_timeout(poll_timeout_ns, timeout);
 
@@ -498,7 +490,7 @@ void main_loop_poll_remove_notifier(Notifier *notify)
 }
 
 /* the loop that polls: NAT networking's sockets, and descriptors */
-static void main_loop_wait_poll(int nonblocking, int64_t max_wait_ns)
+static void main_loop_wait_poll(int nonblocking)
 {
     LR_DSP_EXTERNAL_GUARD;
     lr_dsp_ownership_fence(LR_DSP_FENCE_POLL);
@@ -519,16 +511,13 @@ static void main_loop_wait_poll(int nonblocking, int64_t max_wait_ns)
     /* XXX: separate device handlers from system ones */
     notifier_list_notify(&main_loop_poll_notifiers, &mlpoll);
 
-    if (mlpoll.timeout == UINT32_MAX) {
-        timeout_ns = -1;
-    } else {
-        timeout_ns = (uint64_t)mlpoll.timeout * (int64_t)(SCALE_MS);
-    }
+    /* Socket stacks use guest timers. Honour ready work, but never sleep
+     * for a future emulated timeout while guest/service time is stopped. */
+    timeout_ns = mlpoll.timeout == 0 ? 0 : -1;
 
     timeout_ns = qemu_soonest_timeout(timeout_ns,
                                       qemu_clock_deadline_ns());
 
-    timeout_ns = qemu_soonest_timeout(timeout_ns, max_wait_ns);
     ret = os_host_main_loop_wait(timeout_ns);
     mlpoll.state = ret < 0 ? MAIN_LOOP_POLL_ERR : MAIN_LOOP_POLL_OK;
     notifier_list_notify(&main_loop_poll_notifiers, &mlpoll);
@@ -547,10 +536,10 @@ static void main_loop_wait_poll(int nonblocking, int64_t max_wait_ns)
  * thread (the GPU's thread parking, qemu_notify_event),
  * lock-free and without a descriptor.
  *
- * Device-completion barriers wait for notification. Non-deterministic GPU
- * waits can also end at the guest's next timer deadline: the frame loop
- * advances guest time by the elapsed host wait, then services that timer
- * while GPU work continues. Disk completions are bottom halves already due.
+ * Device-completion barriers wait for notification without advancing guest
+ * time. Timeout limits below bound host-service waits only; elapsed host
+ * time is never charged to the guest instruction clock. Disk completions
+ * are bottom halves already due.
  *
  * What does need poll goes the polling way (main_loop_wait_poll), as it
  * is: NAT networking's sockets (slirp's poll notifier) and a descriptor
@@ -586,14 +575,14 @@ static bool main_loop_dispatch(AioContext *io)
 /* The libretro emulation thread owns main-loop dispatch, including nested
  * frame completion and renderer-switch waits. Other threads publish work
  * and notify it; no second main-loop owner needs a separate UI mutex. */
-static void main_loop_wait_internal(int nonblocking, int64_t max_wait_ns)
+static void main_loop_wait_internal(int nonblocking)
 {
     AioContext *io = iohandler_get_aio_context();
     bool disk_progress = lr_disk_pending > 0 && lr_disk_poll();
 
     if (!QLIST_EMPTY(&main_loop_poll_notifiers.notifiers) ||
         aio_has_fd_handlers(qemu_aio_context) || aio_has_fd_handlers(io)) {
-        main_loop_wait_poll(nonblocking || disk_progress, max_wait_ns);
+        main_loop_wait_poll(nonblocking || disk_progress);
         return;
     }
 
@@ -606,13 +595,7 @@ static void main_loop_wait_internal(int nonblocking, int64_t max_wait_ns)
         } else {
             /* Other threads can take the BQL meanwhile, as around poll. */
             bql_unlock();
-            if (max_wait_ns < 0) {
-                retro_eventcount_commit_wait(&main_loop_ec, key);
-            } else {
-                /* Round up to the eventcount's microsecond resolution. */
-                int64_t us = max_wait_ns / 1000 + (max_wait_ns % 1000 != 0);
-                retro_eventcount_commit_wait_timeout(&main_loop_ec, key, us);
-            }
+            retro_eventcount_commit_wait(&main_loop_ec, key);
             bql_lock();
         }
         main_loop_dispatch(io);
@@ -624,12 +607,7 @@ static void main_loop_wait_internal(int nonblocking, int64_t max_wait_ns)
 
 void main_loop_wait(int nonblocking)
 {
-    main_loop_wait_internal(nonblocking, -1);
-}
-
-void main_loop_wait_timeout(int64_t max_wait_ns)
-{
-    main_loop_wait_internal(false, max_wait_ns);
+    main_loop_wait_internal(nonblocking);
 }
 
 /* Functions to operate on the main QEMU AioContext.  */

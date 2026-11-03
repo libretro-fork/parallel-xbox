@@ -256,15 +256,10 @@ static int64_t aio_compute_bh_timeout(BHList *head, int timeout)
     QSLIST_FOREACH_RCU(bh, head, next) {
         int flags = retro_atomic_load_acquire_int(&bh->flags);
         if ((flags & (BH_SCHEDULED | BH_DELETED)) == BH_SCHEDULED) {
-            if (flags & BH_IDLE) {
-                /* idle bottom halves will be polled at least
-                 * every 10ms */
-                timeout = 10000000;
-            } else {
-                /* non-idle bottom halves will be executed
-                 * immediately */
-                return 0;
-            }
+            /* Every queued callback is ready for the next dispatch pass.
+             * BH_IDLE still controls progress accounting in aio_bh_poll;
+             * it must not introduce a host-time scheduling delay. */
+            return 0;
         }
     }
 

@@ -19,7 +19,7 @@ static int poll_storage,*gpollfds=&poll_storage,main_loop_ec;
 static bool disk_progress;
 static int lr_disk_pending;
 static bool lr_disk_poll(void){bool ran=disk_progress;disk_progress=false;lr_disk_pending=0;return ran;}
-static bool bql,progress,prepare_race,icount,opt_deterministic,gpu_busy,cpu_halted;
+static bool bql,progress,prepare_race,icount,gpu_busy,cpu_halted;
 static unsigned prepared,cancelled,committed,timed,polls,timers,warps,skips;
 static int64_t host_now,elapsed,virtual_now,last_us,last_poll,clock_deadline;
 static uint32_t socket_ms;
@@ -40,11 +40,10 @@ static void qemu_clock_run_all_timers(void){assert(bql);timers++;}
 static int retro_eventcount_prepare_wait(int *p){assert(p==&main_loop_ec && bql);prepared++;if(prepare_race)ioctx.notified=1;return 7;}
 static void retro_eventcount_cancel_wait(int *p){assert(p==&main_loop_ec && bql);cancelled++;}
 static void retro_eventcount_commit_wait(int *p,int key){assert(p==&main_loop_ec && key==7 && !bql);committed++;host_now+=elapsed;}
-static bool retro_eventcount_commit_wait_timeout(int *p,int key,int64_t us){assert(p==&main_loop_ec && key==7 && !bql && us>=0);timed++;last_us=us;host_now+=elapsed;return false;}
 static void bql_unlock(void){assert(bql);bql=false;}
 static void bql_lock(void){assert(!bql);bql=true;}
 bool nv2a_libretro_guest_busy(void){return gpu_busy;}
-static int64_t get_clock(void){return host_now;}
+
 static void cpu_clock_skip_to(int64_t ns){assert(ns>=virtual_now);virtual_now=ns;skips++;}
 typedef struct { bool runnable; } CPUState;
 static bool lr_quiet, disk_busy;
@@ -60,7 +59,7 @@ static void lr_dsp_ownership_fence(unsigned reason){assert(reason==1 && bql);}
 static void reset(void){
  mainctx=(AioContext){0};ioctx=(AioContext){0};
  main_loop_poll_notifiers.notifiers.empty=true;
- disk_progress=false;lr_disk_pending=0;bql=true;progress=prepare_race=opt_deterministic=gpu_busy=cpu_halted=false;icount=true;
+ disk_progress=false;lr_disk_pending=0;bql=true;progress=prepare_race=gpu_busy=cpu_halted=false;icount=true;
  prepared=cancelled=committed=timed=polls=timers=warps=skips=0;
  host_now=0;elapsed=500;virtual_now=1000;last_us=last_poll=-2;clock_deadline=-1;socket_ms=UINT32_MAX;
 }
@@ -72,7 +71,7 @@ int main(void){
   reset();cpu_halted=!halt;gpu_busy=true;clock_deadline=500;
   if(path==1)ioctx.fds=true;
   if(path==2)main_loop_poll_notifiers.notifiers.empty=false;
-  if(nb)main_loop_wait(true);else main_loop_wait_timeout(1000);
+  main_loop_wait(nb);
   if(virtual_now!=1000 || warps){fprintf(stderr,"Host dispatch moved guest clock from 1000 to %lld ns (%u warp calls, HALT=%d)\n",(long long)virtual_now,warps,cpu_halted);_Exit(1);}
   assert(timers==1);cases++;
  }
@@ -85,48 +84,45 @@ int main(void){
   if(path)assert(polls==1 && last_poll==0);
   cases++;
  }
- const int64_t bounds[]={-1,0,1,999,1000,1001,1234567,INT64_MAX};
- for(unsigned n=0;n<8;n++)for(unsigned race=0;race<2;race++)for(unsigned due=0;due<2;due++)for(unsigned mode=0;mode<2;mode++){
+ for(unsigned race=0;race<2;race++)for(unsigned due=0;due<2;due++)for(unsigned mode=0;mode<2;mode++){
   reset();prepare_race=race;progress=due;icount=mode;
-  main_loop_wait_timeout(bounds[n]);assert(bql && timers==1 && warps==0);
+  main_loop_wait(false);assert(bql && timers==1 && warps==0);
   if(due)assert(!prepared && !timed && !committed && !cancelled);
   else if(race)assert(prepared==1 && cancelled==1 && !timed && !committed);
-  else if(bounds[n]<0)assert(prepared==1 && committed==1 && !timed);
-  else assert(prepared==1 && timed==1 && !committed && last_us==bounds[n]/1000+(bounds[n]%1000!=0));
+  else assert(prepared==1 && committed==1 && !timed);
   assert(prepared==cancelled+committed+timed);cases++;
  }
  for(unsigned nonblock=0;nonblock<2;nonblock++){
   reset();main_loop_wait(nonblock);assert(timers==1 && !timed && committed==!nonblock);cases++;
  }
  const int64_t deadlines[]={-1,0,500,2500000};
- for(unsigned n=0;n<8;n++)for(unsigned d=0;d<4;d++)for(unsigned fd=0;fd<2;fd++)for(unsigned nonblock=0;nonblock<2;nonblock++){
+ for(unsigned d=0;d<4;d++)for(unsigned fd=0;fd<2;fd++)for(unsigned nonblock=0;nonblock<2;nonblock++){
   reset();clock_deadline=deadlines[d];socket_ms=2;
   if(fd)ioctx.fds=true;else main_loop_poll_notifiers.notifiers.empty=false;
-  if(nonblock)main_loop_wait(true);else main_loop_wait_timeout(bounds[n]);
-  int64_t want=qemu_soonest_timeout(nonblock?0:fd?-1:2000000,clock_deadline);
-  if(!nonblock)want=qemu_soonest_timeout(want,bounds[n]);
+  main_loop_wait(nonblock);
+  int64_t want=qemu_soonest_timeout(nonblock?0:-1,clock_deadline);
   assert(polls==1 && last_poll==want && !prepared && timers==1);cases++;
  }
  const int64_t waits[]={0,1,999,1001,50000,20000000};
- for(unsigned det=0;det<2;det++)for(unsigned gpu=0;gpu<2;gpu++)for(unsigned n=2;n<7;n++)for(unsigned w=0;w<6;w++){
-  reset();opt_deterministic=det;gpu_busy=gpu;elapsed=waits[w];
-  lr_wait_for_device(virtual_now,bounds[n]);
-  if(gpu && !det){assert(timed==1 && !committed && skips==1);assert(virtual_now==1000+MIN(waits[w],bounds[n]));}
-  else assert(!timed && committed==1 && !skips && virtual_now==1000);
-  assert(bql && timers==1);cases++;
+ /* Even a slow host completion cannot consume a guest frame. */
+ for(unsigned gpu=0;gpu<2;gpu++)for(unsigned w=0;w<6;w++){
+  reset();gpu_busy=gpu;elapsed=waits[w];
+  lr_wait_for_device();
+  assert(!timed && committed==1 && !skips && virtual_now==1000);
+  assert(host_now==waits[w] && bql && timers==1);cases++;
  }
  /* Completion between the quiet exit and frame-owner recheck. A runnable
   * guest must execute again; only HALT may skip directly to the deadline. */
  for(unsigned run=0;run<2;run++)for(unsigned gpu=0;gpu<2;gpu++)
- for(unsigned disk=0;disk<2;disk++)for(unsigned det=0;det<2;det++) {
+ for(unsigned disk=0;disk<2;disk++) {
   reset();CPUState cpu={.runnable=run};gpu_busy=gpu;disk_busy=disk;
-  opt_deterministic=det;lr_quiet=true;nv2a_libretro_waiter=0;
+  lr_quiet=true;nv2a_libretro_waiter=0;
   lr_idle_wait(&cpu,1000,999);
   assert(!lr_quiet && !nv2a_libretro_waiter);
-  if(gpu || disk) assert(virtual_now==1000+(gpu && !det?500:0));
+  if(gpu || disk) assert(virtual_now==1000 && !skips);
   else assert(virtual_now==(run?1000:1999) && skips==!run);
   cases++;
  }
- printf("GPU deadline waits: %u clock-ownership/HALT/timeout/rounding/prepare-race/notification/dispatch/poll/deterministic/elapsed-clock cases passed\n",cases);
+ printf("GPU deadline waits: %u clock-ownership/HALT/prepare-race/notification/dispatch/poll/host-independent-clock cases passed\n",cases);
  return 0;
 }

@@ -63,7 +63,7 @@ fixture = re.sub(r'static void get_multipass_samples\(.*?\n\{.*?\}\n', '', fixtu
 functions = ['set_notify_status', 'voice_get_mask', 'voice_set_mask', 'voice_off',
              'voice_resample_reset', 'voice_reset_filters', 'filter_coefficient', 'attenuation_gain',
              'get_data_ptr', 'envelope_level', 'voice_step_envelope', 'voice_step_lfos',
-             'voice_jingle_hash', 'voice_get_samples', 'voice_resample_fetch', 'voice_pitch_ramp',
+             'voice_jingle_hash', 'voice_pcm_sge_frame', 'voice_get_samples', 'voice_resample_fetch', 'voice_pitch_ramp',
              'voice_pitch_step', 'voice_resample', 'peek_ahead_multipass_bin',
              'get_multipass_samples', 'voice_process', 'hrir_tap',
              'get_voice_bin_src_dst', 'voice_work_claim', 'voice_work_unit', 'voice_worker_thread',

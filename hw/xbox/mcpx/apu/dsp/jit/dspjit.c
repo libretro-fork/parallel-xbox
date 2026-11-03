@@ -919,8 +919,9 @@ typedef struct AluOp {
     int src;            /* SRC_*; for the multiplies, the first factor */
     int src2;           /* the multiplies' second factor */
     bool minus;         /* the multiplies' sign */
+    bool mul_imm;       /* first multiply factor is the immediate word */
     int d;              /* 0: A, 1: B */
-    uint32_t imm;       /* SRC_IMM's value */
+    uint32_t imm;       /* SRC_IMM or the immediate multiply factor */
     bool imm_unsigned;  /* ... not sign-extended (cmp #xx) */
     int shift;          /* asl/asr #ii's count */
     int s;              /* asl/asr #ii's source accumulator */
@@ -1186,11 +1187,15 @@ static void emit_rnd56(Tr *t, int res)
     }
 }
 
-/* the product of the two 24-bit registers, times two, into rax
- * (dsp_mul56, exact in 64 bits) */
+/* The product of two signed 24-bit factors, times two, into T0. The
+ * first factor can be immediate (dsp_mul56, exact in 64 bits). */
 static void emit_mul56(Emitter *e, const AluOp *a)
 {
-    h_ld32(e, T0, REG_CORE, REGOFF(a->src));
+    if (a->mul_imm) {
+        h_mov_ri(e, T0, a->imm);
+    } else {
+        h_ld32(e, T0, REG_CORE, REGOFF(a->src));
+    }
     h_shl_ri(e, 1, T0, 40);
     h_sar_ri(e, 1, T0, 40);
     h_ld32(e, T1, REG_CORE, REGOFF(a->src2));
@@ -1402,7 +1407,8 @@ static void emit_alu(Tr *t, const AluOp *a)
             emit_rnd56(t, acc);
         }
         acc_written(t, a->d);
-        emit_sr_result(t, SR_EUNZ | SR_V, -1, acc, a->d);
+        emit_sr_result(t, SR_EUNZ | SR_V | (a->mul_imm ? 0xFFFF0000u : 0),
+                       -1, acc, a->d);
         break;
 
     case OP_MAC:
@@ -1965,14 +1971,19 @@ enum {
     NP_LUA,
     NP_LUA_REL,
     NP_ALU_IMM,         /* add/cmp/and #, asl/asr #ii: an AluOp (np_alu) */
+    NP_DIV,             /* one non-restoring divide step */
+    NP_NORM,            /* flag-controlled shift and 16-bit Rn update */
     NP_MOVEP_EA,        /* movep [X or Y]:ea <-> [X or Y]:pp */
     NP_MOVEP_REG,
+    NP_MOVEP_P,       /* program/peripheral transfer, with P invalidation */
+    NP_MOVEP_SPECIAL, /* peripheral access with control/stack effects */
     NP_CMPU,
     NP_TCC,
     NP_MOVEC_REG,
     NP_MOVEC_SR,
     NP_MOVEM_P_READ,
     NP_MOVEM_P_WRITE,
+    NP_MOVEM_P_SPECIAL, /* control effects plus possible P invalidation */
     NP_BIT_REG,
     NP_BIT_SR_UPPER,
     NP_MOVEC_EA,
@@ -1991,6 +2002,15 @@ static bool np_alu(const Insn *in, AluOp *a)
     memset(a, 0, sizeof(*a));
     a->src = SRC_IMM;
     a->d = (inst >> 3) & 1;
+    if (!strcmp(name, "mpyi #xxxx, S, D")) {
+        static const int sources[] = {DSP_REG_X0, DSP_REG_Y0, DSP_REG_X1, DSP_REG_Y1};
+        a->op = OP_MPY;
+        a->mul_imm = true;
+        a->imm = in->ext;
+        a->src2 = sources[(inst >> 4) & 3];
+        a->minus = (inst >> 2) & 1;
+        return true;
+    }
     if (!strcmp(name, "inc D") || !strcmp(name, "dec D")) {
         a->op = name[0] == 'i' ? OP_INC : OP_DEC;
         a->d = inst & 1;
@@ -2077,37 +2097,33 @@ static int np_kind(const Insn *in)
                !((reg == DSP_REG_A || reg == DSP_REG_B) && bit >= 24)
                ? NP_BIT_REG : NP_NONE;
     }
+    if (!strcmp(name, "div S, D")) return NP_DIV;
+    if (!strcmp(name, "norm Rn, D")) return NP_NORM;
     if (!strcmp(name, "movec #xx, D1")) {
         return reg_supported(in->inst & 63) ? NP_MOVEC_IMM : NP_MOVEC_SPECIAL;
     }
-    if (!strcmp(name, "movec [X or Y]:ea <-> R") &&
-        (in->inst & (1 << 15))) {
-        return reg_supported(in->inst & 63) ? NP_MOVEC_EA : NP_MOVEC_SPECIAL;
+    if (!strcmp(name, "movec [X or Y]:ea <-> R")) {
+        return (in->inst & (1 << 15)) && reg_supported(in->inst & 63)
+               ? NP_MOVEC_EA : NP_MOVEC_SPECIAL;
     }
     if (!strcmp(name, "movec [X or Y]:aa <-> R")) {
         return NP_MOVEC_SPECIAL;
     }
-    if ((!strcmp(name, "movem P:ea <-> R") || !strcmp(name, "movem P:aa <-> R")) &&
-        reg_supported(in->inst & 63)) {
+    if (!strcmp(name, "movem P:ea <-> R") || !strcmp(name, "movem P:aa <-> R")) {
+        if (!reg_supported(in->inst & 63)) return NP_MOVEM_P_SPECIAL;
         return in->inst & (1 << 15) ? NP_MOVEM_P_READ : NP_MOVEM_P_WRITE;
     }
     if (!strcmp(name, "movec R1, R2")) {
         unsigned r1 = in->inst & 63, r2 = (in->inst >> 8) & 63;
         unsigned src = in->inst & (1 << 15) ? r2 : r1;
         unsigned dst = in->inst & (1 << 15) ? r1 : r2;
-        /* Only the write direction uses dsp_write_reg control side effects. */
-        if ((in->inst & (1 << 15)) &&
-            (reg_supported(src) || src == DSP_REG_SR) && !reg_supported(dst) &&
-            (dst != DSP_REG_SR || src == DSP_REG_SR)) {
-            return NP_MOVEC_SPECIAL;
-        }
-        /* SR reads consume deferred arithmetic flags. Status writes have
-         * their own mode guard; stack accesses retain interpreter effects. */
-        if (reg_supported(src) && dst == DSP_REG_SR) {
+        /* Preserve the existing fast paths. Read-direction control writes
+         * use raw width masking, not write-direction register side effects. */
+        if ((in->inst & (1 << 15)) && reg_supported(src) && dst == DSP_REG_SR) {
             return NP_MOVEC_SR;
         }
         return (reg_supported(src) || src == DSP_REG_SR) && reg_supported(dst)
-               ? NP_MOVEC_REG : NP_NONE;
+               ? NP_MOVEC_REG : NP_MOVEC_SPECIAL;
     }
     if (!strcmp(name, "move X:(Rn + xxx) <-> R") || !strcmp(name, "move Y:(Rn + xxx) <-> R")) {
         int numreg = in->inst & 0xF;
@@ -2126,8 +2142,11 @@ static int np_kind(const Insn *in)
         !strcmp(name, "movep [X or Y]:ea <-> X:qq")) {
         return NP_MOVEP_EA;
     }
+    if (!strcmp(name, "movep [X or Y]:pp <-> P:ea")) {
+        return NP_MOVEP_P;
+    }
     if (!strcmp(name, "movep [X or Y]:pp <-> R")) {
-        return reg_supported((in->inst >> 8) & 0x3F) ? NP_MOVEP_REG : NP_NONE;
+        return reg_supported((in->inst >> 8) & 0x3F) ? NP_MOVEP_REG : NP_MOVEP_SPECIAL;
     }
     if (!strcmp(name, "cmpu S1, S2")) {
         int g = (in->inst >> 1) & 7;
@@ -2148,6 +2167,99 @@ static void emit_nonparallel(Tr *t, const Insn *in, int kind)
     uint32_t inst = in->inst;
 
     switch (kind) {
+    case NP_DIV: {
+        static const int sources[] = {DSP_REG_X0, DSP_REG_Y0, DSP_REG_X1, DSP_REG_Y1};
+        unsigned d = (inst >> 3) & 1;
+        /* DIV preserves old E/U/N/Z even when it changes their accumulator. */
+        emit_flags_flush(t);
+        acc_load(t, d);
+        int acc = acc_reg(d);
+        h_ld32(e, V1, REG_CORE, REGOFF(DSP_REG_SR));
+        h_and_ri(e, 0, V1, SR_C);
+        h_mov_rr(e, 1, T3, acc);
+        h_shl_ri(e, 1, T3, 1);
+        emit_sext56(e, T3);
+        /* Only the initial shift contributes V/L. L is its discarded bit. */
+        h_mov_rr(e, 1, V2, acc);
+        h_shr_ri(e, 1, V2, 55);
+        h_and_ri(e, 0, V2, 1);
+        h_shl_ri(e, 0, V2, DSP_SR_L);
+        h_mov_rr(e, 1, T0, acc);
+        h_xor_rr(e, 1, T0, T3);
+        h_shr_ri(e, 1, T0, 55 - DSP_SR_V);
+        h_and_ri(e, 0, T0, SR_V);
+        h_or_rr(e, 0, V2, T0);
+        h_ld32(e, T1, REG_CORE, REGOFF(sources[(inst >> 4) & 3]));
+        h_shl_ri(e, 1, T1, 40);
+        h_sar_ri(e, 1, T1, 16);
+        h_mov_rr(e, 1, T0, acc);
+        h_xor_rr(e, 1, T0, T1);
+        h_test_rr(e, 1, T0, T0);
+        size_t subtract = h_jcc(e, HC_NS);
+        h_add_rr(e, 1, T3, T1);
+        size_t combined = h_jmp(e);
+        h_patch(e, subtract, e->len);
+        h_sub_rr(e, 1, T3, T1);
+        h_patch(e, combined, e->len);
+        emit_sext56(e, T3);
+        h_or_rr(e, 1, T3, V1);
+        /* New C is the complement of the resulting accumulator sign. */
+        h_mov_rr(e, 1, T0, T3);
+        h_shr_ri(e, 1, T0, 55);
+        h_not(e, 0, T0);
+        h_and_ri(e, 0, T0, SR_C);
+        h_or_rr(e, 0, V2, T0);
+        h_mov_rr(e, 1, acc, T3);
+        acc_written(t, d);
+        emit_sr_result(t, SR_C | SR_V | 0xFFFF0000u, V2, -1, -1);
+        break;
+    }
+    case NP_NORM: {
+        unsigned d = (inst >> 3) & 1;
+        unsigned r = DSP_REG_R0 + ((inst >> 8) & 7);
+        emit_flags_flush(t);
+        acc_load(t, d);
+        int acc = acc_reg(d);
+        h_ld32(e, T0, REG_CORE, REGOFF(DSP_REG_SR));
+        h_test_ri(e, 0, T0, SR_E);
+        size_t right = h_jcc(e, HC_NE);
+        h_and_ri(e, 0, T0, SR_U | SR_Z);
+        h_cmp_ri(e, 0, T0, SR_U);
+        size_t unchanged = h_jcc(e, HC_NE);
+        /* ASL shares doubling's C/V; L records the shifted-out sign bit. */
+        emit_addsub56(e, acc, acc, false);
+        h_and_ri(e, 0, T4, ~SR_L);
+        h_mov_rr(e, 0, T0, T4);
+        h_and_ri(e, 0, T0, SR_C);
+        h_shl_ri(e, 0, T0, DSP_SR_L);
+        h_or_rr(e, 0, T4, T0);
+        h_ld32(e, T0, REG_CORE, REGOFF(r));
+        h_add_ri(e, 0, T0, -1);
+        h_and_ri(e, 0, T0, 0xFFFF);
+        h_st32(e, REG_CORE, REGOFF(r), T0);
+        size_t left_done = h_jmp(e);
+        h_patch(e, right, e->len);
+        /* Match dsp_asr56's logical shift of the 56 accumulator bits. */
+        h_mov_rr(e, 1, T4, acc);
+        h_and_ri(e, 0, T4, 1);
+        h_mov_rr(e, 1, T3, acc);
+        h_shl_ri(e, 1, T3, 8);
+        h_shr_ri(e, 1, T3, 9);
+        h_ld32(e, T0, REG_CORE, REGOFF(r));
+        h_add_ri(e, 0, T0, 1);
+        h_and_ri(e, 0, T0, 0xFFFF);
+        h_st32(e, REG_CORE, REGOFF(r), T0);
+        size_t right_done = h_jmp(e);
+        h_patch(e, unchanged, e->len);
+        h_mov_rr(e, 1, T3, acc);
+        h_mov_ri(e, T4, 0);
+        h_patch(e, left_done, e->len);
+        h_patch(e, right_done, e->len);
+        h_mov_rr(e, 1, acc, T3);
+        acc_written(t, d);
+        emit_sr_result(t, SR_EUNZ | SR_C | SR_V | 0xFFFF0000u, T4, acc, d);
+        break;
+    }
     case NP_MOVEC_IMM:
         h_mov_ri(e, V1, (inst >> 8) & 255);
         emit_write_reg(t, inst & 63, V1);
@@ -2156,6 +2268,30 @@ static void emit_nonparallel(Tr *t, const Insn *in, int kind)
     case NP_MOVEC_EA: {
         Ea ea;
         if (kind == NP_MOVEC_SPECIAL) acc_spill_all(t, false);
+        if (!strcmp(in->d.name, "movec [X or Y]:ea <-> R") &&
+            !(inst & (1 << 15))) {
+            emit_calc_ea(t, (inst >> 8) & 63, in->ext, EA1, &ea);
+            if (ea.kind == EA_IMM) {
+                /* The interpreter uses the immediate as a store address. */
+                ea.kind = EA_ABS;
+                ea.abs = ea.imm;
+            }
+            ea_addr_reg(t, &ea);
+            unsigned reg = inst & 63;
+            if (reg == DSP_REG_SSH) {
+                /* Address generation precedes the pop. Keep the destination
+                 * across the C helper, including caller-saved x86 EA1. */
+                h_stub_call_begin(e);
+                h_mov_rr(e, 1, H_ARG0, REG_CORE);
+                h_call(e, (const void *)dsp56k_stack_pop);
+                h_stub_call_end(e);
+                h_mov_rr(e, 0, V1, T0);
+            } else {
+                h_ld32(e, V1, REG_CORE, REGOFF(reg));
+            }
+            emit_write_mem(t, (inst >> 6) & 1, ea.reg, V1);
+            break;
+        }
         if (!strcmp(in->d.name, "movec [X or Y]:aa <-> R")) {
             unsigned reg = inst & 63;
             unsigned space = (inst >> 6) & 1;
@@ -2180,11 +2316,29 @@ static void emit_nonparallel(Tr *t, const Insn *in, int kind)
             break;
         }
         if (!strcmp(in->d.name, "movec R1, R2")) {
-            emit_read_reg(t, (inst >> 8) & 63, V1);
-            h_mov_rr(e, 0, H_ARG2, V1);
-            h_mov_ri(e, H_ARG1, inst & 63);
-            h_mov_rr(e, 1, H_ARG0, REG_CORE);
-            h_call(e, (const void *)dsp56k_write_reg);
+            unsigned r1 = inst & 63, r2 = (inst >> 8) & 63;
+            if (inst & (1 << 15)) {
+                /* SSH is an ordinary source in the write direction. */
+                emit_read_reg(t, r2, V1);
+                h_mov_rr(e, 0, H_ARG2, V1);
+                h_mov_ri(e, H_ARG1, r1);
+                h_mov_rr(e, 1, H_ARG0, REG_CORE);
+                h_call(e, (const void *)dsp56k_write_reg);
+            } else {
+                if (r1 == DSP_REG_SSH) {
+                    h_mov_rr(e, 1, H_ARG0, REG_CORE);
+                    h_call(e, (const void *)dsp56k_stack_pop);
+                    h_mov_rr(e, 0, V1, T0);
+                } else {
+                    h_ld32(e, V1, REG_CORE, REGOFF(r1));
+                }
+                if (r2 == DSP_REG_A || r2 == DSP_REG_B) {
+                    emit_write_reg(t, r2, V1);
+                } else {
+                    h_and_ri(e, 0, V1, dsp56k_register_mask(r2));
+                    h_st32(e, REG_CORE, REGOFF(r2), V1);
+                }
+            }
             break;
         }
         if (!strcmp(in->d.name, "movec #xx, D1")) {
@@ -2250,9 +2404,11 @@ static void emit_nonparallel(Tr *t, const Insn *in, int kind)
         break;
     }
     case NP_MOVEM_P_READ:
+    case NP_MOVEM_P_SPECIAL:
     case NP_MOVEM_P_WRITE: {
         Ea ea;
-        if (kind == NP_MOVEM_P_WRITE) {
+        bool write = !(inst & (1 << 15));
+        if (write || kind == NP_MOVEM_P_SPECIAL) {
             acc_spill_all(t, false);
         }
         if (inst & (1 << 14)) {
@@ -2267,9 +2423,17 @@ static void emit_nonparallel(Tr *t, const Insn *in, int kind)
             ea.abs = ea.imm;
         }
         int addr = ea_addr_reg(t, &ea);
-        if (kind == NP_MOVEM_P_WRITE) {
+        if (write) {
             /* EA updates precede the source read, including Rn aliases. */
-            emit_read_reg(t, inst & 63, V1);
+            if ((inst & 63) == DSP_REG_SSH) {
+                h_stub_call_begin(e);
+                h_mov_rr(e, 1, H_ARG0, REG_CORE);
+                h_call(e, (const void *)dsp56k_stack_pop);
+                h_stub_call_end(e);
+                h_mov_rr(e, 0, V1, T0);
+            } else {
+                emit_read_reg(t, inst & 63, V1);
+            }
             h_mov_rr(e, 0, H_ARG2, V1);
             h_mov_rr(e, 0, H_ARG1, addr);
             h_mov_rr(e, 1, H_ARG0, REG_CORE);
@@ -2284,7 +2448,14 @@ static void emit_nonparallel(Tr *t, const Insn *in, int kind)
         s->reg = addr;
         s->reg2 = V1;
         s->back = e->len;
-        emit_write_reg(t, inst & 63, V1);
+        if (kind == NP_MOVEM_P_SPECIAL) {
+            h_mov_rr(e, 0, H_ARG2, V1);
+            h_mov_ri(e, H_ARG1, inst & 63);
+            h_mov_rr(e, 1, H_ARG0, REG_CORE);
+            h_call(e, (const void *)dsp56k_write_reg);
+        } else {
+            emit_write_reg(t, inst & 63, V1);
+        }
         t->cyc += 4;
         break;
     }
@@ -2367,16 +2538,63 @@ static void emit_nonparallel(Tr *t, const Insn *in, int kind)
         break;
     }
 
+    case NP_MOVEP_P: {
+        Ea ea;
+        acc_spill_all(t, false);
+        emit_calc_ea(t, (inst >> 8) & 63, in->ext, EA1, &ea);
+        if (ea.kind == EA_IMM) {
+            ea.kind = EA_ABS;
+            ea.abs = ea.imm;
+        }
+        int addr = ea_addr_reg(t, &ea);
+        if (inst & (1 << 15)) {
+            h_cmp_ri(e, 0, addr, DSP_PRAM_SIZE);
+            size_t j = h_jcc(e, HC_AE);
+            h_ld32_idx4(e, V1, REG_CORE, addr, OFF(pram));
+            Stub *s = stub_new(t, STUB_READ_P, j);
+            s->reg = addr;
+            s->reg2 = V1;
+            s->back = e->len;
+            h_mov_ri(e, EA2, 0xFFFFC0 + (inst & 63));
+            emit_write_mem(t, (inst >> 16) & 1, EA2, V1);
+        } else {
+            /* The peripheral callback must preserve the computed P address. */
+            h_mov_ri(e, EA2, 0xFFFFC0 + (inst & 63));
+            emit_read_mem(t, (inst >> 16) & 1, EA2, V1);
+            h_mov_rr(e, 0, H_ARG2, V1);
+            h_mov_rr(e, 0, H_ARG1, addr);
+            h_mov_rr(e, 1, H_ARG0, REG_CORE);
+            h_call(e, (const void *)jit_write_p);
+        }
+        t->cyc += 4;
+        break;
+    }
+    case NP_MOVEP_SPECIAL:
     case NP_MOVEP_REG: {
         int reg = (inst >> 8) & 0x3F;
         int space = (inst >> 16) & 1;
-        h_mov_ri(e, EA1, 0xFFFFC0 + (inst & 0x3F));
+        if (kind == NP_MOVEP_SPECIAL) acc_spill_all(t, false);
         if (inst & (1 << 15)) {
-            emit_read_reg(t, reg, V1);
+            if (reg == DSP_REG_SSH) {
+                h_mov_rr(e, 1, H_ARG0, REG_CORE);
+                h_call(e, (const void *)dsp56k_stack_pop);
+                h_mov_rr(e, 0, V1, T0);
+            } else {
+                emit_read_reg(t, reg, V1);
+            }
+            h_mov_ri(e, EA1, 0xFFFFC0 + (inst & 0x3F));
             emit_write_mem(t, space, EA1, V1);
         } else {
+            h_mov_ri(e, EA1, 0xFFFFC0 + (inst & 0x3F));
             emit_read_mem(t, space, EA1, V1);
-            emit_write_reg(t, reg, V1);
+            if (kind == NP_MOVEP_SPECIAL) {
+                h_mov_rr(e, 0, H_ARG2, V1);
+                h_mov_ri(e, H_ARG1, reg);
+                h_mov_rr(e, 1, H_ARG0, REG_CORE);
+                h_call(e, (const void *)dsp56k_write_reg);
+            } else {
+                emit_write_reg(t, reg, V1);
+            }
         }
         t->cyc += 2;
         break;
@@ -3349,7 +3567,8 @@ retry:
 
         if (insn_native(&in)) {
             emit_native(t, &in);
-            if (np_kind(&in) == NP_MOVEC_SPECIAL) {
+            if (np_kind(&in) == NP_MOVEC_SPECIAL || np_kind(&in) == NP_MOVEM_P_SPECIAL ||
+                np_kind(&in) == NP_MOVEP_SPECIAL || np_kind(&in) == NP_MOVEP_P) {
                 /* Control transfers may change scale/LF, stack state or LC.
                  * Post once, then select the resulting cache identity. */
                 acc_spill_all(t, false);
@@ -3469,9 +3688,15 @@ retry:
 
     top = e->len;
     emit_native(t, &in);
+    if (np_kind(&in) == NP_NORM) {
+        /* NORM's next iteration consumes the E/U/Z from this iteration. */
+        emit_flags_flush(t);
+    }
     cycles = t->cyc;
     t->cyc = 0;
-    if (np_kind(&in) == NP_MOVEM_P_WRITE || np_kind(&in) == NP_MOVEC_SPECIAL) {
+    if (np_kind(&in) == NP_MOVEM_P_WRITE || np_kind(&in) == NP_MOVEC_SPECIAL ||
+        np_kind(&in) == NP_MOVEM_P_SPECIAL || np_kind(&in) == NP_MOVEP_SPECIAL ||
+        np_kind(&in) == NP_MOVEP_P) {
         /* P writes can replace REP's body; control writes can change its
          * count, mode or stack. Retire once and redispatch updated state. */
         if (np_kind(&in) == NP_MOVEM_P_WRITE) {

@@ -31,7 +31,6 @@ static void pgraph_vk_finish(PGRAPHState *pg,int reason){
  if(cost){for(unsigned s=0;s<2;s++){done[s]=true;r->slot_fence_pending[s]=false;}}
 }
 static void pgraph_vk_settle_poll(PGRAPHState *pg){PGRAPHVkState*r=pg->vk_renderer_state;for(unsigned s=0;s<2;s++)if(r->slot_fence_pending[s]&&vkGetFenceStatus(r->device,r->slot_fence[s])==VK_SUCCESS){r->slot_fence_pending[s]=false;pgraph_vk_slot_retired(pg,s);}}
-static void pgraph_vk_frame_gpu_resolve(PGRAPHState *pg){(void)pg;services++;}
 static void pgraph_vk_eager_frame_update(PGRAPHState *pg){(void)pg;services++;}
 static void pgraph_vk_cpu_ahead_refresh(NV2AState *d){(void)d;services++;}
 static void xemu_cost_resolve_frame(NV2AState*d,int*ops,unsigned scale){assert(ops==&pgraph_vk_cost_ops&&scale==d->pgraph.surface_scale_factor);resolves++;}
@@ -52,7 +51,7 @@ int main(void){
   r.slot_fence_pending[r.slot^1]=mode&32;
   done[0]=done[1]=false;
   pgraph_vk_flip_stall(&d);
-  assert(finishes==1&&resolves==1&&services==6);
+  assert(finishes==1&&resolves==1&&services==5);
   assert(d.pgraph.host_flip_pending==r.slot_fence_pending[r.slot]);
   /* Starting a flip performs only the existing settle probes, no extra probe. */
   assert(polls==(cost?0:(unsigned)(!submit&&(mode&16)!=0)+(unsigned)((mode&32)!=0)+(unsigned)submit));
@@ -71,7 +70,7 @@ int main(void){
   unsigned before=polls;
   assert(pgraph_process_pending_flip(&d)==blocked);
   assert(polls==before+(unsigned)(blocked&&!(mode&64))&&!d.pgraph.host_flip_pending);
-  assert(deadlines==(unsigned)blocked&&finishes==1&&resolves==1&&services==6);
+  assert(deadlines==(unsigned)blocked&&finishes==1&&resolves==1&&services==5);
   assert(r.slot_fence_pending[other]==other_pending);
   before=polls;assert(!pgraph_process_pending_flip(&d)&&polls==before);
   cases++;

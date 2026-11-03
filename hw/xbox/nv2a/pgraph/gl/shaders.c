@@ -495,11 +495,11 @@ static void module_save_queue_push(PGRAPHGLState *r,
     }
 }
 
-static void module_save_queue_drain(PGRAPHGLState *r, int64_t budget_us)
+static void module_save_queue_drain(PGRAPHGLState *r, unsigned max_items)
 {
-    int64_t t0 = g_get_monotonic_time();
+    unsigned items = 0;
     while (r->module_save_r != r->module_save_w) {
-        if (g_get_monotonic_time() - t0 > budget_us) {
+        if (items++ >= max_items) {
             break;
         }
         ShaderModuleCacheEntry *module =
@@ -1877,6 +1877,7 @@ static void seed_load(PGRAPHGLState *r)
     pgraph_seed_read_first(reads, ARRAY_SIZE(reads));
     r->seed.pipe_states = reads[0].items;
     r->seed.pipe_n = reads[0].count;
+    r->seed.pipe_cursor = 0;
     r->seed.mod_keys = reads[1].items;
     r->seed.mod_n = reads[1].count;
     const char *origin = reads[0].dict_count || reads[1].dict_count ?
@@ -1946,18 +1947,17 @@ static bool seed_jobs_in_flight(PGRAPHGLState *r)
 
 /* Flip time: seeded states whose modules are all resident become
  * pipelines; the others wait, never compiled synchronously. */
-static void seed_pipe_pump(PGRAPHGLState *r, int64_t budget_us)
+static void seed_pipe_pump(PGRAPHGLState *r, unsigned max_items)
 {
     if (r->seed.state != 1) {
         return;
     }
-    int64_t t0 = g_get_monotonic_time();
-    bool progress = false, out_of_budget = false;
-    unsigned i = 0;
-    while (i < r->seed.pipe_n) {
-        if (g_get_monotonic_time() - t0 > budget_us) {
-            out_of_budget = true;
-            break;
+    bool progress = false, completed_sweep = false;
+    unsigned remaining = MIN(max_items, r->seed.pipe_n);
+    while (remaining-- && r->seed.pipe_n) {
+        unsigned i = r->seed.pipe_cursor;
+        if (i >= r->seed.pipe_n) {
+            i = 0;
         }
         ShaderState *st = &r->seed.pipe_states[i];
         ShaderModuleCacheKey keys[3];
@@ -1965,7 +1965,11 @@ static void seed_pipe_pump(PGRAPHGLState *r, int64_t budget_us)
         bool ready = (!need_gs || module_known(r, &keys[0])) &&
                      module_known(r, &keys[1]) && module_known(r, &keys[2]);
         if (!ready) {
-            i++;
+            r->seed.pipe_cursor = i + 1;
+            if (r->seed.pipe_cursor == r->seed.pipe_n) {
+                r->seed.pipe_cursor = 0;
+                completed_sweep = true;
+            }
             continue;
         }
         uint64_t h = fast_hash((const uint8_t *)st, sizeof(*st));
@@ -1977,6 +1981,11 @@ static void seed_pipe_pump(PGRAPHGLState *r, int64_t budget_us)
             generate_shaders(r, b);
         }
         r->seed.pipe_states[i] = r->seed.pipe_states[--r->seed.pipe_n];
+        r->seed.pipe_cursor = i;
+        if (i >= r->seed.pipe_n) {
+            r->seed.pipe_cursor = 0;
+            completed_sweep = true;
+        }
         r->seed.pipes_built++;
         progress = true;
     }
@@ -1986,13 +1995,10 @@ static void seed_pipe_pump(PGRAPHGLState *r, int64_t budget_us)
         glUseProgram(0);
         glBindProgramPipeline(r->shader_binding->gl_pipeline);
     }
-    if (out_of_budget) {
-        return;
-    }
     if (!r->seed.pipe_n && r->seed.mod_idx >= r->seed.mod_n) {
         seed_finish(r, "complete");
-    } else if (!progress && r->seed.mod_idx >= r->seed.mod_n &&
-               !seed_jobs_in_flight(r)) {
+    } else if (!progress && completed_sweep &&
+               r->seed.mod_idx >= r->seed.mod_n && !seed_jobs_in_flight(r)) {
         /* Leftovers wait on modules that never landed (stale seed, failed
          * compile): dropped after 1800 passes without progress. */
         if (++r->seed.stall_flips > 1800) {
@@ -2003,14 +2009,14 @@ static void seed_pipe_pump(PGRAPHGLState *r, int64_t budget_us)
     }
 }
 
-static void comb_async_service(PGRAPHGLState *r, int64_t budget_us)
+static void comb_async_service(PGRAPHGLState *r, unsigned max_items)
 {
     /* The service builds separable stage programs; without separate
      * shader objects nothing can adopt them. */
     if (!gl_sso_enabled()) {
         return;
     }
-    int64_t svc_t0 = g_get_monotonic_time();
+    unsigned items = 0;
 
     if (r->seed.state == -1) {
         seed_load(r);
@@ -2034,7 +2040,7 @@ static void comb_async_service(PGRAPHGLState *r, int64_t budget_us)
             retro_atomic_load_acquire_int(&gen_jobs[i].state) != GEN_COMPLETE) {
             continue;
         }
-        if (budget_us && g_get_monotonic_time() - svc_t0 > budget_us) {
+        if (items++ >= max_items) {
             break;
         }
         int slot = -1;
@@ -2240,7 +2246,7 @@ static bool module_file_read_key(const char *path, ShaderModuleCacheKey *key)
     return ok;
 }
 
-static void module_prewarm_pump(PGRAPHGLState *r, int64_t budget_us)
+static void module_prewarm_pump(PGRAPHGLState *r, unsigned max_items)
 {
     if (r->prewarm.state == -1) {
         module_prewarm_scan(r);
@@ -2248,9 +2254,9 @@ static void module_prewarm_pump(PGRAPHGLState *r, int64_t budget_us)
     if (r->prewarm.state != 1) {
         return;
     }
-    int64_t t0 = g_get_monotonic_time();
+    unsigned items = 0;
     while (r->prewarm.idx < r->prewarm.count) {
-        if (g_get_monotonic_time() - t0 > budget_us) {
+        if (items++ >= max_items) {
             return;
         }
         char *path = r->prewarm.files[r->prewarm.idx++];
@@ -2270,9 +2276,9 @@ static void module_prewarm_pump(PGRAPHGLState *r, int64_t budget_us)
 }
 
 /* One point sampling each fresh texture makes the driver finalize it here,
- * in vblank slack, not in the first frame that samples it. Host plumbing:
+ * at the flip, not in the first frame that samples it. Host plumbing:
  * every write is masked off. */
-static void touch_fresh_textures(PGRAPHGLState *r, int64_t budget_us)
+static void touch_fresh_textures(PGRAPHGLState *r, unsigned max_items)
 {
     if (r->fresh_tex_r == r->fresh_tex_w) {
         return;
@@ -2280,7 +2286,7 @@ static void touch_fresh_textures(PGRAPHGLState *r, int64_t budget_us)
     if (r->fresh_tex_w - r->fresh_tex_r > ARRAY_SIZE(r->fresh_tex)) {
         r->fresh_tex_r = r->fresh_tex_w - ARRAY_SIZE(r->fresh_tex);
     }
-    int64_t t0 = g_get_monotonic_time();
+    unsigned items = 0;
 
     if (!r->touch_prog) {
         r->touch_prog = pgraph_gl_compile_shader(
@@ -2323,7 +2329,7 @@ static void touch_fresh_textures(PGRAPHGLState *r, int64_t budget_us)
     glScissor(0, 0, 1, 1);
 
     while (r->fresh_tex_r != r->fresh_tex_w) {
-        if (g_get_monotonic_time() - t0 > budget_us) {
+        if (items++ >= max_items) {
             break;
         }
         GLuint tex = r->fresh_tex[r->fresh_tex_r % ARRAY_SIZE(r->fresh_tex)];
@@ -2361,42 +2367,18 @@ static void touch_fresh_textures(PGRAPHGLState *r, int64_t budget_us)
     glScissor(sbox[0], sbox[1], sbox[2], sbox[3]);
 }
 
-/* Flip-time services on the render thread, in the slack before the vblank
- * deadline: texture touch, module compiles and saves, prewarm, seeds. */
+/* Fixed per-flip work quotas keep maintenance independent of host time.
+ * Driver completion is polled; unfinished work remains queued. */
 void pgraph_gl_shaders_flip_service(NV2AState *d)
 {
     PGRAPHGLState *r = d->pgraph.gl_renderer_state;
     shader_adopt_disk_results(r, 64);
-    int64_t t0 = g_get_monotonic_time();
     pgraph_gl_tex_shadow_reset(r);
-    /* Spend only the slack before the vblank deadline, less 2 ms for
-     * submission and swap, so this service does not cost a vblank. */
-    int64_t slack_us =
-        (retro_atomic_load_relaxed_64(&d->vblank_deadline) -
-         qemu_clock_get_ns(QEMU_CLOCK_REALTIME)) / 1000
-        - 2000;
-    if (slack_us > 8000) {
-        slack_us = 8000;
-    }
-    if (slack_us > 500) {
-        touch_fresh_textures(r, slack_us * 4 / 10);
-        comb_async_service(r, slack_us * 4 / 10);
-        int64_t left = slack_us - (g_get_monotonic_time() - t0);
-        if (left > 300) {
-            module_save_queue_drain(r, left / 2);
-        }
-        left = slack_us - (g_get_monotonic_time() - t0);
-        if (left > 300) {
-            module_prewarm_pump(r, left);
-        }
-        left = slack_us - (g_get_monotonic_time() - t0);
-        if (left > 300) {
-            seed_pipe_pump(r, left);
-        }
-    } else {
-        /* No slack: a 1 us budget, in effect the harvest only. */
-        comb_async_service(r, 1);
-    }
+    touch_fresh_textures(r, 4);
+    comb_async_service(r, 2);
+    module_save_queue_drain(r, 1);
+    module_prewarm_pump(r, 1);
+    seed_pipe_pump(r, 4);
 }
 
 void pgraph_gl_bind_shaders(PGRAPHState *pg)

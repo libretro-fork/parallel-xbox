@@ -29,7 +29,7 @@ static float64 spy64(float64 a,float_status *s) {calls++;return float64_sqrt(a,s
 static uint64_t rng=0xa1b2c3d4e5;
 static uint64_t random64(void) {rng^=rng<<13;rng^=rng>>7;rng^=rng<<17;return rng;}
 static bool eligible(uint64_t bits,unsigned width,unsigned mode) {
-#if defined(XBOX) && defined(__x86_64__)
+#if defined(__x86_64__)
  if(mode>3)return false;
  if(width==32)return float32_is_zero(bits)||(float32_is_normal(bits)&&!float32_is_neg(bits));
  return float64_is_zero(bits)||(float64_is_normal(bits)&&!float64_is_neg(bits));

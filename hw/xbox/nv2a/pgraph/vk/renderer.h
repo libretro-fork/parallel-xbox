@@ -659,8 +659,6 @@ typedef struct PGRAPHVkState {
     VkCommandBuffer slot_sync[PGRAPH_VK_SLOTS];
     VkFence slot_fence[PGRAPH_VK_SLOTS];
     bool slot_fence_pending[PGRAPH_VK_SLOTS];
-    /* EMA of the vkBeginCommandBuffer cost in us (varies by driver). */
-    double cb_begin_us;
     /* Second set of the staged buffers and of their device destinations,
      * swapped in at rotation after a submission that staged data: Vulkan
      * orders no memory between submissions, so the next sync copy must not
@@ -728,25 +726,10 @@ typedef struct PGRAPHVkState {
     /* Surface expiry is frame-granular: run it once per frame. */
     unsigned int expire_frame_time;
     /* Eager submission at render-target switches (surface.c): how many
-     * a frame is decided from the costs measured on this machine. */
+     * a frame is decided from the previous frame's switch count. */
     unsigned rt_switches;
     unsigned eager_interval, eager_count;
     unsigned eager_draw_count; /* draws since the last eager submit */
-    double submit_us; /* EMA of the CPU cost of one queue submission */
-    /* EMA of the wait at slot reuse that a submission causes later: the
-     * slot's next recording first waits for this buffer's fence. */
-    double reuse_wait_us;
-    /* GPU busy time of the frame (draw.c pgraph_vk_frame_gpu_*). */
-    struct {
-        VkQueryPool pool;
-        unsigned capacity; /* pairs: the pool is a ring of them */
-        unsigned w;        /* pairs written, counting on; index = w % capacity */
-        unsigned resolved; /* pairs read back and reset, counting on */
-        unsigned w_end[PGRAPH_VK_SLOTS]; /* w at each slot's submission */
-        uint64_t *scratch;
-        double busy_us;    /* EMA over frames */
-    } frame_gpu;
-
     VkRenderPass render_pass;
     GArray *render_passes; // RenderPass
     bool in_render_pass;
@@ -1260,9 +1243,6 @@ void pgraph_vk_settle_reports(PGRAPHState *pg);
 void pgraph_vk_reclaim_command_buffer(PGRAPHState *pg, bool reuse);
 void pgraph_vk_reclaim_retired_images(PGRAPHVkState *r);
 void pgraph_vk_framebuffer_drop_view(PGRAPHVkState *r, VkImageView view);
-void pgraph_vk_frame_gpu_cb_begin(PGRAPHVkState *r, VkCommandBuffer cmd);
-void pgraph_vk_frame_gpu_cb_end(PGRAPHVkState *r, VkCommandBuffer cmd);
-void pgraph_vk_frame_gpu_resolve(PGRAPHState *pg);
 void pgraph_vk_eager_frame_update(PGRAPHState *pg);
 void pgraph_vk_wait_all_slots(PGRAPHVkState *r);
 void pgraph_vk_settle_all_slots(PGRAPHState *pg);

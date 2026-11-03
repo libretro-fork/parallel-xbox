@@ -11,7 +11,7 @@ with tempfile.TemporaryDirectory(prefix='sse-native-sqrt-') as d:
  macros=subprocess.run([cc,'-dM','-E','-'],input='',text=True,capture_output=True,check=True).stdout
  host='aarch64' if '__aarch64__' in macros else 'x86_64'
  includes=['libretro/gen','.','libretro/glib','include','host/include/'+host,'host/include/generic','libretro-common/include']
- flags=[cc,'-O2','-std=gnu11','-fno-strict-aliasing','-fwrapv','-D_GNU_SOURCE','-DXBOX=1','-Wall','-Werror','-Wno-unused-parameter']
+ flags=[cc,'-O2','-std=gnu11','-fno-strict-aliasing','-fwrapv','-D_GNU_SOURCE','-Wall','-Werror','-Wno-unused-parameter']
  for inc in includes:flags+=['-I'+str(r/inc)]
  # Disable SoftFloat's opportunistic host-FP shortcuts in the oracle, without
  # enabling fast-math compiler optimizations. This exercises actual software

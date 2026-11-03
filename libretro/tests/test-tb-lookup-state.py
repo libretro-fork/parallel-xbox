@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
-"""Execute production indirect-branch state/flag lookup in both target paths."""
+"""Execute production indirect-branch state/flag lookup for the fixed Xbox guest."""
 from pathlib import Path
 import re
 import subprocess
@@ -31,10 +31,9 @@ code = Path(__file__).with_suffix('.c').read_text().replace('/* PRODUCTION */', 
 with tempfile.TemporaryDirectory(prefix='tb-lookup-state-') as directory:
     folder = Path(directory)
     (folder / 'test.c').write_text(code)
-    for xbox in (False, True):
-        exe = folder / 'test'
-        subprocess.run([sys.argv[2] if len(sys.argv)>2 else 'cc', '-O2', '-std=gnu11',
-                        '-Wall', '-Wextra', '-Werror', '-Wno-unused-parameter',
-                        '-fsanitize=undefined', '-fsanitize-undefined-trap-on-error',
-                        *(['-DXBOX'] if xbox else []), str(folder/'test.c'), '-o', str(exe)], check=True)
-        subprocess.run([str(exe)], check=True, timeout=30)
+    exe = folder / 'test'
+    subprocess.run([sys.argv[2] if len(sys.argv)>2 else 'cc', '-O2', '-std=gnu11',
+                    '-Wall', '-Wextra', '-Werror', '-Wno-unused-parameter',
+                    '-fsanitize=undefined', '-fsanitize-undefined-trap-on-error',
+                    str(folder/'test.c'), '-o', str(exe)], check=True)
+    subprocess.run([str(exe)], check=True, timeout=30)

@@ -36,16 +36,11 @@ static int64_t icount_get_limit(void)
 {
     int64_t deadline;
 
-    /*
-     * Include all the timers, because they may need an attention.
-     * Too long CPU execution may create unnecessary delay in UI.
-     */
+    /* Only guest timer deadlines may bound an instruction budget.
+     * The frontend owns input/display pacing; host service timeouts are
+     * dispatched by the main loop between guest slices. */
     deadline = qemu_clock_deadline_ns_all(QEMU_CLOCK_VIRTUAL,
                                           QEMU_TIMER_ATTR_ALL);
-    /* Check realtime timers, because they help with input processing */
-    deadline = qemu_soonest_timeout(deadline,
-            qemu_clock_deadline_ns_all(QEMU_CLOCK_REALTIME,
-                                       QEMU_TIMER_ATTR_ALL));
 
     /*
      * Maintain prior (possibly buggy) behaviour where if no deadline

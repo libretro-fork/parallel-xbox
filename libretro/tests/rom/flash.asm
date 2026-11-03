@@ -67,11 +67,25 @@ entry:
         pcicfg 5, 0x10, APU
         pcicfg 5, 0x04, 0x00000006
 
+%ifdef PCM_SGE_SPLIT
+        ; Split the first PCM frame boundary across discontiguous SGE pages.
+        ; Source starts at logical byte 4093: sample 1 straddles the pages.
+        mov esi, pcm_data
+        mov edi, PCM + 4093
+        mov ecx, 3
+        rep movsb
+        mov edi, PCM + 0x3000
+        mov ecx, pcm_end - pcm_data - 3
+        rep movsb
+        mov dword [SGE + 8], PCM + 0x3000
+        mov dword [SGE + 12], 0
+%else
         ; the sine into RAM, the SGE table's one page entry
         mov esi, pcm_data
         mov edi, PCM
         mov ecx, pcm_end - pcm_data
         rep movsb
+%endif
         mov dword [SGE], PCM
         mov dword [SGE + 4], 0
 
@@ -101,7 +115,10 @@ entry:
 
         pio 0x2F8, VOICE                 ; SET_CURRENT_VOICE
         pio 0x300, (1 << 5)              ; VBIN: v0 -> bin 0, v1 -> bin 1
-%ifdef STREAM
+%ifdef VP_ADPCM
+        ; Mono/stereo Xbox ADPCM, 64 exposed samples per 36-byte channel block.
+        pio 0x304, (2 << 30) | (2 << 28) | (1 << 25) | ((VP_ADPCM - 1) << 27) | ((VP_ADPCM - 1) << 16)
+%elifdef STREAM
         pio 0x304, (1 << 30) | (1 << 28) | (1 << 24) | (1 << 23) ; persistent stream
         pio 0x320, 255                   ; SSL A, entries 0..254
 %else
@@ -124,7 +141,11 @@ entry:
         pio 0x2C0, 0x03020100            ; HRTF routes to bins 0,1,2,3
 %endif
         pio 0x37C, 0                     ; pitch 0: 48 kHz
+%ifdef PCM_SGE_SPLIT
+        pio 0x3A0, 4093                  ; buffer crosses logical SGE pages
+%else
         pio 0x3A0, 0                     ; buffer base
+%endif
         pio 0x3A4, 0                     ; loop start
         pio 0x3DC, 1919                  ; end
 %ifdef VP_UNIQUE
@@ -353,7 +374,24 @@ gp_prog:
 gp_prog_end:
 %endif
 pcm_data:
+%ifdef VP_ADPCM
+%rep 30
+        dw 1234
+        db 30, 0
+%if VP_ADPCM == 2
+        dw -2345
+        db 40, 0
+%endif
+%rep 8
+        dd 0x17395B7D
+%if VP_ADPCM == 2
+        dd 0xE6C4A280
+%endif
+%endrep
+%endrep
+%else
 %include "sine.inc"
+%endif
 pcm_end:
 %ifdef PAD
         times PAD_BASE - 0xFFF00000 - ($ - $$) db 0xFF

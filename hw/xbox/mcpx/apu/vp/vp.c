@@ -736,7 +736,7 @@ const MemoryRegionOps vp_ops = {
     .write = vp_write,
 };
 
-static hwaddr get_data_ptr(MCPXAPUState *d, hwaddr sge_base,
+static inline hwaddr get_data_ptr(MCPXAPUState *d, hwaddr sge_base,
                            unsigned int max_sge, uint32_t addr)
 {
     unsigned int entry = addr / TARGET_PAGE_SIZE;
@@ -934,6 +934,52 @@ voice_jingle_hash(MCPXAPUState *d, uint32_t ba)
     return fast_hash(head, sizeof(head));
 }
 
+/* A PCM frame crossing logical SGE pages needs at most eight bytes from
+ * two mappings. Keep this bounded gather off the ordinary physical-load path. */
+static void __attribute__((noinline)) voice_pcm_sge_frame(
+    MCPXAPUState *d, uint32_t linear, unsigned int sample_size,
+    unsigned int container_size, unsigned int channels, int32_t samples[2])
+{
+    unsigned int width = sample_size == NV_PAVS_VOICE_CFG_FMT_SAMPLE_SIZE_U8 ? 1 :
+                         sample_size == NV_PAVS_VOICE_CFG_FMT_SAMPLE_SIZE_S16 ? 2 : 4;
+    unsigned int span = (channels - 1) * container_size + width;
+    uint8_t bytes[8];
+    assert(span <= sizeof(bytes));
+    unsigned int first_count = MIN(span, TARGET_PAGE_SIZE - linear % TARGET_PAGE_SIZE);
+    hwaddr first = get_data_ptr(d, apu_reg_r(d, NV_PAPU_VPSGEADDR),
+                               0xFFFFFFFF, linear);
+    hwaddr second = first + first_count;
+    if (first_count < span) {
+        second = get_data_ptr(d, apu_reg_r(d, NV_PAPU_VPSGEADDR),
+                              0xFFFFFFFF, linear + first_count);
+    }
+    bool contiguous = second == first + first_count;
+    if (!contiguous) {
+        cpu_physical_memory_read(first, bytes, first_count);
+        cpu_physical_memory_read(second, bytes + first_count, span - first_count);
+    }
+    for (unsigned int ch = 0; ch < channels; ch++) {
+        uint32_t value;
+        if (contiguous) {
+            hwaddr addr = first + ch * container_size;
+            value = width == 1 ? apu_ram_ldub(d, addr) :
+                    width == 2 ? apu_ram_lduw(d, addr) : apu_ram_ldl(d, addr);
+        } else {
+            const uint8_t *p = bytes + ch * container_size;
+            value = p[0];
+            if (width >= 2) value |= (uint32_t)p[1] << 8;
+            if (width == 4) value |= (uint32_t)p[2] << 16 | (uint32_t)p[3] << 24;
+        }
+        switch (sample_size) {
+        case NV_PAVS_VOICE_CFG_FMT_SAMPLE_SIZE_U8: samples[ch] = vp_sample_u8(value); break;
+        case NV_PAVS_VOICE_CFG_FMT_SAMPLE_SIZE_S16: samples[ch] = vp_sample_s16(value); break;
+        case NV_PAVS_VOICE_CFG_FMT_SAMPLE_SIZE_S24: samples[ch] = vp_sample_s24(value); break;
+        case NV_PAVS_VOICE_CFG_FMT_SAMPLE_SIZE_S32: samples[ch] = vp_sample_s32(value); break;
+        default: assert(!"Invalid PCM sample size"); samples[ch] = 0; break;
+        }
+    }
+}
+
 static int voice_get_samples(MCPXAPUState *d, uint32_t v, int32_t samples[][2],
                        int num_samples_requested)
 {
@@ -983,9 +1029,7 @@ static int voice_get_samples(MCPXAPUState *d, uint32_t v, int32_t samples[][2],
     uint32_t segment_length = 0;
     size_t block_size;
 
-    int adpcm_block_index = -1;
     uint8_t adpcm_block[36 * 2];
-    int16_t adpcm_decoded[65*2]; // FIXME: Move out of here
 
     // This is probably cleared when the first sample is played
     // FIXME: How will this behave if CBO > EBO on first play?
@@ -1125,7 +1169,9 @@ static int voice_get_samples(MCPXAPUState *d, uint32_t v, int32_t samples[][2],
         if (adpcm) {
             unsigned int block_index = cbo / ADPCM_SAMPLES_PER_BLOCK;
             unsigned int block_position = cbo % ADPCM_SAMPLES_PER_BLOCK;
-            if (adpcm_block_index != block_index) {
+            unsigned count = MIN((unsigned)(num_samples_requested - sample_count),
+                                 MIN(64 - block_position, ebo - cbo + 1));
+            if (block_size == 36 * channels) {
                 uint32_t linear_addr = block_index * block_size;
                 const uint8_t *encoded;
                 if (stream) {
@@ -1143,7 +1189,7 @@ static int voice_get_samples(MCPXAPUState *d, uint32_t v, int32_t samples[][2],
                     if (block_size <= available && d->ram_ptr &&
                         addr + block_size <= memory_region_size(d->ram)) {
                         vp_ram_guard(d,addr,block_size);
-                    encoded = &d->ram_ptr[addr];
+                        encoded = &d->ram_ptr[addr];
                     } else {
                         /* SGE pages need not be adjacent in guest RAM.
                          * Gather split blocks, keeping the address-space
@@ -1164,33 +1210,36 @@ static int voice_get_samples(MCPXAPUState *d, uint32_t v, int32_t samples[][2],
                         encoded = adpcm_block;
                     }
                 }
-                /* The decoder reads bytes synchronously; no guest pointer
-                 * survives this call or the worker join. */
-                /* A block whose header the decoder rejects (step index
-                 * above 88, reserved byte set) plays silence: the decoder
-                 * stops before writing the block, and the rest of the
-                 * buffer is whatever the stack held. */
-                if (!adpcm_decode_block(adpcm_decoded, encoded,
-                                        block_size, channels)) {
-                    memset(adpcm_decoded, 0, sizeof(adpcm_decoded));
+                /* Decode the needed window directly into the caller's VP
+                 * samples. Invalid headers produce only this window's silence. */
+                if (!adpcm_decode_window(&samples[sample_count], encoded,
+                                          block_size, channels,
+                                          block_position, count)) {
+                    memset(&samples[sample_count], 0,
+                           count * sizeof(samples[0]));
                 }
-                adpcm_block_index = block_index;
+            } else {
+                /* Unsupported block/channel layouts must not overrun the
+                 * fixed gather buffer or synthesize predictor state. */
+                memset(&samples[sample_count], 0, count * sizeof(samples[0]));
             }
-
-            samples[sample_count][0] =
-                vp_sample_s16(adpcm_decoded[block_position * channels]);
-            if (stereo) {
-                samples[sample_count][1] = vp_sample_s16(
-                    adpcm_decoded[block_position * channels + 1]);
-            }
+            sample_count += count - 1;
+            cbo += count - 1;
         } else {
-            // FIXME: Handle reading accross pages?!
-
             hwaddr addr;
             if (stream) {
                 addr = segment_offset + cbo * block_size;
             } else {
                 uint32_t linear_addr = ba + cbo * block_size;
+                unsigned int width = sample_size == NV_PAVS_VOICE_CFG_FMT_SAMPLE_SIZE_U8 ? 1 :
+                                     sample_size == NV_PAVS_VOICE_CFG_FMT_SAMPLE_SIZE_S16 ? 2 : 4;
+                unsigned int span = (channels - 1) * container_size + width;
+                if (span > TARGET_PAGE_SIZE - linear_addr % TARGET_PAGE_SIZE) {
+                    voice_pcm_sge_frame(d, linear_addr, sample_size,
+                                        container_size, channels, samples[sample_count]);
+                    if (!stereo) samples[sample_count][1] = samples[sample_count][0];
+                    continue;
+                }
                 addr = get_data_ptr(d, apu_reg_r(d, NV_PAPU_VPSGEADDR), 0xFFFFFFFF,
                                     linear_addr);
             }
@@ -1225,7 +1274,7 @@ static int voice_get_samples(MCPXAPUState *d, uint32_t v, int32_t samples[][2],
             }
         }
 
-        if (!stereo) {
+        if (!stereo && !adpcm) {
             samples[sample_count][1] = samples[sample_count][0];
         }
     }
@@ -2264,10 +2313,14 @@ void mcpx_apu_vp_frame(MCPXAPUState *d, int64_t mixbins[NUM_MIXBINS][NUM_SAMPLES
             uint16_t v = handle;
             apu_reg_w(d, next, voice_get_mask(d, v, NV_PAVS_VOICE_TAR_PITCH_LINK,
                                NV_PAVS_VOICE_TAR_PITCH_LINK_NEXT_VOICE_HANDLE));
-            if (!voice_get_mask(d, v, NV_PAVS_VOICE_PAR_STATE,
-                                NV_PAVS_VOICE_PAR_STATE_ACTIVE_VOICE)) {
+            /* A paused voice preserves its state but still advances the list.
+             * Do not publish worker work that voice_process would discard. */
+            uint32_t state = voice_get_mask(d, v, NV_PAVS_VOICE_PAR_STATE,
+                                            UINT32_MAX);
+            if (!(state & NV_PAVS_VOICE_PAR_STATE_ACTIVE_VOICE)) {
                 fe_method(d, SE2FE_IDLE_VOICE, v);
-            } else if (!is_voice_locked(d, v)) {
+            } else if (!(state & NV_PAVS_VOICE_PAR_STATE_PAUSED) &&
+                       !is_voice_locked(d, v)) {
                 /* a locked voice is being changed by the guest: it sits
                  * this frame out rather than the frame waiting (apu.c) */
                 if (!serial_overflow &&

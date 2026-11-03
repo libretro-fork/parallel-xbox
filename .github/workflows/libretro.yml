@@ -62,12 +62,24 @@ jobs:
         env:
           OWNER_CPU_CFLAGS: -fsanitize=address -fno-omit-frame-pointer
         run: python3 libretro/tests/test-owner-cpu-boundary.py . cc
+      - name: SPSC pair publication with fortified libc and sanitizers
+        env:
+          SPSC_PAIR_CFLAGS: -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=3 -fsanitize=address -fno-omit-frame-pointer
+        run: python3 libretro/tests/test-spsc-pair.py . cc
+      - name: Core has one fixed guest target without a selection macro
+        run: python3 libretro/tests/test-single-target.py .
       - name: Fixed x86 execution binding preserves complete legacy boundary state
         run: python3 libretro/tests/test-fixed-x86-entry.py . cc
       - name: Fixed x86 binding under address and undefined behavior sanitizers
         env:
           X86_ENTRY_CFLAGS: -fsanitize=address -fno-omit-frame-pointer
         run: python3 libretro/tests/test-fixed-x86-entry.py . cc
+      - name: Fixed x86 block-exit PC synchronization
+        run: python3 libretro/tests/test-fixed-tb-sync.py . cc
+      - name: Fixed x86 block-exit synchronization under sanitizers
+        env:
+          TB_SYNC_CFLAGS: -fsanitize=address -fno-omit-frame-pointer
+        run: python3 libretro/tests/test-fixed-tb-sync.py . cc
       - name: Only dominating stores may remove quiet-budget checks
         run: python3 libretro/tests/test-quiet-store-prefix.py . cc
       - name: Install native DSP test build dependency

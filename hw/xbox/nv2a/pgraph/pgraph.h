@@ -71,12 +71,7 @@ typedef struct VertexAttribute {
  * when Chihiro's boot has not named it; NULL until a name is available. */
 const char *pgraph_seed_game_tag(void);
 
-/* Real hardware speed model, QEMU_CLOCK_REALTIME ns: the deadline before
- * which a flip may not complete (pgraph.c), the moment the guest resumed
- * after the last one (pfifo.c) and the modelled GPU backlog (nv2a.c). */
-extern int64_t xemu_flip_ready_ns;
-extern int64_t xemu_flip_completed_ns;
-extern int64_t xemu_gpu_free_ns;
+
 
 /* A GL driver that passed the self-test (ui/xemu.c): the gate of the
  * separable and dynamic shader paths, whose generator the Vulkan renderer

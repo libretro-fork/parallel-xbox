@@ -108,7 +108,8 @@ static NetClientState *qemu_get_queue(NICState *nic) { return &nic->nc; }
 static bool rx_enabled(NvNetState *s) { return s->rx; }
 static bool dma_enabled(NvNetState *s) { return s->dma; }
 static bool link_up(NvNetState *s) { return s->link; }
-static bool rx_buf_available(NvNetState *s) { descriptor_reads++;return s->available; }
+struct RingDesc;
+static bool rx_buf_available(NvNetState *s, struct RingDesc *snapshot) { (void)snapshot;descriptor_reads++;return s->available; }
 static bool timer_pending(QEMUTimer *t) { return t->pending; }
 static void timer_mod(QEMUTimer *t,int64_t when) { t->pending=true;t->deadline=when; }
 static void timer_del(QEMUTimer *t) { t->pending=false; }
@@ -207,7 +208,7 @@ int main(void) {
 code = code.replace('/* BORDER */', border)
 code = code.replace('/* PBUS */', pbus[pbus.index('#define NV_PBUS_PCI_NV_MIRROR_SIZE'):])
 code = code.replace('/* NVNET */', '\n'.join(function(nvnet, f) for f in
-                    ('nvnet_can_receive', 'nvnet_flush_rx', 'rx_poll_timer',
+                    ('nvnet_can_receive_desc', 'nvnet_can_receive', 'nvnet_flush_rx', 'rx_poll_timer',
                      'nvnet_post_load')))
 with tempfile.TemporaryDirectory(prefix='backport-compat-') as tmp:
     tmp = Path(tmp)

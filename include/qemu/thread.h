@@ -63,8 +63,6 @@ void qemu_rec_mutex_unlock_impl(QemuRecMutex *mutex, const char *file, int line)
             qemu_rec_mutex_trylock_impl(m, __FILE__, __LINE__)
 #define qemu_cond_wait(c, m)                                            \
             qemu_cond_wait_impl(c, m, __FILE__, __LINE__)
-#define qemu_cond_timedwait(c, m, ms)                                   \
-            qemu_cond_timedwait_impl(c, m, ms, __FILE__, __LINE__)
 
 #define qemu_mutex_unlock(mutex) \
         qemu_mutex_unlock_impl(mutex, __FILE__, __LINE__)
@@ -114,25 +112,15 @@ void qemu_cond_signal(QemuCond *cond);
 void qemu_cond_broadcast(QemuCond *cond);
 void TSA_NO_TSA qemu_cond_wait_impl(QemuCond *cond, QemuMutex *mutex,
                                     const char *file, const int line);
-bool qemu_cond_timedwait_impl(QemuCond *cond, QemuMutex *mutex, int ms,
-                              const char *file, const int line);
 
 static inline void (qemu_cond_wait)(QemuCond *cond, QemuMutex *mutex)
 {
     qemu_cond_wait(cond, mutex);
 }
 
-/* Returns true if timeout has not expired, and false otherwise */
-static inline bool (qemu_cond_timedwait)(QemuCond *cond, QemuMutex *mutex,
-                                         int ms)
-{
-    return qemu_cond_timedwait(cond, mutex, ms);
-}
-
 void qemu_sem_init(QemuSemaphore *sem, int init);
 void qemu_sem_post(QemuSemaphore *sem);
 void qemu_sem_wait(QemuSemaphore *sem);
-int qemu_sem_timedwait(QemuSemaphore *sem, int ms);
 void qemu_sem_destroy(QemuSemaphore *sem);
 
 void qemu_event_init(QemuEvent *ev, bool init);

@@ -21,6 +21,7 @@
 
 #include "target/i386/cpu.h"
 #include "accel/tcg/tb-cpu-state.h"
+#include "exec/translation-block.h"
 #include "qemu/cpu-boost.h"
 
 /* The core has one fixed x86 target. Bind its existing flag boundary
@@ -122,6 +123,21 @@ QEMU_BUILD_BUG_ON(offsetof(X86XSaveArea, opmask_state) != XSAVE_OPMASK_OFFSET);
 QEMU_BUILD_BUG_ON(offsetof(X86XSaveArea, zmm_hi256_state) != XSAVE_ZMM_HI256_OFFSET);
 QEMU_BUILD_BUG_ON(offsetof(X86XSaveArea, hi16_zmm_state) != XSAVE_HI16_ZMM_OFFSET);
 QEMU_BUILD_BUG_ON(offsetof(X86XSaveArea, pkru_state) != XSAVE_PKRU_OFFSET);
+
+static inline void x86_cpu_synchronize_from_tb(CPUState *cs,
+                                        const TranslationBlock *tb)
+{
+    /* The instruction pointer is always up to date with CF_PCREL. */
+    if (!(tb_cflags(tb) & CF_PCREL)) {
+        CPUX86State *env = cpu_env(cs);
+
+        if (tb->flags & HF_CS64_MASK) {
+            env->eip = tb->pc;
+        } else {
+            env->eip = (uint32_t)(tb->pc - tb->cs_base);
+        }
+    }
+}
 
 extern const TCGCPUOps x86_tcg_ops;
 

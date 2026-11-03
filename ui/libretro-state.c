@@ -99,7 +99,10 @@ bool lr_state_save(void *data, size_t size, Error **errp)
         return false;
     }
     if (!lr_session) {
-        lr_session = ((uint64_t)getpid() << 32) ^ get_clock_realtime();
+        lr_session = ((uint64_t)g_random_int() << 32) | g_random_int();
+        if (!lr_session) {
+            lr_session = 1;
+        }
     }
 
     global_state_store();

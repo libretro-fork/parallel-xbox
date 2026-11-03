@@ -170,6 +170,8 @@ void dsp56k_decode(dsp_core_t *dsp, uint32_t pc, DspDecoded *d);
 /* The interpreter's address register update and (Rn+Nn) address, for the
  * JIT's code when Mn is not linear */
 void dsp56k_update_rn(dsp_core_t *dsp, uint32_t numreg, int modifier);
+/* Architectural width mask, also used while compiling raw MOVEC reads. */
+uint32_t dsp56k_register_mask(uint32_t numreg);
 /* A masked register write, including control-register and stack effects. */
 void dsp56k_write_reg(dsp_core_t *dsp, uint32_t numreg, uint32_t value);
 uint32_t dsp56k_ea_rn_plus_n(dsp_core_t *dsp, uint32_t numreg);

@@ -13,7 +13,6 @@
 #endif
 #undef assert
 #define assert(c) do { if (!(c)) { fprintf(stderr,"idle candidate: %u: %s\n",__LINE__,#c); _Exit(1); } } while(0)
-#define XBOX 1
 #define TARGET_PAGE_SIZE 4096u
 #define TARGET_PAGE_MASK (~(uint64_t)(TARGET_PAGE_SIZE-1))
 typedef struct { const uint8_t *host_addr[2]; uint64_t pc_first; } DisasContextBase;

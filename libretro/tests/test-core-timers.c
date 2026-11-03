@@ -40,9 +40,9 @@ static __attribute__((unused)) void qemu_event_init(QemuEvent*e,bool set){e->set
 static __attribute__((unused)) void qemu_event_reset(QemuEvent*e){e->set=false;}
 static __attribute__((unused)) void qemu_event_set(QemuEvent*e){e->set=true;}
 static __attribute__((unused)) void qemu_event_wait(QemuEvent*e){assert(e->set);}
-static bool icount_enabled(void){return counted;}
+static __attribute__((unused)) bool icount_enabled(void){return counted;}
 static int64_t get_clock(void){return now[QEMU_CLOCK_REALTIME];}
-static int64_t get_clock_realtime(void){return now[QEMU_CLOCK_HOST];}
+static __attribute__((unused)) int64_t get_clock_realtime(void){return now[QEMU_CLOCK_HOST];}
 static int64_t cpus_get_virtual_clock(void){return now[QEMU_CLOCK_VIRTUAL];}
 static int64_t cpu_get_clock(void){return now[QEMU_CLOCK_VIRTUAL_RT];}
 static int64_t qemu_soonest_timeout(int64_t a,int64_t b){return a<0?b:b<0?a:MIN(a,b);}
@@ -107,7 +107,7 @@ static void check(void){
   int masks[]={QEMU_TIMER_ATTR_ALL,~QEMU_TIMER_ATTR_EXTERNAL,0,QEMU_TIMER_ATTR_EXTERNAL,4,~4};
   for(unsigned m=0;m<sizeof(masks)/sizeof(masks[0]);m++){int mask=masks[m];assert(qemu_clock_deadline_ns_all(type,mask)==deadline(type,mask));}
   int id=next(type,QEMU_TIMER_ATTR_ALL);assert(qemu_clock_expired(type)==(id>=0&&ref[id].expiry<=now[type]));
-  if(!(counted&&type==QEMU_CLOCK_VIRTUAL))soonest=qemu_soonest_timeout(soonest,deadline(type,QEMU_TIMER_ATTR_ALL));
+  /* Emulated clock deadlines never become host poll timeouts. */
  }
  assert(poll_deadline()==soonest);
  for(unsigned i=0;i<N;i++){assert(timer_pending(&timers[i])==(ref[i].expiry>=0));assert(timer_expire_time_ns(&timers[i])==(uint64_t)ref[i].expiry);}
@@ -145,7 +145,10 @@ int main(void){
   case 0:timer_mod_ns(&timers[id],expiry);ref_mod(id,expiry);break;
   case 1:timer_mod_anticipate_ns(&timers[id],expiry);if(ref[id].expiry<0||ref[id].expiry>expiry)ref_mod(id,expiry);break;
   case 2:timer_del(&timers[id]);ref[id].expiry=-1;break;
-  case 3:now[type]+=random_value()%50;break;
+  case 3:now[type]+=random_value()%50;
+   if(type==QEMU_CLOCK_HOST)now[QEMU_CLOCK_VIRTUAL]=now[type];
+   if(type==QEMU_CLOCK_VIRTUAL)now[QEMU_CLOCK_HOST]=now[type];
+   break;
   case 4:run(type);break;
   case 5:enabled[type]=!enabled[type];qemu_clock_enable(type,enabled[type]);break;
   case 6:counted=!counted;break;

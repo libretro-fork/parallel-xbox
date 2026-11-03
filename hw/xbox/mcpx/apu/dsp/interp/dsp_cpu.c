@@ -36,7 +36,6 @@
 #define TRACE_DSP_DISASM_REG 0
 #define TRACE_DSP_DISASM_MEM 0
 
-// #define DSP_COUNT_IPS     /* Count instruction per seconds */
 
 
 /**********************************
@@ -400,7 +399,6 @@ void dsp56k_reset_cpu(dsp_core_t* dsp)
 
     /* runtime shit */
 
-    // start_time = g_get_monotonic_time() / 1000;
     dsp->num_inst = 0;
 
     dsp->exception_debugging = true;
@@ -663,18 +661,6 @@ void dsp56k_execute_instruction(dsp_core_t* dsp)
 
     dsp->num_inst += dsp->instr_cycle;
 
-#ifdef DSP_COUNT_IPS
-    ++dsp->num_inst;
-    if ((dsp->num_inst & 63) == 0) {
-        /* Evaluate time after <N> instructions have been executed to avoid asking too frequently */
-        uint32_t cur_time = g_get_monotonic_time() / 1000;
-        if (cur_time-start_time>1000) {
-            DPRINTF("Dsp: %d i/s\n", (dsp->num_inst*1000)/(cur_time-start_time));
-            start_time=cur_time;
-            dsp->num_inst=0;
-        }
-    }
-#endif
 }
 
 /**********************************
@@ -1433,6 +1419,12 @@ void dsp56k_decode(dsp_core_t *dsp, uint32_t pc, DspDecoded *d)
     if (d->len < 1 || d->len > 2) {
         d->len = 1;
     }
+}
+
+uint32_t dsp56k_register_mask(uint32_t numreg)
+{
+    assert(numreg < DSP_REG_MAX);
+    return BITMASK(registers_mask[numreg]);
 }
 
 void dsp56k_write_reg(dsp_core_t *dsp, uint32_t numreg, uint32_t value)

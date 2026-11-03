@@ -8,6 +8,7 @@
  */
 
 #include "qemu/osdep.h"
+#include "qemu/timer.h"
 #include "hw/usb.h"
 
 #define PCAP_MAGIC                   0xa1b2c3d4
@@ -49,8 +50,8 @@ struct usbmon_packet {
     uint16_t busnum;         /* 12: Bus number */
     char flag_setup;         /* 14: Same as text */
     char flag_data;          /* 15: Same as text; Binary zero is OK. */
-    int64_t ts_sec;          /* 16: gettimeofday */
-    int32_t ts_usec;         /* 24: gettimeofday */
+    int64_t ts_sec;          /* 16: guest seconds */
+    int32_t ts_usec;         /* 24: guest microseconds */
     int32_t status;          /* 28: */
     unsigned int length;     /* 32: Length of data (submitted or actual) */
     unsigned int len_cap;    /* 36: Delivered length */
@@ -103,11 +104,11 @@ static unsigned char usbmon_xfer_type[] = {
 static void do_usb_pcap_header(FILE *fp, struct usbmon_packet *packet)
 {
     struct pcaprec_hdr header;
-    struct timeval tv;
+    int64_t now = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL);
 
-    gettimeofday(&tv, NULL);
-    packet->ts_sec  = tv.tv_sec;
-    packet->ts_usec = tv.tv_usec;
+    /* Capture chronology follows the emulated USB bus, including pauses. */
+    packet->ts_sec  = now / NANOSECONDS_PER_SECOND;
+    packet->ts_usec = (now % NANOSECONDS_PER_SECOND) / 1000;
 
     header.ts_sec   = packet->ts_sec;
     header.ts_usec  = packet->ts_usec;

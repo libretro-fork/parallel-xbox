@@ -41,7 +41,6 @@ static uint32_t pgraph_reg_r(PGRAPHState *pg,unsigned addr) {return pg->regs[add
 static void pgraph_reg_set_mask_atomic(PGRAPHState *pg,unsigned addr,uint32_t mask,uint32_t value) { SET_MASK(pg->regs[addr/4],mask,value); }
 static void pgraph_reg_w_guest(PGRAPHState *pg,unsigned addr,uint32_t value) {pg->regs[addr/4]=value;}
 static void pgraph_rdi_write(PGRAPHState *pg,unsigned select,unsigned address,uint64_t value) {(void)pg;(void)select;(void)address;(void)value;}
-static void nv2a_profile_increment(void) {}
 static size_t memory_region_size(const unsigned *m) {(void)m;return 4096;}
 static uint32_t ldl_le_p(const uint32_t *p) {return *p;}
 static void nv2a_update_irq(NV2AState *d) {(void)d;}

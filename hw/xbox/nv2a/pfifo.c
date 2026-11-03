@@ -21,6 +21,7 @@
 
 #include "nv2a_int.h"
 #include "libretro/dsp-ownership.h"
+#include <rthreads/rthreads.h>
 
 typedef struct RAMHTEntry {
     uint32_t handle;
@@ -112,13 +113,6 @@ static bool is_flip_stall_complete(NV2AState *d)
 {
     PGRAPHState *pg = &d->pgraph;
 
-    /* The flip may not complete before the modelled render deadline, a
-     * continuous one: the game's own vblank pacing supplies any grid. */
-    if (xemu_flip_ready_ns &&
-        qemu_clock_get_ns(QEMU_CLOCK_REALTIME) < xemu_flip_ready_ns) {
-        return false;
-    }
-
     uint32_t s = pgraph_reg_r(pg, NV_PGRAPH_SURFACE);
 
     NV2A_DPRINTF("flip stall read: %d, write: %d, modulo: %d\n",
@@ -144,9 +138,6 @@ static bool pfifo_stall_for_flip(NV2AState *d)
             should_stall = true;
         } else {
             retro_atomic_store_relaxed_int(&d->pgraph.waiting_for_flip, 0);
-            /* The guest resumes submitting: the modelled GPU queue starts. */
-            xemu_flip_completed_ns =
-                qemu_clock_get_ns(QEMU_CLOCK_REALTIME);
         }
     }
 
@@ -165,8 +156,8 @@ static bool pfifo_puller_should_stall(NV2AState *d)
  * GPU works (ui/libretro.c), and is woken when this thread parks */
 retro_atomic_int_t nv2a_libretro_waiter;
 
-/* Idle report checks never wait inside the graphics driver. A bounded
- * eventcount park retries submitted reports even without another guest kick. */
+/* Idle report checks never wait inside the graphics driver. Submitted
+ * reports are retried after yielding, without a host-time polling interval. */
 static inline void pfifo_idle_wait(NV2AState *d)
 {
     const PGRAPHRenderer *renderer = pgraph_renderer(&d->pgraph);
@@ -232,10 +223,11 @@ static inline void pfifo_idle_wait(NV2AState *d)
         }
         qemu_mutex_unlock(&d->pfifo.lock);
         if (report_pending) {
-            /* No completion callback is exposed by GL/Vulkan queries. Retry
-             * with a 100 us timeout request; kicks interrupt the park.
-             * Keep guest_done unchanged until the report has been served. */
-            retro_eventcount_commit_wait_timeout(&d->pfifo.fifo_ec, key, 100);
+            /* Query APIs expose no completion callback. Yield and retry the
+             * readiness check without a host-time interval. A kick remains
+             * published for the next pass; guest_done stays unchanged. */
+            retro_eventcount_cancel_wait(&d->pfifo.fifo_ec);
+            sthread_yield();
         } else {
             retro_eventcount_commit_wait(&d->pfifo.fifo_ec, key);
         }
@@ -331,7 +323,7 @@ static ssize_t pfifo_run_puller(NV2AState *d, uint32_t method_entry,
 void pfifo_guest_lock(NV2AState *d)
 {
     retro_atomic_fetch_add_int(&d->pfifo.guest_waiting, 1);
-    xemu_tbrate_lock(&d->pfifo.lock);
+    qemu_mutex_lock(&d->pfifo.lock);
     retro_atomic_fetch_sub_int(&d->pfifo.guest_waiting, 1);
 }
 

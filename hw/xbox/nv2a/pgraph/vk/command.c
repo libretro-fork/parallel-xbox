@@ -466,20 +466,6 @@ void pgraph_vk_end_single_time_commands(PGRAPHState *pg, VkCommandBuffer cmd)
     pgraph_vk_wait_for_aux(pg);
 }
 
-/* Timestamps are defined only on a queue family with valid bits. */
-static bool queue_has_timestamps(PGRAPHVkState *r)
-{
-    QueueFamilyIndices indices =
-        pgraph_vk_find_queue_families(r->physical_device);
-    uint32_t n = 0;
-    vkGetPhysicalDeviceQueueFamilyProperties(r->physical_device, &n, NULL);
-    g_autofree VkQueueFamilyProperties *props =
-        g_new(VkQueueFamilyProperties, n);
-    vkGetPhysicalDeviceQueueFamilyProperties(r->physical_device, &n, props);
-    return indices.queue_family >= 0 && (uint32_t)indices.queue_family < n &&
-           props[indices.queue_family].timestampValidBits > 0;
-}
-
 void pgraph_vk_init_command_buffers(PGRAPHState *pg)
 {
     PGRAPHVkState *r = pg->vk_renderer_state;
@@ -489,26 +475,6 @@ void pgraph_vk_init_command_buffers(PGRAPHState *pg)
     /* Reserve the normal retirement working set before guest rendering. */
     r->trash_cap = 512;
     r->trash = g_new(struct XemuVkTrashEntry, r->trash_cap);
-
-    /* Frame GPU timestamps (draw.c pgraph_vk_frame_gpu_*), host-reset. */
-    r->frame_gpu.pool = VK_NULL_HANDLE;
-    r->frame_gpu.w = 0;
-    r->frame_gpu.resolved = 0;
-    memset(r->frame_gpu.w_end, 0, sizeof(r->frame_gpu.w_end));
-    r->frame_gpu.busy_us = 0;
-    if (r->host_query_reset && queue_has_timestamps(r)) {
-        r->frame_gpu.capacity = 256;
-        VkQueryPoolCreateInfo ci = {
-            .sType = VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO,
-            .queryType = VK_QUERY_TYPE_TIMESTAMP,
-            .queryCount = 2 * r->frame_gpu.capacity,
-        };
-        VK_CHECK(vkCreateQueryPool(r->device, &ci, NULL, &r->frame_gpu.pool));
-        vkResetQueryPool(r->device, r->frame_gpu.pool, 0,
-                         2 * r->frame_gpu.capacity);
-        r->frame_gpu.scratch =
-            g_malloc0(2 * r->frame_gpu.capacity * sizeof(uint64_t));
-    }
 
     VkFenceCreateInfo fence_info = {
         .sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO,
@@ -544,11 +510,5 @@ void pgraph_vk_finalize_command_buffers(PGRAPHState *pg)
         vkDestroyFence(r->device, r->slot_fence[s], NULL);
     }
     destroy_command_buffers(pg);
-    if (r->frame_gpu.pool != VK_NULL_HANDLE) {
-        vkDestroyQueryPool(r->device, r->frame_gpu.pool, NULL);
-        r->frame_gpu.pool = VK_NULL_HANDLE;
-        g_free(r->frame_gpu.scratch);
-        r->frame_gpu.scratch = NULL;
-    }
     destroy_command_pool(pg);
 }

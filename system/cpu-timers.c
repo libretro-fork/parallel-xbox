@@ -37,17 +37,11 @@
 #include "exec/icount.h"
 #include "system/libretro-vcpu.h"
 
-/* Host elapsed time is read and updated on the emulation thread, which
- * also runs the vCPU and main-loop callbacks. Cross-thread guest-time
- * observers use icount_get()'s published timestamp instead. */
+/* Guest CPU clock observers use the fixed instruction clock. Before its
+ * initialization the frozen migrated offset is the only fallback. */
 int64_t cpu_get_clock(void)
 {
-    int64_t time = timers_state.cpu_clock_offset;
-
-    if (retro_atomic_load_relaxed_int(&timers_state.cpu_ticks_enabled)) {
-        time += get_clock();
-    }
-    return time;
+    return icount_enabled() ? icount_get() : timers_state.cpu_clock_offset;
 }
 
 /*
@@ -57,8 +51,6 @@ int64_t cpu_get_clock(void)
 void cpu_enable_ticks(void)
 {
     if (!retro_atomic_load_relaxed_int(&timers_state.cpu_ticks_enabled)) {
-        timers_state.cpu_ticks_offset -= cpu_get_host_ticks();
-        timers_state.cpu_clock_offset -= get_clock();
         retro_atomic_store_relaxed_int(&timers_state.cpu_ticks_enabled, 1);
     }
 
@@ -74,8 +66,6 @@ void cpu_enable_ticks(void)
 void cpu_disable_ticks(void)
 {
     if (retro_atomic_load_relaxed_int(&timers_state.cpu_ticks_enabled)) {
-        timers_state.cpu_ticks_offset += cpu_get_host_ticks();
-        timers_state.cpu_clock_offset = cpu_get_clock();
         retro_atomic_store_relaxed_int(&timers_state.cpu_ticks_enabled, 0);
     }
 }
@@ -83,8 +73,8 @@ void cpu_disable_ticks(void)
 /*
  * The libretro core's frame clock: QEMU_CLOCK_VIRTUAL is the guest's
  * instructions (icount), and while the guest idles with nothing in flight
- * it is moved on to the next deadline instead of waited out. Without
- * icount, the host clock's time the guest ran, moved on the same way.
+ * it is moved on to the next deadline instead of waited out. Before
+ * icount initialization the fallback advances only through explicit skips.
  * Only forwards.
  */
 void cpu_clock_skip_to(int64_t vt)

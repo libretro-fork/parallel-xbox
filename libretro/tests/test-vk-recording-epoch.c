@@ -66,8 +66,6 @@ static void nv2a_profile_inc_counter(int n) { (void)n; }
 static void end_render_pass(PGRAPHVkState *r) { r->in_render_pass=false; }
 static void end_query(PGRAPHVkState *r) { r->query_in_flight=false; }
 static void xemu_cost_frame_close(NV2AState *d,int *ops) { (void)d;(void)ops; }
-static void pgraph_vk_frame_gpu_cb_end(PGRAPHVkState *r,VkCommandBuffer cmd) { (void)r;(void)cmd; }
-static void pgraph_vk_frame_gpu_cb_begin(PGRAPHVkState *r,VkCommandBuffer cmd) { (void)r;(void)cmd; }
 static VkResult vkEndCommandBuffer(VkCommandBuffer cmd) { if((uintptr_t)cmd>=20&&(uintptr_t)cmd<22)sync_ends++;return VK_SUCCESS; }
 static VkResult vkBeginCommandBuffer(VkCommandBuffer cmd,const VkCommandBufferBeginInfo *info) {
     if((uintptr_t)cmd>=20&&(uintptr_t)cmd<22){sync_begins++;}
@@ -81,8 +79,6 @@ static void sync_staging_buffers(PGRAPHState *pg,VkCommandBuffer cmd) {
         pg->vk_renderer_state->storage_buffers[pgraph_vk_staged_buffers[i].staging].buffer_offset=0;
 }
 static void flush_memory_buffer(PGRAPHState *pg) { (void)pg;host_flushed=true; }
-static int64_t g_get_monotonic_time(void) { static int64_t n;return ++n; }
-static void ema16(double *v,int64_t us) { *v=us; }
 static void xemu_libretro_vk_lock_queue(void){assert(!queue_locked);queue_locked=true;}
 static void xemu_libretro_vk_unlock_queue(void){assert(queue_locked);queue_locked=false;}
 static VkResult vkQueueSubmit(VkQueue queue,uint32_t n,const VkSubmitInfo *info,VkFence fence) {

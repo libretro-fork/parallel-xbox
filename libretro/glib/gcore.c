@@ -3,8 +3,8 @@
  * strings, GString, the system, time, random numbers and once.
  *
  * On libretro-common: strlcpy/strlcat (compat_strl), UTF-8 and UTF-16
- * (encoding_utf), base64 (encoding_base64), SHA-1 (lrc_hash), the clock and
- * the processor count (features_cpu), sleeping (retro_timers), atomics
+ * (encoding_utf), base64 (encoding_base64), SHA-1 (lrc_hash),
+ * the processor count (features_cpu), native scheduler yields, atomics
  * (retro_atomic). What is left (GLib's own semantics on top of libc) is
  * written here. There is no GMutex: nothing in the core takes one.
  *
@@ -19,6 +19,7 @@
 #include <windows.h>
 #else
 #include <sys/time.h>
+#include <sched.h>
 #endif
 
 #include <compat/strl.h>
@@ -27,13 +28,22 @@
 #include <features/features_cpu.h>
 #include <lrc_hash.h>
 #include <retro_atomic.h>
-#include <retro_timers.h>
+
+/* Scheduler yield only: no host duration, clock or timer setup. */
+static void g_compat_yield(void)
+{
+#ifdef _WIN32
+    SwitchToThread();
+#else
+    sched_yield();
+#endif
+}
 
 /* Protect process-wide compatibility state, including on hosts without GLib. */
 static void g_compat_lock(retro_atomic_int_t *lock)
 {
     while (!retro_atomic_cas_int(lock, 0, 1)) {
-        retro_sleep(0);
+        g_compat_yield();
     }
 }
 
@@ -1417,31 +1427,25 @@ guint g_get_num_processors(void)
 
 /* ---- time ----------------------------------------------------------------- */
 
+/* Housekeeping time is frontend progress, not elapsed host time. The
+ * frontend advances it once per active retro_run; state loads never rewind
+ * it. Readers on other threads only observe a published scalar. */
+static gint64 g_libretro_time_ns;
+
+gint64 g_libretro_get_time_ns(void)
+{
+    return __atomic_load_n(&g_libretro_time_ns, __ATOMIC_ACQUIRE);
+}
+
+void g_libretro_advance_time_ns(gint64 elapsed)
+{
+    g_return_if_fail(elapsed >= 0);
+    __atomic_fetch_add(&g_libretro_time_ns, elapsed, __ATOMIC_RELEASE);
+}
+
 gint64 g_get_monotonic_time(void)
 {
-    return (gint64)cpu_features_get_time_usec();
-}
-
-gint64 g_get_real_time(void)
-{
-#ifdef _WIN32
-    FILETIME ft;
-    guint64 t;
-
-    GetSystemTimeAsFileTime(&ft);
-    t = ((guint64)ft.dwHighDateTime << 32) | ft.dwLowDateTime;
-    return (gint64)(t / 10) - G_GINT64_CONSTANT(11644473600000000);
-#else
-    struct timeval tv;
-
-    gettimeofday(&tv, NULL);
-    return (gint64)tv.tv_sec * G_USEC_PER_SEC + tv.tv_usec;
-#endif
-}
-
-void g_usleep(gulong microseconds)
-{
-    retro_sleep_us((unsigned)microseconds);
+    return g_libretro_get_time_ns() / 1000;
 }
 
 /* ---- random numbers (xoshiro128**, seeded as asked) ----------------------- */
@@ -1482,8 +1486,7 @@ GRand *g_rand_new_with_seed(guint32 seed)
 
 GRand *g_rand_new(void)
 {
-    guint32 seed[2] = { (guint32)g_get_real_time(),
-                        (guint32)g_get_monotonic_time() };
+    guint32 seed[2] = { g_random_int(), g_random_int() };
 
     return g_rand_new_with_seed_array(seed, 2);
 }
@@ -1518,6 +1521,39 @@ gdouble g_rand_double(GRand *r)
     return g_rand_int(r) / 4294967296.0;
 }
 
+/* Seed identities from OS randomness without reading any clock. GLib's
+ * generator remains non-cryptographic; if entropy is unavailable, ASLR and
+ * process identity still provide a process-specific seed. */
+static guint64 g_random_entropy(void)
+{
+    guint64 value = 0;
+#ifdef _WIN32
+    typedef BOOLEAN (WINAPI *GSystemRandom)(PVOID, ULONG);
+    HMODULE library = LoadLibraryA("advapi32.dll");
+    if (library) {
+        GSystemRandom random_bytes = (GSystemRandom)(void *)
+            GetProcAddress(library, "SystemFunction036");
+        if (random_bytes) {
+            random_bytes(&value, sizeof(value));
+        }
+        FreeLibrary(library);
+    }
+#else
+    FILE *random_file = fopen("/dev/urandom", "rb");
+    if (random_file) {
+        if (fread(&value, sizeof(value), 1, random_file) != 1) {
+            value = 0;
+        }
+        fclose(random_file);
+    }
+#endif
+    if (!value) {
+        value = (guint64)(uintptr_t)&g_random_entropy ^
+                (guint64)(uintptr_t)&value;
+    }
+    return value ? value : 1;
+}
+
 /* Global draws use a seeded counter and the SplitMix64 output permutation.
  * Fetch-add reserves a unique counter without serializing a mutable GRand.
  * Seed publication is speculative: a stopped initializer cannot hold up a
@@ -1535,8 +1571,7 @@ guint32 g_random_int(void)
     guint64 value;
 
     if (!seed) {
-        seed = (guint64)g_get_real_time() ^
-               ((guint64)g_get_monotonic_time() << 32);
+        seed = g_random_entropy();
         if (!seed) {
             seed = 1;
         }
@@ -1602,7 +1637,7 @@ gboolean g_once_init_enter(volatile void *location)
             return TRUE;
         }
         g_compat_unlock(&g_once_lock);
-        retro_sleep(0);
+        g_compat_yield();
     }
 }
 

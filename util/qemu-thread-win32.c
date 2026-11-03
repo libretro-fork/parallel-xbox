@@ -176,23 +176,6 @@ void qemu_cond_wait_impl(QemuCond *cond, QemuMutex *mutex, const char *file, con
     qemu_mutex_post_lock(mutex, file, line);
 }
 
-bool qemu_cond_timedwait_impl(QemuCond *cond, QemuMutex *mutex, int ms,
-                              const char *file, const int line)
-{
-    int rc = 0;
-
-    assert(cond->initialized);
-    trace_qemu_mutex_unlock(mutex, file, line);
-    if (!SleepConditionVariableSRW(&cond->var, &mutex->lock, ms, 0)) {
-        rc = GetLastError();
-    }
-    trace_qemu_mutex_locked(mutex, file, line);
-    if (rc && rc != ERROR_TIMEOUT) {
-        error_exit(rc, __func__);
-    }
-    return rc != ERROR_TIMEOUT;
-}
-
 void qemu_sem_init(QemuSemaphore *sem, int init)
 {
     /* Manual reset.  */
@@ -211,21 +194,6 @@ void qemu_sem_post(QemuSemaphore *sem)
 {
     assert(sem->initialized);
     ReleaseSemaphore(sem->sema, 1, NULL);
-}
-
-int qemu_sem_timedwait(QemuSemaphore *sem, int ms)
-{
-    int rc;
-
-    assert(sem->initialized);
-    rc = WaitForSingleObject(sem->sema, ms);
-    if (rc == WAIT_OBJECT_0) {
-        return 0;
-    }
-    if (rc != WAIT_TIMEOUT) {
-        error_exit(GetLastError(), __func__);
-    }
-    return -1;
 }
 
 void qemu_sem_wait(QemuSemaphore *sem)

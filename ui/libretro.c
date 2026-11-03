@@ -205,13 +205,6 @@ static bool opt_hard_fpu = true;
 /* The fork's CPU boost and smooth first play (Tovarichtch/xemu), on by
  * default there */
 static bool opt_cpu_boost = true;
-/* Deterministic Emulation: off, a guest waiting while the GPU's thread
- * works has its time move on by the time the GPU really takes, as the
- * Xbox's CPU waits on its GPU; on, its time stands still until the GPU's
- * thread is done, so the guest sees the same timing however fast the host
- * is (Run-Ahead, netplay). The guest's own work overlaps the GPU's either
- * way (lr_run_frame). */
-static bool opt_deterministic = false;
 static bool opt_smooth_first_play = true;
 static bool opt_chihiro_freeplay = true;
 /* Video > Vulkan Fast Paths: which of the renderer's fast-path features the
@@ -1596,12 +1589,6 @@ static void update_variables(void)
         opt_cpu_boost = !strcmp(var.value, "enabled");
     }
 
-    var.key = "xemu_deterministic";
-    var.value = NULL;
-    if (environ_cb && environ_cb(RETRO_ENVIRONMENT_GET_VARIABLE, &var) && var.value) {
-        opt_deterministic = !strcmp(var.value, "enabled");
-    }
-
     var.key = "xemu_chihiro_freeplay";
     var.value = NULL;
     if (environ_cb && environ_cb(RETRO_ENVIRONMENT_GET_VARIABLE, &var) && var.value) {
@@ -1997,22 +1984,12 @@ void lr_quiet_exit(CPUState *cpu)
     lr_vcpu_exit(cpu);
 }
 
-/* Run due guest timers while non-deterministic GPU work continues. Only
- * actual elapsed host time advances an idle guest, capped at its deadline. */
-static void lr_wait_for_device(int64_t now, int64_t until)
+/* Host device completion cannot consume guest time. Dispatch completions
+ * and due timers, then let the frame owner retry the guest or skip a
+ * proven idle interval to a guest deadline. */
+static void lr_wait_for_device(void)
 {
-    extern bool nv2a_libretro_guest_busy(void);
-    bool gpu = !opt_deterministic && nv2a_libretro_guest_busy();
-    int64_t waited = gpu ? get_clock() : 0;
-    if (gpu) {
-        main_loop_wait_timeout(until);
-    } else {
-        main_loop_wait(false);
-    }
-    if (gpu) {
-        waited = get_clock() - waited;
-        cpu_clock_skip_to(now + MIN(waited, until));
-    }
+    main_loop_wait(false);
 }
 
 /* Recheck completion after a parked slice before advancing idle time. */
@@ -2026,16 +2003,10 @@ static void lr_idle_wait(CPUState *cpu, int64_t now, int64_t until)
     retro_atomic_store_relaxed_int(&nv2a_libretro_waiter, 1);
     retro_atomic_thread_fence_seq_cst();
     if (lr_devices_busy()) {
-        /* it waits until something happens: a bottom half (a disk read
-         * done), the GPU going idle or raising an interrupt. Use an
-         * unbounded wait for disk-only or deterministic completion.
-         * A GPU wait also ends at the next guest deadline so its timer can
-         * run while rendering continues. The guest's time
-         * stands still for a disk read; for the GPU it moves on by the
-         * time the GPU took, up to the next deadline, unless the
-         * emulation is deterministic: the Xbox's CPU waits on its GPU
-         * as long as the GPU draws, never longer */
-        lr_wait_for_device(now, until);
+        /* Wait for disk/GPU completion or an interrupt. Host wait duration
+         * never advances the instruction clock. Useful guest work still
+         * overlaps the GPU between waits. */
+        lr_wait_for_device();
     } else if (!lr_vcpu_runnable(cpu)) {
         /* A halted guest waits for its timer. A runnable guest parked on
          * device work must retry its poll: completion may have raced its
@@ -2092,8 +2063,8 @@ static void lr_run_frame(void)
     /* The core initializes a fixed instruction clock: 1.977 ns per guest
      * instruction (accel/tcg/icount-common.c). Devices and bottom halves
      * do not consume instruction time. This frame owner advances proven
-     * idle intervals to the next deadline; bounded asynchronous GPU waits
-     * may also account for elapsed host time outside deterministic mode. */
+     * idle intervals to the next guest deadline. Host device wait duration
+     * does not advance guest time. */
     now = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL);
     /* A first frame, or a clock that jumped (a state was loaded): the grid
      * starts here */
@@ -2737,21 +2708,7 @@ RETRO_API void retro_init(void)
     }
 #endif
 
-#ifdef _WIN32
-    /* Keep bounded GPU/device deadline waits responsive on Windows.
-     * APU samples follow guest time; this does not pace their production. */
-    {
-        typedef unsigned int (__stdcall *timeBeginPeriod_t)(unsigned int);
-        HMODULE winmm = LoadLibraryA("winmm.dll");
-        if (winmm) {
-            timeBeginPeriod_t fn = (timeBeginPeriod_t)GetProcAddress(winmm, "timeBeginPeriod");
-            if (fn) {
-                fn(1);
-                LRLOG_INFO("[xemu] Set Windows timer resolution to 1ms\n");
-            }
-        }
-    }
-#endif
+
 
 }
 
@@ -3300,6 +3257,16 @@ static void lr_present_idle(void)
     lr_present_audio(false);
 }
 
+/* Runtime-only housekeeping time: monotonic frontend progress, independent
+ * of guest-clock rewinds. Carry the NTSC fraction without host timestamps. */
+static void lr_advance_service_clock(void)
+{
+    static uint32_t remainder;
+    remainder += LR_FRAME_NS_NUM;
+    g_libretro_advance_time_ns(remainder / LR_FRAME_NS_DEN);
+    remainder %= LR_FRAME_NS_DEN;
+}
+
 /*
  * One retro_run, one frame: the input polled now goes into a frame of guest
  * time run here, on this thread, and when it is done its picture and its
@@ -3343,6 +3310,7 @@ RETRO_API void retro_run(void)
         emu_initialized = true;
     }
 
+    lr_advance_service_clock();
     update_aspect();
 
     {

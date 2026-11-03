@@ -28,7 +28,7 @@ with the core's sources over it):
 
 ```
 mkdir build-gen && cd build-gen
-../configure --extra-cflags="-DXBOX=1 -Wno-error" --target-list=i386-softmmu \
+../configure --extra-cflags="-Wno-error" --target-list=i386-softmmu \
     -Dlibretro=true -Dpipewire=disabled -Db_staticpic=true \
     --enable-trace-backends=nop --disable-libusb
 ninja <each file below>

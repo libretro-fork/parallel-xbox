@@ -152,11 +152,7 @@ static bool pgraph_gl_flip_stall_ready(NV2AState *d)
     }
     if (r->flip_wait_fence) {
         GLint status = GL_UNSIGNALED;
-        int64_t start = unlikely(xemu_tbrate_enabled()) ? get_clock() : 0;
         glGetSynciv(r->flip_wait_fence, GL_SYNC_STATUS, 1, NULL, &status);
-        if (start) {
-            xemu_tbrate_add(&xemu_tbrate_fence_ns, get_clock() - start);
-        }
         if (status != GL_SIGNALED) {
             return false;
         }
@@ -175,11 +171,7 @@ static void pgraph_gl_flip_stall(NV2AState *d)
     r->flip_display_queued = false;
 
     NV2A_GL_DFRAME_TERMINATOR();
-    int64_t start = unlikely(xemu_tbrate_enabled()) ? get_clock() : 0;
     pgraph_gl_shaders_flip_service(d);
-    if (start) {
-        xemu_tbrate_add(&xemu_tbrate_flipsvc_ns, get_clock() - start);
-    }
     xemu_cost_frame_close(d, &pgraph_gl_cost_ops);
     r->flip_scale = d->pgraph.surface_scale_factor;
 

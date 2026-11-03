@@ -25,8 +25,8 @@ code=Path(__file__).with_suffix('.c').read_text().replace('/* PRODUCTION */',mac
 env=os.environ.copy();env['PATH']=str(Path(cc).resolve().parent)+os.pathsep+env.get('PATH','')
 with tempfile.TemporaryDirectory(prefix='tcg-budget-register-') as tmp:
  p=Path(tmp);(p/'test.c').write_text(code);exe=p/('test.exe' if os.name=='nt' else 'test')
- for bits,xbox,enabled in [(64,True,True),(32,True,False),(64,False,False)]:
-  probe=('#define XBOX 1\n' if xbox else '')+f'#define TCG_TARGET_REG_BITS {bits}\n#include "tcg-target.h"\n'
+ for bits,enabled in [(64,True),(32,False)]:
+  probe=f'#define TCG_TARGET_REG_BITS {bits}\n#include "tcg-target.h"\n'
   if enabled:
    probe+='#ifndef TCG_TARGET_LR_ICOUNT_REG\n#error missing budget register\n#endif\n_Static_assert(TCG_TARGET_LR_ICOUNT_REG == TCG_REG_R15, "callee-saved budget");\n_Static_assert(TCG_TARGET_LR_ICOUNT_REG != TCG_AREG0, "separate environment register");\n'
   else:

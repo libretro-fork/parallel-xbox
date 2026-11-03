@@ -8,6 +8,13 @@
 #include <string.h>
 #include <retro_spsc.h>
 
+/* Failed negative controls must not invoke a Windows crash/JIT dialog. */
+#undef assert
+#define assert(expr) do { if (!(expr)) { \
+    fprintf(stderr, "SPSC pair: %s:%d: %s\n", __FILE__, __LINE__, #expr); \
+    _Exit(1); \
+} } while (0)
+
 /* The production queue TU redirects memcpy here in the checked build.
  * Inspect publication during every constituent copy, including wrap copies. */
 static retro_spsc_t *observed;

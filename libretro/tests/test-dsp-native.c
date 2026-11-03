@@ -168,6 +168,25 @@ static void prepare(Machine *m, uint32_t op, uint32_t ext, unsigned seed,
         c->registers[DSP_REG_SSL] = c->stack[1][sp];
     }
 
+    if (seed & 0x80000000u) {
+        /* A valid STOP/FREEZE action for DMA-control peripheral writes. */
+        unsigned reg = (op >> 8) & 63;
+        unsigned value = 2 + ((seed >> 8) & 1);
+        DspDecoded decoded;
+        dsp56k_decode(c, 0, &decoded);
+        if (!strcmp(decoded.name, "movep [X or Y]:pp <-> P:ea")) {
+            /* The controlled DMA source is the P-memory extension address. */
+            m->dsp->ops->write_memory(m->dsp, 'P', ext, value);
+        } else {
+            c->registers[reg] = value;
+            if (reg == DSP_REG_SSH) c->stack[0][c->registers[DSP_REG_SP] & 15] = value;
+            if (reg == DSP_REG_SP) {
+                c->registers[DSP_REG_SSH] = c->stack[0][value];
+                c->registers[DSP_REG_SSL] = c->stack[1][value];
+            }
+        }
+    }
+
 }
 
 static void check(Machine *a, Machine *b, uint32_t op, uint32_t ext,
@@ -809,8 +828,306 @@ static void check_inc_dec_words(Machine *a, Machine *b, unsigned mode)
     }
 }
 
+static void check_effective_control_stores(Machine *a, Machine *b, unsigned mode)
+{
+    static const unsigned contexts[] = {0x20000000, 0x40000, 0x80000};
+    for (unsigned reg = DSP_REG_M0; reg < DSP_REG_MAX; reg++) {
+        for (unsigned ea = 0; ea < 64; ea++) {
+            if ((ea >> 3) == 6 && (ea & 7) != 0 && (ea & 7) != 4) continue;
+            for (unsigned space = 0; space < 2; space++) {
+                for (unsigned ctx = 0; ctx < ARRAY_SIZE(contexts); ctx++) {
+                    for (unsigned seed = 0; seed < 2; seed++) {
+                        check(a, b, 0x054020 | (ea << 8) | (space << 6) | reg,
+                              space || seed ? 0x30 : 0xFFFF85,
+                              0x400000 | 0x1000000 | contexts[ctx] | (seed ? 9 : 0),
+                              mode, seed != 0);
+                    }
+                }
+            }
+        }
+    }
+}
+
+static void check_register_control_transfers(Machine *a, Machine *b, unsigned mode)
+{
+    static const unsigned contexts[] = {0x20000000, 0x40000, 0x80000};
+    for (unsigned control = DSP_REG_M0; control < DSP_REG_MAX; control++) {
+        for (unsigned general = 0; general < DSP_REG_MAX; general++) {
+            for (unsigned dir = 0; dir < 2; dir++) {
+                for (unsigned ctx = 0; ctx < ARRAY_SIZE(contexts); ctx++) {
+                    for (unsigned seed = 0; seed < 2; seed++) {
+                        check(a, b, 0x0440A0 | (dir << 15) | (general << 8) | control,
+                              0x30, 0x400000 | 0x1000000 | 0x2000000 |
+                              contexts[ctx] | (seed ? 9 : 0), mode, seed != 0);
+                    }
+                }
+            }
+        }
+    }
+}
+
+static void check_peripheral_control_transfers(Machine *a, Machine *b, unsigned mode)
+{
+    static const unsigned contexts[] = {0x20000000, 0x40000, 0x80000};
+    for (unsigned reg = 0; reg < DSP_REG_MAX; reg++) {
+        if (reg >= DSP_REG_X0 && reg <= DSP_REG_M7) continue;
+        for (unsigned port = 0; port < 64; port++) {
+            for (unsigned write = 0; write < 2; write++) {
+                if (write && port == 0x16) continue;
+                for (unsigned ctx = 0; ctx < ARRAY_SIZE(contexts); ctx++) {
+                    for (unsigned seed = 0; seed < 2; seed++) {
+                        check(a, b, 0x084000 | (write << 15) | (reg << 8) | port, 0x30,
+                              0x400000 | 0x1000000 | 0x2000000 | contexts[ctx] |
+                              (seed ? 9 : 0), mode, seed != 0);
+                    }
+                }
+            }
+        }
+        for (unsigned action = 0; action < 2; action++) {
+            check(a, b, 0x08C016 | (reg << 8), 0x30,
+                  0x80000000u | 0x400000 | 0x20000000 | (action << 8), mode, false);
+        }
+    }
+}
+
+static void check_immediate_multiply(Machine *a, Machine *b, unsigned mode)
+{
+    static const unsigned regs[] = {DSP_REG_X0, DSP_REG_Y0, DSP_REG_X1, DSP_REG_Y1};
+    static const uint32_t words[] = {
+        0, 1, 2, 0x7FFFFF, 0x800000, 0xFFFFFF,
+        0x400000, 0xC00000, 0x123456, 0xABCD01, 0x80, 0xFFFF80
+    };
+    const uint64_t mask = UINT64_C(0xFFFFFFFFFFFFFF);
+    for (unsigned q = 0; q < 4; q++) {
+        for (unsigned d = 0; d < 2; d++) {
+            for (unsigned minus = 0; minus < 2; minus++) {
+                uint32_t op = 0x0141C0 | (q << 4) | (d << 3) | (minus << 2);
+                for (unsigned x = 0; x < ARRAY_SIZE(words); x++) {
+                    for (unsigned y = 0; y < ARRAY_SIZE(words); y++) {
+                        int64_t sx = words[x] & 0x800000 ? (int64_t)words[x] - 0x1000000 : words[x];
+                        int64_t sy = words[y] & 0x800000 ? (int64_t)words[y] - 0x1000000 : words[y];
+                        int64_t product = sx * sy * 2;
+                        if (minus) product = -product;
+                        uint64_t result = (uint64_t)product & mask;
+                        for (unsigned carry = 0; carry < 2; carry++) {
+                            for (unsigned sticky = 0; sticky < 2; sticky++) {
+                                uint32_t sr = (mode << DSP_SR_S0) | 0x80 | 0x3E |
+                                    (sticky << DSP_SR_L) | carry | (1u << DSP_SR_FV);
+                                uint32_t expected = sr & 0xFFFF & ~0x3E;
+                                if (mode != 3) {
+                                    unsigned bit = mode == 1 ? 48 : mode == 2 ? 46 : 47;
+                                    int64_t limit = INT64_C(1) << bit;
+                                    bool extension = product < -limit || product >= limit;
+                                    unsigned top = (result >> (bit - 1)) & 3;
+                                    expected |= (extension << DSP_SR_E) |
+                                        ((top == 0 || top == 3) << DSP_SR_U) |
+                                        ((product == 0) << DSP_SR_Z) | ((product < 0) << DSP_SR_N);
+                                }
+                                Machine *machines[] = {a, b};
+                                dspjit_test_reset_fallback_count();
+                                for (unsigned engine = 0; engine < 2; engine++) {
+                                    Machine *m = machines[engine];
+                                    prepare(m, op, words[x], 1, mode, false);
+                                    dsp_core_t *c = m->dsp->backend;
+                                    c->registers[regs[q]] = words[y];
+                                    c->registers[DSP_REG_SR] = sr;
+                                    if (engine == 0) {
+                                        m->dsp->ops->step(m->dsp);
+                                        c->cycle_count += c->instr_cycle;
+                                    } else m->dsp->ops->run(m->dsp, 1);
+                                    uint64_t actual = c->registers[DSP_REG_A0 + d] |
+                                        ((uint64_t)c->registers[DSP_REG_A1 + d] << 24) |
+                                        ((uint64_t)c->registers[DSP_REG_A2 + d] << 48);
+                                    assert(actual == result && c->registers[DSP_REG_SR] == expected);
+                                }
+                                assert(!dspjit_test_fallback_count());
+                                assert(compare_machines(a, b) == 0);
+                                cases++;
+                            }
+                        }
+                    }
+                    static const unsigned contexts[] = {0x20000000, 0x40000, 0x80000};
+                    for (unsigned ctx = 0; ctx < ARRAY_SIZE(contexts); ctx++) {
+                        for (unsigned seed = 0; seed < 8; seed++) {
+                            check(a, b, op, words[x], 0x400000 | 0x1000000 | 0x10000 |
+                                  contexts[ctx] | (seed << 1) | (seed << 4), mode, seed & 1);
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+static void check_normalize(Machine *a, Machine *b, unsigned mode)
+{
+    static const uint64_t values[] = {
+        0, 1, 0xFFFFFFFFFFFFFF, 0x7FFFFFFFFFFFFF, 0x80000000000000,
+        0x40000000000000, 0xC0000000000000, 0x00000080000000,
+        0xFFFFFF00000000, 0x0123456789ABCD, 0xFEDCBA98765432, 0x08000000000000
+    };
+    static const unsigned addresses[] = {0, 1, 0xFFFF, 0x1234};
+    const uint64_t mask = UINT64_C(0xFFFFFFFFFFFFFF);
+    for (unsigned n = 0; n < 8; n++) {
+        for (unsigned d = 0; d < 2; d++) {
+            uint32_t op = 0x01D815 | (n << 8) | (d << 3);
+            for (unsigned v = 0; v < ARRAY_SIZE(values); v++) {
+                for (unsigned f = 0; f < 8; f++) {
+                    bool e = f & 1, u = f & 2, z = f & 4;
+                    bool left = !e && u && !z, right = e;
+                    uint64_t old = values[v];
+                    uint64_t result = left ? (old * 2) & mask : right ? old >> 1 : old;
+                    unsigned carry_out = left ? old >> 55 : right ? old & 1 : 0;
+                    bool overflow = left && ((old ^ result) & (UINT64_C(1) << 55));
+                    for (unsigned ar = 0; ar < ARRAY_SIZE(addresses); ar++) {
+                        unsigned address = (addresses[ar] + (right ? 1 : left ? -1 : 0)) & 0xFFFF;
+                        for (unsigned carry = 0; carry < 2; carry++) {
+                            for (unsigned sticky = 0; sticky < 2; sticky++) {
+                                unsigned sr = (mode << DSP_SR_S0) | 0x8A | carry |
+                                    (sticky << DSP_SR_L) | (e << DSP_SR_E) |
+                                    (u << DSP_SR_U) | (z << DSP_SR_Z) | (1u << DSP_SR_FV);
+                                unsigned expected = (sr & 0xFFFF & ~0x3F) | carry_out |
+                                    (overflow << DSP_SR_V) | ((left && carry_out) << DSP_SR_L);
+                                if (mode != 3) {
+                                    unsigned bit = mode == 1 ? 48 : mode == 2 ? 46 : 47;
+                                    uint64_t upper = result >> bit;
+                                    unsigned top = (result >> (bit - 1)) & 3;
+                                    expected |= ((upper != 0 && upper != (mask >> bit)) << DSP_SR_E) |
+                                        ((top == 0 || top == 3) << DSP_SR_U) |
+                                        ((result == 0) << DSP_SR_Z) | (((result >> 55) & 1) << DSP_SR_N);
+                                }
+                                Machine *machines[] = {a, b};
+                                dspjit_test_reset_fallback_count();
+                                for (unsigned engine = 0; engine < 2; engine++) {
+                                    Machine *m = machines[engine];
+                                    prepare(m, op, 0x30, 1, mode, false);
+                                    dsp_core_t *c = m->dsp->backend;
+                                    c->registers[DSP_REG_A0 + d] = old & 0xFFFFFF;
+                                    c->registers[DSP_REG_A1 + d] = (old >> 24) & 0xFFFFFF;
+                                    c->registers[DSP_REG_A2 + d] = old >> 48;
+                                    c->registers[DSP_REG_R0 + n] = addresses[ar];
+                                    c->registers[DSP_REG_M0 + n] = n & 1 ? 0x3F : 0;
+                                    c->registers[DSP_REG_N0 + n] = 0x1234;
+                                    c->registers[DSP_REG_SR] = sr;
+                                    if (engine == 0) {
+                                        m->dsp->ops->step(m->dsp);
+                                        c->cycle_count += c->instr_cycle;
+                                    } else m->dsp->ops->run(m->dsp, 1);
+                                    uint64_t actual = c->registers[DSP_REG_A0 + d] |
+                                        ((uint64_t)c->registers[DSP_REG_A1 + d] << 24) |
+                                        ((uint64_t)c->registers[DSP_REG_A2 + d] << 48);
+                                    if (actual != result || c->registers[DSP_REG_SR] != expected ||
+                                        c->registers[DSP_REG_R0 + n] != address) {
+                                        fprintf(stderr, "NORM engine=%u n=%u d=%u v=%014llx f=%u mode=%u result=%014llx/%014llx sr=%x/%x Rn=%x/%x\n",
+                                                engine, n, d, (unsigned long long)old, f, mode,
+                                                (unsigned long long)actual, (unsigned long long)result,
+                                                c->registers[DSP_REG_SR], expected,
+                                                c->registers[DSP_REG_R0 + n], address);
+                                        exit(1);
+                                    }
+                                }
+                                assert(!dspjit_test_fallback_count());
+                                assert(compare_machines(a, b) == 0);
+                                cases++;
+                            }
+                        }
+                    }
+                }
+            }
+            static const unsigned contexts[] = {0x20000000, 0x40000, 0x80000};
+            for (unsigned ctx = 0; ctx < ARRAY_SIZE(contexts); ctx++) {
+                for (unsigned seed = 0; seed < 16; seed++) {
+                    check(a, b, op, 0x30, 0x400000 | 0x20000 | 0x1000000 | 0x10000 |
+                          contexts[ctx] | seed | (seed << 4), mode, seed & 1);
+                }
+            }
+        }
+    }
+}
+
+static void check_divide_step(Machine *a, Machine *b, unsigned mode)
+{
+    static const unsigned regs[] = {DSP_REG_X0, DSP_REG_Y0, DSP_REG_X1, DSP_REG_Y1};
+    static const uint64_t values[] = {
+        0, 1, 0xFFFFFFFFFFFFFF, 0x7FFFFFFFFFFFFF, 0x80000000000000,
+        0x40000000000000, 0xC0000000000000, 0x00000080000000,
+        0xFFFFFF00000000, 0x0123456789ABCD, 0xFEDCBA98765432, 0x08000000000000
+    };
+    static const uint32_t words[] = {0, 1, 2, 0x7FFFFF, 0x800000, 0xFFFFFF, 0x400000, 0xC00000};
+    static const unsigned flags[] = {0, 0x3C, 0x14, 0x28};
+    const uint64_t mask = UINT64_C(0xFFFFFFFFFFFFFF), sign = UINT64_C(1) << 55;
+    for (unsigned q = 0; q < 4; q++) {
+        for (unsigned d = 0; d < 2; d++) {
+            uint32_t op = 0x018040 | (q << 4) | (d << 3);
+            for (unsigned v = 0; v < ARRAY_SIZE(values); v++) {
+                for (unsigned w = 0; w < ARRAY_SIZE(words); w++) {
+                    uint64_t old = values[v], shifted = (old * 2) & mask;
+                    int64_t signed_word = words[w] & 0x800000 ? (int64_t)words[w] - 0x1000000 : words[w];
+                    uint64_t source = (uint64_t)(signed_word * 0x1000000) & mask;
+                    bool add = ((old ^ source) & sign) != 0;
+                    uint64_t partial = (add ? shifted + source : shifted - source) & mask;
+                    bool overflow = ((old ^ shifted) & sign) != 0;
+                    for (unsigned f = 0; f < ARRAY_SIZE(flags); f++) {
+                        for (unsigned carry = 0; carry < 2; carry++) {
+                            uint64_t result = partial | carry;
+                            for (unsigned sticky = 0; sticky < 2; sticky++) {
+                                unsigned sr = (mode << DSP_SR_S0) | 0x82 | flags[f] | carry |
+                                    (sticky << DSP_SR_L) | (1u << DSP_SR_FV);
+                                unsigned expected = (sr & 0xFFFF & ~3u) |
+                                    ((result & sign) == 0) | (overflow << DSP_SR_V) |
+                                    (((old & sign) != 0) << DSP_SR_L);
+                                Machine *machines[] = {a, b};
+                                dspjit_test_reset_fallback_count();
+                                for (unsigned engine = 0; engine < 2; engine++) {
+                                    Machine *m = machines[engine];
+                                    prepare(m, op, 0x30, 1, mode, false);
+                                    dsp_core_t *c = m->dsp->backend;
+                                    c->registers[DSP_REG_A0 + d] = old & 0xFFFFFF;
+                                    c->registers[DSP_REG_A1 + d] = (old >> 24) & 0xFFFFFF;
+                                    c->registers[DSP_REG_A2 + d] = old >> 48;
+                                    c->registers[regs[q]] = words[w];
+                                    c->registers[DSP_REG_SR] = sr;
+                                    if (engine == 0) {
+                                        m->dsp->ops->step(m->dsp);
+                                        c->cycle_count += c->instr_cycle;
+                                    } else m->dsp->ops->run(m->dsp, 1);
+                                    uint64_t actual = c->registers[DSP_REG_A0 + d] |
+                                        ((uint64_t)c->registers[DSP_REG_A1 + d] << 24) |
+                                        ((uint64_t)c->registers[DSP_REG_A2 + d] << 48);
+                                    if (actual != result || c->registers[DSP_REG_SR] != expected) {
+                                        fprintf(stderr, "DIV engine=%u q=%u d=%u old=%014llx word=%06x sr=%x result=%014llx/%014llx flags=%x/%x\n",
+                                                engine, q, d, (unsigned long long)old, words[w], sr,
+                                                (unsigned long long)actual, (unsigned long long)result,
+                                                c->registers[DSP_REG_SR], expected);
+                                        exit(1);
+                                    }
+                                }
+                                assert(!dspjit_test_fallback_count());
+                                assert(compare_machines(a, b) == 0);
+                                cases++;
+                            }
+                        }
+                    }
+                }
+            }
+            static const unsigned contexts[] = {0x20000000, 0x40000, 0x80000};
+            for (unsigned ctx = 0; ctx < ARRAY_SIZE(contexts); ctx++) {
+                for (unsigned seed = 0; seed < 16; seed++) {
+                    check(a, b, op, 0x30, 0x400000 | 0x20000 | 0x1000000 | 0x10000 |
+                          contexts[ctx] | seed | (seed << 4), mode, seed & 1);
+                }
+            }
+        }
+    }
+}
+
 static void check_startup_operations(Machine *a, Machine *b, unsigned mode)
 {
+    check_divide_step(a, b, mode);
+    check_normalize(a, b, mode);
+    check_immediate_multiply(a, b, mode);
+    check_peripheral_control_transfers(a, b, mode);
+    check_register_control_transfers(a, b, mode);
     check_inc_dec_words(a, b, mode);
     static const unsigned values[] = {0, 1, 0x20, 0x3F, 0x80, 0xFF};
     static const unsigned contexts[] = {0x20000000, 0x40000, 0x80000};
@@ -868,6 +1185,7 @@ static void check_startup_operations(Machine *a, Machine *b, unsigned mode)
             }
         }
     }
+    check_effective_control_stores(a, b, mode);
     static const unsigned ports[] = {0, 0x30, 0x31, 0x32, 0x3F};
     for (unsigned ea = 0; ea < 64; ea++) {
         if ((ea >> 3) == 6 && (ea & 7) != 0 && (ea & 7) != 4) continue;
@@ -1042,8 +1360,57 @@ static void check_register_loop_setup(Machine *a, Machine *b, unsigned mode)
     }
 }
 
+static void check_program_control_transfers(Machine *a, Machine *b, unsigned mode)
+{
+    static const unsigned contexts[] = {0x20000000, 0x40000, 0x80000};
+    for (unsigned reg = 0; reg < DSP_REG_MAX; reg++) {
+        if (reg >= DSP_REG_X0 && reg <= DSP_REG_M7) continue;
+        for (unsigned form = 0; form < 2; form++) {
+            for (unsigned addr = 0; addr < 64; addr++) {
+                if (form && (addr >> 3) == 6 && (addr & 7) != 0 && (addr & 7) != 4) continue;
+                for (unsigned read = 0; read < 2; read++) {
+                    for (unsigned ctx = 0; ctx < ARRAY_SIZE(contexts); ctx++) {
+                        for (unsigned seed = 0; seed < 2; seed++) {
+                            check(a, b, 0x070000 | (form ? 0x4080 : 0) |
+                                  (addr << 8) | (read << 15) | reg, 0x30,
+                                  0x400000 | 0x1000000 | 0x2000000 | 0x8000000 |
+                                  contexts[ctx] | (seed ? 9 : 0), mode, seed != 0);
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+static void check_program_peripheral_transfers(Machine *a, Machine *b, unsigned mode)
+{
+    static const unsigned contexts[] = {0x20000000, 0x40000, 0x80000};
+    for (unsigned ea = 0; ea < 64; ea++) {
+        if ((ea >> 3) == 6 && (ea & 7) != 0 && (ea & 7) != 4) continue;
+        for (unsigned port = 0; port < 64; port++) {
+            for (unsigned write = 0; write < 2; write++) {
+                if (write && port == 0x16) continue;
+                for (unsigned ctx = 0; ctx < ARRAY_SIZE(contexts); ctx++) {
+                    for (unsigned seed = 0; seed < 2; seed++) {
+                        check(a, b, 0x084040 | (write << 15) | (ea << 8) | port,
+                              0x30, 0x400000 | 0x8000000 | contexts[ctx] |
+                              (seed ? 9 : 0), mode, seed != 0);
+                    }
+                }
+            }
+        }
+    }
+    for (unsigned action = 0; action < 2; action++) {
+        check(a, b, 0x08F056, 0x30,
+              0x80000000u | 0x400000 | 0x8000000 | 0x20000000 | (action << 8), mode, false);
+    }
+}
+
 static void check_program_transfers(Machine *a, Machine *b, unsigned mode)
 {
+    check_program_control_transfers(a, b, mode);
+    check_program_peripheral_transfers(a, b, mode);
     for (unsigned reg = DSP_REG_X0; reg <= DSP_REG_M7; reg++) {
         for (unsigned ea = 0; ea < 64; ea++) {
             if ((ea >> 3) == 6 && (ea & 7) != 0 && (ea & 7) != 4) continue;
@@ -1129,10 +1496,18 @@ int main(int argc, char **argv)
     bool relative_only = argc == 2 && !strcmp(argv[1], "--relative");
     bool loops_only = argc == 2 && !strcmp(argv[1], "--loops");
     bool compare_only = argc == 2 && !strcmp(argv[1], "--compare");
+    bool divide_only = argc == 2 && !strcmp(argv[1], "--divide");
+    bool normalize_only = argc == 2 && !strcmp(argv[1], "--normalize");
+    bool multiply_only = argc == 2 && !strcmp(argv[1], "--multiply");
+    bool program_peripheral_only = argc == 2 && !strcmp(argv[1], "--program-peripheral");
+    bool peripheral_only = argc == 2 && !strcmp(argv[1], "--peripheral-control");
+    bool program_control_only = argc == 2 && !strcmp(argv[1], "--program-control");
+    bool register_only = argc == 2 && !strcmp(argv[1], "--register-control");
+    bool effective_only = argc == 2 && !strcmp(argv[1], "--effective-control");
     bool startup_only = argc == 2 && !strcmp(argv[1], "--startup");
     bool program_only = argc == 2 && !strcmp(argv[1], "--program");
-    if (argc != 1 && !relative_only && !loops_only && !program_only && !compare_only && !startup_only) {
-        fputs("usage: dspnative [--relative|--loops|--program|--compare|--startup]\n", stderr);
+    if (argc != 1 && !relative_only && !loops_only && !program_only && !compare_only && !startup_only && !effective_only && !register_only && !program_control_only && !peripheral_only && !program_peripheral_only && !multiply_only && !normalize_only && !divide_only) {
+        fputs("usage: dspnative [--relative|--loops|--program|--compare|--startup|--effective-control|--register-control|--program-control|--peripheral-control|--program-peripheral|--multiply|--normalize|--divide]\n", stderr);
         return 2;
     }
     Machine *a = machine_new(false), *b = machine_new(true);
@@ -1146,8 +1521,16 @@ int main(int argc, char **argv)
 #ifdef _WIN32
     assert(initially_committed == (64u << 10));
 #endif
-    if (relative_only || loops_only || program_only || compare_only || startup_only) {
+    if (relative_only || loops_only || program_only || compare_only || startup_only || effective_only || register_only || program_control_only || peripheral_only || program_peripheral_only || multiply_only || normalize_only || divide_only) {
         for (unsigned mode = 0; mode < 4; mode++) {
+            if (divide_only) check_divide_step(a, b, mode);
+            if (normalize_only) check_normalize(a, b, mode);
+            if (multiply_only) check_immediate_multiply(a, b, mode);
+            if (program_peripheral_only) check_program_peripheral_transfers(a, b, mode);
+            if (peripheral_only) check_peripheral_control_transfers(a, b, mode);
+            if (program_control_only) check_program_control_transfers(a, b, mode);
+            if (register_only) check_register_control_transfers(a, b, mode);
+            if (effective_only) check_effective_control_stores(a, b, mode);
             if (startup_only) check_startup_operations(a, b, mode);
             if (compare_only) check_compare_immediates(a, b, mode);
             if (relative_only) check_relative_branches(a, b, mode);
@@ -1325,7 +1708,8 @@ done:
     assert(dspjit_test_committed_bytes(jit) >= initially_committed);
     assert(dspjit_test_committed_bytes(jit) <= (4u << 20));
 #ifdef _WIN32
-    assert(dspjit_test_committed_bytes(jit) > initially_committed);
+    /* A focused matrix can fit in the initial committed page. */
+    if (argc == 1) assert(dspjit_test_committed_bytes(jit) > initially_committed);
 #endif
     a->dsp->ops->finalize(a->dsp);
     b->dsp->ops->finalize(b->dsp);

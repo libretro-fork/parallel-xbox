@@ -58,7 +58,9 @@ The driving games' force feedback (OutRun 2, Maximum Tune) can rumble port 1's p
 
 ## Timing and sound
 
-Each frame RetroArch asks for is one frame of the Xbox's time, 1001/60 ms (NTSC, 59.94 frames a second), and comes with exactly that frame's sound, 800 or 801 samples at 48 kHz. Between frames the Xbox stands still, so RetroArch's pause, menu, fast-forward and slow motion are the game's; fast-forward goes as fast as the host runs the game. The Xbox's time is counted in the instructions its CPU runs (1.977 ns each, a Pentium III's pace on game code), never by the PC's clock: a frame is the same amount of the game's work however fast or loaded the PC is, and takes only as long as the PC needs for it. Waiting costs nothing: a verified kernel idle loop or a tight loop polling an unchanged device register is a wait, including a poll that stores its value on the stack; store-free computation and read-only scans keep running at their instruction budget; the Xbox's time moves on to the next event. The GPU draws alongside the CPU, as on the console, and each frame goes to RetroArch once the GPU has drawn it. When the game waits for its GPU, its time moves on by as long as the PC's GPU work really took, never past that, so a game's drawing takes its time from how fast the PC's GPU is. With System > Deterministic Emulation on, the Xbox's time stands still while it waits for the GPU instead, and every run of a game is the same however fast the PC is, which Run-Ahead and netplay need. Audio > Audio Volume scales the sound before it goes to RetroArch.
+Each frame RetroArch asks for is one frame of the Xbox's time, 1001/60 ms (NTSC, 59.94 frames a second), and comes with exactly that frame's sound, 800 or 801 samples at 48 kHz. Between frames the Xbox stands still, so RetroArch's pause, menu, fast-forward and slow motion are the game's; fast-forward goes as fast as the host runs the game. The Xbox's time is counted in the instructions its CPU runs (1.977 ns each, a Pentium III's pace on game code), rather than elapsed host time; the frontend frame budget is independent of host speed. Waiting costs nothing: a verified kernel idle loop or a tight loop polling an unchanged device register is a wait, including a poll that stores its value on the stack; store-free computation and read-only scans keep running at their instruction budget; the Xbox's time moves on to the next event. The GPU draws alongside the CPU, as on the console, and each frame goes to RetroArch once the GPU has drawn it. Waiting for host GPU or disk completion does not advance the instruction clock; the frontend controls real-time pacing. The RTC and Chihiro calendars start at 2000-01-01 UTC and advance with guest time. Legacy states restore their saved calendar second and rearm RTC timers; their old format did not save the subsecond host-clock snapshot. New states preserve the virtual-clock phase. Audio > Audio Volume scales the sound before it goes to RetroArch.
+
+Housekeeping timers use a runtime-only service clock advanced exactly once per active `retro_run`, with the same NTSC fraction as the guest frame budget. Pausing frontend calls stops this clock; loading a guest state does not rewind it. Socket polling waits for readiness notifications rather than sleeping for emulated timer deadlines. Positive polling durations check readiness immediately; they never arm a host timer. GPU report readiness checks yield and retry without a timed polling interval. Thread waits use fixed iteration counts instead of host-time calibration or hardware deadline spins. The core does not read or calibrate host timestamps.
 
 ## Video
 
@@ -242,3 +244,35 @@ fraction, all eight ring heads and stereo sample ranges, including INT32_MIN/MAX
 against a wide-integer dot-product oracle. An exact-row specialization was
 rejected after isolated timing and stack checks found tradeoffs; production
 resampling, buffering and synchronization remain unchanged.
+
+ADPCM fetches decode only the predictor prefix needed for the requested window
+and write VP samples directly into the existing destination. The intermediate
+65-sample PCM array is removed; encoded SGE fragments still use the necessary
+bounded gather. A 1,424-byte read-only nibble-magnitude table preserves the
+reference shift rounding. No source pointer, decoded cache or new per-voice
+state survives the call. The ADPCM change reduced Win64 voice stack use; with PCM SGE boundary handling
+it is 1,168 bytes.
+Local decoder timing favors typical paired 32-sample windows; very short late
+windows can be slower. Game throughput and hardware cache misses are unmeasured.
+
+PCM frames spanning SGE pages use both logical mappings, including a stereo
+channel beginning on the next page. Same-page and adjacent physical backing
+retain direct scalar loads; only discontiguous backing needs a bounded gather
+of at most eight bytes. No persistent map cache, frame buffer, lock or wait
+is added. The boundary helper has a 160-byte Win64 frame; the ordinary voice
+frame grows by 32 bytes, with HRTF remaining outlined and worker/owner stacks
+unchanged. Hardware cache misses, register spills and game speed are unmeasured.
+
+NVNet MAC filtering compares exact 32-bit and 16-bit little-endian fields
+instead of temporary address arrays. It preserves existing acceptance and
+trace behavior, ignores reserved upper register bits, and reads only the six
+address bytes. A byte-wise oracle checks 200,000 packet/filter combinations.
+Compiled Win64 receive stack sizes are unchanged; no throughput or hardware
+cache/spill improvement is claimed. Payload staging and synchronization stay
+unchanged.
+
+Paused VP voices retain their descriptor and filter state while list traversal
+continues. They do not enter the worker queue, so a fully paused frame publishes
+no VP work. Unpausing takes effect on the next VP frame; GP/EP processing and
+the frontend audio cadence remain unchanged. This removes redundant VP work,
+not the completion barrier for frames that actually dispatch voices.

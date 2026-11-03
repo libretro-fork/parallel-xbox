@@ -22,6 +22,8 @@ if baseline:
     b = s.index('    vk_spec_modules_clear();', a)
     pieces[2] = 'static void vk_spec_ready_clear(void) {\n' + s[a:b] + '\n}'
 code = Path(__file__).with_suffix('.c').read_text().replace('/* PRODUCTION */', '\n'.join(p for p in pieces if p))
+if 'uint64_t h' in pieces[-1]:
+    code=code.replace('vk_spec_take_ready(&k)', 'vk_spec_take_ready(&k, fast_hash((const uint8_t *)&k, sizeof(k)))')
 with tempfile.TemporaryDirectory(prefix='vk-ready-') as tmp:
     p = Path(tmp); (p / 'test.c').write_text(code)
     binary = os.environ.get('VK_READY_BINARY', str(p / 'test'))

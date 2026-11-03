@@ -210,7 +210,6 @@ static void pgraph_vk_flip_stall(NV2AState *d)
      * frame follows from the average. */
     pgraph_vk_finish(&d->pgraph, VK_FINISH_REASON_FLIP_STALL);
     pgraph_vk_settle_poll(&d->pgraph);
-    pgraph_vk_frame_gpu_resolve(&d->pgraph);
     pgraph_vk_eager_frame_update(&d->pgraph);
     pgraph_vk_cpu_ahead_refresh(d);
     /* Resolve this frame's fragment-query segments: with the cost model

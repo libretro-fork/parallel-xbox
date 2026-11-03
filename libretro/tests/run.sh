@@ -78,6 +78,15 @@ python3 "$here/test-core-timers.py" "$here/../.." "$cc"
 python3 "$here/test-timer-deadline-readers.py" "$here/../.." "$cc"
 python3 "$here/test-icount-publication.py" "$here/../.." "$cc"
 python3 "$here/test-owner-elapsed-clock.py" "$here/../.." "$cc"
+python3 "$here/test-rtc-virtual-clock.py" "$here/../.." "$cc"
+python3 "$here/test-no-guest-wall-clock.py" "$here/../.."
+python3 "$here/test-frontend-service-clock.py" "$here/../.." "$cc"
+python3 "$here/test-clockless-thread-waits.py" "$here/../.." "$cc"
+python3 "$here/test-usb-capture-clock.py" "$here/../.." "$cc"
+python3 "$here/test-clockless-aio-scheduling.py" "$here/../.." "$cc"
+python3 "$here/test-character-clockless-retry.py" "$here/../.." "$cc"
+python3 "$here/test-pfifo-notification-wait.py" "$here/../.." "$cc"
+python3 "$here/test-gl-work-quota.py" "$here/../.." "$cc"
 ${cc} -O2 -std=gnu11 -Wall -Wextra -Werror -I"$here/../../include" \
     "$here/test-log-timestamp.c" -o "$work/bin/logtimestamp"
 "$work/bin/logtimestamp"
@@ -160,6 +169,8 @@ python3 "$here/test-tb-secondary.py" "$here/../.." "$cc"
 python3 "$here/test-generated-tb-lookup.py" "$here/../.." "$cc"
 python3 "$here/test-owner-cpu-boundary.py" "$here/../.." "$cc"
 python3 "$here/test-fixed-x86-entry.py" "$here/../.." "$cc"
+python3 "$here/test-fixed-tb-sync.py" "$here/../.." "$cc"
+python3 "$here/test-single-target.py" "$here/../.."
 python3 "$here/test-byte-carry.py" "$here/../.." "$cc"
 python3 "$here/test-shift-class.py" "$here/../.." "$cc"
 python3 "$here/test-idle-interrupts.py" "$here/../.." "$cc"
@@ -220,6 +231,10 @@ ${cc} -O2 -std=c11 -Wall -Wextra -Werror -fsanitize=undefined \
     -fsanitize-undefined-trap-on-error -I"$here/../.." \
     -o "$work/bin/hrtfcheck" "$here/test-hrtf.c"
 "$work/bin/hrtfcheck"
+${cc} -O2 -std=c11 -Wall -Wextra -Werror -Wno-sign-compare \
+    -fsanitize=undefined -fsanitize-undefined-trap-on-error -I"$here/../.." \
+    -o "$work/bin/adpcmwindow" "$here/test-adpcm-window.c"
+"$work/bin/adpcmwindow"
 ${cc} -O2 -std=c99 -Wall -I"$here/../.." -o "$work/bin/surfaceclear" "$here/test-surface-clear.c"
 "$work/bin/surfaceclear"
 ${cc} -O2 -std=c99 -Wall -I"$here/../.." -o "$work/bin/vramranges" "$here/test-vram-ranges.c"
@@ -241,6 +256,7 @@ python3 "$here/test-aiocb-owner.py" "$here/../.." "$cc"
 python3 "$here/test-dma-transfer.py" "$here/../.." "$cc"
 python3 "$here/test-nvnet-tx-borrow.py" "$here/../.." "$cc"
 python3 "$here/test-nvnet-rx-snapshot.py" "$here/../.." "$cc"
+python3 "$here/test-nvnet-mac-filter.py" "$here/../.." "$cc"
 python3 "$here/test-io-recompile.py" "$here/../.." "$cc"
 python3 "$here/test-tb-lookup-state.py" "$here/../.." "$cc"
 python3 "$here/test-rdpmc.py" "$here/../.." "$cc"
@@ -947,11 +963,8 @@ esac
 # 20 the CPU reads the surface's first and last pixels: the renderer
 # downloads it to RAM for that, and both are red (0xffff0000). From frame
 # 100 the guest waits on the GPU, a semaphore after a run of no-ops, up to
-# 4 times a frame: deterministic mode must manage all 4 in every frame.
-# Normal mode charges elapsed host GPU-wait time to the guest; a loaded
-# software-rendering runner can legitimately complete fewer. Keep the exact
-# count independent of host speed, not a relaxed threshold or a retry.
-# test-gpu-wait-deadline.py covers normal-mode elapsed-time accounting.
+# 4 times a frame. Host GPU wait duration must not change this count.
+# test-gpu-wait-deadline.py covers host-independent guest-clock ownership.
 # A guest waiting on the GPU had its time skip on to its next deadline while the GPU worked,
 # and managed 1 (Ninja Gaiden Black in slow motion). The ROM waits for each
 # vblank polling the GPU's interrupt register: a wait, so the OpenGL run
@@ -1003,7 +1016,7 @@ gpu_check() {
 echo "== the display, OpenGL"
 # Every oracle below addresses guest work by a fixed frontend frame.
 # Host GPU wait time must not move that work into a different frame.
-gpu="$vp --opt xemu_deterministic=enabled"
+gpu="$vp"
 timeout 300 $h "$(path "$core")" "$(path "$work/sysg")" $gpu --frames 485 --strict \
   --min-speed 0.2 --pixel 10 --pixel 25 --pixel 45 --pixel 85 --pixel 115 --pixel 130:4:20 --pixel 130:320:100 --pixel 130:320:350 \
   --pixel 130:4:100 --pixel 145:4:20 --pixel 165:320:120 --pixel 180 \
@@ -1954,7 +1967,7 @@ t "Run-Ahead 1, EP DSP" $h "$(path "$core")" "$(path "$work/syse")" $dsp --opt x
 cmp "$work/rae0.wav" "$work/rae1.wav" || {
     echo "FAIL: the EP DSP's sound with Run-Ahead is not the sound without it"; exit 1; }
 
-# The main loop's step (util/main-loop.c, XBOX) runs the bottom halves and
+# The main loop's step (util/main-loop.c, core owner) runs the bottom halves and
 # timers straight: no GLib main context and no poll. Before, every pass of
 # the frame loop polled, about 30 ppoll a frame (8651 in 300 frames of the
 # busy ROM). Over 300 frames of the busy and the display ROM the core polls

@@ -282,9 +282,62 @@ static void output_reduction_tests(void)
     printf("PASS: %u worker-output reductions; VP mode retains destination bins, DSP mode retains monitor samples, stale/owner buffers excluded\n",cases);
 }
 
+static void paused_dispatch_tests(void)
+{
+    MCPXAPUState *d=calloc(1,sizeof(*d));
+    d->ram_ptr=calloc(1,RAM_SIZE);address_space_memory.d=d;
+    d->regs[NV_PAPU_VPVADDR]=0x1000;
+    d->regs[NV_PAPU_VPSGEADDR]=0x10000;
+    d->regs[NV_PAPU_FENADDR]=0x80000;
+    store(d,0x10000,0x20000);memset(d->ram_ptr+0x20000,128,32);
+    d->regs[NV_PAPU_TVL2D]=64;
+    d->regs[NV_PAPU_TVL3D]=d->regs[NV_PAPU_TVLMP]=0xffff;
+    for(int v=64;v<96;v++){
+        vset(d,v,NV_PAVS_VOICE_PAR_STATE,NV_PAVS_VOICE_PAR_STATE_ACTIVE_VOICE,1);
+        vset(d,v,NV_PAVS_VOICE_PAR_STATE,NV_PAVS_VOICE_PAR_STATE_PAUSED,1);
+        vset(d,v,NV_PAVS_VOICE_TAR_PITCH_LINK,NV_PAVS_VOICE_TAR_PITCH_LINK_NEXT_VOICE_HANDLE,v==95?0xffff:v+1);
+        vset(d,v,NV_PAVS_VOICE_CFG_FMT,NV_PAVS_VOICE_CFG_FMT_LOOP,1);
+        vset(d,v,NV_PAVS_VOICE_PAR_NEXT,NV_PAVS_VOICE_PAR_NEXT_EBO,31);
+        voice_reset_filters(d,v);
+    }
+    MCPXAPUVoiceFilter *filters=malloc(32*sizeof(*filters));
+    memcpy(filters,d->vp.filters+64,32*sizeof(*filters));
+    unsigned char before[32*128];
+    memcpy(before,d->ram_ptr+0x1000+64*128,sizeof(before));
+    g_config.audio.vp.num_workers=4;voice_work_init(d);
+    test_completion_target=&d->vp.voice_work_dispatch.units_done;
+    int gen=d->vp.voice_work_dispatch.gen;
+    for(int frame=0;frame<8;frame++){
+        mix_t mix[32][32]={0};
+        d->monitor.point=frame&1?MCPX_APU_DEBUG_MON_VP:0;
+        retro_atomic_store_relaxed_int(&test_completion_rmws,0);
+        mcpx_apu_vp_frame(d,mix);
+        assert(d->vp.voice_work_dispatch.gen==gen);
+        assert(!d->vp.voice_work_dispatch.queue_len);
+        assert(!retro_atomic_load_acquire_int(&test_completion_rmws));
+        assert(!memcmp(before,d->ram_ptr+0x1000+64*128,sizeof(before)));
+        for(int b=0;b<32;b++)for(int i=0;i<32;i++)assert(!mix[b][i]);
+        assert(!memcmp(filters,d->vp.filters+64,32*sizeof(*filters)));
+        assert(d->regs[NV_PAPU_CVL2D]==0xffff);
+    }
+    for(int v=64;v<66;v++)vset(d,v,NV_PAVS_VOICE_PAR_STATE,NV_PAVS_VOICE_PAR_STATE_PAUSED,0);
+    mix_t mix[32][32]={0};mcpx_apu_vp_frame(d,mix);
+    assert(d->vp.voice_work_dispatch.gen!=gen);
+    assert(d->vp.voice_work_dispatch.num_units==2);
+    assert(d->vp.filters[64].gains&&d->vp.filters[64].pitched);
+    assert(d->vp.filters[65].gains&&d->vp.filters[65].pitched);
+    assert(!memcmp(filters+2,d->vp.filters+66,30*sizeof(*filters)));
+    assert(!memcmp(before+2*128,d->ram_ptr+0x1000+66*128,sizeof(before)-2*128));
+    voice_work_finalize(d);test_completion_target=NULL;
+    free(d->ram_ptr);free(d);
+    free(filters);
+    puts("PASS: eight fully paused frames publish no work; two resumed voices dispatch immediately and preserve paused descriptors");
+}
+
 int main(int argc,char**argv)
 {
     if(argc>1&&!strcmp(argv[1],"--bench-kernel"))return resample_bench();
+    paused_dispatch_tests();
     resample_row_tests();
     monitor_gain_tests();
     repeated_voice_schedule_tests();

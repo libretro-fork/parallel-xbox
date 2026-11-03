@@ -20,7 +20,6 @@
  */
 
 #include "qemu/osdep.h"
-#include <time/rtime.h>
 #include <glib/gstdio.h>
 #include "hw/hw.h"
 #include "hw/irq.h"
@@ -37,6 +36,7 @@
 #include "chihiro-asic.h"
 #include "system/blockdev.h"
 #include "system/system.h"
+#include "system/rtc.h"
 #include "block/libretro-disk.h"
 #include "migration/vmstate.h"
 #include "migration/qemu-file.h"
@@ -2915,7 +2915,6 @@ bool chihiro_card_issue(ChihiroCardSlot slot, char *out, size_t out_len)
     const char **cfg;
     char dir[1024], who[8] = "";
     char day[32];
-    time_t now;
     struct tm local = { 0 };
     bool ok = false;
 
@@ -2927,9 +2926,8 @@ bool chihiro_card_issue(ChihiroCardSlot slot, char *out, size_t out_len)
     else if (slot == CHIHIRO_CARD_SLOT_HW210_P2)
         snprintf(who, sizeof(who), "_p2");
 
-    now = time(NULL);
-    if (!rtime_localtime(&now, &local) ||
-        !strftime(day, sizeof(day), "%Y-%m-%d", &local)) {
+    qemu_get_timedate(&local, 0);
+    if (!strftime(day, sizeof(day), "%Y-%m-%d", &local)) {
         return false;
     }
     for (int n = 1; n < 1000 && !ok; n++) {
@@ -4006,15 +4004,11 @@ void chihiro_load_netboot_image(void)
     if (fs_buf && xemu_file_map(&chihiro_image_map, dvd)) {
         const uint8_t *img = chihiro_image_map.data;
         if (chihiro_image_map.len >= 4 && memcmp(img, "FATX", 4) == 0) {
-            gint64 t0 = g_get_monotonic_time();
             uint32_t file_size = (uint32_t)MIN(chihiro_image_map.len,
                                                (size_t)fs_size);
             memcpy(fs_buf, img, file_size);
             printf("Chihiro: FATX image loaded '%s'"
-                   " (%u bytes, %lld ms)\n",
-                   dvd, file_size,
-                   (long long)(g_get_monotonic_time() - t0)
-                   / 1000);
+                   " (%u bytes)\n", dvd, file_size);
 
             /* The game executable, from the image's boot.id */
             for (uint32_t off = 0;

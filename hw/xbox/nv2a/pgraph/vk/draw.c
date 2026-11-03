@@ -36,13 +36,6 @@ static void gpl_finalize(PGRAPHVkState *r);
 static void destroy_framebuffer_cache(PGRAPHVkState *r);
 static bool vk_cost_probe_active(PGRAPHState *pg);
 
-/* Running average (host or GPU time) the eager submission policy reads,
- * weight 1/16 [HEURISTIC]. */
-static inline void ema16(double *avg, double sample)
-{
-    *avg += (sample - *avg) / 16.0;
-}
-
 void pgraph_vk_draw_begin(NV2AState *d)
 {
     PGRAPHState *pg = &d->pgraph;
@@ -2761,7 +2754,7 @@ void pgraph_vk_finish(PGRAPHState *pg, FinishReason finish_reason)
          * (the next draw reopens one; the resolve is linear). */
         xemu_cost_frame_close(container_of(pg, NV2AState, pgraph),
                               &pgraph_vk_cost_ops);
-        pgraph_vk_frame_gpu_cb_end(r, r->command_buffer);
+
         VK_CHECK(vkEndCommandBuffer(r->command_buffer));
 
         /* This slot's staging-sync command buffer: free, as its fence settled
@@ -2798,13 +2791,11 @@ void pgraph_vk_finish(PGRAPHState *pg, FinishReason finish_reason)
         };
         nv2a_profile_inc_counter(NV2A_PROF_QUEUE_SUBMIT);
         vkResetFences(r->device, 1, &r->slot_fence[r->slot]);
-        int64_t sub_t0 = g_get_monotonic_time();
         /* through the core's wrapper: the queue is RetroArch's, shared */
         pgraph_vk_queue_submit(r, 1, &submit_info, r->slot_fence[r->slot]);
-        ema16(&r->submit_us, g_get_monotonic_time() - sub_t0);
         r->submit_count += 1;
         r->slot_submit[r->slot] = r->submit_count;
-        r->frame_gpu.w_end[r->slot] = r->frame_gpu.w;
+
         /* Every query so far is closed (end_query above) and submitted. */
         r->queries_submitted = r->num_queries_in_flight;
 
@@ -2850,80 +2841,6 @@ void pgraph_vk_finish(PGRAPHState *pg, FinishReason finish_reason)
 
     NV2AState *d = container_of(pg, NV2AState, pgraph);
     pgraph_vk_process_pending_reports_internal(d);
-}
-
-/* GPU busy time of the frame, for the eager policy (surface.c): timestamps
- * at the start and end of each main command buffer, read back at the flip
- * once everything has settled. Needs host query reset. */
-/* The pool is a ring: a pair is written while there is one free, i.e. not
- * yet read back (pgraph_vk_frame_gpu_resolve). */
-void pgraph_vk_frame_gpu_cb_begin(PGRAPHVkState *r, VkCommandBuffer cmd)
-{
-    if (r->frame_gpu.pool == VK_NULL_HANDLE ||
-        r->frame_gpu.w - r->frame_gpu.resolved >= r->frame_gpu.capacity) {
-        return;
-    }
-    vkCmdWriteTimestamp(cmd, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
-                        r->frame_gpu.pool,
-                        2 * (r->frame_gpu.w % r->frame_gpu.capacity));
-}
-
-void pgraph_vk_frame_gpu_cb_end(PGRAPHVkState *r, VkCommandBuffer cmd)
-{
-    if (r->frame_gpu.pool == VK_NULL_HANDLE ||
-        r->frame_gpu.w - r->frame_gpu.resolved >= r->frame_gpu.capacity) {
-        return;
-    }
-    vkCmdWriteTimestamp(cmd, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
-                        r->frame_gpu.pool,
-                        2 * (r->frame_gpu.w % r->frame_gpu.capacity) + 1);
-    r->frame_gpu.w++;
-}
-
-/* The pairs written up to `until` (a retired submission's w_end), read back
- * and reset: their command buffers have run. The GPU's busy time they
- * measure goes into the average the eager policy reads. */
-static void frame_gpu_resolve_until(PGRAPHVkState *r, unsigned until)
-{
-    if (r->frame_gpu.pool == VK_NULL_HANDLE ||
-        (int)(until - r->frame_gpu.resolved) <= 0) {
-        return;
-    }
-    double busy = 0;
-    bool ok = true;
-    while (r->frame_gpu.resolved != until) {
-        unsigned first = r->frame_gpu.resolved % r->frame_gpu.capacity;
-        unsigned n = MIN(until - r->frame_gpu.resolved,
-                         r->frame_gpu.capacity - first);
-        VkResult res = vkGetQueryPoolResults(
-            r->device, r->frame_gpu.pool, 2 * first, 2 * n,
-            2 * n * sizeof(uint64_t), r->frame_gpu.scratch, sizeof(uint64_t),
-            VK_QUERY_RESULT_64_BIT);
-        if (res == VK_SUCCESS) {
-            for (unsigned i = 0; i < n; i++) {
-                uint64_t t0 = r->frame_gpu.scratch[2 * i];
-                uint64_t t1 = r->frame_gpu.scratch[2 * i + 1];
-                if (t1 > t0) {
-                    busy += (t1 - t0) *
-                            r->device_props.limits.timestampPeriod / 1000.0;
-                }
-            }
-        } else {
-            ok = false;
-        }
-        vkResetQueryPool(r->device, r->frame_gpu.pool, 2 * first, 2 * n);
-        r->frame_gpu.resolved += n;
-    }
-    if (ok) {
-        ema16(&r->frame_gpu.busy_us, busy);
-    }
-}
-
-void pgraph_vk_frame_gpu_resolve(PGRAPHState *pg)
-{
-    /* the timestamps come back as their submissions retire
-     * (pgraph_vk_slot_retired): nothing to do at the flip itself */
-    (void)pg;
 }
 
 /* Deferred destruction (renderer.h: evictions under rotation, framebuffers):
@@ -3070,7 +2987,7 @@ void pgraph_vk_slot_retired(PGRAPHState *pg, int slot)
         r->settled_submit = r->slot_submit[slot];
     }
     trash_drain_retired(r);
-    frame_gpu_resolve_until(r, r->frame_gpu.w_end[slot]);
+
 }
 
 void pgraph_vk_settle_poll(PGRAPHState *pg)
@@ -3099,6 +3016,7 @@ void pgraph_vk_settle_poll(PGRAPHState *pg)
  * recorded again. Idempotent. */
 void pgraph_vk_reclaim_command_buffer(PGRAPHState *pg, bool reuse)
 {
+    (void)reuse;
     PGRAPHVkState *r = pg->vk_renderer_state;
 
     if (r->slot_fence_pending[r->slot]) {
@@ -3106,14 +3024,8 @@ void pgraph_vk_reclaim_command_buffer(PGRAPHState *pg, bool reuse)
          * complete while leaving slot cleanup here. Reuse that serial proof
          * instead of asking the driver to wait for completed work again. */
         if ((int32_t)(r->slot_submit[r->slot] - r->settled_submit) > 0) {
-            /* The eager policy counts only a wait at slot reuse, the cost of an
-             * early submission, not the wait of a synchronous finish. */
-            int64_t w0 = reuse ? g_get_monotonic_time() : 0;
             VK_CHECK(vkWaitForFences(r->device, 1, &r->slot_fence[r->slot],
                                      VK_TRUE, UINT64_MAX));
-            if (reuse) {
-                ema16(&r->reuse_wait_us, g_get_monotonic_time() - w0);
-            }
         }
         r->slot_fence_pending[r->slot] = false;
         pgraph_vk_slot_retired(pg, r->slot);
@@ -3151,7 +3063,7 @@ void pgraph_vk_wait_all_slots(PGRAPHVkState *r)
     }
     r->settled_submit = r->submit_count;
     trash_drain_retired(r);
-    frame_gpu_resolve_until(r, r->frame_gpu.w);
+
 }
 
 /* Global teardown (descriptor sets, trash, budget); only legal with
@@ -3227,11 +3139,9 @@ void pgraph_vk_begin_command_buffer(PGRAPHState *pg)
     r->descriptor_set_base =
         r->slot * (ARRAY_SIZE(r->descriptor_sets) / PGRAPH_VK_SLOTS);
     r->descriptor_set_index = r->descriptor_set_base;
-    int64_t cb_t0 = g_get_monotonic_time();
     VK_CHECK(vkBeginCommandBuffer(r->command_buffer,
                                   &command_buffer_begin_info));
-    ema16(&r->cb_begin_us, g_get_monotonic_time() - cb_t0);
-    pgraph_vk_frame_gpu_cb_begin(r, r->command_buffer);
+
     r->command_buffer_start_time = pg->draw_time;
     r->in_command_buffer = true;
     r->dyn_last.valid = false;

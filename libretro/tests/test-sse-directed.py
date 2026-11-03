@@ -7,12 +7,12 @@ macros=subprocess.run([cc,'-dM','-E','-'],input='',text=True,capture_output=True
 if '__x86_64__' not in macros:
  print('Directed SSE: skipped (x86-64 host fast path only)');sys.exit(0)
 s=(repo/'target/i386/ops_sse.h').read_text(encoding='utf-8',errors='surrogateescape')
-a=s.index('#if defined(XBOX) && defined(__x86_64__)\n#define XEMU_SSE_DIRECTED_ENTRY');body=s[a:s.index('#include "target/i386/tcg/sse-native.h"',a)]
+a=s.index('#if defined(__x86_64__)\n#define XEMU_SSE_DIRECTED_ENTRY');body=s[a:s.index('#include "target/i386/tcg/sse-native.h"',a)]
 code=Path(__file__).with_suffix('.c').read_text().replace('/* PRODUCTION */',body)
 with tempfile.TemporaryDirectory(prefix='sse-directed-') as directory:
  p=Path(directory);(p/'test.c').write_text(code);exe=p/'test.exe'
  includes=['libretro/gen','.','libretro/glib','include','host/include/x86_64','host/include/generic','libretro-common/include']
- args=[cc,'-O2','-std=gnu11','-fno-strict-aliasing','-fwrapv','-DXBOX=1','-D_GNU_SOURCE','-Werror','-Wall','-Wextra','-Wno-unused-parameter','-fsanitize=undefined','-fsanitize-undefined-trap-on-error']
+ args=[cc,'-O2','-std=gnu11','-fno-strict-aliasing','-fwrapv','-D_GNU_SOURCE','-Werror','-Wall','-Wextra','-Wno-unused-parameter','-fsanitize=undefined','-fsanitize-undefined-trap-on-error']
  for inc in includes:args+=['-I'+str(repo/inc)]
  # Compile real SoftFloat too: no arithmetic mocks, and no dependency on build .o files.
  subprocess.run([x for x in args if x not in ['-Wextra','-fsanitize=undefined','-fsanitize-undefined-trap-on-error']]+['-c',str(repo/'fpu/softfloat.c'),'-o',str(p/'softfloat.o')],check=True)

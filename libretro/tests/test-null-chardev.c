@@ -16,7 +16,7 @@ static unsigned locks,unlocks,sleeps,backend_calls,log_calls;static bool held;
 static unsigned backend_mode,log_mode;static uint8_t log_bytes[2048];static size_t log_length;
 static void qemu_mutex_lock(int *mutex){(void)mutex;assert(!held);held=true;locks++;}
 static void qemu_mutex_unlock(int *mutex){(void)mutex;assert(held);held=false;unlocks++;}
-static void g_usleep(unsigned usec){assert(held&&usec==100);sleeps++;}
+static void sthread_yield(void){assert(held);sleeps++;}
 static ssize_t fake_write(int fd,const void *data,size_t size){assert(held&&fd==7);log_calls++;if(log_mode==1&&log_calls==1){errno=EAGAIN;return -1;}if(log_mode==2){errno=EIO;return -1;}size_t n=size<7?size:7;assert(log_length+n<=sizeof(log_bytes));memcpy(log_bytes+log_length,data,n);log_length+=n;return n;}
 #define write fake_write
 /* PRODUCTION */

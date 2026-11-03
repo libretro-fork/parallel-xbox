@@ -98,7 +98,7 @@ typedef uint64_t float64;
 #define const_float16(x) (x)
 #define const_float32(x) (x)
 #define const_float64(x) (x)
-#if defined(XBOX) && defined(__x86_64__)
+#if defined(__x86_64__)
 /* GCC produced x86-64 structure should be 16B packed */
 typedef struct {
     union {

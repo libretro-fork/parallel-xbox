@@ -1,5 +1,12 @@
 # Changelog of the libretro core
 
+- Remove the always-defined XBOX selection macro and unreachable non-Xbox core paths. Keep host-architecture guards and ARM64 floating-point fallbacks; update fixtures and audit single-target sources/build flags in CI.
+- Fix the SPSC pair publication test observer under fortified libc headers; keep strict copy/publication checks, add missing-observer and early-publication negative controls, and run explicit fortified sanitizer coverage in CI.
+- Bind interrupted-block PC synchronization directly to x86, bypassing generic callback and set-PC fallback dispatch while preserving PC-relative behavior, segment subtraction and 32-bit wraparound.
+- Paused audio voices no longer enter the worker queue, avoiding needless dispatch and completion work while preserving their playback position and next-frame resume.
+- Compare NVNet MAC filter fields directly as six-byte scalar values, removing temporary address copies and partial initialization. Broadcast, masked multicast, unicast and trace behavior stay unchanged; reserved upper register bits remain ignored.
+- Fix PCM samples and stereo frames that cross noncontiguous SGE pages. Read the correct logical source pages, retain direct loads when physical backing is contiguous, and gather at most eight bytes only for split backing. Source offsets, audio cadence and state layout are unchanged.
+- Decode ADPCM windows directly into VP samples instead of building and copying an intermediate PCM block. Preserve mono/stereo output, source offsets and notifications; unsupported block layouts produce bounded silence before any gather. No new audio buffering or threading state.
 - Bind the core directly to its fixed x86 CPU entry/exit routines, removing nullable dispatch checks and out-of-line hook calls while retaining the CPU operations table layout while preserving the existing flag and state boundaries.
 - Expand resampler regression coverage to every fractional phase and ring position, including full-range stereo samples. Keep the production kernel unchanged after an exact-row fast path regressed integer-position timing and increased stack use.
 - Reuse NVNet RX readiness descriptors within packet delivery, removing the duplicate guest descriptor DMA read. Descriptor snapshots stay local to one callback; fresh readiness, ring updates, polling and payload staging are preserved.
@@ -20,6 +27,44 @@
 ## Unreleased
 
 - Borrow immutable mapped compressed QCOW2 input during synchronous decompression, avoiding compressed-input staging when the complete range is mapped. Keep the read fallback, writable-image behavior and decompressed cache. Writable HDDs keep their existing input path; no overall throughput gain is claimed.
+
+- Exclude timed common-library wait APIs from the clockless build. Stop requesting 1 ms Windows timer resolution and probing high-resolution thread timers now that core device waits no longer use host deadlines.
+
+- Drop the unused rtime sleep/timer-resolution implementation from the core. Compatibility locks yield directly to the scheduler; host-dated filename helpers are excluded from this build.
+
+- Exclude unused host-clock/performance-counter helpers and deadline sleeps from the bundled support library. Remove unused timed QEMU condition-variable and semaphore APIs.
+
+- Remove the unused Windows high-resolution polling timer. Polling now waits for notifications or checks readiness, without scheduling positive host-time delays.
+
+- Dispatch queued idle callbacks without the legacy 10 ms host timeout; preserve their idle progress accounting.
+
+- Remove the unused timed main-loop entry point; device waits use notifications without a host timeout.
+
+- Timestamp USB captures with guest time, remove the unused compatibility sleep API and audit clock reads across the static Makefile source list.
+
+- Yield instead of sleeping on character-device output retries, including attached UART logs.
+
+- Drive remaining service clocks from frontend frame calls, independent of wall time and guest-state rewinds. Remove host clock calibration, timed GPU-report polling and polling busy-waits; future emulated deadlines no longer become host sleeps.
+
+- Drive RTC and Chihiro calendars from guest virtual time with a fixed UTC epoch. Convert legacy RTC states at their saved calendar second and preserve virtual-clock phase in new states. Replace host-timed shader maintenance and Vulkan batching with work counts; remove wall-time diagnostic probes and time-based identifiers.
+
+- Stop charging host GPU wait duration to the guest instruction clock. GPU and disk completion waits leave guest time unchanged. Remove the now redundant Deterministic Emulation option.
+
+- DSP: compile DIV non-restoring division steps natively, preserving carry feedback, shift-specific V/L and unchanged E/U/N/Z. Add 50,688 regression boundaries, an independent result/status oracle and 24-step repeat programs, including zero divisors.
+
+- DSP: compile NORM normalization natively, preserving flag-controlled shifts, sticky L and 16-bit Rn wrapping. REP publishes each iteration's flags before the next decision. Add 101,376 regression boundaries, an independent oracle and a production program.
+
+- DSP: compile immediate MPYI multiplies natively, including signed/negated products and scaling-sensitive flags. Add 55,296 regression boundaries, an independent arithmetic/status oracle and a program that rewrites a cached multiply extension.
+
+- DSP: compile program-memory/peripheral MOVEP transfers, preserving extra cycles, peripheral side effects and code invalidation during REP. Add 176,792 regression boundaries and two production programs, including a self-replacing two-word repeat body.
+
+- DSP: compile peripheral MOVEP transfers involving control and reserved registers, preserving SSH pops, scaling/loop-count changes and halt/interrupt effects. Add 85,568 X-peripheral regression boundaries, DMA state comparisons and a production program.
+
+- DSP: compile MOVEM program-memory transfers involving control and reserved registers, preserving SSH stack pops, scaling/count changes and self-modifying REP bodies. Add 163,968 regression boundaries and two production programs.
+
+- DSP: complete native register MOVEC coverage and fix read-direction copies into SR, which could read the wrong source and apply write-direction semantics. Preserve raw width-masked copies and SSH pops, with 98,304 new regression boundaries and a production program.
+
+- DSP: compile effective-address X/Y MOVEC control stores without interpreter fallback. Preserve address updates and SSH stack pops, including the destination across helper calls. Add 89,088 regression boundaries and a repeated-store program.
 
 - Add an all-or-nothing two-span SPSC write as the queue prerequisite for borrowed shader states. Copy spans directly into plain or mirrored rings and publish once after both are complete; reject oversized or non-fitting records without a partial write. Existing queue callers and renderer behavior are unchanged.
 
@@ -464,13 +509,13 @@
 
 - Adopt formatted shader-string buffers directly instead of allocating and copying a second buffer during shader generation.
 
-- Run shader-generation and POSIX AIO fixtures against the core’s compatibility API instead of upstream GLib. Remove the host GLib development dependency from CI, and supply native graphics-test dependencies to the Windows/Wine job.
+- Run shader-generation and POSIX AIO fixtures against the coreï¿½s compatibility API instead of upstream GLib. Remove the host GLib development dependency from CI, and supply native graphics-test dependencies to the Windows/Wine job.
 
-- Match each utility vertex shader’s builtin interface in the test-only geometry capture stage, retaining strict Vulkan validation for clear-shader comparisons.
+- Match each utility vertex shaderï¿½s builtin interface in the test-only geometry capture stage, retaining strict Vulkan validation for clear-shader comparisons.
 
 - Build signed-texture guest ROM fixtures with an x86 cross compiler on ARM CI hosts, independently of the native core compiler.
 
-- Preserve geometry input-array extents when parsing point output layouts in the core shader compiler; triangle and quad point modes retain all input vertices. Validate every generated reference module’s input extents independently of GPU behavior.
+- Preserve geometry input-array extents when parsing point output layouts in the core shader compiler; triangle and quad point modes retain all input vertices. Validate every generated reference moduleï¿½s input extents independently of GPU behavior.
 
 - Separate the unproven RAM-spin cadence fixture from the exact supported wait-proof fixture, retaining the 4x fast-forward requirement for proven waits.
 
@@ -496,7 +541,7 @@
 
 - Avoid redundant idle-counter work when a translated block reaches its first store through a straight-line prefix without earlier side effects. Preserve checks on conditional paths, helper calls and guest accesses, and keep instruction deadlines unchanged.
 
-- Remove the unused standalone CPU host-pacing budget, busy-wait loop and stall-credit accounting. Translated blocks retain the frame engine’s instruction budget; lock-contention diagnostics remain available.
+- Remove the unused standalone CPU host-pacing budget, busy-wait loop and stall-credit accounting. Translated blocks retain the frame engineï¿½s instruction budget; lock-contention diagnostics remain available.
 
 - Make the frame engine the sole owner of guest time: remove QEMU idle warps, host-clock alignment/sleeps, adaptive rate timers and CPU timing-option parsing. Initialize the fixed Xbox instruction clock directly, preserving the existing guest rate, interrupt handling and saved-state wire layout. Add halted-device-wait and direct-clock-initialization regression coverage.
 
@@ -1119,7 +1164,7 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 - Vulkan bordered cubemap base uploads now skip the same four-texel source border as OpenGL. Higher mip copies fit their destination levels and compressed rows retain block alignment. Copy skips remain separate from allocation/flush spans. Higher mip source origins retain the existing Vulkan policy pending an Xbox layout reference.
 
-- Vulkan shader preparation reuses identical immutable SPIR-V modules across queued states, avoiding repeated generation/compilation and array-wrapper reconstruction. Temporary reflection borrows the input words; both parser metadata and the module’s input reference are released after extracting persistent layouts. A 64-entry worker memo retains at most 4 MiB of CPU payload and is cleared after quiescence; no GPU cache or VRAM reservation is added. GArray/GByteArray references use retro atomics, and ownership-transfer arrays no longer allocate a discarded dummy buffer. Ready-table removal moves slot indices instead of shader-key records, preserving FIFO eviction; module teardown releases its packed uniform storage.
+- Vulkan shader preparation reuses identical immutable SPIR-V modules across queued states, avoiding repeated generation/compilation and array-wrapper reconstruction. Temporary reflection borrows the input words; both parser metadata and the moduleï¿½s input reference are released after extracting persistent layouts. A 64-entry worker memo retains at most 4 MiB of CPU payload and is cleared after quiescence; no GPU cache or VRAM reservation is added. GArray/GByteArray references use retro atomics, and ownership-transfer arrays no longer allocate a discarded dummy buffer. Ready-table removal moves slot indices instead of shader-key records, preserving FIFO eviction; module teardown releases its packed uniform storage.
 
 - Retail Xbox games queue their learned shader seeds from the first flip instead of waiting 15 seconds to name the disc. This gives the existing workers boot time to prepare known shaders and avoids delaying seed loading into play. Chihiro retains its detected-title priority and fallback delay.
 

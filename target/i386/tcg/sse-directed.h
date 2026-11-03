@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-or-later */
 #ifndef XEMU_I386_SSE_DIRECTED_H
 #define XEMU_I386_SSE_DIRECTED_H
-#if defined(XBOX) && defined(__x86_64__)
+#if defined(__x86_64__)
 /* For exponents [-60,60] (f32) or [-500,500] (f64), products cannot
  * overflow/underflow and add/sub cancellation cannot become subnormal.
  * Signed zero is also safe. Only inexact can be raised, regardless of

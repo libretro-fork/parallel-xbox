@@ -12,6 +12,7 @@
  */
 
 #include "qemu/osdep.h"
+#include "qemu/timer.h"
 
 #include "qapi/qmp-event.h"
 #include "qobject/qstring.h"
@@ -21,7 +22,7 @@
 static void timestamp_put(QDict *qdict)
 {
     QDict *ts;
-    int64_t rt = g_get_real_time();
+    int64_t rt = qemu_clock_get_us(QEMU_CLOCK_VIRTUAL);
 
     ts = qdict_from_jsonf_nofail("{ 'seconds': %lld, 'microseconds': %lld }",
                                  (long long)rt / G_USEC_PER_SEC,

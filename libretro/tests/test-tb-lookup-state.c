@@ -31,11 +31,10 @@ typedef struct {struct {const void *ptr;} tc;} TranslationBlock;
 static bool xemu_cpu_boost;
 static int one_insn_per_tb,loglevel;
 static unsigned indirect_calls,lookups,logs,breakpoint_checks;
-static bool hit,breakpoint,rate;
+static bool hit,breakpoint;
 static TCGTBCPUState looked_up;
 static TranslationBlock block;
 static const void *tcg_code_gen_epilogue;
-static struct {unsigned lookup_miss;} xemu_tbrate;
 static jmp_buf exit_jump;
 static CPUState *env_cpu(CPUArchState *env) {return env;}
 static CPUX86State *cpu_env(CPUState *cpu) {return &cpu->env;}
@@ -50,7 +49,6 @@ static void cpu_loop_exit(CPUState *cpu) {longjmp(exit_jump,1);}
 static TranslationBlock *tb_lookup(CPUState *cpu,TCGTBCPUState state) {
     assert(cpu->neg.can_do_io);lookups++;looked_up=state;return hit?&block:NULL;
 }
-static bool xemu_tbrate_enabled(void) {return rate;}
 static void log_cpu_exec(vaddr pc,CPUState *cpu,TranslationBlock *tb) {assert(tb==&block);logs++;}
 /* PRODUCTION */
 static TCGTBCPUState indirect_hook(CPUState *cpu) {indirect_calls++;return x86_get_tb_cpu_state(cpu);}
@@ -68,7 +66,7 @@ int main(void) {
         cpu.env.segs[R_CS].base=random_word();cpu.env.cc_op=random_word();cpu.tcg_cflags=random_word();
         xemu_cpu_boost=mode&1;cpu.singlestep_enabled=mode&2;one_insn_per_tb=!!(mode&4);
         loglevel=((mode&8)?CPU_LOG_TB_NOCHAIN:0)|((mode&16)?CPU_LOG_EXEC:0);
-        hit=mode&32;rate=mode&64;breakpoint=false;
+        hit=mode&32;breakpoint=false;
         uint32_t expected_flags=cpu.env.hflags|(cpu.env.eflags&0x73100);
         if(xemu_cpu_boost) expected_flags|=(cpu.env.cc_op&3)<<28;
         uint32_t expected_base=(cpu.env.hflags&HF_CS64_MASK)?0:cpu.env.segs[R_CS].base;
@@ -77,16 +75,11 @@ int main(void) {
         if(cpu.singlestep_enabled) expected_cflags|=CF_NO_GOTO_TB|CF_NO_GOTO_PTR|CF_SINGLE_STEP|1;
         else if(one_insn_per_tb) expected_cflags|=CF_NO_GOTO_TB|1;
         else if(loglevel&CPU_LOG_TB_NOCHAIN) expected_cflags|=CF_NO_GOTO_TB;
-        unsigned old_misses=xemu_tbrate.lookup_miss;lookups=logs=breakpoint_checks=indirect_calls=0;cpu.neg.can_do_io=false;
+        lookups=logs=breakpoint_checks=indirect_calls=0;cpu.neg.can_do_io=false;
         assert(helper_lookup_tb_ptr(&cpu)==(hit?block.tc.ptr:tcg_code_gen_epilogue));
         assert(looked_up.pc==expected_pc && looked_up.cs_base==expected_base && looked_up.flags==expected_flags && looked_up.cflags==expected_cflags);
         assert(lookups==1 && breakpoint_checks==1 && logs==(unsigned)(hit && (loglevel&CPU_LOG_EXEC)));
-        assert(xemu_tbrate.lookup_miss==old_misses+(unsigned)(!hit && rate));
-#ifdef XBOX
         assert(!indirect_calls);
-#else
-        assert(indirect_calls==1);
-#endif
         check_breakpoint(&cpu);cases++;
     }
     printf("TB lookup state: %u boost/debug/flags/PC/hit/miss/breakpoint cases passed\n",cases);

@@ -74,7 +74,7 @@
 #define floatx80_ln2_d make_floatx80(0x3ffe, 0xb17217f7d1cf79abLL)
 #define floatx80_pi_d make_floatx80(0x4000, 0xc90fdaa22168c234LL)
 
-#if defined(XBOX) && defined(__x86_64__)
+#if defined(__x86_64__)
 #ifdef USE_HARD_FPU
 /*
  * FIXME: rounding and exceptions
@@ -265,7 +265,7 @@ floatx80 int32_to_floatx80__hard(int32_t a, float_status *status)
 #define helper_fsave          MAP_HELPER_SOFT_HARD(fsave)
 #define helper_frstor         MAP_HELPER_SOFT_HARD(frstor)
 
-#endif /* defined(XBOX) && defined(__x86_64__) */
+#endif /* defined(__x86_64__) */
 
 static inline void fpush(CPUX86State *env)
 {
@@ -1569,7 +1569,7 @@ static const struct fpatan_data fpatan_table[9] = {
       make_floatx80_init(0xbfbc, 0xece675d1fc8f8cbcULL) },
 };
 
-#if defined(XBOX) && defined(__x86_64__) && defined(USE_HARD_FPU) && \
+#if defined(__x86_64__) && defined(USE_HARD_FPU) && \
     __LDBL_MANT_DIG__ == 64 /* x87 long double: not Android's, a quad */
 /* CPU boost, in the hard-FPU build: FPATAN of two normal operands whose
  * exponents are less than 80 apart runs on the host instruction, which can
@@ -1603,7 +1603,7 @@ static bool fpatan_hard_value(CPUX86State *env, floatx80 *out)
 void helper_fpatan(CPUX86State *env)
 {
     int old_flags = save_exception_flags(env);
-#if defined(XBOX) && defined(__x86_64__) && defined(USE_HARD_FPU) && \
+#if defined(__x86_64__) && defined(USE_HARD_FPU) && \
     __LDBL_MANT_DIG__ == 64 /* x87 long double: not Android's, a quad */
     floatx80 hard_r;
     if (xemu_cpu_boost && fpatan_hard_value(env, &hard_r)) {

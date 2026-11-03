@@ -464,7 +464,7 @@ void glue(helper_pshufhw, SUFFIX)(Reg *d, Reg *s, int order)
 /* FPU ops */
 /* XXX: not accurate */
 
-#if defined(XBOX) && defined(__x86_64__)
+#if defined(__x86_64__)
 #define XEMU_SSE_DIRECTED_ENTRY(size,name) do {                          \
     if (xemu_sse_directed_mode(&env->sse_status)) {                      \
         XEMU_SSE_DIRECTED_SUFFIX(                                      \
@@ -543,7 +543,7 @@ void glue(helper_pshufhw, SUFFIX)(Reg *d, Reg *s, int order)
 
 #endif
 
-#if defined(XBOX) && defined(__x86_64__)
+#if defined(__x86_64__)
 /*
  * CPU Boost's native round-to-nearest arithmetic, with flushing disabled.
  * This path does not record guest exception flags, so stmxcsr and fxsave
@@ -698,7 +698,7 @@ static inline bool sse_native_ok(CPUX86State *env)
 #define XEMU_SSE_PACKED64_div
 #define XEMU_SSE_PACKED64_min
 #define XEMU_SSE_PACKED64_max
-#if !defined(XBOX) || !defined(__x86_64__)
+#if !defined(__x86_64__)
 #define XEMU_SSE_PACKED32_add
 #define XEMU_SSE_PACKED32_sub
 #define XEMU_SSE_PACKED32_mul
@@ -706,7 +706,7 @@ static inline bool sse_native_ok(CPUX86State *env)
 #define XEMU_SSE_PACKED64_sub
 #define XEMU_SSE_PACKED64_mul
 #endif
-#if !defined(XBOX) || !defined(__x86_64__)
+#if !defined(__x86_64__)
 #define FPU_ADD_SCALAR FPU_ADD
 #define FPU_SUB_SCALAR FPU_SUB
 #define FPU_MUL_SCALAR FPU_MUL
@@ -738,7 +738,7 @@ void glue(helper_sqrtps, SUFFIX)(CPUX86State *env, Reg *d, Reg *s)
 {
     int i;
     for (i = 0; i < 2 << SHIFT; i += 4) {
-#if defined(XBOX) && defined(__x86_64__)
+#if defined(__x86_64__)
         if (xemu_sse_sqrt32_group(&d->ZMM_S(i), &s->ZMM_S(i),
                                   &env->sse_status)) {
             continue;
@@ -755,7 +755,7 @@ void glue(helper_sqrtpd, SUFFIX)(CPUX86State *env, Reg *d, Reg *s)
 {
     int i;
     for (i = 0; i < 1 << SHIFT; i += 2) {
-#if defined(XBOX) && defined(__x86_64__)
+#if defined(__x86_64__)
         if (xemu_sse_sqrt64_group(&d->ZMM_D(i), &s->ZMM_D(i),
                                   &env->sse_status)) {
             continue;
@@ -915,7 +915,7 @@ void helper_cvtsq2sd(CPUX86State *env, ZMMReg *d, uint64_t val)
 /* float to integer */
 
 #if SHIFT == 1
-#if defined(XBOX) && defined(__x86_64__)
+#if defined(__x86_64__)
 /*
  * Native float-to-integer conversions under the arithmetic's gate: the host
  * runs the guest's own instruction and returns its exact result, indefinite
@@ -1365,7 +1365,6 @@ SSE_HELPER_CMP(cmptrues, FPU_CMPS,  !FPU_FALSE)
 
 #if SHIFT == 1
 
-#ifdef XBOX
 /* Normal values and signed zero compare exactly by their IEEE encodings.
  * No host FP state or guest exception flags are touched. Keep NaNs and
  * subnormals in SoftFloat for signaling and input-denormal handling. */
@@ -1391,12 +1390,6 @@ static inline FloatRelation xemu_sse_compare##bits(                       \
 XEMU_SSE_ORDERED_COMPARE(32, UINT32_C(0x80000000))
 XEMU_SSE_ORDERED_COMPARE(64, UINT64_C(0x8000000000000000))
 #undef XEMU_SSE_ORDERED_COMPARE
-#else
-#define xemu_sse_compare32(a, b, status, quiet) \
-    ((quiet) ? float32_compare_quiet(a, b, status) : float32_compare(a, b, status))
-#define xemu_sse_compare64(a, b, status, quiet) \
-    ((quiet) ? float64_compare_quiet(a, b, status) : float64_compare(a, b, status))
-#endif
 
 static const int comis_eflags[4] = {CC_C, CC_Z, 0, CC_Z | CC_P | CC_C};
 

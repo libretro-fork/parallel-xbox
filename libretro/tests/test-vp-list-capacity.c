@@ -13,6 +13,7 @@
 #define NV_PAVS_VOICE_TAR_PITCH_LINK_NEXT_VOICE_HANDLE 1
 #define NV_PAVS_VOICE_PAR_STATE 2
 #define NV_PAVS_VOICE_PAR_STATE_ACTIVE_VOICE 1
+#define NV_PAVS_VOICE_PAR_STATE_PAUSED 4
 #define NV_PAVS_VOICE_CFG_FMT 3
 #define NV_PAVS_VOICE_CFG_FMT_MULTIPASS 2
 #define NV_PAVS_VOICE_CFG_FMT_MULTIPASS_BIN 3
@@ -22,17 +23,23 @@ typedef uint64_t hwaddr;
 typedef struct {uint16_t voice;int list;} VoiceWorkItem;
 typedef struct {uint64_t before;VoiceWorkItem queue[256];uint64_t after;int queue_len;} VoiceWorkDispatch;
 typedef struct {struct {VoiceWorkDispatch voice_work_dispatch;int64_t sample_buf[32][2];}vp;
- struct {int point;}monitor;unsigned regs[9],link[256];bool active[256],locked[256],multipass[256];unsigned bins[256];} MCPXAPUState;
+ struct {int point;}monitor;unsigned regs[9],link[256];bool active[256],paused[256],locked[256],multipass[256];unsigned bins[256];} MCPXAPUState;
 static const struct {int top,current,next;} voice_list_regs[3]={{0,1,2},{3,4,5},{6,7,8}};
 static VoiceWorkItem trace[768],expected[768];static unsigned jobs,expected_jobs,dispatches,queued_at_dispatch,jobs_before_dispatch,monitors;static int64_t monitor_sum;
+static unsigned process_calls,idle_calls;
 static bool testing_lookahead;static unsigned lookahead_reads,descriptor_reads;
 static unsigned apu_reg_r(MCPXAPUState*d,int reg){return d->regs[reg];}
 static void apu_reg_w(MCPXAPUState*d,int reg,unsigned value){d->regs[reg]=value;}
-static unsigned voice_get_mask(MCPXAPUState*d,uint16_t v,unsigned reg,unsigned mask){assert(v<256);descriptor_reads++;if(testing_lookahead)assert(++lookahead_reads<=512);if(reg==3)return mask==2?d->multipass[v]:d->bins[v];assert(mask==1);return reg==1?d->link[v]:d->active[v];}
+static unsigned voice_get_mask(MCPXAPUState*d,uint16_t v,unsigned reg,unsigned mask){
+ assert(v<256);descriptor_reads++;if(testing_lookahead)assert(++lookahead_reads<=512);
+ if(reg==3)return mask==2?d->multipass[v]:d->bins[v];
+ if(reg==2){unsigned state=(d->active[v]?NV_PAVS_VOICE_PAR_STATE_ACTIVE_VOICE:0)|(d->paused[v]?NV_PAVS_VOICE_PAR_STATE_PAUSED:0);return (state&mask)>>__builtin_ctz(mask);}
+ assert(mask==1);return d->link[v];
+}
 static bool is_voice_locked(MCPXAPUState*d,uint16_t v){assert(v<256);return d->locked[v];}
-static void fe_method(MCPXAPUState*d,int method,uint16_t v){(void)d;assert(method==7&&v<256);}
+static void fe_method(MCPXAPUState*d,int method,uint16_t v){(void)d;assert(method==7&&v<256);idle_calls++;}
 static void voice_process(MCPXAPUState*d,int64_t mix[][32],int64_t samples[][2],uint16_t v,int list){
- assert(v<256&&jobs<768&&samples==d->vp.sample_buf);trace[jobs++]=(VoiceWorkItem){v,list};if(list==2&&v==0){mix[1][0]+=mix[0][0];mix[0][0]=0;}mix[0][0]+=v+1+list*256;samples[0][0]+=v+1+list*256;
+ assert(v<256&&jobs<768&&samples==d->vp.sample_buf);process_calls++;if(d->paused[v])return;trace[jobs++]=(VoiceWorkItem){v,list};if(list==2&&v==0){mix[1][0]+=mix[0][0];mix[0][0]=0;}mix[0][0]+=v+1+list*256;samples[0][0]+=v+1+list*256;
 }
 /* HELPERS */
 static void voice_work_dispatch(MCPXAPUState*d,int64_t mix[][32]){dispatches++;queued_at_dispatch=d->vp.voice_work_dispatch.queue_len;jobs_before_dispatch=jobs;voice_work_run_serial(d,mix);}
@@ -92,7 +99,47 @@ static void invalid_list_tests(void){
  }
  printf("PASS: %u invalid list heads/links rejected before descriptor access; upper bits retained, other lists and valid prefixes preserved\n",cases);
 }
-int main(void){lookahead_tests();invalid_list_tests();unsigned cases=0,overflow_cases=0;const unsigned lengths[]={0,1,2,127,128,255,256};
+static void paused_list_tests(void){
+ const unsigned voices[]={0,63,64,255};unsigned cases=0;
+ for(unsigned pause=0;pause<16;pause++)for(unsigned inactive=0;inactive<4;inactive++)
+ for(unsigned locked=0;locked<4;locked++)for(unsigned heads=0;heads<8;heads++)
+ for(unsigned cycle=0;cycle<2;cycle++)for(unsigned monitor=0;monitor<2;monitor++){
+  MCPXAPUState d={0};int64_t mix[32][32]={0};unsigned final[3],idle=0;
+  d.monitor.point=monitor;
+  for(unsigned i=0;i<4;i++){
+   unsigned v=voices[i];d.paused[v]=pause&(1u<<i);
+   d.active[v]=inactive==0||(inactive==1?i%2:inactive==2?!(i%2):i!=0);
+   d.locked[v]=locked==3||(locked==1?i%2:locked==2?!(i%2):false);
+   d.link[v]=i<3?voices[i+1]:cycle?voices[0]:0xffff;
+  }
+  jobs=expected_jobs=dispatches=monitors=process_calls=idle_calls=0;monitor_sum=0;
+  int64_t sum=0,bin=0,consumed=0;
+  for(unsigned list=0;list<3;list++){
+   unsigned v=heads&(1u<<list)?voices[0]:0xffff;d.regs[list*3]=v;
+   for(unsigned count=0;v!=0xffff&&count<256;count++){
+    if(!d.active[v])idle++;
+    else if(!d.locked[v]&&!d.paused[v]){
+     expected[expected_jobs++]=(VoiceWorkItem){v,list};
+     if(list==2&&v==0){consumed+=bin;bin=0;}
+     bin+=v+1+list*256;sum+=v+1+list*256;
+    }
+    v=d.link[v];
+   }
+   final[list]=v;
+  }
+  mcpx_apu_vp_frame(&d,mix);
+  assert(jobs==expected_jobs&&process_calls==jobs&&idle_calls==idle&&dispatches==1&&!d.vp.voice_work_dispatch.queue_len);
+  for(unsigned i=0;i<jobs;i++)assert(trace[i].voice==expected[i].voice&&trace[i].list==expected[i].list);
+  if(jobs>256)assert(jobs_before_dispatch==jobs&&!queued_at_dispatch);
+  else assert(!jobs_before_dispatch&&queued_at_dispatch==jobs);
+  assert(monitors==monitor&&mix[0][0]==(monitor?0:bin)&&mix[1][0]==(monitor?0:consumed));
+  assert(d.vp.sample_buf[0][0]==(monitor?0:sum));if(monitor)assert(monitor_sum==sum);
+  for(unsigned list=0;list<3;list++)assert(d.regs[list*3+1]==final[list]);
+  cases++;
+ }
+ printf("PASS: %u paused-list schedules; no paused jobs, preserved links/idle traps/order/mixes and bounded shared/cyclic lists\n",cases);
+}
+int main(void){lookahead_tests();invalid_list_tests();paused_list_tests();unsigned cases=0,overflow_cases=0;const unsigned lengths[]={0,1,2,127,128,255,256};
  for(unsigned li=0;li<ARRAY_SIZE(lengths);li++)for(unsigned heads=0;heads<8;heads++)
  for(unsigned cycle=0;cycle<2;cycle++)for(unsigned monitor=0;monitor<2;monitor++)for(unsigned skip=0;skip<2;skip++){
   MCPXAPUState d={0};int64_t mix[32][32]={0};unsigned length=lengths[li];

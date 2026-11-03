@@ -17,11 +17,8 @@ static void lr_gpu_ram_drop(uintptr_t cmd){(void)cmd;drops++;}
 static int status[2];static bool drain_expected,draining;static unsigned waited_fence;
 static int vkGetFenceStatus(int device,unsigned fence){assert(device==9&&fence<2);polls++;return status[fence];}
 static int vkWaitForFences(int device,unsigned count,unsigned*fence,unsigned all,uint64_t timeout){assert(device==9&&count==1&&*fence<2&&all==1&&timeout==UINT64_MAX);if(draining)assert(!drops&&!retirements&&!resolves);waited_fence=*fence;waits++;status[*fence]=0;return 0;}
-static int64_t g_get_monotonic_time(void){return ++clock_now;}
-static void ema16(int *p,int64_t value){assert(value>0);*p+=(int)value;}
 static void trash_drain_retired(PGRAPHVkState*r){assert(drain_expected);retirements++;(void)r;}
 static void pgraph_vk_image_pool_flush(PGRAPHVkState*r){(void)r;pool_flushes++;}
-static void frame_gpu_resolve_until(PGRAPHVkState*r,unsigned end){assert(end==r->frame_gpu.w||end==r->frame_gpu.w_end[0]||end==r->frame_gpu.w_end[1]);resolves++;}
 static void pgraph_vk_finish(PGRAPHState*pg,unsigned why){
  PGRAPHVkState*r=pg->vk_renderer_state;assert(why==11&&r->in_command_buffer);
  unsigned next=r->slot^1;assert(!r->slot_fence_pending[next]);
@@ -42,7 +39,7 @@ int main(void){
   bool attempt=recording&&count>=127;bool ready=!pending||gpu==0;drain_expected=attempt&&pending&&gpu==0;
   eager_submit_after_draw(&pg);
   assert(polls==(unsigned)(attempt&&pending));assert(!waits);
-  assert(submits==(unsigned)(attempt&&ready));assert(retirements==(unsigned)drain_expected&&resolves==retirements&&drops==retirements*2);
+  assert(submits==(unsigned)(attempt&&ready));assert(retirements==(unsigned)drain_expected&&resolves==0&&drops==retirements*2);
   assert(r.eager_draw_count==(!recording?count:attempt?(ready?0:128):count+1));
   assert(r.settled_submit==(drain_expected?r.slot_submit[next]:r.submit_count-(submits?1:0)-4));
   if(submits){
@@ -64,10 +61,10 @@ int main(void){
   status[slot]=delta<=0?VK_SUCCESS:VK_NOT_READY;
   polls=waits=retirements=resolves=drops=clock_now=0;drain_expected=true;
   pgraph_vk_reclaim_command_buffer(&p,reuse);
-  assert(!polls&&waits==(unsigned)(delta>0)&&retirements==1&&resolves==1&&drops==2);
+  assert(!polls&&waits==(unsigned)(delta>0)&&retirements==1&&resolves==0&&drops==2);
   assert(!q.slot_fence_pending[slot]&&q.slot_fence_pending[slot^1]);
   assert(q.settled_submit==(delta>0?q.slot_submit[slot]:(wrap?3u:200u)));
-  assert((q.reuse_wait_us!=0)==(reuse&&delta>0));
+  assert(q.reuse_wait_us==0);
   unsigned before_waits=waits;pgraph_vk_reclaim_command_buffer(&p,reuse);
   assert(waits==before_waits&&retirements==1&&drops==2);serial_cases++;
  }
@@ -82,7 +79,7 @@ int main(void){
   assert(polls==1&&!drops&&!resolves&&pool_flushes==1&&retirements==1);
   unsigned before_polls=polls;
   pgraph_vk_reclaim_command_buffer(&p,true);
-  assert(polls==before_polls&&!waits&&drops==2&&resolves==1&&retirements==2);
+  assert(polls==before_polls&&!waits&&drops==2&&resolves==0&&retirements==2);
   assert(!q.slot_fence_pending[target]&&q.slot_fence_pending[target^1]);retry_cases++;
  }
  unsigned drain_cases=0;
@@ -99,9 +96,9 @@ int main(void){
   assert(!polls&&waits==(unsigned)(expected>=0));
   if(expected>=0)assert(waited_fence==(unsigned)expected);
   assert(drops==2*((unsigned)((mask&1)!=0)+(unsigned)((mask&2)!=0)));
-  assert(!q.slot_fence_pending[0]&&!q.slot_fence_pending[1]&&q.settled_submit==q.submit_count&&retirements==1&&resolves==1);
+  assert(!q.slot_fence_pending[0]&&!q.slot_fence_pending[1]&&q.settled_submit==q.submit_count&&retirements==1&&resolves==0);
   waits=drops=retirements=resolves=0;draining=true;pgraph_vk_wait_all_slots(&q);draining=false;
-  assert(!waits&&!drops&&retirements==1&&resolves==1);drain_cases++;
+  assert(!waits&&!drops&&retirements==1&&resolves==0);drain_cases++;
  }
  unsigned settle_cases=0;
  for(unsigned newer=0;newer<2;newer++)for(unsigned mask=0;mask<4;mask++)
@@ -125,7 +122,7 @@ int main(void){
       (int32_t)(q.slot_submit[slot]-model_settled)<=0){model_pending[slot]=false;expected_retired++;}
   polls=waits=retirements=resolves=drops=teardowns=0;drain_expected=true;
   pgraph_vk_settle_poll(&p);
-  assert(polls==expected_polls&&!waits&&retirements==expected_retired&&resolves==expected_retired&&drops==2*expected_retired);
+  assert(polls==expected_polls&&!waits&&retirements==expected_retired&&resolves==0&&drops==2*expected_retired);
   assert(q.slot_fence_pending[0]==model_pending[0]&&q.slot_fence_pending[1]==model_pending[1]&&q.settled_submit==model_settled);
   assert(teardowns==(unsigned)(!recording&&!model_pending[0]&&!model_pending[1]));
   unsigned old_retired=retirements,old_drops=drops;polls=0;pgraph_vk_settle_poll(&p);assert(retirements==old_retired&&drops==old_drops&&!waits);
@@ -141,7 +138,7 @@ int main(void){
   polls=waits=retirements=resolves=drops=submits=0;drain_expected=true;
   eager_submit_after_draw(&p);bool complete=delta>=0||ready;
   assert(polls==(unsigned)(delta<0)&&!waits&&submits==(unsigned)complete);
-  assert(retirements==(unsigned)complete&&resolves==retirements&&drops==retirements*2);
+  assert(retirements==(unsigned)complete&&resolves==0&&drops==retirements*2);
   assert(q.slot_fence_pending[next]==!complete&&q.eager_draw_count==(complete?0u:128u));
   eager_proof_cases++;
  }

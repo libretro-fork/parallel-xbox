@@ -27,6 +27,7 @@
 #include "qemu/osdep.h"
 #include "qemu/timer.h"
 #include "system/cpus.h"
+#include "system/rtc.h"
 #include "chihiro-an2131.h"
 #include "chihiro-jvs.h"
 #include "chihiro-driveboard-sega838.h"
@@ -109,8 +110,9 @@ static void i2c_select_device(AN2131State *s, uint8_t addr7)
         s->i2c.eeprom_size = s->ic11_size;
         s->i2c.addr_bytes_needed = 1;   /* ic11, the baseboard settings EEPROM */
     } else if (addr7 == 0x32) {
-        time_t now = time(NULL);
-        struct tm *t = localtime(&now);
+        struct tm calendar;
+        qemu_get_timedate(&calendar, 0);
+        const struct tm *t = &calendar;
         #define TO_BCD(v) (uint8_t)(((v)/10 << 4) | ((v)%10))
         s->rtc_regs[0] = TO_BCD(t->tm_sec);
         s->rtc_regs[1] = TO_BCD(t->tm_min);
@@ -1546,43 +1548,11 @@ static int an2131_idle_turn(AN2131State *s, int budget_left)
     return (int)(k * turn_c);
 }
 
-/* XEMU_TBRATE: what the two 8051s cost the main thread, which runs them
- * under the big lock, so the vCPU cannot take it meanwhile. */
-static void an2131_probe_account(int64_t t0, int cycles, int max_cycles,
-                                 int skipped)
-{
-    static int64_t ns, start;
-    static uint64_t runs, cyc, full, idle;
-    int64_t now = get_clock();
-
-    ns += now - t0;
-    runs++;
-    cyc += cycles;
-    idle += skipped;
-    full += cycles >= max_cycles;
-    if (!start) {
-        start = now;
-    } else if (now - start >= 5000000000LL) {
-        double sec = (now - start) / 1e9;
-        fprintf(stderr, "TBRATE: the 8051s ran %.0f ms/s on the main thread, "
-                "under the big lock (%.1f k runs/s, %.2f M cycles/s of which "
-                "%.2f M charged for idle turns not run, %.0f%% of the runs "
-                "used their whole budget; main thread %d)\n",
-                ns / sec / 1e6, runs / sec / 1e3, cyc / sec / 1e6,
-                idle / sec / 1e6, 100.0 * full / runs, qemu_get_thread_id());
-        fflush(stderr);
-        start = now;
-        ns = 0;
-        runs = cyc = full = idle = 0;
-    }
-}
-
 int an2131_run(AN2131State *s, int max_cycles)
 {
     if (!s->cpu_running) return 0;
 
-    int64_t probe_t0 = unlikely(xemu_tbrate_enabled()) ? get_clock() : 0;
-    int total = 0, skipped = 0;
+    int total = 0;
     /* A turn is only trusted if it ran whole within this call. */
     s->idle.hash = 0;
     while (total < max_cycles) {
@@ -1614,10 +1584,6 @@ int an2131_run(AN2131State *s, int max_cycles)
         s->steps++;
         int idle = an2131_idle_turn(s, max_cycles - total);
         total += idle;
-        skipped += idle;
-    }
-    if (probe_t0) {
-        an2131_probe_account(probe_t0, total, max_cycles, skipped);
     }
     return total;
 }

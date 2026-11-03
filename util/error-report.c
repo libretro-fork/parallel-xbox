@@ -149,13 +149,6 @@ static void print_loc(void)
 G_GNUC_PRINTF(2, 0)
 static void vreport(report_type type, const char *fmt, va_list ap)
 {
-    char timestr[40];
-
-    if (message_with_timestamp && !monitor_cur() &&
-        qemu_format_log_timestamp(timestr, sizeof(timestr), g_get_real_time())) {
-        error_printf("%s ", timestr);
-    }
-
     /* Only prepend guest name if -msg guest-name and -name guest=... are set */
     if (error_with_guestname && error_guest_name && !monitor_cur()) {
         error_printf("%s ", error_guest_name);
