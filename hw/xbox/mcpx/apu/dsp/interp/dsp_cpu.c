@@ -169,6 +169,16 @@ static bool match_shift_control(uint32_t op)
     return ((op >> 1) & 7) >= 2;
 }
 
+static bool match_insert_source(uint32_t op)
+{
+    return ((op >> 4) & 7) >= 2;
+}
+
+static bool match_insert_controls(uint32_t op)
+{
+    return match_insert_source(op) && match_shift_control(op);
+}
+
 static const OpcodeEntry nonparallel_opcodes[] = {
     { "0000000101iiiiii1000d000", "add #xx, D", dis_add_imm, emu_add_imm },
     { "00000001010000001100d000", "add #xxxx, D", dis_add_long, emu_add_long },
@@ -260,8 +270,8 @@ static const OpcodeEntry nonparallel_opcodes[] = {
     { "0000110000011000100s000D", "extractu #CO, S2, D", dis_extractu_imm, emu_extractu_imm },
     { "000000000000000000000101", "ill", NULL, emu_illegal },
     { "00000000000000000000100d", "inc D", NULL, emu_inc },
-    { "00001100000110110qqqSSSD", "insert S1, S2, D", NULL, NULL },
-    { "00001100000110010qqq000D", "insert #CO, S2, D", NULL, NULL },
+    { "00001100000110110qqqSSSD", "insert S1, S2, D", dis_insert_reg, emu_insert_reg, match_insert_controls },
+    { "00001100000110010qqq000D", "insert #CO, S2, D", dis_insert_imm, emu_insert_imm, match_insert_source },
     { "00001110CCCCaaaaaaaaaaaa", "jcc xxx", dis_jcc_imm, emu_jcc_imm },
     { "0000101011MMMRRR1010CCCC", "jcc ea", dis_jcc_ea, emu_jcc_ea, match_MMMRRR },
     { "0000101001MMMRRR1S00bbbb", "jclr #n, [X or Y]:ea, xxxx", dis_jclr_ea, emu_jclr_ea, match_MMMRRR },

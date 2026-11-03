@@ -31,6 +31,8 @@
 
 - Read-only QCOW2 images skip the write-cluster workspace and release metadata decode scratch after open, retaining two fewer cluster-sized buffers without adding read-time allocations.
 
+- DSP: execute immediate/register INSERT natively, preserving surrounding bits and handling A0/B0 sources, operand aliases and sixteen-bit offset bias.
+
 - DSP: execute immediate and register-controlled signed EXTRACT natively, including field sign extension and aliased controls in normal/sixteen-bit layouts.
 
 - Keep adjacent file buffers coalesced across empty vector descriptors, avoiding split fallback reads/writes and mapped copy calls without staging or descriptor rewrites.

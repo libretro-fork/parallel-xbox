@@ -902,7 +902,7 @@ static void emit_write_reg(Tr *t, int r, int val)
 /* --- the data ALU --- */
 
 enum {
-    OP_EXTRACT, OP_EXTRACTU,
+    OP_INSERT, OP_EXTRACT, OP_EXTRACTU,
     OP_CLB,
     OP_ASL_R, OP_ASR_R, /* register-controlled arithmetic shifts */
     OP_ASL_N, OP_ASR_N, /* by a count (shift), of accumulator s into d */
@@ -924,7 +924,7 @@ enum {
 typedef struct AluOp {
     int op;
     int src;            /* SRC_*; for the multiplies, the first factor */
-    int src2;           /* the multiplies' second factor */
+    int src2;           /* second multiply factor, or INSERT control register/SRC_IMM */
     bool minus;         /* the multiplies' sign */
     bool mul_imm;       /* first multiply factor is the immediate word */
     int d;              /* 0: A, 1: B */
@@ -1454,6 +1454,74 @@ static void emit_alu(Tr *t, const AluOp *a)
         acc_written(t, a->d);
         emit_sr_result(t, SR_EUNZ | SR_V | SR_C | 0xFFFF0000u, T4, acc, a->d);
         break;
+
+    case OP_INSERT: {
+        acc_load(t, a->d);
+        if (a->src == DSP_REG_A0 || a->src == DSP_REG_B0) acc_load(t, a->src - DSP_REG_A0);
+        if (a->src2 == DSP_REG_A1 || a->src2 == DSP_REG_B1) acc_load(t, a->src2 - DSP_REG_A1);
+        if (a->src == DSP_REG_A0 || a->src == DSP_REG_B0) {
+            h_mov_rr(e, 1, T4, acc_reg(a->src - DSP_REG_A0));
+            h_and_ri(e, 0, T4, 0xffffff);
+        } else h_ld32(e, T4, REG_CORE, REGOFF(a->src));
+        if (a->src2 == SRC_IMM) h_mov_ri(e, T3, a->imm);
+        else if (a->src2 == DSP_REG_A1 || a->src2 == DSP_REG_B1) {
+            h_mov_rr(e, 1, T3, acc_reg(a->src2 - DSP_REG_A1));
+            h_shr_ri(e, 1, T3, 24);
+        } else h_ld32(e, T3, REG_CORE, REGOFF(a->src2));
+        h_mov_rr(e, 1, T0, acc);
+        h_shl_ri(e, 1, T0, 8);
+        h_shr_ri(e, 1, T0, 8);
+        h_ld32(e, T1, REG_CORE, REGOFF(DSP_REG_SR));
+        h_test_ri(e, 0, T1, 1u << DSP_SR_SA);
+        size_t ordinary = h_jcc(e, HC_EQ);
+        h_shr_ri(e, 0, T4, 8);
+        h_mov_rr(e, 1, T2, T0);
+        h_shr_ri(e, 1, T2, 8);
+        h_and_ri(e, 0, T2, 0xffff);
+        h_shr_ri(e, 1, T0, 32);
+        h_shl_ri(e, 1, T0, 16);
+        h_or_rr(e, 1, T0, T2);
+        h_mov_rr(e, 0, T2, T3);
+        h_shr_ri(e, 0, T2, 16);
+        h_mov_rr(e, 0, T1, T3);
+        h_shr_ri(e, 0, T1, 8);
+        h_sub_ri(e, 0, T1, 16);
+        size_t decoded = h_jmp(e);
+        h_patch(e, ordinary, e->len);
+        h_mov_rr(e, 0, T2, T3);
+        h_shr_ri(e, 0, T2, 12);
+        h_mov_rr(e, 0, T1, T3);
+        h_patch(e, decoded, e->len);
+        h_and_ri(e, 0, T1, 63);
+        h_mov_rr(e, 0, T3, T1);
+        h_and_ri(e, 0, T2, 63);
+        h_mov_rr(e, 0, T1, T2);
+        h_mov_ri(e, T2, 1);
+        h_shl_r1(e, 1, T2);
+        h_sub_ri(e, 1, T2, 1);
+        h_and_rr(e, 1, T4, T2);
+        h_mov_rr(e, 0, T1, T3);
+        h_shl_r1(e, 1, T4);
+        h_shl_r1(e, 1, T2);
+        h_not(e, 1, T2);
+        h_and_rr(e, 1, T0, T2);
+        h_or_rr(e, 1, T0, T4);
+        h_ld32(e, T3, REG_CORE, REGOFF(DSP_REG_SR));
+        h_test_ri(e, 0, T3, 1u << DSP_SR_SA);
+        size_t packed = h_jcc(e, HC_EQ);
+        h_mov_rr(e, 1, T2, T0);
+        h_and_ri(e, 0, T2, 0xffff);
+        h_shl_ri(e, 1, T2, 8);
+        h_shr_ri(e, 1, T0, 16);
+        h_shl_ri(e, 1, T0, 32);
+        h_or_rr(e, 1, T0, T2);
+        h_patch(e, packed, e->len);
+        emit_sext56(e, T0);
+        h_mov_rr(e, 1, acc, T0);
+        acc_written(t, a->d);
+        emit_sr_result(t, SR_EUNZ | SR_V | SR_C, -1, acc, a->d);
+        break;
+    }
 
     case OP_EXTRACT:
     case OP_EXTRACTU: {
@@ -2272,6 +2340,18 @@ static bool np_alu(const Insn *in, AluOp *a)
         a->op = name[2] == 'r' ? OP_LSR : OP_LSL;
         a->d = inst & 1;
         a->shift = (inst >> 1) & 31;
+        return true;
+    }
+    if (!strcmp(name, "insert #CO, S2, D") || !strcmp(name, "insert S1, S2, D")) {
+        static const int controls[] = {DSP_REG_A1, DSP_REG_B1, DSP_REG_X0,
+                                       DSP_REG_X1, DSP_REG_Y0, DSP_REG_Y1};
+        static const int sources[] = {DSP_REG_A0, DSP_REG_B0, DSP_REG_X0,
+                                      DSP_REG_X1, DSP_REG_Y0, DSP_REG_Y1};
+        a->op = OP_INSERT;
+        a->d = inst & 1;
+        a->src = sources[((inst >> 4) & 7) - 2];
+        a->src2 = strchr(name, '#') ? SRC_IMM : controls[((inst >> 1) & 7) - 2];
+        a->imm = in->ext;
         return true;
     }
     if (!strcmp(name, "extractu #CO, S2, D") || !strcmp(name, "extractu S1, S2, D") ||
