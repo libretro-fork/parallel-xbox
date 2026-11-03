@@ -494,6 +494,11 @@ static struct
  * backend runs on. */
 static unsigned ec_spin_for_budget(unsigned budget_us)
 {
+#if defined(RETRO_EVENTCOUNT_FIXED_SPIN)
+   /* Frame-driven cores use a work count, never host-time calibration. */
+   return budget_us ? (RETRO_EVENTCOUNT_FIXED_SPIN > EC_SPIN_MAX ?
+         EC_SPIN_MAX : RETRO_EVENTCOUNT_FIXED_SPIN) : 0;
+#else
    const unsigned  samples = 3;
    const unsigned  iters   = 2048;
    LARGE_INTEGER   freq;
@@ -535,6 +540,7 @@ static unsigned ec_spin_for_budget(unsigned budget_us)
          return EC_SPIN_MAX;
       return (unsigned)n;
    }
+#endif
 }
 
 static void ec_win32_resolve(void)
@@ -1590,6 +1596,11 @@ void retro_eventcount_cancel_wait(retro_eventcount_t *ec)
  * times its own, on the monotonic clock. */
 static unsigned ec_linux_spin_for_budget(unsigned budget_us)
 {
+#if defined(RETRO_EVENTCOUNT_FIXED_SPIN)
+   /* Frame-driven cores use a work count, never host-time calibration. */
+   return budget_us ? (RETRO_EVENTCOUNT_FIXED_SPIN > EC_SPIN_MAX ?
+         EC_SPIN_MAX : RETRO_EVENTCOUNT_FIXED_SPIN) : 0;
+#else
    const unsigned  samples = 3;
    const unsigned  iters   = 2048;
    double          best    = 0.0;
@@ -1628,6 +1639,7 @@ static unsigned ec_linux_spin_for_budget(unsigned budget_us)
          return EC_SPIN_MAX;
       return (unsigned)n;
    }
+#endif
 }
 
 static void ec_linux_spin_init(void)

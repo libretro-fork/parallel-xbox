@@ -526,12 +526,11 @@ gboolean g_main_context_iteration(GMainContext *context, gboolean may_block)
         alloc = n;
         fds = g_renew(GPollFD, fds, alloc);
     }
-    if (!may_block || __atomic_load_n(&c->wakeup, __ATOMIC_RELAXED)) {
-        timeout = 0;
-    } else if (timeout < 0 || timeout > 10) {
-        /* no wakeup pipe: look again for g_main_context_wakeup soon */
-        timeout = 10;
-    }
+    /* The frontend drives this compatibility helper. Never turn a future
+     * service-clock deadline into a host sleep or periodic wakeup. QEMU's
+     * descriptor wait path handles actual I/O completion notifications. */
+    (void)may_block;
+    timeout = 0;
     if (n || timeout) {
         g_poll(fds, (guint)n, timeout);
     }

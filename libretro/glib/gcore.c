@@ -1417,9 +1417,25 @@ guint g_get_num_processors(void)
 
 /* ---- time ----------------------------------------------------------------- */
 
+/* Housekeeping time is frontend progress, not elapsed host time. The
+ * frontend advances it once per active retro_run; state loads never rewind
+ * it. Readers on other threads only observe a published scalar. */
+static gint64 g_libretro_time_ns;
+
+gint64 g_libretro_get_time_ns(void)
+{
+    return __atomic_load_n(&g_libretro_time_ns, __ATOMIC_ACQUIRE);
+}
+
+void g_libretro_advance_time_ns(gint64 elapsed)
+{
+    g_return_if_fail(elapsed >= 0);
+    __atomic_fetch_add(&g_libretro_time_ns, elapsed, __ATOMIC_RELEASE);
+}
+
 gint64 g_get_monotonic_time(void)
 {
-    return (gint64)cpu_features_get_time_usec();
+    return g_libretro_get_time_ns() / 1000;
 }
 
 void g_usleep(gulong microseconds)

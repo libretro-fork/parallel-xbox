@@ -3271,6 +3271,16 @@ static void lr_present_idle(void)
     lr_present_audio(false);
 }
 
+/* Runtime-only housekeeping time: monotonic frontend progress, independent
+ * of guest-clock rewinds. Carry the NTSC fraction without host timestamps. */
+static void lr_advance_service_clock(void)
+{
+    static uint32_t remainder;
+    remainder += LR_FRAME_NS_NUM;
+    g_libretro_advance_time_ns(remainder / LR_FRAME_NS_DEN);
+    remainder %= LR_FRAME_NS_DEN;
+}
+
 /*
  * One retro_run, one frame: the input polled now goes into a frame of guest
  * time run here, on this thread, and when it is done its picture and its
@@ -3314,6 +3324,7 @@ RETRO_API void retro_run(void)
         emu_initialized = true;
     }
 
+    lr_advance_service_clock();
     update_aspect();
 
     {

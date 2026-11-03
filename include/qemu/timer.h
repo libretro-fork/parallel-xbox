@@ -501,212 +501,25 @@ static inline int64_t get_max_clock_jump(void)
  * Low level clock functions
  */
 
-/* get host real time in nanosecond */
-static inline int64_t get_clock_realtime(void)
-{
-    struct timeval tv;
-
-    gettimeofday(&tv, NULL);
-    return tv.tv_sec * 1000000000LL + (tv.tv_usec * 1000);
-}
-
+/* QEMU's legacy host-clock interfaces observe frontend service time in
+ * this core. No calibration or host timestamp reads are involved. */
+int64_t qemu_libretro_service_clock_ns(void);
 extern int64_t clock_start;
 
-/* Warning: don't insert tracepoints into these functions, they are
-   also used by simpletrace backend and tracepoints would cause
-   an infinite recursion! */
-#ifdef _WIN32
-extern int64_t clock_freq;
+static inline int64_t get_clock_realtime(void)
+{
+    return qemu_libretro_service_clock_ns();
+}
 
 static inline int64_t get_clock(void)
 {
-    LARGE_INTEGER ti;
-    QueryPerformanceCounter(&ti);
-    return muldiv64(ti.QuadPart, NANOSECONDS_PER_SECOND, clock_freq);
+    return qemu_libretro_service_clock_ns();
 }
 
-#else
-
-extern int use_rt_clock;
-
-static inline int64_t get_clock(void)
-{
-    if (use_rt_clock) {
-        struct timespec ts;
-        clock_gettime(CLOCK_MONOTONIC, &ts);
-        return ts.tv_sec * 1000000000LL + ts.tv_nsec;
-    } else {
-        /* XXX: using gettimeofday leads to problems if the date
-           changes, so it should be avoided. */
-        return get_clock_realtime();
-    }
-}
-#endif
-
-/*******************************************/
-/* host CPU ticks (if available) */
-
-#if defined(_ARCH_PPC64)
-
+/* Kept for legacy helpers; the core never samples a host cycle counter. */
 static inline int64_t cpu_get_host_ticks(void)
 {
-    int64_t retval;
-    /* This reads timebase in one 64bit go and includes Cell workaround from:
-       http://ozlabs.org/pipermail/linuxppc-dev/2006-October/027052.html
-    */
-    __asm__ __volatile__ ("mftb    %0\n\t"
-                          "cmpwi   %0,0\n\t"
-                          "beq-    $-8"
-                          : "=r" (retval));
-    return retval;
+    return qemu_libretro_service_clock_ns();
 }
-
-#elif defined(__i386__)
-
-static inline int64_t cpu_get_host_ticks(void)
-{
-    int64_t val;
-    asm volatile ("rdtsc" : "=A" (val));
-    return val;
-}
-
-#elif defined(__x86_64__)
-
-static inline int64_t cpu_get_host_ticks(void)
-{
-    uint32_t low,high;
-    int64_t val;
-    asm volatile("rdtsc" : "=a" (low), "=d" (high));
-    val = high;
-    val <<= 32;
-    val |= low;
-    return val;
-}
-
-#elif defined(__hppa__)
-
-static inline int64_t cpu_get_host_ticks(void)
-{
-    int val;
-    asm volatile ("mfctl %%cr16, %0" : "=r"(val));
-    return val;
-}
-
-#elif defined(__s390__)
-
-static inline int64_t cpu_get_host_ticks(void)
-{
-    int64_t val;
-    asm volatile("stck 0(%1)" : "=m" (val) : "a" (&val) : "cc");
-    return val;
-}
-
-#elif defined(__sparc__)
-
-static inline int64_t cpu_get_host_ticks (void)
-{
-#if defined(_LP64)
-    uint64_t        rval;
-    asm volatile("rd %%tick,%0" : "=r"(rval));
-    return rval;
-#else
-    /* We need an %o or %g register for this.  For recent enough gcc
-       there is an "h" constraint for that.  Don't bother with that.  */
-    union {
-        uint64_t i64;
-        struct {
-            uint32_t high;
-            uint32_t low;
-        }       i32;
-    } rval;
-    asm volatile("rd %%tick,%%g1; srlx %%g1,32,%0; mov %%g1,%1"
-                 : "=r"(rval.i32.high), "=r"(rval.i32.low) : : "g1");
-    return rval.i64;
-#endif
-}
-
-#elif defined(__mips__) && \
-    ((defined(__mips_isa_rev) && __mips_isa_rev >= 2) || defined(__linux__))
-/*
- * binutils wants to use rdhwr only on mips32r2
- * but as linux kernel emulate it, it's fine
- * to use it.
- *
- */
-#define MIPS_RDHWR(rd, value) {                         \
-        __asm__ __volatile__ (".set   push\n\t"         \
-                              ".set mips32r2\n\t"       \
-                              "rdhwr  %0, "rd"\n\t"     \
-                              ".set   pop"              \
-                              : "=r" (value));          \
-    }
-
-static inline int64_t cpu_get_host_ticks(void)
-{
-    /* On kernels >= 2.6.25 rdhwr <reg>, $2 and $3 are emulated */
-    uint32_t count;
-    static uint32_t cyc_per_count = 0;
-
-    if (!cyc_per_count) {
-        MIPS_RDHWR("$3", cyc_per_count);
-    }
-
-    MIPS_RDHWR("$2", count);
-    return (int64_t)(count * cyc_per_count);
-}
-
-#elif defined(__alpha__)
-
-static inline int64_t cpu_get_host_ticks(void)
-{
-    uint64_t cc;
-    uint32_t cur, ofs;
-
-    asm volatile("rpcc %0" : "=r"(cc));
-    cur = cc;
-    ofs = cc >> 32;
-    return cur - ofs;
-}
-
-#elif defined(__riscv) && __riscv_xlen == 32
-static inline int64_t cpu_get_host_ticks(void)
-{
-    uint32_t lo, hi, tmph;
-    do {
-        asm volatile("RDTIMEH %0\n\t"
-                     "RDTIME %1\n\t"
-                     "RDTIMEH %2"
-                     : "=r"(hi), "=r"(lo), "=r"(tmph));
-    } while (unlikely(tmph != hi));
-    return lo | (uint64_t)hi << 32;
-}
-
-#elif defined(__riscv) && __riscv_xlen > 32
-static inline int64_t cpu_get_host_ticks(void)
-{
-    int64_t val;
-
-    asm volatile("RDTIME %0" : "=r"(val));
-    return val;
-}
-
-#elif defined(__loongarch64)
-static inline int64_t cpu_get_host_ticks(void)
-{
-    uint64_t val;
-
-    asm volatile("rdtime.d %0, $zero" : "=r"(val));
-    return val;
-}
-
-#else
-/* The host CPU doesn't have an easily accessible cycle counter.
-   Just return a monotonically increasing value.  This will be
-   totally wrong, but hopefully better than nothing.  */
-static inline int64_t cpu_get_host_ticks(void)
-{
-    return get_clock();
-}
-#endif
 
 #endif

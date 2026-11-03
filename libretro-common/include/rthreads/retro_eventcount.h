@@ -287,6 +287,9 @@ bool retro_eventcount_commit_wait_timeout(retro_eventcount_t *ec,
  * on Windows it is only meaningful after the first
  * retro_eventcount_init().
  */
+/* RETRO_EVENTCOUNT_FIXED_SPIN selects an iteration-only default at build
+ * time. It bypasses host clock calibration; an explicit iteration-count
+ * environment override remains available. */
 unsigned retro_eventcount_spin_iters(void);
 
 /**

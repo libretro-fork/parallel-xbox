@@ -21,6 +21,7 @@
 
 #include "nv2a_int.h"
 #include "libretro/dsp-ownership.h"
+#include <rthreads/rthreads.h>
 
 typedef struct RAMHTEntry {
     uint32_t handle;
@@ -155,8 +156,8 @@ static bool pfifo_puller_should_stall(NV2AState *d)
  * GPU works (ui/libretro.c), and is woken when this thread parks */
 retro_atomic_int_t nv2a_libretro_waiter;
 
-/* Idle report checks never wait inside the graphics driver. A bounded
- * eventcount park retries submitted reports even without another guest kick. */
+/* Idle report checks never wait inside the graphics driver. Submitted
+ * reports are retried after yielding, without a host-time polling interval. */
 static inline void pfifo_idle_wait(NV2AState *d)
 {
     const PGRAPHRenderer *renderer = pgraph_renderer(&d->pgraph);
@@ -222,10 +223,11 @@ static inline void pfifo_idle_wait(NV2AState *d)
         }
         qemu_mutex_unlock(&d->pfifo.lock);
         if (report_pending) {
-            /* No completion callback is exposed by GL/Vulkan queries. Retry
-             * with a 100 us timeout request; kicks interrupt the park.
-             * Keep guest_done unchanged until the report has been served. */
-            retro_eventcount_commit_wait_timeout(&d->pfifo.fifo_ec, key, 100);
+            /* Query APIs expose no completion callback. Yield and retry the
+             * readiness check without a host-time interval. A kick remains
+             * published for the next pass; guest_done stays unchanged. */
+            retro_eventcount_cancel_wait(&d->pfifo.fifo_ec);
+            sthread_yield();
         } else {
             retro_eventcount_commit_wait(&d->pfifo.fifo_ec, key);
         }

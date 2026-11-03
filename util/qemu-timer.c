@@ -151,7 +151,9 @@ static void qemu_clock_init(QEMUClockType type, QEMUTimerListNotifyCB *notify_cb
 
 bool qemu_clock_use_for_deadline(QEMUClockType type)
 {
-    return !(icount_enabled() && (type == QEMU_CLOCK_VIRTUAL));
+    /* All clocks advance through guest work or frontend frames. A future
+     * emulated deadline must never become a host sleep duration. */
+    return false;
 }
 
 void qemu_clock_notify(QEMUClockType type)
@@ -309,30 +311,16 @@ int qemu_poll_ns(GPollFD *fds, guint nfds, int64_t timeout)
     }
 #else
 
-    /* Timers are facilitated by this function. A poll honours only whole
-     * milliseconds, so a nearer deadline is busy-waited, or, with CPU boost
-     * on Windows 10 1803+, woken by a high-resolution waitable timer polled
-     * with the handles. */
-    if (timeout > 0) {
+    /* Relative waits are only for explicit host wait limits. Core timer
+     * deadlines are dispatched by frontend progress, never busy-waited. */
 #ifdef _WIN32
-        if (xemu_cpu_boost) {
-            int ret = xbox_win_poll_hr(fds, nfds, timeout);
-            if (ret != XBOX_NO_HR_TIMER) {
-                return ret;
-            }
-        }
-#endif
-        #define XBOX_BUSYWAIT_THRESHOLD_NS 1250000
-        if (timeout < XBOX_BUSYWAIT_THRESHOLD_NS) {
-            int64_t now = qemu_clock_get_ns(QEMU_CLOCK_REALTIME);
-            int64_t end = now + timeout;
-            while (now < end) {
-                now = qemu_clock_get_ns(QEMU_CLOCK_REALTIME);
-            }
-            timeout = 0;
+    if (timeout > 0 && xemu_cpu_boost) {
+        int ret = xbox_win_poll_hr(fds, nfds, timeout);
+        if (ret != XBOX_NO_HR_TIMER) {
+            return ret;
         }
     }
-
+#endif
     return g_poll(fds, nfds, qemu_timeout_ns_to_ms(timeout));
 #endif
 }

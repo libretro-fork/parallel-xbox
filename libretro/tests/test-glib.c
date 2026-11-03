@@ -853,11 +853,13 @@ static void test_main(void)
         g_source_unref(to);
     }
     start = g_get_monotonic_time();
-    while (!timeout_runs && g_get_monotonic_time() - start < 1000000) {
-        g_main_context_iteration(c, TRUE);
-    }
+    g_libretro_advance_time_ns(19000000);
+    g_main_context_iteration(c, FALSE);
+    CHECK(timeout_runs == 0);
+    g_libretro_advance_time_ns(1000000);
+    g_main_context_iteration(c, FALSE);
     CHECK(timeout_runs == 1);
-    CHECK(g_get_monotonic_time() - start >= 19000);
+    CHECK(g_get_monotonic_time() - start == 20000);
 
     g_source_destroy(&ts->source);
     CHECK(g_source_is_destroyed(&ts->source));

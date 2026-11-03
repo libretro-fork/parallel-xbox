@@ -103,7 +103,7 @@ int main(void){
   reset();clock_deadline=deadlines[d];socket_ms=2;
   if(fd)ioctx.fds=true;else main_loop_poll_notifiers.notifiers.empty=false;
   if(nonblock)main_loop_wait(true);else main_loop_wait_timeout(bounds[n]);
-  int64_t want=qemu_soonest_timeout(nonblock?0:fd?-1:2000000,clock_deadline);
+  int64_t want=qemu_soonest_timeout(nonblock?0:-1,clock_deadline);
   if(!nonblock)want=qemu_soonest_timeout(want,bounds[n]);
   assert(polls==1 && last_poll==want && !prepared && timers==1);cases++;
  }

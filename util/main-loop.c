@@ -95,13 +95,10 @@ static retro_eventcount_t main_loop_ec;
 
 int qemu_init_main_loop(Error **errp)
 {
-    int ret, key;
+    int ret;
     GSource *src;
 
     retro_eventcount_init(&main_loop_ec);
-    /* Create this owner's reusable timed-wait resources before guest boot. */
-    key = retro_eventcount_prepare_wait(&main_loop_ec);
-    retro_eventcount_commit_wait_timeout(&main_loop_ec, key, 1);
     qemu_main_context = g_main_context_new();
     assert(qemu_main_context != NULL);
     g_main_context_push_thread_default(qemu_main_context);
@@ -215,11 +212,9 @@ static void glib_pollfds_fill(int64_t *cur_timeout)
                                  glib_n_poll_fds);
     } while (n != glib_n_poll_fds);
 
-    if (timeout < 0) {
-        timeout_ns = -1;
-    } else {
-        timeout_ns = (int64_t)timeout * (int64_t)SCALE_MS;
-    }
+    /* GSource timeouts use service time: only an already-ready source
+     * shortens an OS wait. Future service time advances in retro_run. */
+    timeout_ns = timeout == 0 ? 0 : -1;
 
     *cur_timeout = qemu_soonest_timeout(timeout_ns, *cur_timeout);
 }
@@ -440,11 +435,8 @@ static int os_host_main_loop_wait(int64_t timeout)
         poll_fds[n_poll_fds + i].events = G_IO_IN;
     }
 
-    if (poll_timeout < 0) {
-        poll_timeout_ns = -1;
-    } else {
-        poll_timeout_ns = (int64_t)poll_timeout * (int64_t)SCALE_MS;
-    }
+    /* Future service-clock deadlines are not host wait durations. */
+    poll_timeout_ns = poll_timeout == 0 ? 0 : -1;
 
     poll_timeout_ns = qemu_soonest_timeout(poll_timeout_ns, timeout);
 
@@ -519,11 +511,9 @@ static void main_loop_wait_poll(int nonblocking, int64_t max_wait_ns)
     /* XXX: separate device handlers from system ones */
     notifier_list_notify(&main_loop_poll_notifiers, &mlpoll);
 
-    if (mlpoll.timeout == UINT32_MAX) {
-        timeout_ns = -1;
-    } else {
-        timeout_ns = (uint64_t)mlpoll.timeout * (int64_t)(SCALE_MS);
-    }
+    /* Socket stacks use guest timers. Honour ready work, but never sleep
+     * for a future emulated timeout while guest/service time is stopped. */
+    timeout_ns = mlpoll.timeout == 0 ? 0 : -1;
 
     timeout_ns = qemu_soonest_timeout(timeout_ns,
                                       qemu_clock_deadline_ns());
