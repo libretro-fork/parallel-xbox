@@ -3500,3 +3500,16 @@ cleanup. Its optional `--gl` mode compares a real Mesa program export against
 a direct driver binary oracle (mock filesystem, real stdio serialization).
 The concurrency fixtures pass ASan/UBSan and native Win64; ThreadSanitizer
 could not start in the current WSL runtime (unexpected memory mapping).
+
+## DSP immediate OR/EOR
+
+`dspnative --immediate-logic` independently checks short/long OR and EOR
+against unsigned 24-bit expectations: all 64 short immediates, long operand
+boundaries, A/B destinations, four scaling modes and CCR preservation.
+Both single execution and REP #2 run on the interpreter and native JIT;
+EOR repetition must cancel the operand. The whole-machine comparison also
+checks instruction lengths and the unaffected accumulator. These 73,728
+cases run in the default native suite and require zero interpreter calls.
+
+Instruction reference: DSP56300 Family Manual, logical OR and EOR:
+https://www.nxp.com/docs/en/reference-manual/DSP56300FM.pdf

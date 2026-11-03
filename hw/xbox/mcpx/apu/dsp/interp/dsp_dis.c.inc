@@ -1761,6 +1761,28 @@ static void dis_norm(dsp_core_t* dsp)
     sprintf(dsp->disasm_str_instr,"norm %s,%s", registers_name[srcreg], registers_name[destreg]);
 }
 
+static void dis_or_imm(dsp_core_t* dsp)
+{
+    uint32_t value = (dsp->disasm_cur_inst >> 8) & BITMASK(6);
+    uint32_t accname = ((dsp->disasm_cur_inst >> 3) & 1) ? DSP_REG_B : DSP_REG_A;
+    sprintf(dsp->disasm_str_instr, "or #$%02x,%s", value, registers_name[accname]);
+}
+
+static void dis_eor_imm(dsp_core_t* dsp)
+{
+    uint32_t value = (dsp->disasm_cur_inst >> 8) & BITMASK(6);
+    uint32_t accname = ((dsp->disasm_cur_inst >> 3) & 1) ? DSP_REG_B : DSP_REG_A;
+    sprintf(dsp->disasm_str_instr, "eor #$%02x,%s", value, registers_name[accname]);
+}
+
+static void dis_eor_long(dsp_core_t* dsp)
+{
+    dsp->disasm_cur_inst_len++;
+    uint32_t value = read_memory_p(dsp, dsp->pc + 1);
+    uint32_t accname = ((dsp->disasm_cur_inst >> 3) & 1) ? DSP_REG_B : DSP_REG_A;
+    sprintf(dsp->disasm_str_instr, "eor #$%06x,%s", value, registers_name[accname]);
+}
+
 static void dis_or_long(dsp_core_t* dsp)
 {
     dsp->disasm_cur_inst_len++;

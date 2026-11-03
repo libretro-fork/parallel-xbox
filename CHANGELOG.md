@@ -29,6 +29,8 @@
 
 ## Unreleased
 
+- Execute short-immediate OR and short/long-immediate EOR natively in the DSP JIT instead of treating them as undefined instructions. Add interpreter/disassembly support and independent result, flag and REP regressions for all short immediates and both accumulators.
+
 - Reuse each DSP instruction's native classification throughout block and REP compilation, avoiding repeated opcode-name scans. Generated execution and interpreter fallback decisions are unchanged.
 
 - Build the Intel macOS core on GitHub's Intel runner pool, so ARM64 runner shortages no longer block both macOS architectures. Apple Silicon builds continue using ARM64 runners.

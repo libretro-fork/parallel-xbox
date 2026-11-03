@@ -1575,7 +1575,11 @@ static void emit_alu(Tr *t, const AluOp *a)
             }
             break;
         case OP_EOR:
-            h_xor_r_mem32(e, T0, REG_CORE, REGOFF(a->src));
+            if (a->src == SRC_IMM) {
+                h_xor_ri(e, 0, T0, a->imm & 0xFFFFFF);
+            } else {
+                h_xor_r_mem32(e, T0, REG_CORE, REGOFF(a->src));
+            }
             break;
         }
         emit_a1_result(t, a->d, SR_N | SR_Z | SR_V, -1);
@@ -1987,7 +1991,7 @@ enum {
     NP_MOVE_X_LONG,     /* move X:(Rn + xxxx) <-> R, a second word */
     NP_LUA,
     NP_LUA_REL,
-    NP_ALU_IMM,         /* add/cmp/and #, asl/asr #ii: an AluOp (np_alu) */
+    NP_ALU_IMM,         /* immediate arithmetic/logic and shifts: an AluOp (np_alu) */
     NP_STATUS_IMM,      /* raw ANDI/ORI CCR or OMR byte logic */
     NP_STATUS_MODE,     /* MR byte logic: retire and reselect scale/LF */
     NP_DIV,             /* one non-restoring divide step */
@@ -2068,9 +2072,10 @@ static bool np_alu(const Insn *in, AluOp *a)
         a->imm = !strcmp(name, "and #xx, D") ? (inst >> 8) & 0x3F : in->ext;
         return true;
     }
-    if (!strcmp(name, "or #xxxx, D")) {
-        a->op = OP_OR;
-        a->imm = in->ext;
+    if (!strcmp(name, "or #xx, D") || !strcmp(name, "or #xxxx, D") ||
+        !strcmp(name, "eor #xx, D") || !strcmp(name, "eor #xxxx, D")) {
+        a->op = name[0] == 'e' ? OP_EOR : OP_OR;
+        a->imm = strstr(name, "#xx,") ? (inst >> 8) & 0x3F : in->ext;
         return true;
     }
     if (!strcmp(name, "lsl #ii, D")) {

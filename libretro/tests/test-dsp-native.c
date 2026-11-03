@@ -1034,6 +1034,74 @@ static void check_movec(Machine *a, Machine *b)
     }
 }
 
+/* Manual 13-68/OR: unsigned short source, only A1/B1 changes;
+ * N/Z follow the 24-bit result, V clears, other CCR bits are preserved. */
+static void check_immediate_logic(Machine *a, Machine *b, unsigned mode)
+{
+    static const uint32_t values[] = {0, 1, 31, 63, 0x7FFFFF, 0x800000, 0xFFFFFF, 0x123456};
+    static const uint32_t flags[] = {0, 0xFF, 0x55, 0xAA};
+    for (unsigned exclusive = 0; exclusive < 2; exclusive++) {
+        for (unsigned long_form = 0; long_form < 2; long_form++) {
+            for (unsigned d = 0; d < 2; d++) {
+                unsigned sources = long_form ? ARRAY_SIZE(values) : 64;
+                for (unsigned i = 0; i < sources; i++) {
+                    uint32_t src = long_form ? values[i] : i;
+                    uint32_t op = (long_form ? 0x0140C2 : 0x014082 | (src << 8)) |
+                        exclusive | (d << 3);
+                    for (unsigned v = 0; v < ARRAY_SIZE(values); v++) {
+                        for (unsigned f = 0; f < ARRAY_SIZE(flags); f++) {
+                            for (unsigned repeated = 0; repeated < 2; repeated++) {
+                                uint32_t result = exclusive ? values[v] ^ src : values[v] | src;
+                                if (repeated && exclusive) result = values[v];
+                                uint32_t sr = (mode << DSP_SR_S0) | flags[f];
+                                uint32_t expected = (sr & ~0xEu) |
+                                    ((result >> 23) << DSP_SR_N) | ((result == 0) << DSP_SR_Z);
+                                Machine *machines[] = {a, b};
+                                dspjit_test_reset_fallback_count();
+                                for (unsigned engine = 0; engine < 2; engine++) {
+                                    Machine *m = machines[engine];
+                                    prepare(m, op, src, 1, mode, false);
+                                    dsp_core_t *c = m->dsp->backend;
+                                    c->registers[DSP_REG_SR] = sr;
+                                    c->registers[DSP_REG_A0 + d] = 0x123456;
+                                    c->registers[DSP_REG_A1 + d] = values[v];
+                                    c->registers[DSP_REG_A2 + d] = 0xAB;
+                                    if (repeated) {
+                                        uint32_t program[] = {0x0602A0, op, src, 0x08F484, 1};
+                                        if (!long_form) {
+                                            program[2] = 0x08F484;
+                                            program[3] = 1;
+                                        }
+                                        for (unsigned pc = 0; pc < ARRAY_SIZE(program); pc++)
+                                            m->dsp->ops->write_memory(m->dsp, 'P', pc, program[pc]);
+                                        assert(run_frame(m, 100000, engine != 0) == 0);
+                                    } else if (engine == 0) {
+                                        m->dsp->ops->step(m->dsp);
+                                        c->cycle_count += c->instr_cycle;
+                                    } else m->dsp->ops->run(m->dsp, 1);
+                                    if (c->registers[DSP_REG_A1 + d] != result ||
+                                        c->registers[DSP_REG_A0 + d] != 0x123456 ||
+                                        c->registers[DSP_REG_A2 + d] != 0xAB ||
+                                        c->registers[DSP_REG_SR] != expected) {
+                                        fprintf(stderr, "Immediate logic engine=%u xor=%u long=%u d=%u src=%x old=%x rep=%u result=%x/%x sr=%x/%x\n",
+                                                engine, exclusive, long_form, d, src, values[v], repeated,
+                                                c->registers[DSP_REG_A1 + d], result,
+                                                c->registers[DSP_REG_SR], expected);
+                                        exit(1);
+                                    }
+                                }
+                                assert(!dspjit_test_fallback_count());
+                                assert(compare_machines(a, b) == 0);
+                                cases++;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 static void check_logical_immediates(Machine *a, Machine *b)
 {
     static const uint32_t words[] = {
@@ -2113,6 +2181,7 @@ static void check_program_write_sequences(Machine *a, Machine *b, unsigned mode)
 
 int main(int argc, char **argv)
 {
+    bool immediate_logic_only = argc == 2 && !strcmp(argv[1], "--immediate-logic");
     bool relative_only = argc == 2 && !strcmp(argv[1], "--relative");
     bool loops_only = argc == 2 && !strcmp(argv[1], "--loops");
     bool compare_only = argc == 2 && !strcmp(argv[1], "--compare");
@@ -2133,8 +2202,8 @@ int main(int argc, char **argv)
     bool effective_only = argc == 2 && !strcmp(argv[1], "--effective-control");
     bool startup_only = argc == 2 && !strcmp(argv[1], "--startup");
     bool program_only = argc == 2 && !strcmp(argv[1], "--program");
-    if (argc != 1 && !relative_only && !loops_only && !program_only && !compare_only && !startup_only && !effective_only && !register_only && !program_control_only && !peripheral_only && !program_peripheral_only && !multiply_only && !normalize_only && !divide_only && !byte_logic_only && !memory_bits_only && !control_bits_only && !offset_control_only && !shifts_only && !signed_right_only && !left_flags_only) {
-        fputs("usage: dspnative [--relative|--loops|--program|--compare|--startup|--effective-control|--register-control|--program-control|--peripheral-control|--program-peripheral|--multiply|--normalize|--divide|--status-byte|--memory-bits|--control-bits|--offset-control|--shift-boundaries|--signed-right|--left-flags]\n", stderr);
+    if (argc != 1 && !immediate_logic_only && !relative_only && !loops_only && !program_only && !compare_only && !startup_only && !effective_only && !register_only && !program_control_only && !peripheral_only && !program_peripheral_only && !multiply_only && !normalize_only && !divide_only && !byte_logic_only && !memory_bits_only && !control_bits_only && !offset_control_only && !shifts_only && !signed_right_only && !left_flags_only) {
+        fputs("usage: dspnative [--immediate-logic|--relative|--loops|--program|--compare|--startup|--effective-control|--register-control|--program-control|--peripheral-control|--program-peripheral|--multiply|--normalize|--divide|--status-byte|--memory-bits|--control-bits|--offset-control|--shift-boundaries|--signed-right|--left-flags]\n", stderr);
         return 2;
     }
     Machine *a = machine_new(false), *b = machine_new(true);
@@ -2149,8 +2218,9 @@ int main(int argc, char **argv)
     assert(initially_committed == (64u << 10));
 #endif
     check_speculative_decode();
-    if (relative_only || loops_only || program_only || compare_only || startup_only || effective_only || register_only || program_control_only || peripheral_only || program_peripheral_only || multiply_only || normalize_only || divide_only || byte_logic_only || memory_bits_only || control_bits_only || offset_control_only || shifts_only || signed_right_only || left_flags_only) {
+    if (immediate_logic_only || relative_only || loops_only || program_only || compare_only || startup_only || effective_only || register_only || program_control_only || peripheral_only || program_peripheral_only || multiply_only || normalize_only || divide_only || byte_logic_only || memory_bits_only || control_bits_only || offset_control_only || shifts_only || signed_right_only || left_flags_only) {
         for (unsigned mode = 0; mode < 4; mode++) {
+            if (immediate_logic_only) check_immediate_logic(a, b, mode);
             if (left_flags_only) {
                 check_left_shift_operations(a, b, mode);
                 check_immediate_shift_boundaries(a, b, mode);
@@ -2203,6 +2273,7 @@ int main(int argc, char **argv)
     }
     check_status_restore_chains(a, b);
     check_logical_immediates(a, b);
+    for (unsigned mode = 0; mode < 4; mode++) check_immediate_logic(a, b, mode);
     check_loop_address_reload(a, b);
     for (unsigned sr = 0; sr < 256; sr++) {
         for (unsigned cc = 0; cc < 16; cc++) {

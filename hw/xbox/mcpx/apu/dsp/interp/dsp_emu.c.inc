@@ -7868,6 +7868,40 @@ static void emu_norm(dsp_core_t* dsp)
     dsp->registers[DSP_REG_SR] |= newsr & ~(1<<DSP_SR_C);
 }
 
+static void emu_or_imm(dsp_core_t* dsp)
+{
+    uint32_t value = (dsp->cur_inst >> 8) & BITMASK(6);
+    uint32_t dst = DSP_REG_A1 + ((dsp->cur_inst >> 3) & 1);
+    dsp->registers[dst] |= value;
+    dsp->registers[DSP_REG_SR] &= BITMASK(16) -
+        ((1 << DSP_SR_N) | (1 << DSP_SR_Z) | (1 << DSP_SR_V));
+    dsp->registers[DSP_REG_SR] |= ((dsp->registers[dst] >> 23) & 1) << DSP_SR_N;
+    dsp->registers[DSP_REG_SR] |= (dsp->registers[dst] == 0) << DSP_SR_Z;
+}
+
+static void emu_eor_imm(dsp_core_t* dsp)
+{
+    uint32_t value = (dsp->cur_inst >> 8) & BITMASK(6);
+    uint32_t dst = DSP_REG_A1 + ((dsp->cur_inst >> 3) & 1);
+    dsp->registers[dst] ^= value;
+    dsp->registers[DSP_REG_SR] &= BITMASK(16) -
+        ((1 << DSP_SR_N) | (1 << DSP_SR_Z) | (1 << DSP_SR_V));
+    dsp->registers[DSP_REG_SR] |= ((dsp->registers[dst] >> 23) & 1) << DSP_SR_N;
+    dsp->registers[DSP_REG_SR] |= (dsp->registers[dst] == 0) << DSP_SR_Z;
+}
+
+static void emu_eor_long(dsp_core_t* dsp)
+{
+    uint32_t value = read_memory_p(dsp, dsp->pc + 1);
+    uint32_t dst = DSP_REG_A1 + ((dsp->cur_inst >> 3) & 1);
+    dsp->cur_inst_len++;
+    dsp->registers[dst] ^= value;
+    dsp->registers[DSP_REG_SR] &= BITMASK(16) -
+        ((1 << DSP_SR_N) | (1 << DSP_SR_Z) | (1 << DSP_SR_V));
+    dsp->registers[DSP_REG_SR] |= ((dsp->registers[dst] >> 23) & 1) << DSP_SR_N;
+    dsp->registers[DSP_REG_SR] |= (dsp->registers[dst] == 0) << DSP_SR_Z;
+}
+
 static void emu_or_long(dsp_core_t* dsp)
 {
     uint32_t xxxx = read_memory_p(dsp, dsp->pc+1);
