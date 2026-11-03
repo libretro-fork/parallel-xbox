@@ -14,7 +14,7 @@ struct iovec {void *iov_base;size_t iov_len;};
 #define BDRV_SECTOR_BITS 9
 /* QIOV */
 typedef void BlockCompletionFunc(void *,int);
-typedef struct {BlockCompletionFunc *cb;void *opaque;int ret;bool live;} BlockAIOCB;
+typedef struct {BlockCompletionFunc *cb;void *opaque;int ret;bool live,completing;} BlockAIOCB;
 /* REQUEST */
 typedef struct {QLIST_HEAD(,IDEBufferedRequest) buffered_requests;void *blk;} IDEState;
 static unsigned req_allocs,req_frees,buf_allocs,buf_frees,provider_reads,copy_calls,calls;
@@ -46,7 +46,7 @@ static size_t qemu_iovec_from_buf(QEMUIOVector*v,size_t off,const void*src,size_
 static BlockAIOCB pending[64];static int provider_error;
 static BlockAIOCB *blk_aio_preadv(void*blk,int64_t off,QEMUIOVector*v,int flags,BlockCompletionFunc*cb,void*arg){
  assert(!((uintptr_t)qemu_iovec_buf(v)&4095));provider_reads++;memset(qemu_iovec_buf(v),0x55,v->size);
- for(unsigned i=0;i<64;i++)if(!pending[i].live){pending[i]=(BlockAIOCB){cb,arg,provider_error,true};return &pending[i];}
+ for(unsigned i=0;i<64;i++)if(!pending[i].live){pending[i]=(BlockAIOCB){.cb=cb,.opaque=arg,.ret=provider_error,.live=true};return &pending[i];}
  abort();
 }
 static BlockAIOCB *blk_abort_aio_request(void*blk,BlockCompletionFunc*cb,void*arg,int ret){(void)blk;(void)cb;(void)arg;(void)ret;abort();}
@@ -60,9 +60,13 @@ static void complete(void*arg,int ret){
  if(clear_inside){clear_inside=false;ide_buffered_read_cache_clear();}
  if(submit_inside){submit_inside=false;qemu_iovec_init_buf(&nested,destination+65536,512);ide_buffered_readv(&state,0,&nested,1,complete,&state);}
 }
-static void finish(BlockAIOCB*a){assert(a->live);BlockCompletionFunc*cb=a->cb;void*p=a->opaque;int ret=a->ret;a->live=false;cb(p,ret);}
+static void finish(BlockAIOCB*a){
+ assert(a->live&&!a->completing);BlockCompletionFunc*cb=a->cb;void*p=a->opaque;int ret=a->ret;
+ /* Production fixed slots stay busy until their callback returns. */
+ a->completing=true;cb(p,ret);a->completing=false;a->live=false;
+}
 static BlockAIOCB *(*volatile read_fn)(IDEState *,int64_t,QEMUIOVector *,int,BlockCompletionFunc *,void *)=ide_buffered_readv;
-static void finish_all(void){for(unsigned n=0;n<64;n++)if(pending[n].live)finish(&pending[n]);assert(QLIST_EMPTY(&state.buffered_requests));}
+static void finish_all(void){for(unsigned n=0;n<64;n++)if(pending[n].live&&!pending[n].completing)finish(&pending[n]);assert(QLIST_EMPTY(&state.buffered_requests));}
 static void check(size_t bytes,int error,bool orphan,bool close,bool nested_submit){
  memset(destination,0xcc,sizeof(destination));struct iovec pieces[3]={{destination,bytes/2},{destination+bytes/2+16,bytes-bytes/2},{NULL,0}};
  QEMUIOVector q={.iov=pieces,.niov=3,.nalloc=-1,.size=bytes};
@@ -78,6 +82,37 @@ static void check(size_t bytes,int error,bool orphan,bool close,bool nested_subm
  for(size_t i=0;i<bytes+16;i++){bool touched=i<bytes/2||i>=bytes/2+16;assert(destination[i]==((!orphan&&!error&&touched)?0x55:0xcc));}
  assert(copy_calls==copies+((!error&&!orphan)?1u:0u)+(nested_submit?1u:0u));
 }
+#ifdef HAVE_IDE_BUFFER_CACHE
+static QEMUIOVector chain_qiov;
+static unsigned chain_left;
+static bool chain_nested;
+static void chain_complete(void*opaque,int ret){
+ assert(opaque==&state&&!ret);calls++;
+ for(unsigned i=0;i<512;i++)assert(destination[i]==0x55);
+ if(--chain_left){
+  BlockAIOCB*next=ide_buffered_readv(&state,0,&chain_qiov,1,chain_complete,&state);
+  if(chain_nested)finish(next);
+ }else ide_buffered_read_cache_clear();
+}
+static void chain_check(bool nested_completion){
+ ide_buffered_read_cache_clear();assert(QLIST_EMPTY(&state.buffered_requests));
+ qemu_iovec_init_buf(&chain_qiov,destination,512);provider_error=0;
+ chain_nested=nested_completion;chain_left=nested_completion?4:1000;
+ unsigned before=req_allocs,buffers=buf_allocs,done=calls,want=chain_left;
+ BlockAIOCB*first=ide_buffered_readv(&state,0,&chain_qiov,1,chain_complete,&state);
+ finish(first);
+ while(chain_left){bool found=false;for(unsigned i=0;i<64;i++)if(pending[i].live&&!pending[i].completing){finish(&pending[i]);found=true;break;}assert(found);}
+ assert(calls==done+want&&QLIST_EMPTY(&state.buffered_requests));
+#ifdef IDE_RELEASE_BEFORE_CALLBACK
+ assert(req_allocs-before==1&&buf_allocs-buffers==1);
+#else
+ assert(req_allocs-before==(nested_completion?4u:2u));
+ assert(buf_allocs-buffers==req_allocs-before);
+#endif
+ assert(!ide_read_cache.spare&&req_allocs==req_frees&&buf_allocs==buf_frees);
+ printf("IDE callback chain: nested=%d completions=%u requests=%u buffers=%u; leaf close and balanced frees PASS\n",nested_completion,want,req_allocs-before,buf_allocs-buffers);
+}
+#endif
 #ifdef _WIN32
 #include <windows.h>
 static double now(void){LARGE_INTEGER t,f;QueryPerformanceCounter(&t);QueryPerformanceFrequency(&f);return (double)t.QuadPart*1e9/f.QuadPart;}
@@ -98,8 +133,11 @@ int main(int argc,char **argv){
  }else{
   for(unsigned n=0;n<1000;n++){
    check(0,0,false,false,false);
-   check(512,0,false,false,false);check(2048,0,false,false,false);check(65536,0,false,false,false);check(512,-EIO,false,false,false);check(2048,0,true,false,false);check(512,0,false,true,false);check(512,0,false,false,true);
+   check(512,0,false,false,false);check(2048,0,false,false,false);check(65536,0,false,false,false);check(512,-EIO,false,false,false);check(2048,0,true,false,false);check(512,0,false,true,false);check(512,0,false,false,true);check(512,0,false,true,true);
   }
+#ifdef HAVE_IDE_BUFFER_CACHE
+  chain_check(false);chain_check(true);
+#endif
   ide_buffered_read_cache_clear();QEMUIOVector q[3];BlockAIOCB *a[3];size_t sizes[3]={2048,65536,512};
   expected=provider_error=0;
   for(unsigned i=0;i<3;i++){qemu_iovec_init_buf(&q[i],destination,sizes[i]);a[i]=ide_buffered_readv(&state,0,&q[i],(int)(sizes[i]>>9),complete,&state);}

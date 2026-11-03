@@ -671,7 +671,8 @@ static void ide_rw_error(IDEState *s) {
 }
 
 /* One completed request per owner, retaining its largest scratch buffer.
- * Live requests keep their buffers until their callbacks return. */
+ * Active reads keep private buffers until their payload is consumed; completed
+ * storage is available before the user callback starts. */
 static struct {
     IDEBufferedRequest *spare;
     uint64_t epoch;
@@ -715,16 +716,23 @@ static void ide_buffered_readv_cb(void *opaque, int ret)
 
     /* This read is complete. A callback may cancel or submit pending reads. */
     QLIST_REMOVE(req, list);
-    if (!req->orphaned) {
-        if (!ret) {
-            assert(req->qiov.size == req->original_qiov->size);
-            qemu_iovec_from_buf(req->original_qiov, 0,
-                                req->qiov.local_iov.iov_base,
-                                req->original_qiov->size);
-        }
-        req->original_cb(req->original_opaque, ret);
+    if (req->orphaned) {
+        ide_buffered_request_release(req, epoch);
+        return;
     }
+    if (!ret) {
+        assert(req->qiov.size == req->original_qiov->size);
+        qemu_iovec_from_buf(req->original_qiov, 0,
+                            req->qiov.local_iov.iov_base,
+                            req->original_qiov->size);
+    }
+    BlockCompletionFunc *cb = req->original_cb;
+    void *cb_opaque = req->original_opaque;
+
+    /* All scratch bytes have been consumed. A callback-started read can
+     * reuse this request and buffer; never access req after releasing it. */
     ide_buffered_request_release(req, epoch);
+    cb(cb_opaque, ret);
 }
 
 #define MAX_BUFFERED_REQS 16
