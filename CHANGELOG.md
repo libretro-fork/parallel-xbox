@@ -23,6 +23,8 @@
 
 ## Unreleased
 
+- Timestamp USB captures with guest time, remove the unused compatibility sleep API and audit clock reads across the static Makefile source list.
+
 - Yield instead of sleeping on character-device output retries, including attached UART logs.
 
 - Drive remaining service clocks from frontend frame calls, independent of wall time and guest-state rewinds. Remove host clock calibration, timed GPU-report polling and polling busy-waits; future emulated deadlines no longer become host sleeps.

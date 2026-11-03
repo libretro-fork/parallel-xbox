@@ -3,8 +3,8 @@
  * strings, GString, the system, time, random numbers and once.
  *
  * On libretro-common: strlcpy/strlcat (compat_strl), UTF-8 and UTF-16
- * (encoding_utf), base64 (encoding_base64), SHA-1 (lrc_hash), the clock and
- * the processor count (features_cpu), sleeping (retro_timers), atomics
+ * (encoding_utf), base64 (encoding_base64), SHA-1 (lrc_hash),
+ * the processor count (features_cpu), scheduler yields (retro_timers), atomics
  * (retro_atomic). What is left (GLib's own semantics on top of libc) is
  * written here. There is no GMutex: nothing in the core takes one.
  *
@@ -1436,11 +1436,6 @@ void g_libretro_advance_time_ns(gint64 elapsed)
 gint64 g_get_monotonic_time(void)
 {
     return g_libretro_get_time_ns() / 1000;
-}
-
-void g_usleep(gulong microseconds)
-{
-    retro_sleep_us((unsigned)microseconds);
 }
 
 /* ---- random numbers (xoshiro128**, seeded as asked) ----------------------- */
