@@ -29,6 +29,8 @@
 
 ## Unreleased
 
+- Execute both PC-relative address load (LRA) forms in the interpreter and native DSP JIT. Add independent current-PC, address-wrap, width, alias and flag-preservation checks, plus REP and deferred-flag coverage in CI.
+
 - Execute immediate signed multiply-and-round (MPYRI) in the interpreter and native DSP JIT. Add an independent nearest-even oracle for signed products, scaling, halfway cases and flags, plus REP and rewritten-extension coverage in CI.
 
 - Execute long-offset Y-memory MOVE instructions in the interpreter and native DSP JIT. Preserve 24-bit address wrap, control-register masks, raw stack stores and load side effects; add independent Y/X isolation and stack checks plus loop/interrupt regressions.

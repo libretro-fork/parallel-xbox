@@ -301,6 +301,21 @@ static void dis_asl_imm(dsp_core_t* dsp)
         registers_name[D ? DSP_REG_B : DSP_REG_A]);
 }
 
+static void dis_lra_reg(dsp_core_t* dsp)
+{
+    uint32_t n = (dsp->disasm_cur_inst >> 8) & 7;
+    sprintf(dsp->disasm_str_instr, "lra %s,%s", registers_name[DSP_REG_R0 + n],
+            registers_name[dsp->disasm_cur_inst & 31]);
+}
+
+static void dis_lra_long(dsp_core_t* dsp)
+{
+    uint32_t displacement = read_memory_p(dsp, dsp->pc + 1);
+    dsp->disasm_cur_inst_len++;
+    sprintf(dsp->disasm_str_instr, "lra #$%06x,%s", displacement,
+            registers_name[dsp->disasm_cur_inst & 31]);
+}
+
 static void dis_lsl_imm(dsp_core_t* dsp)
 {
     uint32_t D = dsp->disasm_cur_inst & 1;

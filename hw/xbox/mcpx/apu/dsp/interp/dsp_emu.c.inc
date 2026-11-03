@@ -7423,6 +7423,20 @@ static void emu_lua(dsp_core_t* dsp)
     dsp->instr_cycle += 2;
 }
 
+static void emu_lra_reg(dsp_core_t* dsp)
+{
+    uint32_t n = (dsp->cur_inst >> 8) & 7;
+    uint32_t value = (dsp->pc + dsp->registers[DSP_REG_R0 + n]) & BITMASK(24);
+    dsp_write_reg(dsp, dsp->cur_inst & 31, value);
+}
+
+static void emu_lra_long(dsp_core_t* dsp)
+{
+    uint32_t displacement = read_memory_p(dsp, dsp->pc + 1);
+    dsp->cur_inst_len++;
+    dsp_write_reg(dsp, dsp->cur_inst & 31, (dsp->pc + displacement) & BITMASK(24));
+}
+
 static void emu_lua_rel(dsp_core_t* dsp)
 {
     uint32_t aa = ((dsp->cur_inst >> 4) & BITMASK(4))

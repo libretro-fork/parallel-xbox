@@ -1996,6 +1996,7 @@ enum {
     NP_MOVE_XY_SHORT,   /* move X/Y:(Rn + xxx) <-> R, 7-bit offset */
     NP_MOVE_XY_LONG_SPECIAL, /* offset moves with control-register effects */
     NP_MOVE_XY_LONG,     /* move X/Y:(Rn + xxxx) <-> R, a second word */
+    NP_LRA,            /* load current-PC-relative address, without branching */
     NP_LUA,
     NP_LUA_REL,
     NP_ALU_IMM,         /* immediate arithmetic/logic and shifts: an AluOp (np_alu) */
@@ -2175,6 +2176,7 @@ static int np_kind(const Insn *in)
         !strcmp(name, "move Y:(Rn + xxxx) <-> R")) {
         return reg_supported(in->inst & 0x3F) ? NP_MOVE_XY_LONG : NP_MOVE_XY_LONG_SPECIAL;
     }
+    if (!strcmp(name, "lra Rn, D") || !strcmp(name, "lra xxxx, D")) return NP_LRA;
     if (!strcmp(name, "lua ea, D")) {
         return NP_LUA;
     }
@@ -2758,6 +2760,23 @@ static void emit_nonparallel(Tr *t, const Insn *in, int kind)
         } else {
             emit_read_reg(t, numreg, V1);
             emit_write_mem(t, space, EA1, V1);
+        }
+        break;
+    }
+
+    case NP_LRA: {
+        unsigned dst = inst & 31;
+        if (inst & (1 << 15)) {
+            h_ld32(e, V1, REG_CORE, REGOFF(DSP_REG_R0 + ((inst >> 8) & 7)));
+            h_add_ri(e, 0, V1, in->at);
+            h_and_ri(e, 0, V1, 0xFFFFFF);
+        } else {
+            h_mov_ri(e, V1, (in->at + in->ext) & 0xFFFFFF);
+        }
+        if (dst < DSP_REG_X0) {
+            h_st32_imm(e, REG_CORE, REGOFF(dst), 0);
+        } else {
+            emit_write_reg(t, dst, V1);
         }
         break;
     }
