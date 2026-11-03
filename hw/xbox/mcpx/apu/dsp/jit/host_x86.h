@@ -296,4 +296,20 @@ static inline void h_frame_ld32(Emitter *e, int d, int slot)
     x86_mov_r32_mem(e, XR(d), RSP, X86_SLOTS + slot * 8);
 }
 
+/* Baseline x86-64 BSR, without requiring the LZCNT/BMI extensions. */
+static inline void h_clz64(Emitter *e, int d)
+{
+    h_test_rr(e, 1, d, d);
+    size_t zero = h_jcc(e, HC_EQ);
+    emit_rex(e, 1, XR(d), XR(d));
+    emit_byte(e, 0x0F);
+    emit_byte(e, 0xBD);
+    emit_modrm_rr(e, XR(d), XR(d));
+    h_xor_ri(e, 1, d, 63);
+    size_t done = h_jmp(e);
+    h_patch(e, zero, e->len);
+    h_mov_ri(e, d, 64);
+    h_patch(e, done, e->len);
+}
+
 #endif

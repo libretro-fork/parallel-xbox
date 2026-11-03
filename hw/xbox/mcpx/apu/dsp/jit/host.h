@@ -128,6 +128,7 @@ typedef size_t HLabel;
  *   h_not(e, w, d)                   no flags
  *   h_shl_ri/h_shr_ri/h_sar_ri(e, w, d, n)   no flags
  *   h_shl_r1/h_shr_r1/h_sar_r1(e, w, d) count in H_T1; d != H_T1
+ *   h_clz64(e, d)                  count leading zeros; zero input returns 64
  *   h_mul_rr(e, w, d, s)             d *= s, no flags
  *   h_mul_rri(e, w, d, s, imm)       d = s * imm, no flags
  *   h_add_r_mem32/h_sub_r_mem32/h_and_r_mem32/h_or_r_mem32/h_xor_r_mem32/

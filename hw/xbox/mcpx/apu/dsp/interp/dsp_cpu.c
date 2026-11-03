@@ -232,7 +232,7 @@ static const OpcodeEntry nonparallel_opcodes[] = {
     { "0000101110pppppp0S10bbbb", "btst #n, [X or Y]:pp", dis_btst_pp, emu_btst_pp },
     { "0000000101qqqqqq0S10bbbb", "btst #n, [X or Y]:qq", NULL, NULL },
     { "0000101111DDDDDD0110bbbb", "btst #n, D", dis_btst_reg, emu_btst_reg },
-    { "0000110000011110000000SD", "clb S, D", NULL, NULL },
+    { "0000110000011110000000SD", "clb S, D", dis_clb, emu_clb },
     { "0000000101iiiiii1000d101", "cmp #xx, S2", dis_cmp_imm, emu_cmp_imm },
     { "00000001010000001100d101", "cmp #xxxx, S2", dis_cmp_long, emu_cmp_long },
     { "00001100000111111111gggd", "cmpu S1, S2", dis_cmpu, emu_cmpu },

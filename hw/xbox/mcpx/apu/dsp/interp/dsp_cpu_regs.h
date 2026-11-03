@@ -47,6 +47,7 @@
 #define DSP_SR_DM   0x0e
 #define DSP_SR_LF   0x0f
 #define DSP_SR_FV   0x10
+#define DSP_SR_SA   0x11
 
 #define DSP_SP_SE   0x04
 #define DSP_SP_UF   0x05

@@ -29,6 +29,8 @@
 
 ## Unreleased
 
+- DSP: implement native CLB leading-sign-bit counts, preserving unrelated flags and handling both normal and sixteen-bit source layouts.
+
 - DSP: execute register-count arithmetic shifts natively on x86-64 and AArch64, including aliased count operands and flag regressions.
 
 - DSP: execute register-indirect X/Y DO/DOR loop counts natively, including address updates and single-read peripheral counts.

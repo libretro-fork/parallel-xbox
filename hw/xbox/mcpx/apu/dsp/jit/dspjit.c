@@ -902,6 +902,7 @@ static void emit_write_reg(Tr *t, int r, int val)
 /* --- the data ALU --- */
 
 enum {
+    OP_CLB,
     OP_ASL_R, OP_ASR_R, /* register-controlled arithmetic shifts */
     OP_ASL_N, OP_ASR_N, /* by a count (shift), of accumulator s into d */
     OP_MOVE, OP_ADD, OP_SUB, OP_CMP, OP_TFR, OP_CLR, OP_TST, OP_RND,
@@ -1452,6 +1453,51 @@ static void emit_alu(Tr *t, const AluOp *a)
         acc_written(t, a->d);
         emit_sr_result(t, SR_EUNZ | SR_V | SR_C | 0xFFFF0000u, T4, acc, a->d);
         break;
+
+    case OP_CLB: {
+        /* CLB preserves E/U/C/L: resolve pending flags before overwriting
+         * the accumulator that may still supply their deferred values. */
+        emit_flags_flush(t);
+        acc_load(t, a->s);
+        h_mov_rr(e, 1, T0, acc_reg(a->s));
+        h_mov_ri(e, T3, 17); /* 9 - (clz64 - 8), for the 56-bit source */
+        h_ld32(e, T1, REG_CORE, REGOFF(DSP_REG_SR));
+        h_test_ri(e, 0, T1, 1u << DSP_SR_SA);
+        size_t ordinary = h_jcc(e, HC_EQ);
+        h_mov_rr(e, 1, T2, T0);
+        h_shr_ri(e, 1, T2, 8);
+        h_and_ri(e, 0, T2, 0xffff);
+        h_sar_ri(e, 1, T0, 32);
+        h_shl_ri(e, 1, T0, 16);
+        h_or_rr(e, 1, T0, T2);
+        h_mov_ri(e, T3, 33); /* 40 active bits: 9 - (clz64 - 24) */
+        h_patch(e, ordinary, e->len);
+        h_test_rr(e, 1, T0, T0);
+        size_t zero = h_jcc(e, HC_EQ);
+        h_mov_rr(e, 1, T2, T0);
+        h_sar_ri(e, 1, T2, 63);
+        h_xor_rr(e, 1, T0, T2);
+        h_clz64(e, T0);
+        h_sub_rr(e, 0, T3, T0);
+        h_mov_rr(e, 0, T0, T3);
+        size_t counted = h_jmp(e);
+        h_patch(e, zero, e->len);
+        h_mov_ri(e, T0, 0);
+        h_patch(e, counted, e->len);
+        h_test_rr(e, 0, T0, T0);
+        h_setcc(e, HC_EQ, T4);
+        h_setcc(e, HC_S, T2);
+        h_shl_ri(e, 0, T4, DSP_SR_Z);
+        h_shl_ri(e, 0, T2, DSP_SR_N);
+        h_or_rr(e, 0, T4, T2);
+        /* Place the signed integer in MSP, clear LSP, extend EXP. */
+        h_shl_ri(e, 1, T0, 40);
+        h_sar_ri(e, 1, T0, 16);
+        h_mov_rr(e, 1, acc, T0);
+        acc_written(t, a->d);
+        emit_sr_result(t, SR_N | SR_Z | SR_V, T4, -1, -1);
+        break;
+    }
 
     case OP_ASL_R:
     case OP_ASR_R: {
@@ -2065,7 +2111,7 @@ enum {
     NP_LRA,            /* load current-PC-relative address, without branching */
     NP_LUA,
     NP_LUA_REL,
-    NP_ALU_IMM,         /* immediate arithmetic/logic and shifts: an AluOp (np_alu) */
+    NP_ALU_IMM,         /* nonparallel arithmetic/logic: an AluOp (np_alu) */
     NP_STATUS_IMM,      /* raw ANDI/ORI CCR or OMR byte logic */
     NP_STATUS_MODE,     /* MR byte logic: retire and reselect scale/LF */
     NP_DIV,             /* one non-restoring divide step */
@@ -2092,7 +2138,7 @@ enum {
 
 static void emit_cc(Emitter *e, int cc);
 
-/* the AluOp of an NP_ALU_IMM instruction; whether it is one */
+/* the AluOp of a nonparallel arithmetic/logic instruction; whether it is one */
 static bool np_alu(const Insn *in, AluOp *a)
 {
     const char *name = in->d.name;
@@ -2156,6 +2202,12 @@ static bool np_alu(const Insn *in, AluOp *a)
         a->op = name[2] == 'r' ? OP_LSR : OP_LSL;
         a->d = inst & 1;
         a->shift = (inst >> 1) & 31;
+        return true;
+    }
+    if (!strcmp(name, "clb S, D")) {
+        a->op = OP_CLB;
+        a->s = (inst >> 1) & 1;
+        a->d = inst & 1;
         return true;
     }
     if (!strcmp(name, "asl S1, S2, D") || !strcmp(name, "asr S1, S2, D")) {

@@ -5922,6 +5922,35 @@ static void emu_andi(dsp_core_t* dsp)
     }
 }
 
+static void emu_clb(dsp_core_t* dsp)
+{
+    unsigned src = (dsp->cur_inst >> 1) & 1, dst = dsp->cur_inst & 1;
+    uint64_t value = ((uint64_t)dsp->registers[DSP_REG_A2 + src] << 48) |
+                     ((uint64_t)dsp->registers[DSP_REG_A1 + src] << 24) |
+                     dsp->registers[DSP_REG_A0 + src];
+    unsigned width = 56;
+    if (dsp->registers[DSP_REG_SR] & (1u << DSP_SR_SA)) {
+        /* Concatenate EXP, the sixteen active MSP bits and active LSP bits. */
+        value = ((value >> 32) << 16) | ((value >> 8) & 0xffff);
+        width = 40;
+    }
+    int result = 0;
+    if (value) {
+        unsigned sign = (value >> (width - 1)) & 1, leading = 0;
+        for (int bit = width - 1; bit >= 0; bit--) {
+            if (((value >> bit) & 1) != sign) break;
+            leading++;
+        }
+        result = 9 - (int)leading;
+    }
+    dsp->registers[DSP_REG_A0 + dst] = 0;
+    dsp->registers[DSP_REG_A1 + dst] = (uint32_t)result & 0xffffff;
+    dsp->registers[DSP_REG_A2 + dst] = result < 0 ? 0xff : 0;
+    dsp->registers[DSP_REG_SR] &= ~((1u << DSP_SR_N) | (1u << DSP_SR_Z) | (1u << DSP_SR_V));
+    dsp->registers[DSP_REG_SR] |= (result < 0 ? 1u << DSP_SR_N : 0) |
+                               (result == 0 ? 1u << DSP_SR_Z : 0);
+}
+
 static void emu_asl_imm(dsp_core_t* dsp)
 {
     uint32_t S = ((dsp->cur_inst >> 7) & 1);
