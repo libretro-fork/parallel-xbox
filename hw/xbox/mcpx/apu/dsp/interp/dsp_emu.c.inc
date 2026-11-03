@@ -7754,7 +7754,7 @@ static void emu_movep_x_qq(dsp_core_t* dsp)
     dsp->instr_cycle += 2;
 }
 
-static void emu_move_x_long(dsp_core_t* dsp)
+static void emu_move_xy_long(dsp_core_t* dsp, int space)
 {
     uint32_t xxxx = read_memory_p(dsp, dsp->pc+1);
     dsp->cur_inst_len++;
@@ -7762,7 +7762,7 @@ static void emu_move_x_long(dsp_core_t* dsp)
     int W = (dsp->cur_inst >> 6) & 1;
     uint32_t offreg = DSP_REG_R0 + ((dsp->cur_inst >> 8) & BITMASK(3));
     uint32_t numreg = dsp->cur_inst & BITMASK(6);
-    uint32_t x_addr = (dsp->registers[offreg] + xxxx) & BITMASK(24);
+    uint32_t addr = (dsp->registers[offreg] + xxxx) & BITMASK(24);
 
     if (!W) {
         uint32_t value;
@@ -7771,12 +7771,22 @@ static void emu_move_x_long(dsp_core_t* dsp)
         } else {
             value = dsp->registers[numreg];
         }
-        dsp56k_write_memory(dsp, DSP_SPACE_X, x_addr, value);
+        dsp56k_write_memory(dsp, space, addr, value);
     } else {
-        dsp_write_reg(dsp, numreg, dsp56k_read_memory(dsp, DSP_SPACE_X, x_addr));
+        dsp_write_reg(dsp, numreg, dsp56k_read_memory(dsp, space, addr));
     }
 
     // TODO: cycles
+}
+
+static void emu_move_x_long(dsp_core_t* dsp)
+{
+    emu_move_xy_long(dsp, DSP_SPACE_X);
+}
+
+static void emu_move_y_long(dsp_core_t* dsp)
+{
+    emu_move_xy_long(dsp, DSP_SPACE_Y);
 }
 
 static void emu_move_xy_imm(dsp_core_t* dsp, int space)

@@ -330,6 +330,75 @@ static void check_control_register_bits(Machine *a, Machine *b, unsigned mode)
     }
 }
 
+#define Y_OFFSET_CHECK(condition) do { \
+    if (!(condition)) { \
+        fprintf(stderr, "Y long-offset oracle failed at line %u\n", __LINE__); \
+        exit(1); \
+    } \
+} while (0)
+static void check_y_long_offset_moves(Machine *a, Machine *b, unsigned mode)
+{
+    /* Independent raw-store/stack oracle, including 24-bit address wrap.
+     * Long offset SSH stores read the register directly and must not pop. */
+    static const unsigned oracle_regs[] = {DSP_REG_SSH, DSP_REG_LA};
+    for (unsigned r = 0; r < ARRAY_SIZE(oracle_regs); r++) {
+        for (unsigned read = 0; read < 2; read++) {
+            for (unsigned wrap = 0; wrap < 2; wrap++) {
+                for (unsigned v = 0; v < 2; v++) {
+                    unsigned reg = oracle_regs[r];
+                    uint32_t value = v ? 0x800001 : 0x123456;
+                    uint32_t ext = wrap ? 0x50 : 0xFFFFFF;
+                    unsigned addr = wrap ? 0x40 : 0x7F;
+                    uint32_t sr = (mode << DSP_SR_S0) | (1u << DSP_SR_FV) | 0xA4;
+                    prepare(b, 0x0B7080 | (read << 6) | reg, ext, 1, mode, false);
+                    dsp_core_t *c = b->dsp->backend;
+                    c->registers[DSP_REG_SR] = sr;
+                    c->registers[DSP_REG_R0] = wrap ? 0xFFFFF0 : 0x80;
+                    c->registers[reg] = value;
+                    c->stack[0][2] = c->registers[DSP_REG_SSH];
+                    c->stack[0][3] = 0x1234;
+                    c->stack[1][3] = 0x5678;
+                    c->yram[addr] = value;
+                    c->xram[addr] = value ^ 0x5A5A5A;
+                    dspjit_test_reset_fallback_count();
+                    b->dsp->ops->run(b->dsp, 1);
+                    Y_OFFSET_CHECK(!dspjit_test_fallback_count());
+                    Y_OFFSET_CHECK(c->pc == 2 && c->cycle_count == 2);
+                    Y_OFFSET_CHECK(c->registers[DSP_REG_R0] == (wrap ? 0xFFFFF0 : 0x80));
+                    Y_OFFSET_CHECK(c->registers[reg] == (read ? value & 0xFFFF : value));
+                    Y_OFFSET_CHECK(c->registers[DSP_REG_SP] == (read && r == 0 ? 3 : 2));
+                    Y_OFFSET_CHECK(c->stack[0][3] == (read && r == 0 ? value & 0xFFFF : 0x1234));
+                    Y_OFFSET_CHECK(c->stack[1][3] == 0x5678);
+                    Y_OFFSET_CHECK(c->yram[addr] == value && c->registers[DSP_REG_SR] == sr);
+                    Y_OFFSET_CHECK(c->xram[addr] == (value ^ 0x5A5A5A));
+                    cases++;
+                }
+            }
+        }
+    }
+    static const uint32_t offsets[] = {0, 1, 0x20, 0x100, 0xFFFFFF, 0xFFFFE0};
+    static const unsigned contexts[] = {0x20000000, 0x40000, 0x80000, 0x40000000};
+    /* Lower register fields overlap earlier bit-branch encodings. These
+     * upper fields actually decode as the long-offset MOVE instruction. */
+    for (unsigned reg = DSP_REG_LCSAVE; reg < DSP_REG_MAX; reg++) {
+        for (unsigned n = 0; n < 8; n++) {
+            for (unsigned read = 0; read < 2; read++) {
+                for (unsigned off = 0; off < ARRAY_SIZE(offsets); off++) {
+                    for (unsigned seed = 0; seed < 4; seed++) {
+                        for (unsigned ctx = 0; ctx < ARRAY_SIZE(contexts); ctx++) {
+                            check(a, b, 0x0B7080 | (n << 8) | (read << 6) | reg,
+                                  offsets[off], 0x200000 | 0x400000 | 0x2000000 |
+                                  0x1000000 | contexts[ctx] | seed, mode, seed & 1);
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+#undef Y_OFFSET_CHECK
+
 static void check_offset_control_moves(Machine *a, Machine *b, unsigned mode)
 {
     /* Independent raw-store/stack oracle, including 24-bit address wrap.
@@ -2242,6 +2311,7 @@ static void check_program_write_sequences(Machine *a, Machine *b, unsigned mode)
 
 int main(int argc, char **argv)
 {
+    bool y_long_only = argc == 2 && !strcmp(argv[1], "--y-long-offset");
     bool logical_shifts_only = argc == 2 && !strcmp(argv[1], "--logical-shifts");
     bool immediate_logic_only = argc == 2 && !strcmp(argv[1], "--immediate-logic");
     bool relative_only = argc == 2 && !strcmp(argv[1], "--relative");
@@ -2264,8 +2334,8 @@ int main(int argc, char **argv)
     bool effective_only = argc == 2 && !strcmp(argv[1], "--effective-control");
     bool startup_only = argc == 2 && !strcmp(argv[1], "--startup");
     bool program_only = argc == 2 && !strcmp(argv[1], "--program");
-    if (argc != 1 && !logical_shifts_only && !immediate_logic_only && !relative_only && !loops_only && !program_only && !compare_only && !startup_only && !effective_only && !register_only && !program_control_only && !peripheral_only && !program_peripheral_only && !multiply_only && !normalize_only && !divide_only && !byte_logic_only && !memory_bits_only && !control_bits_only && !offset_control_only && !shifts_only && !signed_right_only && !left_flags_only) {
-        fputs("usage: dspnative [--logical-shifts|--immediate-logic|--relative|--loops|--program|--compare|--startup|--effective-control|--register-control|--program-control|--peripheral-control|--program-peripheral|--multiply|--normalize|--divide|--status-byte|--memory-bits|--control-bits|--offset-control|--shift-boundaries|--signed-right|--left-flags]\n", stderr);
+    if (argc != 1 && !y_long_only && !logical_shifts_only && !immediate_logic_only && !relative_only && !loops_only && !program_only && !compare_only && !startup_only && !effective_only && !register_only && !program_control_only && !peripheral_only && !program_peripheral_only && !multiply_only && !normalize_only && !divide_only && !byte_logic_only && !memory_bits_only && !control_bits_only && !offset_control_only && !shifts_only && !signed_right_only && !left_flags_only) {
+        fputs("usage: dspnative [--y-long-offset|--logical-shifts|--immediate-logic|--relative|--loops|--program|--compare|--startup|--effective-control|--register-control|--program-control|--peripheral-control|--program-peripheral|--multiply|--normalize|--divide|--status-byte|--memory-bits|--control-bits|--offset-control|--shift-boundaries|--signed-right|--left-flags]\n", stderr);
         return 2;
     }
     Machine *a = machine_new(false), *b = machine_new(true);
@@ -2280,8 +2350,9 @@ int main(int argc, char **argv)
     assert(initially_committed == (64u << 10));
 #endif
     check_speculative_decode();
-    if (logical_shifts_only || immediate_logic_only || relative_only || loops_only || program_only || compare_only || startup_only || effective_only || register_only || program_control_only || peripheral_only || program_peripheral_only || multiply_only || normalize_only || divide_only || byte_logic_only || memory_bits_only || control_bits_only || offset_control_only || shifts_only || signed_right_only || left_flags_only) {
+    if (y_long_only || logical_shifts_only || immediate_logic_only || relative_only || loops_only || program_only || compare_only || startup_only || effective_only || register_only || program_control_only || peripheral_only || program_peripheral_only || multiply_only || normalize_only || divide_only || byte_logic_only || memory_bits_only || control_bits_only || offset_control_only || shifts_only || signed_right_only || left_flags_only) {
         for (unsigned mode = 0; mode < 4; mode++) {
+            if (y_long_only) check_y_long_offset_moves(a, b, mode);
             if (logical_shifts_only) check_logical_shift_immediates(a, b, mode);
             if (immediate_logic_only) check_immediate_logic(a, b, mode);
             if (left_flags_only) {
@@ -2336,6 +2407,7 @@ int main(int argc, char **argv)
     }
     check_status_restore_chains(a, b);
     check_logical_immediates(a, b);
+    for (unsigned mode = 0; mode < 4; mode++) check_y_long_offset_moves(a, b, mode);
     for (unsigned mode = 0; mode < 4; mode++) check_logical_shift_immediates(a, b, mode);
     for (unsigned mode = 0; mode < 4; mode++) check_immediate_logic(a, b, mode);
     check_loop_address_reload(a, b);

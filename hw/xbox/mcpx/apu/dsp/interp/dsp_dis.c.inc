@@ -1707,6 +1707,24 @@ static void dis_move_x_long(dsp_core_t* dsp) {
     }
 }
 
+static void dis_move_y_long(dsp_core_t* dsp) {
+    dsp->disasm_cur_inst_len++;
+
+    int W = (dsp->disasm_cur_inst >> 6) & 1;
+    uint32_t xxxx = read_memory_p(dsp, dsp->pc+1);
+    uint32_t offreg = DSP_REG_R0 + ((dsp->disasm_cur_inst >> 8) & BITMASK(3));
+    uint32_t numreg = dsp->disasm_cur_inst & BITMASK(6);
+
+    int32_t xxxx_s = dsp_signextend(24, xxxx);
+    if (W) {
+        sprintf(dsp->disasm_str_instr, "move y:(%s + %d), %s",
+            registers_name[offreg], xxxx_s, registers_name[numreg]);
+    } else {
+        sprintf(dsp->disasm_str_instr, "move %s, y:(%s + %d)",
+            registers_name[numreg], registers_name[offreg], xxxx_s);
+    }
+}
+
 static void dis_move_xy_imm(dsp_core_t* dsp, int space)
 {
     char space_c = space == DSP_SPACE_X ? 'x' : 'y';
