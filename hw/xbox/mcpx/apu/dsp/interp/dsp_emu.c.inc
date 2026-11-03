@@ -5922,6 +5922,46 @@ static void emu_andi(dsp_core_t* dsp)
     }
 }
 
+static void emu_extractu(dsp_core_t* dsp, uint32_t control)
+{
+    unsigned src = (dsp->cur_inst >> 4) & 1, dst = dsp->cur_inst & 1;
+    uint32_t sr = dsp->registers[DSP_REG_SR];
+    bool short_words = (sr & (1u << DSP_SR_SA)) != 0;
+    unsigned offset = (control >> (short_words ? 8 : 0)) & 63;
+    unsigned width = (control >> (short_words ? 16 : 12)) & 63;
+    uint64_t value = ((uint64_t)dsp->registers[DSP_REG_A2 + src] << 48) |
+                     ((uint64_t)dsp->registers[DSP_REG_A1 + src] << 24) |
+                     dsp->registers[DSP_REG_A0 + src];
+    if (short_words) value = ((value >> 32) << 16) | ((value >> 8) & 0xffff);
+    /* Fields outside the documented range use a zero-extended source.
+     * Width and offset are at most 63: no host shift by 64 is possible. */
+    uint64_t result = (value >> offset) & ((UINT64_C(1) << width) - 1);
+    if (short_words) result = ((result >> 16) << 32) | ((result & 0xffff) << 8);
+    uint32_t lo = result & 0xffffff, mid = (result >> 24) & 0xffffff, hi = (result >> 48) & 0xff;
+    dsp->registers[DSP_REG_A0 + dst] = lo;
+    dsp->registers[DSP_REG_A1 + dst] = mid;
+    dsp->registers[DSP_REG_A2 + dst] = hi;
+    dsp->registers[DSP_REG_SR] &= ~((1u << DSP_SR_C) | (1u << DSP_SR_V));
+    emu_ccr_update_e_u_n_z(dsp, hi, mid, lo);
+    /* The legacy CCR helper masks to sixteen bits; this instruction does
+     * not change extended status or the source-layout selection. */
+    dsp->registers[DSP_REG_SR] |= sr & 0xffff0000u;
+}
+
+static void emu_extractu_imm(dsp_core_t* dsp)
+{
+    uint32_t control = read_memory_p(dsp, dsp->pc + 1);
+    dsp->cur_inst_len++;
+    emu_extractu(dsp, control);
+}
+
+static void emu_extractu_reg(dsp_core_t* dsp)
+{
+    static const unsigned controls[] = {DSP_REG_A1, DSP_REG_B1, DSP_REG_X0,
+                                        DSP_REG_X1, DSP_REG_Y0, DSP_REG_Y1};
+    emu_extractu(dsp, dsp->registers[controls[((dsp->cur_inst >> 1) & 7) - 2]]);
+}
+
 static void emu_clb(dsp_core_t* dsp)
 {
     unsigned src = (dsp->cur_inst >> 1) & 1, dst = dsp->cur_inst & 1;

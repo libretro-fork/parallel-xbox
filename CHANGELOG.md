@@ -31,6 +31,8 @@
 
 - Keep adjacent file buffers coalesced across empty vector descriptors, avoiding split fallback reads/writes and mapped copy calls without staging or descriptor rewrites.
 
+- DSP: execute immediate and register-controlled EXTRACTU natively, with aliased operands, sixteen-bit layouts and carry/overflow regression coverage.
+
 - Coalesce adjacent buffer tails after short native vector reads and writes, avoiding a separate residual-span I/O call while retaining EOF zero-fill and error handling.
 
 - DSP: implement native CLB leading-sign-bit counts, preserving unrelated flags and handling both normal and sixteen-bit source layouts.
