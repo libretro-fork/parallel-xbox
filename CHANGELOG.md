@@ -29,6 +29,8 @@
 
 ## Unreleased
 
+- Coalesce adjacent buffer tails after short native vector reads and writes, avoiding a separate residual-span I/O call while retaining EOF zero-fill and error handling.
+
 - DSP: implement native CLB leading-sign-bit counts, preserving unrelated flags and handling both normal and sixteen-bit source layouts.
 
 - DSP: execute register-count arithmetic shifts natively on x86-64 and AArch64, including aliased count operands and flag regressions.

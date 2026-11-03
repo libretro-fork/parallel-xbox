@@ -581,14 +581,13 @@ int lr_file_pwrite(LRFile *f, int64_t off, const void *buf, size_t len)
 }
 
 /* The vector was prevalidated. EOF supplies zeros without more host reads.
- * skip is within the first span; empty NULL spans need no pointer arithmetic. */
-static int lr_file_zero_tail(const LRFileIOV *iov, int n, size_t skip)
+ * Only whole untouched spans remain here; skip empty NULL spans. */
+static int lr_file_zero_tail(const LRFileIOV *iov, int n)
 {
     for (int i = 0; i < n; i++) {
-        if (iov[i].len > skip) {
-            memset((uint8_t *)iov[i].base + skip, 0, iov[i].len - skip);
+        if (iov[i].len) {
+            memset(iov[i].base, 0, iov[i].len);
         }
-        skip = 0;
     }
     return 0;
 }
@@ -633,6 +632,7 @@ int lr_file_preadv(LRFile *f, int64_t off, const LRFileIOV *iov, int n)
         }
         return 0;
     }
+    size_t skip = 0;
 #ifdef LR_FILE_HAVE_PREADV
     /* the whole request in one call (LRFileIOV is laid out as iovec), on
      * to the piece by piece path for what a short read left */
@@ -648,7 +648,7 @@ int lr_file_preadv(LRFile *f, int64_t off, const LRFileIOV *iov, int n)
             return 0;
         }
         if (!got) {
-            return lr_file_zero_tail(iov, n, 0);
+            return lr_file_zero_tail(iov, n);
         }
         while (n && (size_t)got >= iov->len) {
             got -= iov->len;
@@ -656,25 +656,20 @@ int lr_file_preadv(LRFile *f, int64_t off, const LRFileIOV *iov, int n)
             iov++;
             n--;
         }
-        if (n) {
-            size_t done;
-            int ret = lr_file_rw(f, off + got, (uint8_t *)iov->base + got,
-                                iov->len - got, false, &done);
-            if (ret < 0) {
-                return ret;
-            }
-            if (done < iov->len - got) {
-                return lr_file_zero_tail(iov, n, (size_t)got + done);
-            }
-            off += iov->len;
-            iov++;
-            n--;
-        }
+        /* Feed the partially consumed span into normal coalescing, so its
+         * tail and adjacent destinations need only one native request. */
+        off += got;
+        skip = (size_t)got;
     }
 #endif
     for (int i = 0; i < n;) {
         void *base = iov[i].base;
         size_t length = iov[i++].len;
+        if (skip) {
+            base = (uint8_t *)base + skip;
+            length -= skip;
+            skip = 0;
+        }
         while (i < n && length <= UINTPTR_MAX - (uintptr_t)base &&
                (uintptr_t)iov[i].base == (uintptr_t)base + length &&
                iov[i].len <= SIZE_MAX - length) {
@@ -687,7 +682,7 @@ int lr_file_preadv(LRFile *f, int64_t off, const LRFileIOV *iov, int n)
         }
         if (done < length) {
             memset((uint8_t *)base + done, 0, length - done);
-            return lr_file_zero_tail(iov + i, n - i, 0);
+            return lr_file_zero_tail(iov + i, n - i);
         }
         off += length;
     }
@@ -706,6 +701,7 @@ int lr_file_pwritev(LRFile *f, int64_t off, const LRFileIOV *iov, int n)
     if (!total) {
         return 0;
     }
+    size_t skip = 0;
 #ifdef LR_FILE_HAVE_PREADV
     if (n > 1 && n <= 1024 && sizeof(LRFileIOV) == sizeof(struct iovec)) {
         ssize_t put;
@@ -724,22 +720,18 @@ int lr_file_pwritev(LRFile *f, int64_t off, const LRFileIOV *iov, int n)
             iov++;
             n--;
         }
-        if (n) {
-            int ret = lr_file_pwrite(f, off + put,
-                                     (const uint8_t *)iov->base + put,
-                                     iov->len - put);
-            if (ret < 0) {
-                return ret;
-            }
-            off += iov->len;
-            iov++;
-            n--;
-        }
+        off += put;
+        skip = (size_t)put;
     }
 #endif
     for (int i = 0; i < n;) {
         const void *base = iov[i].base;
         size_t length = iov[i++].len;
+        if (skip) {
+            base = (const uint8_t *)base + skip;
+            length -= skip;
+            skip = 0;
+        }
         while (i < n && length <= UINTPTR_MAX - (uintptr_t)base &&
                (uintptr_t)iov[i].base == (uintptr_t)base + length &&
                iov[i].len <= SIZE_MAX - length) {

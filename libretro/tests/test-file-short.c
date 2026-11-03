@@ -159,6 +159,55 @@ int main(int argc, char **argv)
         if (!write) { assert(out[3] == 0 && out[24] == 0 && out[5] == 0xcc); }
         cases++;
     }
+    /* Coalesce a partial first span with adjacent residual spans. */
+    LRFileIOV adjacent[] = {{NULL,0}, {out,5}, {out+5,7},
+                            {out+12,9}, {NULL,0}};
+    for (size_t cap = 1; cap <= 21; cap++) {
+        for (size_t length = 0; length <= 21; length++) {
+            assert(ftruncate(fd, 3 + length) == 0);
+            assert(pwrite(fd, input, length, 3) == (ssize_t)length);
+            memset(out, 0xcc, sizeof(out)); reset(cap, SIZE_MAX);
+            assert(lr_file_preadv(f, 3, adjacent, 5) == 0);
+            assert(next_offset == (off_t)(3 + length) && eof_calls <= 1);
+            for (unsigned i = 0; i < 21; i++) {
+                assert(out[i] == (i < length ? input[i] : 0));
+            }
+            assert(out[21] == 0xcc && out[39] == 0xcc);
+            if (length == 21 && cap < 21) {
+                /* One EINTR retry and one successful residual transfer. */
+                assert(vector_calls == 2 && scalar_calls == 2);
+            }
+            cases++;
+        }
+        memcpy(out, input, 21); reset(cap, SIZE_MAX);
+        assert(ftruncate(fd, 0) == 0);
+        assert(lr_file_pwritev(f, 3, adjacent, 5) == 0);
+        assert(next_offset == 24 && vector_calls == 2);
+        assert(scalar_calls == (cap < 21 ? 2 : 0));
+        assert(pread(fd, readback, 21, 3) == 21);
+        assert(memcmp(readback, input, 21) == 0);
+        cases++;
+    }
+    for (int write = 0; write <= 1; write++) {
+        for (int zero = 0; zero <= 1; zero++) {
+            assert(ftruncate(fd, 24) == 0);
+            assert(pwrite(fd, input, 21, 3) == 21);
+            memset(out, 0xcc, sizeof(out)); reset(3, SIZE_MAX);
+            if (zero) { scalar_zero = 1; } else { scalar_error = ENOSPC; }
+            int ret = write ? lr_file_pwritev(f, 3, adjacent, 5)
+                            : lr_file_preadv(f, 3, adjacent, 5);
+            assert(ret == (zero ? (write ? -EIO : 0) : -ENOSPC));
+            assert(next_offset == 6 && scalar_calls == 2);
+            if (!write) {
+                assert(memcmp(out, input, 3) == 0);
+                for (unsigned i = 3; i < 21; i++) {
+                    assert(out[i] == (zero ? 0 : 0xcc));
+                }
+                assert(out[21] == 0xcc);
+            }
+            cases++;
+        }
+    }
     lr_file_close(f); close(fd);
     printf("native partial transfers: %u short/EINTR/EOF/error cases PASS\n", cases);
 }
