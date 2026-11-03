@@ -1705,6 +1705,31 @@ static void emu_logical_shift_imm(dsp_core_t* dsp, bool right)
         ((value == 0) << DSP_SR_Z);
 }
 
+static void emu_logical_shift_reg(dsp_core_t* dsp, bool right)
+{
+    static const unsigned controls[] = {DSP_REG_A1, DSP_REG_B1, DSP_REG_X0,
+                                        DSP_REG_X1, DSP_REG_Y0, DSP_REG_Y1};
+    unsigned dst = DSP_REG_A1 + (dsp->cur_inst & 1);
+    uint32_t count = dsp->registers[controls[((dsp->cur_inst >> 1) & 7) - 2]];
+    bool short_words = (dsp->registers[DSP_REG_SR] & (1u << DSP_SR_SA)) != 0;
+    unsigned bits = short_words ? 16 : 24;
+    uint32_t value = dsp->registers[dst] >> (short_words ? 8 : 0), carry = 0;
+    if (short_words) count >>= 8;
+    if (count) {
+        if (count <= bits) carry = (value >> (right ? count - 1 : bits - count)) & 1;
+        /* Oversized counts are a deterministic zero-result/zero-carry
+         * policy, not a hardware claim for undefined operands. */
+        value = count >= bits ? 0 : right ? value >> count : (value << count) & ((1u << bits) - 1);
+    }
+    dsp->registers[dst] = value << (short_words ? 8 : 0);
+    dsp->registers[DSP_REG_SR] &= ~((1u << DSP_SR_C) | (1u << DSP_SR_V) | (1u << DSP_SR_N) | (1u << DSP_SR_Z));
+    dsp->registers[DSP_REG_SR] |= carry | (((value >> (bits - 1)) & 1) << DSP_SR_N) |
+                               (value == 0 ? 1u << DSP_SR_Z : 0);
+}
+
+static void emu_lsl_reg(dsp_core_t* dsp) { emu_logical_shift_reg(dsp, false); }
+static void emu_lsr_reg(dsp_core_t* dsp) { emu_logical_shift_reg(dsp, true); }
+
 static void emu_lsl_imm(dsp_core_t* dsp)
 {
     emu_logical_shift_imm(dsp, false);

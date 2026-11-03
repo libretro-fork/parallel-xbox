@@ -669,6 +669,81 @@ static void check_unsigned_extract(Machine *a, Machine *b, unsigned mode)
     }
 }
 
+static void check_register_logical_shifts(Machine *a, Machine *b, unsigned mode)
+{
+    static const unsigned controls[] = {DSP_REG_A1, DSP_REG_B1, DSP_REG_X0, DSP_REG_X1, DSP_REG_Y0, DSP_REG_Y1};
+    static const uint32_t values[] = {0, 1, 0x800000, 0xffffff, 0x7fffff, 0xabc123, 0xaaaaaa, 0x555555};
+    static const uint32_t profiles[] = {0, 0xff, 0x310080, 0x3100ff};
+    static const uint32_t counts[] = {0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,
+        32,33,64,255,256,0xffff,0x10000,0xffffff};
+    for (unsigned short_words = 0; short_words < 2; short_words++) {
+        for (unsigned control = 0; control < 6; control++) {
+            for (unsigned right = 0; right < 2; right++) {
+                for (unsigned dst = 0; dst < 2; dst++) {
+                    uint32_t op = (right ? 0x0c1e30 : 0x0c1e10) | ((control + 2) << 1) | dst;
+                    for (unsigned count = 0; count < ARRAY_SIZE(counts); count++) {
+                        for (unsigned value = 0; value < ARRAY_SIZE(values); value++) {
+                            for (unsigned profile = 0; profile < ARRAY_SIZE(profiles); profile++) {
+                                Machine *machines[] = {a, b};
+                                dspjit_test_reset_fallback_count();
+                                for (unsigned engine = 0; engine < 2; engine++) {
+                                    Machine *m = machines[engine];
+                                    prepare(m, op, 0, 1, mode, false);
+                                    dsp_core_t *c = m->dsp->backend;
+                                    c->registers[DSP_REG_SR] = profiles[profile] | (mode << DSP_SR_S0) | (short_words << DSP_SR_SA);
+                                    c->registers[DSP_REG_A1 + dst] = values[value];
+                                    c->registers[controls[control]] = short_words ? ((counts[count] & 0xffff) << 8) | 0xa5 : counts[count];
+                                    uint32_t expected[DSP_REG_MAX];
+                                    memcpy(expected, c->registers, sizeof(expected));
+                                    unsigned bits = short_words ? 16 : 24;
+                                    uint32_t word = expected[DSP_REG_A1 + dst] >> (short_words ? 8 : 0);
+                                    uint32_t n = expected[controls[control]] >> (short_words ? 8 : 0), carry = 0;
+                                    /* Independent one-bit shifts. After width+1
+                                     * steps, both word and carry stay zero. */
+                                    unsigned steps = n < bits + 1 ? n : bits + 1;
+                                    for (unsigned step = 0; step < steps; step++) {
+                                        carry = right ? word & 1 : (word >> (bits - 1)) & 1;
+                                        word = right ? word >> 1 : (word << 1) & ((1u << bits) - 1);
+                                    }
+                                    expected[DSP_REG_A1 + dst] = word << (short_words ? 8 : 0);
+                                    expected[DSP_REG_SR] = (expected[DSP_REG_SR] & ~0xfu) | carry |
+                                        (word == 0 ? 4 : 0) | (((word >> (bits - 1)) & 1) << DSP_SR_N);
+                                    if (!engine) {
+                                        m->dsp->ops->step(m->dsp);
+                                        c->cycle_count += c->instr_cycle;
+                                    } else m->dsp->ops->run(m->dsp, 1);
+                                    if (c->pc != 1 || c->cycle_count != 2 || memcmp(c->registers, expected, sizeof(expected))) {
+                                        fprintf(stderr, "Register logical shift engine=%u SA=%u control=%u right=%u dst=%u count=%x MSP=%x/%x SR=%x/%x\n",
+                                                engine, short_words, control, right, dst, n, c->registers[DSP_REG_A1 + dst],
+                                                expected[DSP_REG_A1 + dst], c->registers[DSP_REG_SR], expected[DSP_REG_SR]);
+                                        exit(1);
+                                    }
+                                }
+                                if (dspjit_test_fallback_count() || compare_machines(a, b)) exit(1);
+                                cases++;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    static const unsigned contexts[] = {0x20000000, 0x40000, 0x80000, 0x40000000};
+    for (unsigned control = 0; control < 6; control++) {
+        for (unsigned right = 0; right < 2; right++) {
+            for (unsigned dst = 0; dst < 2; dst++) {
+                for (unsigned seed = 0; seed < 8; seed++) {
+                    for (unsigned ctx = 0; ctx < ARRAY_SIZE(contexts); ctx++) {
+                        for (unsigned irq = 0; irq < 2; irq++)
+                            check(a, b, (right ? 0x0c1e30 : 0x0c1e10) | ((control + 2) << 1) | dst,
+                                  0, seed | 0x10000 | 0x1000000 | contexts[ctx], mode, irq);
+                    }
+                }
+            }
+        }
+    }
+}
+
 static void check_merge_case(Machine *a, Machine *b, unsigned mode, unsigned short_words,
                              unsigned source, unsigned dst, uint32_t input, uint64_t value, uint32_t flags)
 {
@@ -3394,6 +3469,7 @@ static void check_program_write_sequences(Machine *a, Machine *b, unsigned mode)
 
 int main(int argc, char **argv)
 {
+    bool register_logical_only = argc == 2 && !strcmp(argv[1], "--register-logical-shifts");
     bool merge_only = argc == 2 && !strcmp(argv[1], "--merge");
     bool insert_only = argc == 2 && !strcmp(argv[1], "--insert");
     bool extract_only = argc == 2 && !strcmp(argv[1], "--extract");
@@ -3429,8 +3505,8 @@ int main(int argc, char **argv)
     bool effective_only = argc == 2 && !strcmp(argv[1], "--effective-control");
     bool startup_only = argc == 2 && !strcmp(argv[1], "--startup");
     bool program_only = argc == 2 && !strcmp(argv[1], "--program");
-    if (argc != 1 && !merge_only && !insert_only && !extract_only && !extractu_only && !leading_bits_only && !register_shifts_only && !indirect_memory_loops_only && !short_memory_loops_only && !relative_calls_only && !register_branches_only && !pc_relative_only && !rounded_multiply_only && !y_long_only && !logical_shifts_only && !immediate_logic_only && !relative_only && !loops_only && !program_only && !compare_only && !startup_only && !effective_only && !register_only && !program_control_only && !peripheral_only && !program_peripheral_only && !multiply_only && !normalize_only && !divide_only && !byte_logic_only && !memory_bits_only && !control_bits_only && !offset_control_only && !shifts_only && !signed_right_only && !left_flags_only) {
-        fputs("usage: dspnative [--merge|--insert|--extract|--extractu|--leading-bits|--register-shifts|--indirect-memory-loops|--short-memory-loops|--relative-calls|--register-branches|--pc-relative-loads|--rounded-multiply|--y-long-offset|--logical-shifts|--immediate-logic|--relative|--loops|--program|--compare|--startup|--effective-control|--register-control|--program-control|--peripheral-control|--program-peripheral|--multiply|--normalize|--divide|--status-byte|--memory-bits|--control-bits|--offset-control|--shift-boundaries|--signed-right|--left-flags]\n", stderr);
+    if (argc != 1 && !register_logical_only && !merge_only && !insert_only && !extract_only && !extractu_only && !leading_bits_only && !register_shifts_only && !indirect_memory_loops_only && !short_memory_loops_only && !relative_calls_only && !register_branches_only && !pc_relative_only && !rounded_multiply_only && !y_long_only && !logical_shifts_only && !immediate_logic_only && !relative_only && !loops_only && !program_only && !compare_only && !startup_only && !effective_only && !register_only && !program_control_only && !peripheral_only && !program_peripheral_only && !multiply_only && !normalize_only && !divide_only && !byte_logic_only && !memory_bits_only && !control_bits_only && !offset_control_only && !shifts_only && !signed_right_only && !left_flags_only) {
+        fputs("usage: dspnative [--register-logical-shifts|--merge|--insert|--extract|--extractu|--leading-bits|--register-shifts|--indirect-memory-loops|--short-memory-loops|--relative-calls|--register-branches|--pc-relative-loads|--rounded-multiply|--y-long-offset|--logical-shifts|--immediate-logic|--relative|--loops|--program|--compare|--startup|--effective-control|--register-control|--program-control|--peripheral-control|--program-peripheral|--multiply|--normalize|--divide|--status-byte|--memory-bits|--control-bits|--offset-control|--shift-boundaries|--signed-right|--left-flags]\n", stderr);
         return 2;
     }
     Machine *a = machine_new(false), *b = machine_new(true);
@@ -3445,8 +3521,9 @@ int main(int argc, char **argv)
     assert(initially_committed == (64u << 10));
 #endif
     check_speculative_decode();
-    if (merge_only || insert_only || extract_only || extractu_only || leading_bits_only || register_shifts_only || indirect_memory_loops_only || short_memory_loops_only || relative_calls_only || register_branches_only || pc_relative_only || rounded_multiply_only || y_long_only || logical_shifts_only || immediate_logic_only || relative_only || loops_only || program_only || compare_only || startup_only || effective_only || register_only || program_control_only || peripheral_only || program_peripheral_only || multiply_only || normalize_only || divide_only || byte_logic_only || memory_bits_only || control_bits_only || offset_control_only || shifts_only || signed_right_only || left_flags_only) {
+    if (register_logical_only || merge_only || insert_only || extract_only || extractu_only || leading_bits_only || register_shifts_only || indirect_memory_loops_only || short_memory_loops_only || relative_calls_only || register_branches_only || pc_relative_only || rounded_multiply_only || y_long_only || logical_shifts_only || immediate_logic_only || relative_only || loops_only || program_only || compare_only || startup_only || effective_only || register_only || program_control_only || peripheral_only || program_peripheral_only || multiply_only || normalize_only || divide_only || byte_logic_only || memory_bits_only || control_bits_only || offset_control_only || shifts_only || signed_right_only || left_flags_only) {
         for (unsigned mode = 0; mode < 4; mode++) {
+            if (register_logical_only) check_register_logical_shifts(a, b, mode);
             if (merge_only) check_merge(a, b, mode);
             if (insert_only) check_insert(a, b, mode);
             if (extract_only) check_signed_extract(a, b, mode);
@@ -3514,6 +3591,7 @@ int main(int argc, char **argv)
     }
     check_status_restore_chains(a, b);
     check_logical_immediates(a, b);
+    for (unsigned mode = 0; mode < 4; mode++) check_register_logical_shifts(a, b, mode);
     for (unsigned mode = 0; mode < 4; mode++) check_merge(a, b, mode);
     for (unsigned mode = 0; mode < 4; mode++) check_insert(a, b, mode);
     for (unsigned mode = 0; mode < 4; mode++) check_signed_extract(a, b, mode);

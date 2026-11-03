@@ -31,6 +31,8 @@
 
 - Keep frontend VFS reads coalesced across empty descriptors, avoiding extra provider calls for contiguous destinations while preserving short reads, EOF zero-fill and cursor recovery.
 
+- DSP: execute register-count logical shifts natively, preserving EXP/LSP and prior flags while handling aliased counts and normal/sixteen-bit words.
+
 - Fill consecutive sparse/zero QCOW2 clusters as a single destination run where possible, avoiding repeated cursor setup and per-cluster fills while preserving data/compressed boundaries and 32-bit size limits.
 
 - DSP: execute MERGE natively to build bit-field control words, preserving untouched accumulator fields and prior flags in normal/sixteen-bit layouts.

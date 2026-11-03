@@ -902,7 +902,7 @@ static void emit_write_reg(Tr *t, int r, int val)
 /* --- the data ALU --- */
 
 enum {
-    OP_MERGE, OP_INSERT, OP_EXTRACT, OP_EXTRACTU,
+    OP_LSL_R, OP_LSR_R, OP_MERGE, OP_INSERT, OP_EXTRACT, OP_EXTRACTU,
     OP_CLB,
     OP_ASL_R, OP_ASR_R, /* register-controlled arithmetic shifts */
     OP_ASL_N, OP_ASR_N, /* by a count (shift), of accumulator s into d */
@@ -1865,6 +1865,65 @@ static void emit_alu(Tr *t, const AluOp *a)
         emit_a1_result(t, a->d, SR_N | SR_Z | SR_V, -1);
         break;
 
+    case OP_LSL_R:
+    case OP_LSR_R: {
+        emit_flags_flush(t);
+        acc_load(t, a->d);
+        if (a->src == DSP_REG_A1 || a->src == DSP_REG_B1) {
+            unsigned n = a->src - DSP_REG_A1;
+            acc_load(t, n);
+            h_mov_rr(e, 1, T3, acc_reg(n));
+            h_shr_ri(e, 1, T3, 24);
+            h_and_ri(e, 0, T3, 0xffffff);
+        } else h_ld32(e, T3, REG_CORE, REGOFF(a->src));
+        h_mov_rr(e, 1, T0, acc);
+        h_shr_ri(e, 1, T0, 24);
+        h_and_ri(e, 0, T0, 0xffffff);
+        h_mov_ri(e, T2, 24);
+        h_ld32(e, T1, REG_CORE, REGOFF(DSP_REG_SR));
+        h_test_ri(e, 0, T1, 1u << DSP_SR_SA);
+        size_t ordinary = h_jcc(e, HC_EQ);
+        h_shr_ri(e, 0, T3, 8);
+        h_shr_ri(e, 0, T0, 8);
+        h_mov_ri(e, T2, 16);
+        h_patch(e, ordinary, e->len);
+        h_mov_ri(e, T4, 0);
+        h_test_rr(e, 0, T3, T3);
+        size_t zero = h_jcc(e, HC_EQ);
+        h_cmp_rr(e, 0, T3, T2);
+        size_t oversized = h_jcc(e, HC_A);
+        h_mov_rr(e, 1, T4, T0);
+        if (a->op == OP_LSL_R) {
+            h_mov_rr(e, 0, T1, T2);
+            h_sub_rr(e, 0, T1, T3);
+        } else {
+            h_mov_rr(e, 0, T1, T3);
+            h_sub_ri(e, 0, T1, 1);
+        }
+        h_shr_r1(e, 0, T4);
+        h_and_ri(e, 0, T4, 1);
+        h_mov_rr(e, 0, T1, T3);
+        if (a->op == OP_LSL_R) h_shl_r1(e, 0, T0);
+        else h_shr_r1(e, 0, T0);
+        h_mov_rr(e, 0, T1, T2);
+        h_mov_ri(e, T2, 1);
+        h_shl_r1(e, 0, T2);
+        h_sub_ri(e, 0, T2, 1);
+        h_and_rr(e, 0, T0, T2);
+        size_t shifted = h_jmp(e);
+        h_patch(e, oversized, e->len);
+        h_mov_ri(e, T0, 0);
+        h_patch(e, shifted, e->len);
+        h_patch(e, zero, e->len);
+        h_ld32(e, T1, REG_CORE, REGOFF(DSP_REG_SR));
+        h_test_ri(e, 0, T1, 1u << DSP_SR_SA);
+        size_t packed = h_jcc(e, HC_EQ);
+        h_shl_ri(e, 0, T0, 8);
+        h_patch(e, packed, e->len);
+        emit_a1_result(t, a->d, SR_C | SR_N | SR_Z | SR_V, T4);
+        break;
+    }
+
     case OP_LSL:
     case OP_LSR:
     case OP_ROL:
@@ -2364,6 +2423,14 @@ static bool np_alu(const Insn *in, AluOp *a)
         !strcmp(name, "eor #xx, D") || !strcmp(name, "eor #xxxx, D")) {
         a->op = name[0] == 'e' ? OP_EOR : OP_OR;
         a->imm = strstr(name, "#xx,") ? (inst >> 8) & 0x3F : in->ext;
+        return true;
+    }
+    if (!strcmp(name, "lsl S, D") || !strcmp(name, "lsr S, D")) {
+        static const int controls[] = {DSP_REG_A1, DSP_REG_B1, DSP_REG_X0,
+                                       DSP_REG_X1, DSP_REG_Y0, DSP_REG_Y1};
+        a->op = name[2] == 'r' ? OP_LSR_R : OP_LSL_R;
+        a->d = inst & 1;
+        a->src = controls[((inst >> 1) & 7) - 2];
         return true;
     }
     if (!strcmp(name, "lsl #ii, D") || !strcmp(name, "lsr #ii, D")) {
