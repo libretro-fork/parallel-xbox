@@ -31,6 +31,8 @@
 
 - Fill consecutive sparse/zero QCOW2 clusters as a single destination run where possible, avoiding repeated cursor setup and per-cluster fills while preserving data/compressed boundaries and 32-bit size limits.
 
+- DSP: execute MERGE natively to build bit-field control words, preserving untouched accumulator fields and prior flags in normal/sixteen-bit layouts.
+
 - Read-only QCOW2 images skip the write-cluster workspace and release metadata decode scratch after open, retaining two fewer cluster-sized buffers without adding read-time allocations.
 
 - DSP: execute immediate/register INSERT natively, preserving surrounding bits and handling A0/B0 sources, operand aliases and sixteen-bit offset bias.

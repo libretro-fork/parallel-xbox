@@ -902,7 +902,7 @@ static void emit_write_reg(Tr *t, int r, int val)
 /* --- the data ALU --- */
 
 enum {
-    OP_INSERT, OP_EXTRACT, OP_EXTRACTU,
+    OP_MERGE, OP_INSERT, OP_EXTRACT, OP_EXTRACTU,
     OP_CLB,
     OP_ASL_R, OP_ASR_R, /* register-controlled arithmetic shifts */
     OP_ASL_N, OP_ASR_N, /* by a count (shift), of accumulator s into d */
@@ -1454,6 +1454,36 @@ static void emit_alu(Tr *t, const AluOp *a)
         acc_written(t, a->d);
         emit_sr_result(t, SR_EUNZ | SR_V | SR_C | 0xFFFF0000u, T4, acc, a->d);
         break;
+
+    case OP_MERGE: {
+        /* E/U/C/L remain the prior instruction's, even if its result is
+         * cached in the accumulator that MERGE is about to overwrite. */
+        emit_flags_flush(t);
+        acc_load(t, a->d);
+        if (a->src == DSP_REG_A1 || a->src == DSP_REG_B1) {
+            unsigned n = a->src - DSP_REG_A1;
+            acc_load(t, n);
+            h_mov_rr(e, 1, T2, acc_reg(n));
+            h_shr_ri(e, 1, T2, 24);
+        } else h_ld32(e, T2, REG_CORE, REGOFF(a->src));
+        h_mov_rr(e, 1, T0, acc);
+        h_shr_ri(e, 1, T0, 24);
+        h_ld32(e, T1, REG_CORE, REGOFF(DSP_REG_SR));
+        h_test_ri(e, 0, T1, 1u << DSP_SR_SA);
+        size_t ordinary = h_jcc(e, HC_EQ);
+        h_and_ri(e, 0, T2, 0xff00);
+        h_shl_ri(e, 0, T2, 8);
+        h_and_ri(e, 0, T0, 0xffff);
+        size_t merged = h_jmp(e);
+        h_patch(e, ordinary, e->len);
+        h_and_ri(e, 0, T2, 0xfff);
+        h_shl_ri(e, 0, T2, 12);
+        h_and_ri(e, 0, T0, 0xfff);
+        h_patch(e, merged, e->len);
+        h_or_rr(e, 0, T0, T2);
+        emit_a1_result(t, a->d, SR_N | SR_Z | SR_V, -1);
+        break;
+    }
 
     case OP_INSERT: {
         acc_load(t, a->d);
@@ -2340,6 +2370,14 @@ static bool np_alu(const Insn *in, AluOp *a)
         a->op = name[2] == 'r' ? OP_LSR : OP_LSL;
         a->d = inst & 1;
         a->shift = (inst >> 1) & 31;
+        return true;
+    }
+    if (!strcmp(name, "merge S, D")) {
+        static const int sources[] = {DSP_REG_A1, DSP_REG_B1, DSP_REG_X0,
+                                       DSP_REG_X1, DSP_REG_Y0, DSP_REG_Y1};
+        a->op = OP_MERGE;
+        a->d = inst & 1;
+        a->src = sources[((inst >> 1) & 7) - 2];
         return true;
     }
     if (!strcmp(name, "insert #CO, S2, D") || !strcmp(name, "insert S1, S2, D")) {
