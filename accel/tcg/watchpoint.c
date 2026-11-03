@@ -76,9 +76,9 @@ void cpu_check_watchpoint(CPUState *cpu, vaddr addr, vaddr len,
          * Now raise the debug interrupt so that it will
          * trigger after the current instruction.
          */
-        bql_lock();
+        /* The libretro frame owner may already hold the BQL here. */
+        BQL_LOCK_GUARD();
         cpu_interrupt(cpu, CPU_INTERRUPT_DEBUG);
-        bql_unlock();
         return;
     }
 

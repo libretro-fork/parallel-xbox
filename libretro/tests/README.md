@@ -36,6 +36,8 @@ NORM preserves carry on left-shift, right-shift and no-op paths, as specified by
 
 `test-icount-publication.py CHECKOUT [CC]` also executes the production fixed-clock initializer. It preserves raw instruction count and bias, selects the fixed Xbox rate, initializes legacy compatibility fields and creates no host-paced timers. Existing owner-accounting, I/O-boundary, restored-state and six-reader publication tests remain. These tests run in regression-only CI. The standalone QEMU CPU timing-option parser, adaptive clock governor and host/guest clock-alignment sleeps are no longer part of core initialization or CPU execution; saved-state fields retain their previous wire layout.
 
+`test-watchpoint-owner.py CHECKOUT [CC]` executes the production watchpoint checker and conditional BQL guard. Read/write watchpoints cover before/after-access exits, DEBUG re-entry, filtered and non-overlapping accesses, and preserved hit metadata. Both existing-owner and unowned calls must publish interrupts while locked and leave ownership balanced. A negative control restores unconditional re-acquisition and must fail. The synthetic REP MOVS/STOS guest tests exercise the actual CPU watchpoint restart path with CPU Boost enabled and disabled.
+
 ## DSP and guest RAM ordering
 
 `test-dsp-guest-ram.py CHECKOUT [CC]` compiles the production APU tick and

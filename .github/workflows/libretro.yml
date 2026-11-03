@@ -62,6 +62,12 @@ jobs:
         env:
           OWNER_CPU_CFLAGS: -fsanitize=address -fno-omit-frame-pointer
         run: python3 libretro/tests/test-owner-cpu-boundary.py . cc
+      - name: Watchpoint restart preserves existing BQL ownership
+        run: python3 libretro/tests/test-watchpoint-owner.py . cc
+      - name: Watchpoint ownership with address and undefined behavior sanitizers
+        env:
+          WATCHPOINT_OWNER_CFLAGS: -fsanitize=address,undefined -fno-omit-frame-pointer -fno-sanitize-recover=all
+        run: python3 libretro/tests/test-watchpoint-owner.py . cc
       - name: SPSC pair publication with fortified libc and sanitizers
         env:
           SPSC_PAIR_CFLAGS: -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=3 -fsanitize=address -fno-omit-frame-pointer
