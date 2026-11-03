@@ -342,3 +342,10 @@ compiler path; driver input still borrows the mapped payload directly. The
 check is at the existing uniform-location resolution completion boundary,
 which can already wait for driver linking. It adds no GPU resource readback,
 shader/PSO variants or binary staging copy.
+
+Optical media retains Xbox-disc identity from its existing load-time game
+partition probe. Small XISOs therefore report DVD-ROM independently of file
+size. Ordinary images retain the capacity heuristic. Identity belongs to the
+mounted medium, clears on replacement/eject, survives device reset, and is
+unchanged after a failed open. ATAPI profile queries add no file I/O, locks,
+sector copies, shader/PSO state or media sidecar dependency.

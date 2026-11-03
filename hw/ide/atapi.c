@@ -27,6 +27,7 @@
 #include "qemu/cutils.h"
 #include "hw/scsi/scsi.h"
 #include "system/block-backend.h"
+#include "block/libretro-disk.h"
 #include "scsi/constants.h"
 #include "ide-internal.h"
 #include "trace.h"
@@ -60,15 +61,18 @@ static inline int media_present(IDEState *s)
     return !s->tray_open && s->nb_sectors > 0;
 }
 
-/* XXX: DVDs that could fit on a CD will be reported as a CD */
+/* Xbox volume identity is retained at media open; ordinary images keep
+ * the existing capacity heuristic. No command-time probing is needed. */
 static inline int media_is_dvd(IDEState *s)
 {
-    return (media_present(s) && s->nb_sectors > CD_MAX_SECTORS);
+    return media_present(s) &&
+           (s->nb_sectors > CD_MAX_SECTORS || lr_disk_is_xbox_disc(s->blk));
 }
 
 static inline int media_is_cd(IDEState *s)
 {
-    return (media_present(s) && s->nb_sectors <= CD_MAX_SECTORS);
+    return media_present(s) && s->nb_sectors <= CD_MAX_SECTORS &&
+           !lr_disk_is_xbox_disc(s->blk);
 }
 
 static void cd_data_to_raw(uint8_t *buf, int lba)

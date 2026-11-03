@@ -3781,3 +3781,12 @@ Taken-target and untaken-fallthrough DO endpoints independently check one
 LC decrement and one peripheral read. Differential contexts add interrupts
 and stack errors. The startup fixture checks both outcomes and DO retirement.
 Y peripherals remain unsupported; no device-space alias is introduced.
+
+`test-xbox-disc-profile.py` checks the production raw/VFS partition probes,
+backend identity setters/queries, medium commit/close/change functions and
+ATAPI DVD/CD classifiers. It covers 64 mapped/read/VFS/probe-failure layouts,
+28000 cached profile queries with no I/O, threshold/tray/medium cases, failed
+replacement, eject and memory-medium cleanup. The filesystem open boundary
+is modeled for lifecycle tests. `rom/dvd-profile.asm` issues real ATAPI GET
+CONFIGURATION against the 8 MiB synthetic Xbox disc and expects DVD-ROM
+(0x10); an old core reports CD-ROM (0x08).

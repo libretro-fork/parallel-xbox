@@ -313,7 +313,7 @@ static void default_driver_check_json(void)
 
 
 static int xemu_check_file(const char *path);
-static uint64_t xbox_game_partition_offset(const char *path);
+static uint64_t xbox_game_partition_offset(const char *path, bool *xbox_disc);
 
 static void configure_blockdev(BlockdevOptionsQueue *bdo_queue,
                                MachineClass *machine_class, int snapshot)
@@ -338,7 +338,8 @@ static void configure_blockdev(BlockdevOptionsQueue *bdo_queue,
         }
         BlockBackend *cd = lr_disk_new("ide0-cd1", IF_IDE, 0, 1, true, false);
         if (dvd_path[0]) {
-            uint64_t offset = xbox_game_partition_offset(dvd_path);
+            bool xbox_disc;
+            uint64_t offset = xbox_game_partition_offset(dvd_path, &xbox_disc);
             if (offset) {
                 info_report("DVD: Redump image, the game partition from "
                             "offset 0x%" PRIx64, offset);
@@ -351,6 +352,7 @@ static void configure_blockdev(BlockdevOptionsQueue *bdo_queue,
                 xemu_queue_error_message(msg);
                 g_free(msg);
             } else {
+                lr_disk_set_xbox_disc(cd, xbox_disc);
                 extern void xemu_xbe_runtime_disc(BlockBackend *blk);
                 xemu_xbe_runtime_disc(cd);
             }
@@ -1366,13 +1368,14 @@ static const void *xbox_read_at(LRFile *f, struct retro_vfs_file_handle *h,
     return view ? view : (lr_file_pread(f, offset, buf, len) == 0 ? buf : NULL);
 }
 
-static uint64_t xbox_game_partition_offset(const char *path)
+static uint64_t xbox_game_partition_offset(const char *path, bool *xbox_disc)
 {
     static const uint64_t offsets[] = {
         0, 0x18300000 /* XGD1 */, 0xFD90000 /* XGD2 */, 0x2080000 /* XGD3 */,
     };
     static const char magic[] = "MICROSOFT*XBOX*MEDIA";
     uint64_t found = 0;
+    *xbox_disc = false;
     LRFile *f = NULL;
     struct retro_vfs_file_handle *h = NULL;
 
@@ -1400,6 +1403,7 @@ static uint64_t xbox_game_partition_offset(const char *path)
                                         buf, sizeof(buf));
         if (view && memcmp(view, magic, sizeof(buf)) == 0) {
             found = offsets[i];
+            *xbox_disc = true;
             break;
         }
     }
@@ -1419,13 +1423,14 @@ void xemu_libretro_change_disc(const char *path, Error **errp)
 {
     BlockBackend *blk = blk_by_name("ide0-cd1");
     uint64_t offset = 0;
+    bool xbox_disc = false;
 
     if (!blk) {
         error_setg(errp, "this machine has no DVD drive");
         return;
     }
     if (path && path[0]) {
-        offset = xbox_game_partition_offset(path);
+        offset = xbox_game_partition_offset(path, &xbox_disc);
         if (offset) {
             info_report("DVD: Redump image, the game partition from offset "
                         "0x%" PRIx64, offset);
@@ -1433,6 +1438,7 @@ void xemu_libretro_change_disc(const char *path, Error **errp)
     }
     /* a disc that does not open leaves the one in the drive */
     if (lr_disk_change(blk, path, offset, errp)) {
+        lr_disk_set_xbox_disc(blk, xbox_disc);
         extern void xemu_xbe_runtime_disc(BlockBackend *blk);
         xemu_xbe_runtime_disc(path && path[0] ? blk : NULL);
         xemu_settings_set_string(&g_config.sys.files.dvd_path,
