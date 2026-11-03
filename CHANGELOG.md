@@ -23,6 +23,8 @@
 
 ## Unreleased
 
+- Exclude unused host-clock/performance-counter helpers and deadline sleeps from the bundled support library. Remove unused timed QEMU condition-variable and semaphore APIs.
+
 - Remove the unused Windows high-resolution polling timer. Polling now waits for notifications or checks readiness, without scheduling positive host-time delays.
 
 - Dispatch queued idle callbacks without the legacy 10 ms host timeout; preserve their idle progress accounting.

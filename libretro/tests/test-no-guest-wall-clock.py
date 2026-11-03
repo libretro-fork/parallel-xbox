@@ -48,3 +48,11 @@ assert 'retro_eventcount_commit_wait_timeout' not in (root/'util/main-loop.c').r
 assert 'CreateWaitableTimer' not in (root/'util/qemu-timer.c').read_text()
 assert 'SetWaitableTimer' not in (root/'util/qemu-timer.c').read_text()
 assert 'retro_sleep' not in (root/'libretro/glib/gmain.c').read_text()
+
+for name in ['include/qemu/thread.h','util/qemu-thread-win32.c','util/qemu-thread-posix.c']:
+ text=(root/name).read_text()
+ assert 'qemu_cond_timedwait' not in text, name
+ assert 'qemu_sem_timedwait' not in text, name
+ assert 'qemu_timedwait_clockid' not in text, name
+
+assert '-DRETRO_DISABLE_HOST_CLOCK' in flags

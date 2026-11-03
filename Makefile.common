@@ -58,6 +58,7 @@ CFLAGS_GLOFF := $(QEMU_CFLAGS) -I$(CORE_DIR)/hw/xbox/nv2a/pgraph/thirdparty
 # file mappings, which need no define.
 CFLAGS_LRCOMMON := -DHAVE_THREAD_STORAGE -I$(CORE_DIR)/libretro-common/include -w
 # No host-time calibration or hardware deadline-based spin in core waits.
+CFLAGS_LRCOMMON += -DRETRO_DISABLE_HOST_CLOCK
 CFLAGS_LRCOMMON += -DRETRO_EVENTCOUNT_FIXED_SPIN=256 -DRTHREADS_SCOND_FIXED_SPIN=256
 ifneq ($(HOST_OS),win32)
 CFLAGS_LRCOMMON += -DHAVE_MMAP

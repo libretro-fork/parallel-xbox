@@ -26,11 +26,6 @@ static void error_exit(int err, const char *msg)
     abort();
 }
 
-static inline clockid_t qemu_timedwait_clockid(void)
-{
-    return CLOCK_REALTIME;
-}
-
 void qemu_mutex_init(QemuMutex *mutex)
 {
     int err;

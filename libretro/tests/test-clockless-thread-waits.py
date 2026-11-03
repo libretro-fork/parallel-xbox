@@ -64,7 +64,7 @@ code=code.replace('/* THREADS */','#include "'+(r/'libretro-common/rthreads/rthr
 env=os.environ.copy();env.pop('RETRO_EVENTCOUNT_SPIN',None);env['RETRO_EVENTCOUNT_SPIN_US']='500';env['RTHREADS_SCOND_SPIN']='umwait';env['PATH']=str(Path(cc).resolve().parent)+os.pathsep+env.get('PATH','')
 with tempfile.TemporaryDirectory(prefix='clockless-waits-') as t:
  t=Path(t);(t/'test.c').write_text(code);binary=t/'test.exe'
- cmd=[cc,'-O2','-std=gnu11','-w','-D_GNU_SOURCE','-DHAVE_THREADS','-DHAVE_THREAD_STORAGE','-DRETRO_EVENTCOUNT_FIXED_SPIN=256','-DRTHREADS_SCOND_FIXED_SPIN=256','-I'+str(r/'libretro-common/include'),str(t/'test.c')]
+ cmd=[cc,'-O2','-std=gnu11','-w','-D_GNU_SOURCE','-DRETRO_DISABLE_HOST_CLOCK','-DHAVE_THREADS','-DHAVE_THREAD_STORAGE','-DRETRO_EVENTCOUNT_FIXED_SPIN=256','-DRTHREADS_SCOND_FIXED_SPIN=256','-I'+str(r/'libretro-common/include'),str(t/'test.c')]
  cmd += [str(r/name) for name in ['libretro-common/compat/compat_strl.c','libretro-common/features/features_cpu.c','libretro-common/time/rtime.c']]
  cmd += ['-o',str(binary),'-pthread']
  if os.name=='nt':cmd+=['-static']
