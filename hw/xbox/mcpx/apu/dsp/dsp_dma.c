@@ -75,6 +75,7 @@ typedef struct DmaTransfer {
     unsigned int item_size;
     uint32_t item_mask;
     bool to_host;
+    bool zero_aperture;     /* bounded compatibility space: generate/discard */
     bool interleave;        /* item n is channel n % channels, block n / channels */
     uint32_t channels;
     uint32_t blocks;
@@ -109,6 +110,13 @@ static void dma_run(void *user, uint8_t *host, size_t bytes)
     size_t items = bytes / t->item_size;
 
     assert(bytes % t->item_size == 0);
+    if (t->zero_aperture) {
+        if (t->to_host) {
+            memset(host, 0, bytes);
+        }
+        t->n += items;
+        return;
+    }
     if (t->to_host) {
         if (t->item_size == 2) {
             for (size_t i = 0; i < items; i++) {
@@ -259,8 +267,13 @@ static void dsp_dma_run(DSPDMAState *s)
         size_t scratch_addr = scratch_base + scratch_offset;
         uint32_t mem_address = 0;
         int mem_space = DSP_SPACE_X;
+        /* Compatibility policy for the proposed bit-14 zero/discard space.
+         * Do not generalize this to all unmapped or higher DMA addresses. */
+        bool zero_aperture = dsp_offset >= 0x4000 && dsp_offset < 0x8000;
 
-        if (dsp_offset < 0x1800) {
+        if (zero_aperture) {
+            /* There is no DSP backing memory to map, read or invalidate. */
+        } else if (dsp_offset < 0x1800) {
             assert(dsp_offset+count < 0x1800);
             mem_space = DSP_SPACE_X;
             mem_address = dsp_offset;
@@ -285,6 +298,7 @@ static void dsp_dma_run(DSPDMAState *s)
             .item_size = item_size,
             .item_mask = item_mask,
             .to_host = direction,
+            .zero_aperture = zero_aperture,
             .interleave = direction && dsp_interleave,
             .channels = channel_count,
             .blocks = block_count,
@@ -300,7 +314,9 @@ static void dsp_dma_run(DSPDMAState *s)
         }
         /* the DSP's words in place where they are plain memory; a
          * write to P goes through the callback (its code is dropped) */
-        t.mem = s->mem_ptr(s->mem_opaque, mem_space, mem_address, words);
+        if (!zero_aperture) {
+            t.mem = s->mem_ptr(s->mem_opaque, mem_space, mem_address, words);
+        }
 
         if (direction) {
             switch (buf_id) {

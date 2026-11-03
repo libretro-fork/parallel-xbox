@@ -3621,3 +3621,27 @@ add AC-3 encoding or establish Dolby-enabled real-game compatibility.
 Reference timing/unit evidence: Linux nForce AC97 driver and NVIDIA notes:
 https://github.com/torvalds/linux/blob/master/sound/pci/intel8x0.c
 https://download.nvidia.com/XFree86/nforce/1.0-0269/ReleaseNotes.html
+
+## Bounded DSP DMA zero/discard compatibility aperture
+
+`test-dsp-dma-zero.py CHECKOUT [CC]` compiles the entire production DMA
+module with its public headers and bounded host/DSP memory callbacks.
+It checks 4,113 transfers/range rejections: 0x4000, 0x4001 and 0x7fff;
+ordinary X/Y/P payloads; X/Y/P command lists; direct/callback access;
+supported 16/24-bit formats; empty/odd/multiple lengths; four output FIFOs;
+linear/circular scratch; wraps/interleaving; writeback; freeze/unfreeze;
+linked normal/zero transfers; and the existing three-poll completion.
+The oracle independently checks every host byte, DSP word, callback count,
+FIFO cursor and completion flag. Zero/discard never maps DSP backing or
+performs payload callbacks. Eight other unmapped addresses remain rejected.
+Four negative controls remove the aperture, map backing, corrupt zero fill,
+or accept every address above 0x4000. A CI dspstartup fixture also executes
+both directions and completion polling in interpreter and native modes.
+`DSP_DMA_ZERO_CFLAGS` and `DSP_DMA_ZERO_RUNNER` select sanitizers/cross runs.
+
+This is an explicit compatibility policy, informed by Symphony's DSP DMA
+change, not a confirmed MCPX hardware mapping. It is limited to starts in
+0x4000-0x7fff; the offset is ignored within that mode. Normal transfers keep
+their existing checks. No external firmware/game capture was used to
+verify this mapping or Dolby Digital behavior.
+https://github.com/Synkronicity/Xemu-Symphony/commit/7fd97ec
