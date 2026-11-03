@@ -29,6 +29,8 @@
 
 ## Unreleased
 
+- Build the Intel macOS core on GitHub's Intel runner pool, so ARM64 runner shortages no longer block both macOS architectures. Apple Silicon builds continue using ARM64 runners.
+
 - Fix recursive BQL acquisition when guest data watchpoints restart an instruction under the libretro frame owner. Preserve ownership while publishing the debug interrupt, and retain conditional acquisition for unowned callers. Add read/write restart regressions and an unconditional-lock negative control.
 
 - Fix the shader-cache identity regression that stopped Linux and Wine CI with invalid generated C. Test the complete production identity helper and context-to-context driver/fallback refreshes while preserving renderer initialization behavior.
