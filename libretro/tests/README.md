@@ -1984,9 +1984,12 @@ or added to the emulator by this fixture.
 
 `python3 libretro/tests/test-gl-cache-strings.py .` checks the production mapped
 string reader against truncated lengths/payloads, every corrupted byte including
-the terminator, and all four combinations of missing driver vendor/version.
-Normal identities and existing cache encodings are preserved; fallback strings
-are selected only at initialization, with no repeated driver query.
+the terminator, and all 16 transitions between missing/present driver vendor and
+version strings across recreated contexts. It extracts the complete production
+identity helper and verifies that initialization calls it once. Both strings
+refresh on each context initialization, including transitions into and out of
+fallbacks; mapped cache encodings are preserved. The 68,115-case fixture runs
+without a GL context, including AddressSanitizer/UBSan in the host-side CI test.
 
 `test-vk-memory.py ROOT CC [--gpu]` exercises the production reserved
 Vulkan heap with a deterministic driver oracle: fragmented lifetimes, binding

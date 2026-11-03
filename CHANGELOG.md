@@ -29,6 +29,8 @@
 
 ## Unreleased
 
+- Fix the shader-cache identity regression that stopped Linux and Wine CI with invalid generated C. Test the complete production identity helper and context-to-context driver/fallback refreshes while preserving renderer initialization behavior.
+
 - DSP: detect every sign transition during arithmetic left shifts and set sticky L for overflow rather than discarded one bits. Fix interpreter/JIT ASL and shared NORM, DIV and shift-left/add-subtract flags. Add 9,600 independent cases and strengthen the bit-at-a-time shift oracle and production status readbacks.
 
 - DSP: preserve carry through every NORM path in both interpreter and JIT, including no-op and REP iterations. Strengthen the independent status oracle and add 40 NORM-to-ADC result regressions so lost carry cannot silently affect following arithmetic.

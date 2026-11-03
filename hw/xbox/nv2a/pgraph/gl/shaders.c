@@ -1240,6 +1240,19 @@ static bool shader_cache_entry_compare(Lru *lru, LruNode *node, const void *key)
     return memcmp(&binding->state, key, sizeof(ShaderState));
 }
 
+/* Refresh driver-owned strings whenever a new GL context is initialized. */
+static void shader_capture_gl_identity(void)
+{
+    shader_gl_vendor = (const char *)glGetString(GL_VENDOR);
+    if (!shader_gl_vendor) {
+        shader_gl_vendor = "Unknown vendor";
+    }
+    shader_gl_version = (const char *)glGetString(GL_VERSION);
+    if (!shader_gl_version) {
+        shader_gl_version = "Unknown version";
+    }
+}
+
 void pgraph_gl_init_shaders(PGRAPHState *pg)
 {
     PGRAPHGLState *r = pg->gl_renderer_state;
@@ -1249,18 +1262,7 @@ void pgraph_gl_init_shaders(PGRAPHState *pg)
     r->shader_disk_pending = NULL;
     retro_eventcount_init(&r->shader_cache_writeback_complete);
 
-    {
-        shader_gl_vendor = (const char *) glGetString(GL_VENDOR);
-        if (!shader_gl_vendor) {
-            shader_gl_vendor = "Unknown vendor";
-        }
-    }
-    {
-        shader_gl_version = (const char *) glGetString(GL_VERSION);
-        if (!shader_gl_version) {
-            shader_gl_version = "Unknown version";
-        }
-    }
+    shader_capture_gl_identity();
 
     shader_create_cache_folder();
 
