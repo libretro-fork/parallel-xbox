@@ -6820,6 +6820,26 @@ static void emu_do_aa(dsp_core_t* dsp)
     dsp->instr_cycle += 4;
 }
 
+static void emu_dor_aa(dsp_core_t* dsp)
+{
+    uint32_t memspace, addr;
+
+    /* x:aa */
+    /* y:aa */
+
+    dsp_stack_push(dsp, dsp->registers[DSP_REG_LA], dsp->registers[DSP_REG_LC], 0);
+    dsp->registers[DSP_REG_LA] = (dsp->pc + read_memory_p(dsp, dsp->pc+1)) & BITMASK(16);
+    dsp->cur_inst_len++;
+    dsp_stack_push(dsp, dsp->pc+dsp->cur_inst_len, dsp->registers[DSP_REG_SR], 0);
+    dsp->registers[DSP_REG_SR] |= (1<<DSP_SR_LF);
+
+    memspace = (dsp->cur_inst>>6) & 1;
+    addr = (dsp->cur_inst>>8) & BITMASK(6);
+    dsp->registers[DSP_REG_LC] = dsp56k_read_memory(dsp, memspace, addr) & BITMASK(16);
+
+    dsp->instr_cycle += 4;
+}
+
 static void emu_do_imm(dsp_core_t* dsp)
 {
     /* #xx */

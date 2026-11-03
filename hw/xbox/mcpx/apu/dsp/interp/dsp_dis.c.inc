@@ -868,6 +868,24 @@ static void dis_do_aa(dsp_core_t* dsp)
     );
 }
 
+static void dis_dor_aa(dsp_core_t* dsp)
+{
+    char name[16];
+
+    dsp->disasm_cur_inst_len++;
+
+    if (dsp->disasm_cur_inst & (1<<6)) {
+        sprintf(name, "y:$%04x", (dsp->disasm_cur_inst>>8) & BITMASK(6));
+    } else {
+        sprintf(name, "x:$%04x", (dsp->disasm_cur_inst>>8) & BITMASK(6));
+    }
+
+    sprintf(dsp->disasm_str_instr,"dor %s,p:$%04x",
+        name,
+        (dsp->pc + read_memory_p(dsp, dsp->pc+1)) & BITMASK(24)
+    );
+}
+
 static void dis_do_imm(dsp_core_t* dsp)
 {
     dsp->disasm_cur_inst_len++;

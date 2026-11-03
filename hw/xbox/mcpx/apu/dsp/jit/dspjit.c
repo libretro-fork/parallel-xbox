@@ -3271,9 +3271,11 @@ static bool emit_control(Tr *t, const Insn *in)
     }
 
     if (!strcmp(name, "dor #xxx, label") || !strcmp(name, "dor S, label") ||
-        !strcmp(name, "do S, expr")) {
-        bool from_reg = strcmp(name, "dor #xxx, label") != 0;
-        bool absolute = !strcmp(name, "do S, expr");
+        !strcmp(name, "do S, expr") || !strcmp(name, "do [X or Y]:aa, expr") ||
+        !strcmp(name, "dor [X or Y]:aa, label")) {
+        bool from_memory = strstr(name, ":aa,") != NULL;
+        bool from_reg = !from_memory && strcmp(name, "dor #xxx, label") != 0;
+        bool absolute = !strncmp(name, "do ", 3);
         unsigned reg = (inst >> 8) & 63;
         if (from_reg && !reg_supported(reg) &&
             !(reg >= DSP_REG_SR && reg <= DSP_REG_LC)) {
@@ -3287,7 +3289,7 @@ static bool emit_control(Tr *t, const Insn *in)
         h_ld32(e, H_ARG2, REG_CORE, REGOFF(DSP_REG_LC));
         h_call(e, (const void *)dsp56k_stack_push);
         h_st32_imm(e, REG_CORE, REGOFF(DSP_REG_LA), la);
-        if (absolute) {
+        if (absolute && from_reg) {
             /* DO reads after the first push/LA update, before saving SR.
              * Accumulator limiting must be visible in that saved status. */
             emit_read_reg(t, reg, V1);
@@ -3299,7 +3301,13 @@ static bool emit_control(Tr *t, const Insn *in)
         h_ld32(e, H_ARG2, REG_CORE, REGOFF(DSP_REG_SR));
         h_call(e, (const void *)dsp56k_stack_push);
         h_or_mem32_imm(e, REG_CORE, REGOFF(DSP_REG_SR), 1 << DSP_SR_LF);
-        if (!from_reg) {
+        if (from_memory) {
+            /* Memory counts are read once after both stack pushes and LF. */
+            h_mov_ri(e, EA1, (inst >> 8) & 63);
+            emit_read_mem(t, (inst >> 6) & 1, EA1, V1);
+            h_and_ri(e, 0, V1, 0xFFFF);
+            h_st32(e, REG_CORE, REGOFF(DSP_REG_LC), V1);
+        } else if (!from_reg) {
             h_st32_imm(e, REG_CORE, REGOFF(DSP_REG_LC), lc);
         } else if (!absolute) {
             /* DOR reads after both pushes and LF is set. SR, SP, SSH,

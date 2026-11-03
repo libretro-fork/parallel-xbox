@@ -29,6 +29,8 @@
 
 ## Unreleased
 
+- DSP: run DO/DOR loops with counts from short X/Y memory addresses in native code, with loop-state regression coverage.
+
 - DSP: execute conditional relative calls and register-relative subroutine calls in the native JIT, with independent stack/return-address regressions.
 
 - Add a bounded DSP DMA compatibility aperture at 0x4000-0x7fff: output produces zeros and input is discarded without touching DSP memory. Preserve host walks, circular offsets, list completion and status polling; other unmapped addresses remain rejected. Add transfer, isolation and completion regressions. This policy follows Symphony behavior within a narrower range and is not yet hardware-verified.
