@@ -303,6 +303,28 @@ static void dis_arithmetic_shift_reg(dsp_core_t* dsp, const char *name)
 static void dis_asl_reg(dsp_core_t* dsp) { dis_arithmetic_shift_reg(dsp, "asl"); }
 static void dis_asr_reg(dsp_core_t* dsp) { dis_arithmetic_shift_reg(dsp, "asr"); }
 
+static void dis_insert_imm(dsp_core_t* dsp)
+{
+    static const unsigned sources[] = {DSP_REG_A0, DSP_REG_B0, DSP_REG_X0,
+                                       DSP_REG_X1, DSP_REG_Y0, DSP_REG_Y1};
+    dsp->disasm_cur_inst_len++;
+    sprintf(dsp->disasm_str_instr, "insert #$%06x,%s,%s", read_memory_p(dsp, dsp->pc + 1),
+        registers_name[sources[((dsp->disasm_cur_inst >> 4) & 7) - 2]],
+        registers_name[dsp->disasm_cur_inst & 1 ? DSP_REG_B : DSP_REG_A]);
+}
+
+static void dis_insert_reg(dsp_core_t* dsp)
+{
+    static const unsigned controls[] = {DSP_REG_A1, DSP_REG_B1, DSP_REG_X0,
+                                        DSP_REG_X1, DSP_REG_Y0, DSP_REG_Y1};
+    static const unsigned sources[] = {DSP_REG_A0, DSP_REG_B0, DSP_REG_X0,
+                                       DSP_REG_X1, DSP_REG_Y0, DSP_REG_Y1};
+    sprintf(dsp->disasm_str_instr, "insert %s,%s,%s",
+        registers_name[controls[((dsp->disasm_cur_inst >> 1) & 7) - 2]],
+        registers_name[sources[((dsp->disasm_cur_inst >> 4) & 7) - 2]],
+        registers_name[dsp->disasm_cur_inst & 1 ? DSP_REG_B : DSP_REG_A]);
+}
+
 static void dis_extractu_imm(dsp_core_t* dsp)
 {
     dsp->disasm_cur_inst_len++;

@@ -5922,6 +5922,53 @@ static void emu_andi(dsp_core_t* dsp)
     }
 }
 
+static void emu_insert_field(dsp_core_t* dsp, uint32_t control)
+{
+    static const unsigned sources[] = {DSP_REG_A0, DSP_REG_B0, DSP_REG_X0,
+                                       DSP_REG_X1, DSP_REG_Y0, DSP_REG_Y1};
+    unsigned dst = dsp->cur_inst & 1;
+    uint32_t source = dsp->registers[sources[((dsp->cur_inst >> 4) & 7) - 2]];
+    uint32_t sr = dsp->registers[DSP_REG_SR];
+    bool short_words = (sr & (1u << DSP_SR_SA)) != 0;
+    unsigned offset = (control >> (short_words ? 8 : 0)) & 63;
+    unsigned width = (control >> (short_words ? 16 : 12)) & 63;
+    uint64_t value = ((uint64_t)dsp->registers[DSP_REG_A2 + dst] << 48) |
+                     ((uint64_t)dsp->registers[DSP_REG_A1 + dst] << 24) |
+                     dsp->registers[DSP_REG_A0 + dst];
+    if (short_words) {
+        value = ((value >> 32) << 16) | ((value >> 8) & 0xffff);
+        source >>= 8;
+        offset = (offset - 16) & 63;
+    }
+    /* Undefined oversized fields use a zero-extended source and truncate
+     * at the active accumulator boundary; width zero replaces no bits. */
+    uint64_t mask = (UINT64_C(1) << width) - 1;
+    value = (value & ~(mask << offset)) | (((uint64_t)source & mask) << offset);
+    value &= (UINT64_C(1) << (short_words ? 40 : 56)) - 1;
+    if (short_words) value = ((value >> 16) << 32) | ((value & 0xffff) << 8);
+    uint32_t lo = value & 0xffffff, mid = (value >> 24) & 0xffffff, hi = (value >> 48) & 0xff;
+    dsp->registers[DSP_REG_A0 + dst] = lo;
+    dsp->registers[DSP_REG_A1 + dst] = mid;
+    dsp->registers[DSP_REG_A2 + dst] = hi;
+    dsp->registers[DSP_REG_SR] &= ~((1u << DSP_SR_C) | (1u << DSP_SR_V));
+    emu_ccr_update_e_u_n_z(dsp, hi, mid, lo);
+    dsp->registers[DSP_REG_SR] |= sr & 0xffff0000u;
+}
+
+static void emu_insert_imm(dsp_core_t* dsp)
+{
+    uint32_t control = read_memory_p(dsp, dsp->pc + 1);
+    dsp->cur_inst_len++;
+    emu_insert_field(dsp, control);
+}
+
+static void emu_insert_reg(dsp_core_t* dsp)
+{
+    static const unsigned controls[] = {DSP_REG_A1, DSP_REG_B1, DSP_REG_X0,
+                                        DSP_REG_X1, DSP_REG_Y0, DSP_REG_Y1};
+    emu_insert_field(dsp, dsp->registers[controls[((dsp->cur_inst >> 1) & 7) - 2]]);
+}
+
 static void emu_extract_field(dsp_core_t* dsp, uint32_t control, bool signed_field)
 {
     unsigned src = (dsp->cur_inst >> 4) & 1, dst = dsp->cur_inst & 1;
