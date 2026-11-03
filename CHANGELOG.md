@@ -32,6 +32,7 @@
 - Reuse completed IDE buffered-read requests and scratch buffers before completion callbacks start successor reads. Preserve deferred destination copying, error/orphan suppression and callback-close cleanup while reducing callback-chain scratch allocations.
 
 - Consume contiguous QCOW2 memory-copy spans directly instead of staging them through the general multi-vector builder. Preserve compressed-read caching, partial-write workspaces, coalescing and destination bytes. Reduce small-copy cursor bookkeeping without changing payload copying or zero-fill.
+- DSP: compile memory bit operations natively and leave compiled code when a peripheral callback loads new program words through DMA. Cover MOVEP/parallel stores and REP too; speculative decode no longer faults on words DMA has not populated. Add 179,600 regression boundaries, independent memory/status checks and DMA replacement programs.
 
 - DSP: compile ANDI/ORI status-byte operations natively, preserving raw CCR/OMR masks and reselecting compiled code after MR scaling/loop changes. Add 81,920 regression boundaries, an independent status oracle and a production program.
 

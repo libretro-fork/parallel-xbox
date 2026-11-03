@@ -47,7 +47,14 @@ typedef struct dsp_core_s dsp_core_t;
 
 struct dsp_core_s {
     bool is_gp;
-    bool is_idle;
+    /* One aligned native post-write guard; the change flag is not VM state. */
+    union {
+        struct {
+            bool is_idle;
+            bool jit_code_changed;
+        };
+        uint16_t jit_stop_flags;
+    };
     uint32_t cycle_count;
 
     /* DSP instruction Cycle counter */
@@ -166,6 +173,7 @@ typedef struct DspDecoded {
     bool control;                   /* may change the PC other than by len */
     const char *name;               /* the opcode table's name (not parallel) */
 } DspDecoded;
+/* Non-executing decode: emu == NULL marks an invalid/unpopulated word. */
 void dsp56k_decode(dsp_core_t *dsp, uint32_t pc, DspDecoded *d);
 /* The interpreter's address register update and (Rn+Nn) address, for the
  * JIT's code when Mn is not linear */
