@@ -1475,7 +1475,7 @@ static void emit_alu(Tr *t, const AluOp *a)
         h_or_rr(e, 0, T4, T2);
         h_mov_rr(e, 1, acc, T0);
         acc_written(t, a->d);
-        emit_sr_result(t, SR_EUNZ | SR_V | SR_C, T4, acc, a->d);
+        emit_sr_result(t, SR_EUNZ | SR_V | SR_C | 0xFFFF0000u, T4, acc, a->d);
         break;
     }
 
@@ -1492,7 +1492,7 @@ static void emit_alu(Tr *t, const AluOp *a)
         h_shr_ri(e, 1, T0, n);
         h_mov_rr(e, 1, acc, T0);
         acc_written(t, a->d);
-        emit_sr_result(t, SR_EUNZ | SR_V | SR_C, T4, acc, a->d);
+        emit_sr_result(t, SR_EUNZ | SR_V | SR_C | 0xFFFF0000u, T4, acc, a->d);
         break;
     }
 
@@ -2071,9 +2071,9 @@ static bool np_alu(const Insn *in, AluOp *a)
         a->s = (inst >> 7) & 1;
         a->d = inst & 1;
         a->shift = (inst >> 1) & 0x3F;
-        /* the interpreter shifts by a count the host cannot (0 for asr,
-         * 56 and more): not these */
-        return a->shift >= 1 && a->shift <= 55;
+        /* Preserve the interpreter's defined shift range: ASL includes
+         * zero/56; logical ASR is defined through 63, excluding zero. */
+        return a->op == OP_ASL_N ? a->shift <= 56 : a->shift >= 1;
     }
     return false;
 }
