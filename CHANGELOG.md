@@ -31,6 +31,8 @@
 
 - Skip fixed-slot scans when a drain has no queued disk completions, while retaining generic bottom-half progress. Ignore empty scatter spans on the Chihiro memory-backed path without issuing address-space transactions; retain nonempty offsets, errors and deferred callbacks.
 
+- DSP: compile defined immediate-shift endpoints (ASL 0/56 and ASR 56-63) without fallback and clear upper SR bookkeeping bits after immediate arithmetic shifts, matching the interpreter. Add 97,280 regression boundaries with independent result/status checks and REP/DO production coverage.
+
 - Reuse complete file-vector preflight through mapped reads, native fallback writes and EOF zero filling. Remove redundant per-span checks/scalar dispatch while preserving invalid-request rejection before any destination or file changes.
 
 - DSP: compile accepted long-offset memory moves involving control registers and short-offset zero-width register fields without interpreter fallback. Preserve raw SSH stores without popping, stack/mode effects on loads and signed/wrapped addresses. Add 229,440 regression boundaries and a production program covering REP and deferred flags.

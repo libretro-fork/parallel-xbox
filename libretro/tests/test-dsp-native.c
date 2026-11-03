@@ -406,6 +406,97 @@ static void check_offset_control_moves(Machine *a, Machine *b, unsigned mode)
     }
 }
 
+static void check_immediate_shift_boundaries(Machine *a, Machine *b, unsigned mode)
+{
+    static const uint64_t values[] = {
+        0, 1, 2, 0xFFFFFF, 0x1000000, 0xFFFFFFFFFFFFFF,
+        0x7FFFFFFFFFFFFF, 0x80000000000000, 0x80000000000001,
+        0x00800000800000, 0x007FFFFF123456, 0xFF000000FFFFFF
+    };
+    static const uint32_t profiles[] = {0, 0xFFFF, 0x100FF, 0x2080};
+    const uint64_t mask = UINT64_C(0xFFFFFFFFFFFFFF);
+    Machine *machines[] = {a, b};
+    for (unsigned right = 0; right < 2; right++) {
+        for (unsigned shift = right ? 1 : 0; shift <= (right ? 63 : 56); shift++) {
+            for (unsigned src = 0; src < 2; src++) {
+                for (unsigned dst = 0; dst < 2; dst++) {
+                    uint32_t op = (right ? 0x0C1C00 : 0x0C1D00) |
+                        (src << 7) | (shift << 1) | dst;
+                    for (unsigned v = 0; v < ARRAY_SIZE(values); v++) {
+                        uint64_t value = values[v];
+                        uint64_t result = right ? value >> shift : (value << shift) & mask;
+                        unsigned carry = right ? (value >> (shift - 1)) & 1 :
+                            (value >> (56 - shift)) & 1;
+                        unsigned lost = !right && (value >> (56 - shift)) != 0;
+                        unsigned overflow = !right && ((value ^ result) >> 55) != 0;
+                        for (unsigned f = 0; f < ARRAY_SIZE(profiles); f++) {
+                            uint32_t sr = (profiles[f] & ~((3u << DSP_SR_S0) | (1u << DSP_SR_LF))) |
+                                (mode << DSP_SR_S0);
+                            uint32_t expected = (sr & 0xFFFF & ~0x3F) | carry |
+                                (overflow << DSP_SR_V) | (lost << DSP_SR_L);
+                            if (mode != 3) {
+                                unsigned bit = mode == 1 ? 48 : mode == 2 ? 46 : 47;
+                                uint64_t upper = result >> bit;
+                                unsigned pair = (result >> (bit - 1)) & 3;
+                                expected |= ((upper != 0 && upper != (mask >> bit)) << DSP_SR_E) |
+                                    ((pair == 0 || pair == 3) << DSP_SR_U) |
+                                    ((result == 0) << DSP_SR_Z) | (((result >> 55) & 1) << DSP_SR_N);
+                            }
+                            dspjit_test_reset_fallback_count();
+                            for (unsigned engine = 0; engine < 2; engine++) {
+                                Machine *m = machines[engine];
+                                prepare(m, op, 0, 1, mode, false);
+                                dsp_core_t *c = m->dsp->backend;
+                                c->registers[DSP_REG_SR] = sr;
+                                c->registers[DSP_REG_A0 + src] = value & 0xFFFFFF;
+                                c->registers[DSP_REG_A1 + src] = (value >> 24) & 0xFFFFFF;
+                                c->registers[DSP_REG_A2 + src] = value >> 48;
+                                if (engine == 0) {
+                                    m->dsp->ops->step(m->dsp);
+                                    c->cycle_count += c->instr_cycle;
+                                } else {
+                                    m->dsp->ops->run(m->dsp, 1);
+                                }
+                                uint64_t got = c->registers[DSP_REG_A0 + dst] |
+                                    ((uint64_t)c->registers[DSP_REG_A1 + dst] << 24) |
+                                    ((uint64_t)c->registers[DSP_REG_A2 + dst] << 48);
+                                if (got != result || c->registers[DSP_REG_SR] != expected) {
+                                    fprintf(stderr, "immediate shift oracle: engine=%u op=%06x value=%llx result=%llx/%llx SR=%x/%x\n",
+                                            engine, op, (unsigned long long)value,
+                                            (unsigned long long)got, (unsigned long long)result,
+                                            c->registers[DSP_REG_SR], expected);
+                                    exit(1);
+                                }
+                            }
+                            assert(!dspjit_test_fallback_count());
+                            assert(compare_machines(a, b) == 0);
+                            cases++;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    static const unsigned contexts[] = {0x20000000, 0x40000, 0x80000, 0x40000000};
+    for (unsigned right = 0; right < 2; right++) {
+        for (unsigned shift = right ? 56 : 0; shift <= (right ? 63 : 56); shift += right ? 1 : 56) {
+            for (unsigned src = 0; src < 2; src++) {
+                for (unsigned dst = 0; dst < 2; dst++) {
+                    for (unsigned seed = 0; seed < 4; seed++) {
+                        for (unsigned ctx = 0; ctx < ARRAY_SIZE(contexts); ctx++) {
+                            for (unsigned irq = 0; irq < 2; irq++) {
+                                check(a, b, (right ? 0x0C1C00 : 0x0C1D00) |
+                                      (src << 7) | (shift << 1) | dst, 0,
+                                      seed | 0x10000 | 0x1000000 | 0x400000 | contexts[ctx], mode, irq);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 static void check_call_chains(Machine *a, Machine *b)
 {
     static const uint32_t program[] = {0x0D0003, 0x200040, 0x0C0000, 0x200048, 0x00000C};
@@ -1437,6 +1528,7 @@ static void check_speculative_decode(void)
 
 static void check_startup_operations(Machine *a, Machine *b, unsigned mode)
 {
+    check_immediate_shift_boundaries(a, b, mode);
     check_offset_control_moves(a, b, mode);
     check_control_register_bits(a, b, mode);
     check_memory_bits(a, b, mode);
@@ -1814,6 +1906,7 @@ int main(int argc, char **argv)
     bool relative_only = argc == 2 && !strcmp(argv[1], "--relative");
     bool loops_only = argc == 2 && !strcmp(argv[1], "--loops");
     bool compare_only = argc == 2 && !strcmp(argv[1], "--compare");
+    bool shifts_only = argc == 2 && !strcmp(argv[1], "--shift-boundaries");
     bool offset_control_only = argc == 2 && !strcmp(argv[1], "--offset-control");
     bool control_bits_only = argc == 2 && !strcmp(argv[1], "--control-bits");
     bool memory_bits_only = argc == 2 && !strcmp(argv[1], "--memory-bits");
@@ -1828,8 +1921,8 @@ int main(int argc, char **argv)
     bool effective_only = argc == 2 && !strcmp(argv[1], "--effective-control");
     bool startup_only = argc == 2 && !strcmp(argv[1], "--startup");
     bool program_only = argc == 2 && !strcmp(argv[1], "--program");
-    if (argc != 1 && !relative_only && !loops_only && !program_only && !compare_only && !startup_only && !effective_only && !register_only && !program_control_only && !peripheral_only && !program_peripheral_only && !multiply_only && !normalize_only && !divide_only && !byte_logic_only && !memory_bits_only && !control_bits_only && !offset_control_only) {
-        fputs("usage: dspnative [--relative|--loops|--program|--compare|--startup|--effective-control|--register-control|--program-control|--peripheral-control|--program-peripheral|--multiply|--normalize|--divide|--status-byte|--memory-bits|--control-bits|--offset-control]\n", stderr);
+    if (argc != 1 && !relative_only && !loops_only && !program_only && !compare_only && !startup_only && !effective_only && !register_only && !program_control_only && !peripheral_only && !program_peripheral_only && !multiply_only && !normalize_only && !divide_only && !byte_logic_only && !memory_bits_only && !control_bits_only && !offset_control_only && !shifts_only) {
+        fputs("usage: dspnative [--relative|--loops|--program|--compare|--startup|--effective-control|--register-control|--program-control|--peripheral-control|--program-peripheral|--multiply|--normalize|--divide|--status-byte|--memory-bits|--control-bits|--offset-control|--shift-boundaries]\n", stderr);
         return 2;
     }
     Machine *a = machine_new(false), *b = machine_new(true);
@@ -1844,8 +1937,9 @@ int main(int argc, char **argv)
     assert(initially_committed == (64u << 10));
 #endif
     check_speculative_decode();
-    if (relative_only || loops_only || program_only || compare_only || startup_only || effective_only || register_only || program_control_only || peripheral_only || program_peripheral_only || multiply_only || normalize_only || divide_only || byte_logic_only || memory_bits_only || control_bits_only || offset_control_only) {
+    if (relative_only || loops_only || program_only || compare_only || startup_only || effective_only || register_only || program_control_only || peripheral_only || program_peripheral_only || multiply_only || normalize_only || divide_only || byte_logic_only || memory_bits_only || control_bits_only || offset_control_only || shifts_only) {
         for (unsigned mode = 0; mode < 4; mode++) {
+            if (shifts_only) check_immediate_shift_boundaries(a, b, mode);
             if (offset_control_only) check_offset_control_moves(a, b, mode);
             if (control_bits_only) check_control_register_bits(a, b, mode);
             if (memory_bits_only) check_memory_bits(a, b, mode);
