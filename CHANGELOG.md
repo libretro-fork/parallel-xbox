@@ -30,6 +30,8 @@
 
 ## Unreleased
 
+- DSP: execute X:qq bit-test relative branches natively, preserving flags and reading peripherals once on taken, untaken and loop-end paths.
+
 - DSP: execute X:qq peripheral bit operations natively, with exact read/modify/write side effects, carry and status regression coverage.
 
 - Keep frontend VFS reads coalesced across empty descriptors, avoiding extra provider calls for contiguous destinations while preserving short reads, EOF zero-fill and cursor recovery.

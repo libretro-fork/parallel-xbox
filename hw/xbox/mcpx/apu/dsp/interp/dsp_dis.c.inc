@@ -655,6 +655,18 @@ static void dis_bra_imm(dsp_core_t* dsp)
         (dsp->pc + dsp_signextend(9, xxx)) & BITMASK(24) );
 }
 
+static void dis_branch_qq(dsp_core_t* dsp, const char *name)
+{
+    uint32_t displacement = read_memory_p(dsp, dsp->pc + 1);
+    dsp->disasm_cur_inst_len++;
+    sprintf(dsp->disasm_str_instr, "%s #%u,x:$%06x,p:$%06x", name,
+        dsp->disasm_cur_inst & 31, 0xffff80 + ((dsp->disasm_cur_inst >> 8) & 63),
+        (dsp->pc + displacement) & BITMASK(24));
+}
+
+static void dis_brclr_qq(dsp_core_t* dsp) { dis_branch_qq(dsp, "brclr"); }
+static void dis_brset_qq(dsp_core_t* dsp) { dis_branch_qq(dsp, "brset"); }
+
 static void dis_brclr_pp(dsp_core_t* dsp)
 {
     uint32_t xxxx = read_memory_p(dsp, dsp->pc+1);
