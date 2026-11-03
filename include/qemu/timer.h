@@ -441,8 +441,8 @@ void timer_put(QEMUFile *f, QEMUTimer *ts);
  * qemu_timeout_ns_to_ms:
  * @ns: nanosecond timeout value
  *
- * Convert a nanosecond timeout value (or -1) to
- * a millisecond value (or -1), always rounding up.
+ * Convert a polling request to -1 (wait for a notification) or 0
+ * (check readiness). Positive durations do not create a host delay.
  *
  * Returns: millisecond timeout value
  */
@@ -452,9 +452,9 @@ int qemu_timeout_ns_to_ms(int64_t ns);
  * qemu_poll_ns:
  * @fds: Array of file descriptors
  * @nfds: number of file descriptors
- * @timeout: timeout in nanoseconds
+ * @timeout: negative to wait for a notification, otherwise check readiness
  *
- * Perform a poll like g_poll but with a timeout in nanoseconds.
+ * Perform notification-only polling; no host timer is armed.
  * See g_poll documentation for further details.
  *
  * Returns: number of fds ready

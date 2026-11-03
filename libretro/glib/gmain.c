@@ -20,7 +20,6 @@
 #include <poll.h>
 #endif
 
-#include <retro_timers.h>
 #include <retro_atomic.h>
 
 /* A dispatch retains the callback separately from the source. Replacing or
@@ -468,19 +467,16 @@ gint g_poll_with_handle(GPollFD *fds, guint nfds, gint timeout, gintptr handle)
         }
     }
     /* Keep every descriptor admitted by ordinary g_poll. At the handle
-     * limit the caller's millisecond timeout remains the timer's backup. */
+     * limit the optional extra notification handle is omitted. */
     if (handle > 0 && n < MAXIMUM_WAIT_OBJECTS) {
         h[n] = (HANDLE)handle;
         idx[n++] = nfds; /* no corresponding GPollFD and no ready-count entry */
     }
     if (!n) {
-        if (timeout > 0) {
-            retro_sleep((unsigned)timeout);
-        }
         return 0;
     }
     r = WaitForMultipleObjectsEx(n, h, FALSE,
-                                 timeout < 0 ? INFINITE : (DWORD)timeout,
+                                 timeout < 0 ? INFINITE : 0,
                                  TRUE);
     if (r == WAIT_FAILED) {
         return -1;
@@ -509,7 +505,7 @@ gint g_poll(GPollFD *fds, guint nfds, gint timeout)
     G_STATIC_ASSERT(G_IO_IN == POLLIN && G_IO_OUT == POLLOUT &&
                     G_IO_PRI == POLLPRI && G_IO_ERR == POLLERR &&
                     G_IO_HUP == POLLHUP && G_IO_NVAL == POLLNVAL);
-    return poll((struct pollfd *)fds, nfds, timeout);
+    return poll((struct pollfd *)fds, nfds, timeout < 0 ? -1 : 0);
 #endif
 }
 

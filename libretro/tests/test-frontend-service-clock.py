@@ -25,9 +25,6 @@ typedef struct {int fd;} GPollFD;
 typedef enum {QEMU_CLOCK_REALTIME,QEMU_CLOCK_VIRTUAL,QEMU_CLOCK_HOST,QEMU_CLOCK_VIRTUAL_RT,QEMU_CLOCK_MAX} QEMUClockType;
 #define SCALE_MS 1000000
 #define MIN(a,b) ((a)<(b)?(a):(b))
-#define XBOX_NO_HR_TIMER (-2)
-static __attribute__((unused)) bool xemu_cpu_boost=true;
-static __attribute__((unused)) int xbox_win_poll_hr(GPollFD*f,guint n,int64_t ns){(void)f;(void)n;(void)ns;return XBOX_NO_HR_TIMER;}
 #define LR_FRAME_NS_NUM 50050000LL
 #define LR_FRAME_NS_DEN 3
 #define g_return_if_fail(x) do {if(!(x))return;}while(0)
@@ -58,10 +55,10 @@ int main(void){
  const int64_t waits[]={-1,0,1,999,1000000,1000001,INT64_MAX};
  for(unsigned i=0;i<sizeof(waits)/sizeof(waits[0]);i++){
   polls=0;assert(qemu_poll_ns(NULL,0,waits[i])==7 && polls==1);
-  assert(last_ms==qemu_timeout_ns_to_ms(waits[i]));
+  assert(last_ms==(waits[i]<0?-1:0));
   assert(get_clock()==before);
  }
- puts("Frontend service clock: 60000 exact NTSC steps, guest rewinds, aliases, deadline exclusion and non-spinning relative waits PASS");
+ puts("Frontend service clock: 60000 exact NTSC steps, guest rewinds, aliases, deadline exclusion and notification-only polling PASS");
 }
 """
 code=code.replace('/* PRODUCTION */','\n'.join(parts))

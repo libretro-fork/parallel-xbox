@@ -44,3 +44,7 @@ print(f'Static Makefile audit: {len(manifest)} source files checked across platf
 
 assert 'main_loop_wait_timeout' not in (root/'util/main-loop.c').read_text()
 assert 'retro_eventcount_commit_wait_timeout' not in (root/'util/main-loop.c').read_text()
+
+assert 'CreateWaitableTimer' not in (root/'util/qemu-timer.c').read_text()
+assert 'SetWaitableTimer' not in (root/'util/qemu-timer.c').read_text()
+assert 'retro_sleep' not in (root/'libretro/glib/gmain.c').read_text()

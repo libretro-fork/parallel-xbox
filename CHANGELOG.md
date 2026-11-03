@@ -23,6 +23,8 @@
 
 ## Unreleased
 
+- Remove the unused Windows high-resolution polling timer. Polling now waits for notifications or checks readiness, without scheduling positive host-time delays.
+
 - Dispatch queued idle callbacks without the legacy 10 ms host timeout; preserve their idle progress accounting.
 
 - Remove the unused timed main-loop entry point; device waits use notifications without a host timeout.

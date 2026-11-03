@@ -27,24 +27,10 @@
 #include "libretro/dsp-ownership.h"
 #include "qemu/main-loop.h"
 #include "qemu/timer.h"
-#include "qemu/cpu-boost.h"
-#include "gwinpoll.h"
 #include <rthreads/rthreads.h>
 #include "system/cpu-timers.h"
 #include "exec/icount.h"
 #include "system/cpus.h"
-
-#ifdef CONFIG_POSIX
-#include <pthread.h>
-#endif
-
-#ifdef CONFIG_PPOLL
-#include <poll.h>
-#endif
-
-#ifdef CONFIG_PRCTL_PR_SET_TIMERSLACK
-#include <sys/prctl.h>
-#endif
 
 /***********************************************************/
 /* timers */
@@ -224,107 +210,18 @@ int64_t qemu_clock_deadline_ns_all(QEMUClockType type, int attr_mask)
     return MAX(0, expire_time - qemu_clock_get_ns(type));
 }
 
-/* Transition function to convert a nanosecond timeout to ms
- * This is used where a system does not support ppoll
- */
+/* Compatibility conversion for readiness polling. Positive emulated
+ * durations are not host deadlines: check readiness without waiting. */
 int qemu_timeout_ns_to_ms(int64_t ns)
 {
-    int64_t ms;
-    if (ns < 0) {
-        return -1;
-    }
-
-    if (!ns) {
-        return 0;
-    }
-
-    /* Always round up, because it's better to wait too long than to wait too
-     * little and effectively busy-wait
-     */
-    ms = ns / SCALE_MS + (ns % SCALE_MS != 0);
-
-    /* To avoid overflow problems, limit this to 2^31, i.e. approx 25 days */
-    return MIN(ms, INT32_MAX);
+    return ns < 0 ? -1 : 0;
 }
-
-
-/* qemu implementation of g_poll which uses a nanosecond timeout but is
- * otherwise identical to g_poll
- */
-#if defined(XBOX) && defined(_WIN32) && !defined(CONFIG_PPOLL)
-#ifndef CREATE_WAITABLE_TIMER_HIGH_RESOLUTION
-#define CREATE_WAITABLE_TIMER_HIGH_RESOLUTION 0x00000002
-#endif
-#define XBOX_NO_HR_TIMER (-2)
-
-/* Poll the fds and a high-resolution waitable timer set to the timeout
- * (Windows 10 1803+); XBOX_NO_HR_TIMER when this thread has none. */
-static int xbox_win_poll_hr(GPollFD *fds, guint nfds, int64_t timeout)
-{
-    static __thread HANDLE hr_timer;
-    static __thread int hr_state; /* 0 untried, 1 usable, -1 unavailable */
-
-    if (hr_state == 0) {
-        hr_timer = CreateWaitableTimerExW(
-            NULL, NULL, CREATE_WAITABLE_TIMER_HIGH_RESOLUTION,
-            TIMER_ALL_ACCESS);
-        hr_state = hr_timer ? 1 : -1;
-    }
-    if (hr_state != 1) {
-        return XBOX_NO_HR_TIMER;
-    }
-    LARGE_INTEGER due;
-    due.QuadPart = -(timeout / 100); /* relative, 100 ns units */
-    if (due.QuadPart == 0) {
-        due.QuadPart = -1;
-    }
-    if (!SetWaitableTimer(hr_timer, &due, 0, NULL, NULL, FALSE)) {
-        return XBOX_NO_HR_TIMER;
-    }
-    /* Append only the native handle inside the Windows poll backend. The
-     * caller's GPollFD array needs no spare slot or intermediate copy. */
-    int backup_ms = qemu_timeout_ns_to_ms(timeout);
-    if (backup_ms < INT32_MAX) {
-        backup_ms++;
-    }
-    return g_poll_with_handle(fds, nfds, backup_ms, (gintptr)hr_timer);
-}
-#endif
 
 int qemu_poll_ns(GPollFD *fds, guint nfds, int64_t timeout)
 {
-#ifdef CONFIG_PPOLL
-    if (timeout < 0) {
-        return ppoll((struct pollfd *)fds, nfds, NULL, NULL);
-    } else {
-        struct timespec ts;
-        int64_t tvsec = timeout / 1000000000LL;
-        /* Avoid possibly overflowing and specifying a negative number of
-         * seconds, which would turn a very long timeout into a busy-wait.
-         */
-        if (tvsec > (int64_t)INT32_MAX) {
-            tvsec = INT32_MAX;
-        }
-        ts.tv_sec = tvsec;
-        ts.tv_nsec = timeout % 1000000000LL;
-        return ppoll((struct pollfd *)fds, nfds, &ts, NULL);
-    }
-#else
-
-    /* Relative waits are only for explicit host wait limits. Core timer
-     * deadlines are dispatched by frontend progress, never busy-waited. */
-#ifdef _WIN32
-    if (timeout > 0 && xemu_cpu_boost) {
-        int ret = xbox_win_poll_hr(fds, nfds, timeout);
-        if (ret != XBOX_NO_HR_TIMER) {
-            return ret;
-        }
-    }
-#endif
+    /* Wait only for a notification, or check readiness. No host timer. */
     return g_poll(fds, nfds, qemu_timeout_ns_to_ms(timeout));
-#endif
 }
-
 
 void timer_init_full(QEMUTimer *ts,
                      QEMUClockType type,
@@ -579,9 +476,6 @@ void qemu_init_clocks(QEMUTimerListNotifyCB *notify_cb)
         qemu_clock_init(type, notify_cb);
     }
 
-#ifdef CONFIG_PRCTL_PR_SET_TIMERSLACK
-    prctl(PR_SET_TIMERSLACK, 1, 0, 0, 0);
-#endif
 }
 
 uint64_t timer_expire_time_ns(const QEMUTimer *ts)
