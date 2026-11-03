@@ -1221,10 +1221,14 @@ static uint16_t dsp_asr56(uint32_t *dest, int n)
 
     uint64_t dest_v = dest[2] | ((uint64_t)dest[1] << 24) | ((uint64_t)dest[0] << 48);
 
-    /* ASR #0 copies its source and clears carry. */
-    uint16_t carry = n ? (dest_v >> (n-1)) & 1 : 0;
+    /* Replicate bit 55 using unsigned operations, including wide immediate
+     * counts. ASR #0 copies its source and clears carry. */
+    const uint64_t mask = UINT64_C(0xFFFFFFFFFFFFFF);
+    bool negative = (dest_v & (UINT64_C(1) << 55)) != 0;
+    uint64_t extended = dest_v | (negative ? ~mask : 0);
+    uint16_t carry = n ? (extended >> (n-1)) & 1 : 0;
 
-    dest_v >>= n;
+    dest_v = (dest_v >> n) | (negative ? mask ^ (mask >> n) : 0);
     dest[2] = dest_v & BITMASK(24);
     dest[1] = (dest_v >> 24) & BITMASK(24);
     dest[0] = (dest_v >> 48) & BITMASK(8);

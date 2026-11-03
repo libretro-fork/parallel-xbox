@@ -1362,15 +1362,14 @@ static void emit_alu(Tr *t, const AluOp *a)
             h_shl_ri(e, 1, T3, 9);
             h_sar_ri(e, 1, T3, 8);
         } else {
-            /* dsp_asr56: C = bit 0, a logical shift of the 56 bits */
+            /* dsp_asr56: C = bit 0; retain the accumulator sign. */
             h_mov_rr(e, 1, T1, acc);
             h_and_ri(e, 0, T1, 1);
-            h_shl_ri(e, 1, T3, 8);
-            h_shr_ri(e, 1, T3, 9);
+            h_sar_ri(e, 1, T3, 1);
         }
         emit_addsub56(e, T3, acc_reg(a->d ^ 1), sub);
         h_or_rr(e, 0, T4, T1);
-        emit_sr_result(t, SR_EUNZ | SR_V | SR_C, T4, T3, a->d);
+        emit_sr_result(t, SR_EUNZ | SR_V | SR_C | 0xFFFF0000u, T4, T3, a->d);
         h_mov_rr(e, 1, acc, T3);
         acc_written(t, a->d);
         break;
@@ -1485,12 +1484,10 @@ static void emit_alu(Tr *t, const AluOp *a)
     }
 
     case OP_ASR_N: {
-        /* dsp_asr56 by n: C = bit n-1, a logical shift of the 56 bits */
+        /* dsp_asr56 by n: C = bit n-1, with sign extension for all counts */
         int n = a->shift;
         acc_load(t, a->s);
         h_mov_rr(e, 1, T0, acc_reg(a->s));
-        h_shl_ri(e, 1, T0, 8);
-        h_shr_ri(e, 1, T0, 8);
         if (n) {
             h_mov_rr(e, 1, T4, T0);
             h_shr_ri(e, 1, T4, n - 1);
@@ -1498,10 +1495,7 @@ static void emit_alu(Tr *t, const AluOp *a)
         } else {
             h_mov_ri(e, T4, 0);
         }
-        h_shr_ri(e, 1, T0, n);
-        /* With no right shift the source can still be negative. Lazy E/U
-         * computation requires the usual sign-extended host accumulator. */
-        if (!n) emit_sext56(e, T0);
+        h_sar_ri(e, 1, T0, n);
         h_mov_rr(e, 1, acc, T0);
         acc_written(t, a->d);
         emit_sr_result(t, SR_EUNZ | SR_V | SR_C | 0xFFFF0000u, T4, acc, a->d);
@@ -1510,13 +1504,12 @@ static void emit_alu(Tr *t, const AluOp *a)
 
     case OP_ASR:
         acc_load(t, a->d);
-        /* dsp_asr56: C = bit 0, a logical shift of the 56 bits */
+        /* dsp_asr56: C = bit 0; retain the accumulator sign. */
         h_mov_rr(e, 1, T4, acc);
         h_and_ri(e, 0, T4, 1);
-        h_shl_ri(e, 1, acc, 8);
-        h_shr_ri(e, 1, acc, 9);
+        h_sar_ri(e, 1, acc, 1);
         acc_written(t, a->d);
-        emit_sr_result(t, SR_EUNZ | SR_V | SR_C, T4, acc, a->d);
+        emit_sr_result(t, SR_EUNZ | SR_V | SR_C | 0xFFFF0000u, T4, acc, a->d);
         break;
 
     case OP_NEG:
@@ -2286,12 +2279,11 @@ static void emit_nonparallel(Tr *t, const Insn *in, int kind)
         h_st32(e, REG_CORE, REGOFF(r), T0);
         size_t left_done = h_jmp(e);
         h_patch(e, right, e->len);
-        /* Match dsp_asr56's logical shift of the 56 accumulator bits. */
+        /* NORM's right shift is arithmetic, including negative extensions. */
         h_mov_rr(e, 1, T4, acc);
         h_and_ri(e, 0, T4, 1);
         h_mov_rr(e, 1, T3, acc);
-        h_shl_ri(e, 1, T3, 8);
-        h_shr_ri(e, 1, T3, 9);
+        h_sar_ri(e, 1, T3, 1);
         h_ld32(e, T0, REG_CORE, REGOFF(r));
         h_add_ri(e, 0, T0, 1);
         h_and_ri(e, 0, T0, 0xFFFF);
