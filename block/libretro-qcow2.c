@@ -767,6 +767,17 @@ int lr_qcow2_preadv(LRQcow2 *q, int64_t off, const LRFileIOV *iov, int n)
             }
             cursor_copy_out(&c, q->dcache + in, (size_t)len);
         } else if (reads_zero(q, e)) {
+            /* Adjacent holes/zero clusters need one fill per destination
+             * run, rather than restarting the cursor at every cluster. */
+            while (len < left) {
+                uint64_t nlen = q->cs < left - len ? q->cs : left - len;
+                if (nlen > SIZE_MAX - len ||
+                    !reads_zero(q, *l2_entry(q, gc + 1))) {
+                    break;
+                }
+                gc++;
+                len += nlen;
+            }
             cursor_zero(&c, (size_t)len);
         } else {
             /* and the clusters after it that follow it in the file */

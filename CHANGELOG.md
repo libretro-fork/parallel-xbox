@@ -29,6 +29,8 @@
 
 ## Unreleased
 
+- Fill consecutive sparse/zero QCOW2 clusters as a single destination run where possible, avoiding repeated cursor setup and per-cluster fills while preserving data/compressed boundaries and 32-bit size limits.
+
 - Read-only QCOW2 images skip the write-cluster workspace and release metadata decode scratch after open, retaining two fewer cluster-sized buffers without adding read-time allocations.
 
 - DSP: execute immediate and register-controlled signed EXTRACT natively, including field sign extension and aliased controls in normal/sixteen-bit layouts.

@@ -322,3 +322,10 @@ sizes per image (128 KiB at 64 KiB clusters); compressed input/output buffers
 and eager inflater creation remain available for reads. Writable workspace
 behavior is unchanged. Allocation-failure and byte checks cover this saving;
 no startup-time or frame-rate improvement is claimed.
+
+QCOW2 sparse reads group consecutive hole/zero clusters before filling their
+destination runs. A contiguous 16-cluster zero request uses one fill instead
+of sixteen; fragmented destinations retain separate fills. Allocated data
+and compressed clusters end the run, and fills remain bounded by SIZE_MAX
+on 32-bit hosts. This changes operation counts, with no measured FPS or
+storage-throughput claim.

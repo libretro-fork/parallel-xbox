@@ -3711,3 +3711,9 @@ checks that table and write scratch are absent after open, injects each
 workspace allocation failure, and verifies compressed reads and write
 rejection. QCOW_WORKSPACE_SOURCE=PATH selects a frozen production source
 for a negative control without changing expected current allocation counts.
+
+The QCOW2 cursor fixture also exercises 6,000 production sparse preadv
+requests over v2/v3 decoded metadata: partial/empty/gapped destinations,
+explicit zero entries and cached compressed boundaries. It compares every
+byte and guard against a scalar oracle, counts one fill for a contiguous
+16-cluster zero request, and retains the existing 30,000 cursor cases.
