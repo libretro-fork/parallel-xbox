@@ -835,7 +835,20 @@ static int write_new(LRQcow2 *q, uint64_t gc, uint64_t in, uint64_t len,
             data = q->dcache;
             q->cached = ~0ull;
         } else if (reads_zero(q, e)) {
-            memset(q->cluster, 0, (size_t)q->cs);
+            /* Splitting tiny clears costs more than it saves. For bulk
+             * patches, initialize only the untouched prefix and suffix;
+             * the patch replaces [in, in + len) before any I/O. */
+            if (len >= q->cs / 2 && q->cs >= 4096) {
+                if (in) {
+                    memset(q->cluster, 0, (size_t)in);
+                }
+                uint64_t tail = in + len;
+                if (tail < q->cs) {
+                    memset(q->cluster + tail, 0, (size_t)(q->cs - tail));
+                }
+            } else {
+                memset(q->cluster, 0, (size_t)q->cs);
+            }
         } else {
             ret = lr_file_pread(q->f, (int64_t)(e & OFFSET_MASK), q->cluster,
                                 (size_t)q->cs);

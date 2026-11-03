@@ -26,6 +26,8 @@
 
 ## Unreleased
 
+- Avoid clearing scratch bytes immediately overwritten by bulk partial writes into zero-filled QCOW2 clusters. Preserve the single-clear path for small patches/clusters and retain full data-before-metadata writes and failure behavior.
+
 - Reuse completed IDE buffered-read requests and scratch buffers before completion callbacks start successor reads. Preserve deferred destination copying, error/orphan suppression and callback-close cleanup while reducing callback-chain scratch allocations.
 
 - Consume contiguous QCOW2 memory-copy spans directly instead of staging them through the general multi-vector builder. Preserve compressed-read caching, partial-write workspaces, coalescing and destination bytes. Reduce small-copy cursor bookkeeping without changing payload copying or zero-fill.
