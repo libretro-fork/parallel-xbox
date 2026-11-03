@@ -558,6 +558,8 @@ typedef struct PGRAPHGLState {
     /* The draw's lines are wider than the host rasterizes: the geometry
      * shader draws them as rectangles (part of the shader state key). */
     bool wide_lines;
+    /* Effective GL width; zero means unknown after draw-state invalidation. */
+    GLfloat draw_line_width;
 
     struct supported_extensions {
         GLboolean texture_filter_anisotropic;

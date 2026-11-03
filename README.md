@@ -276,3 +276,9 @@ continues. They do not enter the worker queue, so a fully paused frame publishes
 no VP work. Unpausing takes effect on the next VP frame; GP/EP processing and
 the frontend audio cadence remain unchanged. This removes redundant VP work,
 not the completion barrier for frames that actually dispatch voices.
+
+OpenGL mirrors its effective clamped line width alongside the existing draw
+state cache. Repeated equivalent widths reuse driver state; display/conversion
+draw invalidation forces the next update. This does not add shader or pipeline
+variants, or change wide-line geometry expansion. No FPS or hardware cache-miss
+improvement is claimed from the reduced driver-call count alone.

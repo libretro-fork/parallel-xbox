@@ -1,5 +1,6 @@
 # Changelog of the libretro core
 
+- OpenGL avoids redundant line-width driver updates when the effective width is unchanged, including widths clamped to the same host limit.
 - Remove the always-defined XBOX selection macro and unreachable non-Xbox core paths. Keep host-architecture guards and ARM64 floating-point fallbacks; update fixtures and audit single-target sources/build flags in CI.
 - Fix the SPSC pair publication test observer under fortified libc headers; keep strict copy/publication checks, add missing-observer and early-publication negative controls, and run explicit fortified sanitizer coverage in CI.
 - Bind interrupted-block PC synchronization directly to x86, bypassing generic callback and set-PC fallback dispatch while preserving PC-relative behavior, segment subtraction and 32-bit wraparound.

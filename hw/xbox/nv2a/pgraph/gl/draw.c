@@ -249,6 +249,7 @@ void pgraph_gl_clear_surface(NV2AState *d, uint32_t parameter)
 void pgraph_gl_draw_state_invalidate(PGRAPHGLState *r)
 {
     r->draw_state_key.valid = false;
+    r->draw_line_width = 0.0f;
 }
 
 /* Keeps xemu's own surface conversion draws out of the game's zpass count
@@ -503,15 +504,18 @@ void pgraph_gl_draw_begin(NV2AState *d)
     glScissor(xmin, ymin, scissor_width, scissor_height);
 
 gl_state_done:;
-    /* NV097_SET_LINE_WIDTH is in 1/8 pixel; posed every draw, as it changes
-     * too often for the cached block. The clamp is host plumbing (0 is a GL
-     * error, the top is driver dependent); wider lines go to the geometry
-     * shader. */
+    /* Width is dynamic: compare the clamped host value without changing
+     * the shader key or re-emitting identical driver state. Zero is invalid
+     * for glLineWidth and marks an unknown value after state invalidation. */
     GLfloat line_width = (pg->line_width / 8.0f) * pg->surface_scale_factor;
     const GLfloat *lw_range = r->line_smooth_on
                                   ? r->supported_smooth_line_width_range
                                   : r->supported_aliased_line_width_range;
-    glLineWidth(MAX(lw_range[0], MIN(lw_range[1], line_width)));
+    line_width = MAX(lw_range[0], MIN(lw_range[1], line_width));
+    if (r->draw_line_width != line_width) {
+        r->draw_line_width = line_width;
+        glLineWidth(line_width);
+    }
     if (r->shader_binding && r->shader_binding->state.geom.wide_lines) {
         pgraph_gl_wide_line_uniforms(pg);
     }
