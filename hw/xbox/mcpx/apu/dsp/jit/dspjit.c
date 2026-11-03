@@ -902,6 +902,7 @@ static void emit_write_reg(Tr *t, int r, int val)
 /* --- the data ALU --- */
 
 enum {
+    OP_ASL_R, OP_ASR_R, /* register-controlled arithmetic shifts */
     OP_ASL_N, OP_ASR_N, /* by a count (shift), of accumulator s into d */
     OP_MOVE, OP_ADD, OP_SUB, OP_CMP, OP_TFR, OP_CLR, OP_TST, OP_RND,
     OP_MPY, OP_MPYR, OP_MAC, OP_MACR, OP_ASL, OP_ASR, OP_LSL, OP_LSR,
@@ -927,8 +928,8 @@ typedef struct AluOp {
     int d;              /* 0: A, 1: B */
     uint32_t imm;       /* SRC_IMM or the immediate multiply factor */
     bool imm_unsigned;  /* ... not sign-extended (cmp #xx) */
-    int shift;          /* asl/asr #ii's count */
-    int s;              /* asl/asr #ii's source accumulator */
+    int shift;          /* immediate count, or control register for OP_ASL_R/OP_ASR_R */
+    int s;              /* multi-bit arithmetic shift source accumulator */
 } AluOp;
 
 /* opcodes_alu's 256 entries, decoded */
@@ -1451,6 +1452,71 @@ static void emit_alu(Tr *t, const AluOp *a)
         acc_written(t, a->d);
         emit_sr_result(t, SR_EUNZ | SR_V | SR_C | 0xFFFF0000u, T4, acc, a->d);
         break;
+
+    case OP_ASL_R:
+    case OP_ASR_R: {
+        /* Snapshot the raw control MSP before overwriting either accumulator.
+         * No accumulator limiting or scaling applies to the six count bits. */
+        acc_load(t, a->s);
+        if (a->shift == DSP_REG_A1 || a->shift == DSP_REG_B1) {
+            unsigned n = a->shift - DSP_REG_A1;
+            acc_load(t, n);
+            h_mov_rr(e, 1, T3, acc_reg(n));
+            h_shr_ri(e, 1, T3, 24);
+        } else h_ld32(e, T3, REG_CORE, REGOFF(a->shift));
+        h_and_ri(e, 0, T3, 63);
+        h_mov_rr(e, 1, T0, acc_reg(a->s));
+        if (a->op == OP_ASR_R) {
+            h_mov_ri(e, T4, 0);
+            h_test_rr(e, 0, T3, T3);
+            size_t zero = h_jcc(e, HC_EQ);
+            h_mov_rr(e, 0, T1, T3);
+            h_sub_ri(e, 0, T1, 1);
+            h_mov_rr(e, 1, T4, T0);
+            h_shr_r1(e, 1, T4);
+            h_and_ri(e, 0, T4, 1);
+            h_patch(e, zero, e->len);
+            h_mov_rr(e, 0, T1, T3);
+            h_sar_r1(e, 1, T0);
+        } else {
+            h_mov_rr(e, 1, T2, T0);
+            h_cmp_ri(e, 0, T3, 56);
+            size_t wide = h_jcc(e, HC_AE);
+            h_mov_ri(e, T1, 55);
+            h_sub_rr(e, 0, T1, T3);
+            h_sar_r1(e, 1, T2);
+            h_add_ri(e, 1, T2, 1);
+            h_cmp_ri(e, 1, T2, 1);
+            h_setcc(e, HC_A, T2);
+            size_t overflow_done = h_jmp(e);
+            h_patch(e, wide, e->len);
+            h_test_rr(e, 1, T2, T2);
+            h_setcc(e, HC_NE, T2);
+            h_patch(e, overflow_done, e->len);
+            h_mov_rr(e, 0, T4, T2);
+            h_shl_ri(e, 0, T4, DSP_SR_V);
+            h_shl_ri(e, 0, T2, DSP_SR_L);
+            h_or_rr(e, 0, T4, T2);
+            h_shl_ri(e, 1, T0, 8);
+            h_shr_ri(e, 1, T0, 8);
+            h_cmp_ri(e, 0, T3, 56);
+            size_t no_carry = h_jcc(e, HC_A);
+            h_mov_ri(e, T1, 56);
+            h_sub_rr(e, 0, T1, T3);
+            h_mov_rr(e, 1, T2, T0);
+            h_shr_r1(e, 1, T2);
+            h_and_ri(e, 0, T2, 1);
+            h_or_rr(e, 0, T4, T2);
+            h_patch(e, no_carry, e->len);
+            h_mov_rr(e, 0, T1, T3);
+            h_shl_r1(e, 1, T0);
+            emit_sext56(e, T0);
+        }
+        h_mov_rr(e, 1, acc, T0);
+        acc_written(t, a->d);
+        emit_sr_result(t, SR_EUNZ | SR_V | SR_C | 0xFFFF0000u, T4, acc, a->d);
+        break;
+    }
 
     case OP_ASL_N: {
         /* C is the last bit lost; V/L remember every sign transition. */
@@ -2090,6 +2156,15 @@ static bool np_alu(const Insn *in, AluOp *a)
         a->op = name[2] == 'r' ? OP_LSR : OP_LSL;
         a->d = inst & 1;
         a->shift = (inst >> 1) & 31;
+        return true;
+    }
+    if (!strcmp(name, "asl S1, S2, D") || !strcmp(name, "asr S1, S2, D")) {
+        static const int controls[] = {DSP_REG_A1, DSP_REG_B1, DSP_REG_X0,
+                                       DSP_REG_X1, DSP_REG_Y0, DSP_REG_Y1};
+        a->op = name[2] == 'l' ? OP_ASL_R : OP_ASR_R;
+        a->s = (inst >> 4) & 1;
+        a->d = inst & 1;
+        a->shift = controls[((inst >> 1) & 7) - 2];
         return true;
     }
     if (!strcmp(name, "asl #ii, S2, D") || !strcmp(name, "asr #ii, S2, D")) {

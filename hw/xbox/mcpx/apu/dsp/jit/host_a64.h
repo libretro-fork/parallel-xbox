@@ -397,6 +397,19 @@ static inline void h_sar_ri(Emitter *e, int w, int d, int n)
     a64(e, (w ? 0x9340FC00 : 0x13007C00) | (uint32_t)n << 16 | (uint32_t)AR(d) << 5 | AR(d));
 }
 
+static inline void h_shl_r1(Emitter *e, int w, int d)
+{
+    a64(e, (w ? 0x9AC02000 : 0x1AC02000) | (uint32_t)AR(H_T1) << 16 | (uint32_t)AR(d) << 5 | AR(d));
+}
+static inline void h_shr_r1(Emitter *e, int w, int d)
+{
+    a64(e, (w ? 0x9AC02400 : 0x1AC02400) | (uint32_t)AR(H_T1) << 16 | (uint32_t)AR(d) << 5 | AR(d));
+}
+static inline void h_sar_r1(Emitter *e, int w, int d)
+{
+    a64(e, (w ? 0x9AC02800 : 0x1AC02800) | (uint32_t)AR(H_T1) << 16 | (uint32_t)AR(d) << 5 | AR(d));
+}
+
 static inline void h_mul_rr(Emitter *e, int w, int d, int s)
 {
     /* madd d, d, s, zr */

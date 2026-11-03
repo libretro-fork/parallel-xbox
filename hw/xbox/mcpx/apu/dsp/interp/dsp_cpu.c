@@ -164,6 +164,11 @@ static bool match_loop_indirect(uint32_t op)
     return ((op >> 11) & 7) != 6;
 }
 
+static bool match_shift_control(uint32_t op)
+{
+    return ((op >> 1) & 7) >= 2;
+}
+
 static const OpcodeEntry nonparallel_opcodes[] = {
     { "0000000101iiiiii1000d000", "add #xx, D", dis_add_imm, emu_add_imm },
     { "00000001010000001100d000", "add #xxxx, D", dis_add_long, emu_add_long },
@@ -171,9 +176,9 @@ static const OpcodeEntry nonparallel_opcodes[] = {
     { "00000001010000001100d110", "and #xxxx, D", dis_and_long, emu_and_long },
     { "00000000iiiiiiii101110EE", "andi #xx, D", dis_andi, emu_andi },
     { "0000110000011101SiiiiiiD", "asl #ii, S2, D", dis_asl_imm, emu_asl_imm },
-    { "0000110000011110010SsssD", "asl S1, S2, D", NULL, NULL },
+    { "0000110000011110010SsssD", "asl S1, S2, D", dis_asl_reg, emu_asl_reg, match_shift_control },
     { "0000110000011100SiiiiiiD", "asr #ii, S2, D", dis_asr_imm, emu_asr_imm },
-    { "0000110000011110011SsssD", "asr S1, S2, D", NULL, NULL },
+    { "0000110000011110011SsssD", "asr S1, S2, D", dis_asr_reg, emu_asr_reg, match_shift_control },
     { "00001101000100000100CCCC", "bcc xxxx", dis_bcc_long, emu_bcc_long }, //??
     { "00000101CCCC01aaaa0aaaaa", "bcc xxx", dis_bcc_imm, emu_bcc_imm },
     { "0000110100011RRR0100CCCC", "bcc Rn", dis_bcc_reg, emu_bcc_reg },

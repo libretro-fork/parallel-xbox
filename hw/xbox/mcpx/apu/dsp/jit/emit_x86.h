@@ -331,6 +331,14 @@ static inline void x86_shift_ri(Emitter *e, int ext, int w, int dst, uint8_t imm
 #define x86_shr_ri(e, w, d, i) x86_shift_ri(e, 5, w, d, i)
 #define x86_sar_ri(e, w, d, i) x86_shift_ri(e, 7, w, d, i)
 
+/* Variable shifts use CL, reserved as H_T1 by the host abstraction. */
+static inline void x86_shift_cl(Emitter *e, int ext, int w, int dst)
+{
+    emit_rex(e, w, 0, dst);
+    emit_byte(e, 0xD3);
+    emit_modrm_rr(e, ext, dst);
+}
+
 /* imul r, r */
 static inline void x86_imul_rr(Emitter *e, int w, int dst, int src)
 {
