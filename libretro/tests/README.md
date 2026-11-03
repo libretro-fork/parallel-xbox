@@ -3475,3 +3475,15 @@ Complete preflight bounds every later coalesced group and EOF tail. A private ma
 The emulation-owner queued count excludes callbacks already completing. `lr_disk_run_pending` can return immediately at zero; `lr_disk_progress` still polls generic bottom halves, including work that enqueues a future disk completion. No additional counter, queue or synchronization is added. Chihiro memory-backed reads/writes skip zero-length vector spans, matching the no-transfer behavior of the other media paths. Medium, offset and write-permission checks still run; submitted requests still complete through their usual deferred slots.
 
 `test-block-completion.py` instruments only the test-extracted scan to count slot visits. `empty-progress` checks zero visits versus 16 for the frozen two-drive baseline, BH-created request deferral, subsequent completion, callback count and final idle progress. Existing nested drain/cancel/reuse cases and 100,000 schedules remain active. `test-block-memory.py` mixes empty and nonempty spans, rejects any empty address-space transaction, preserves nonempty error stopping and offsets, and checks endpoint-empty, invalid-range, read-only and absent-medium behavior. Its frozen baseline is a negative control for the empty-transaction property. These are deterministic work/semantics checks, not throughput or FPS measurements.
+
+`test-gl-disk-writer.py` holds the disk consumer while both production queue
+slots are filled, checks a third acquisition returns without progress, then
+checks 2064 ordered jobs, immutable slabs, size-counter wrap, shutdown draining
+and 32 reinitializations. `test-shader-cache-handoff.py` now holds a real writer
+before file open while the live binding is evicted and reused.
+`test-gl-module-export.py` checks slot storage reuse, exact legacy-compatible
+module bytes, deferred snapshots, no GL query/export on full slots, and failure
+cleanup. Its optional `--gl` mode compares a real Mesa program export against
+a direct driver binary oracle (mock filesystem, real stdio serialization).
+The concurrency fixtures pass ASan/UBSan and native Win64; ThreadSanitizer
+could not start in the current WSL runtime (unexpected memory mapping).

@@ -196,7 +196,6 @@ typedef struct ShaderBinding {
     size_t program_size;
     GLenum program_format;
     ShaderState state;
-    struct sthread *save_thread;
 
     GLuint gl_program;
     GLuint gl_pipeline;
@@ -466,8 +465,7 @@ typedef struct PGRAPHGLState {
      * link. */
     ShaderModuleCacheEntry *module_save_queue[256];
     unsigned module_save_r, module_save_w;
-    void *module_binary_scratch;
-    size_t module_binary_capacity;
+    struct GLDiskWriter *cache_writer;
     /* The finished link the module cache's entry init adopts. */
     uint64_t comb_adopt_hash;
     GLuint comb_adopt_program;
@@ -654,7 +652,7 @@ void pgraph_gl_surface_invalidate(NV2AState *d, SurfaceBinding *e);
 void pgraph_gl_surface_mark_ahead(SurfaceBinding *s);
 void pgraph_gl_unbind_surface(NV2AState *d, bool color);
 void pgraph_gl_upload_surface_data(NV2AState *d, SurfaceBinding *surface, bool force);
-void pgraph_gl_shader_cache_to_disk(ShaderBinding *snode);
+void pgraph_gl_shader_cache_to_disk(PGRAPHGLState *r, ShaderBinding *snode);
 bool pgraph_gl_shader_load_from_memory(ShaderBinding *snode);
 void pgraph_gl_shader_write_cache_reload_list(PGRAPHState *pg);
 void pgraph_gl_set_surface_scale_factor(NV2AState *d, unsigned int scale);

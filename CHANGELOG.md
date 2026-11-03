@@ -1,5 +1,6 @@
 # Changelog of the libretro core
 
+- OpenGL shader cache writes use a bounded background writer. Stage-module saves no longer perform filesystem I/O on the render thread, and shader eviction no longer joins a disk-save thread. Busy slots defer optional persistence without waiting or recopying module binaries.
 - GPIO boot probes at fixed LPC ports now work before the PM BAR is enabled, allowing firmware to identify the emulated Conexant encoder correctly. GPIO no longer follows PM BAR relocation.
 - OpenGL avoids redundant line-width driver updates when the effective width is unchanged, including widths clamped to the same host limit.
 - Remove the always-defined XBOX selection macro and unreachable non-Xbox core paths. Keep host-architecture guards and ARM64 floating-point fallbacks; update fixtures and audit single-target sources/build flags in CI.

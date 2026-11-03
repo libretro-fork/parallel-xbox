@@ -287,3 +287,19 @@ LPC GPIO ports remain decoded at 0x80c0-0x80d9 independently of PM BAR enable
 or relocation. Early firmware encoder probes therefore see the emulated GPIO
 value before PCI setup. The existing PM region owns the mapping; this adds no
 new device, serialized fields, waits or frame scheduling changes.
+
+OpenGL cache persistence uses one libretro-common worker and two bounded slots.
+The owning context exports module binaries directly into reusable slot storage;
+legacy saves transfer their immutable snapshots. Cache pressure defers saves
+without waiting for disk progress, and eviction holds no writer handle. Driver
+metadata/path snapshots survive binding reuse. The existing cache file formats
+and shader/PSO keys are unchanged. The binding pool is 400 KiB smaller on Win64
+from removing per-entry thread handles, while two variable-capacity module
+slabs are retained for safe reuse. Renderer teardown drains and joins the worker.
+Driver binary extraction, first-use compilation, cache reads/list writeback and
+other existing GPU/resource waits can still stall; this is not a global
+nonblocking claim or a measured FPS/cache-miss improvement.
+
+Cache-enabled GL links explicitly request retrievable program binaries (the
+legacy path checks API/extension support first). This changes cache policy,
+not generated shader state or its keys.

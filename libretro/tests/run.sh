@@ -364,6 +364,7 @@ python3 "$here/test-gpl-lookup-cache.py" "$here/../.." "$cc"
 python3 "$here/test-wgl-context-versions.py" "$here/../.." "$cc"
 
 python3 "$here/test-gl-module-export.py" "$here/../.." "$cc"
+python3 "$here/test-gl-disk-writer.py" "$here/../.." "$cc"
 case $h in
 wine*)
     # shellcheck disable=SC2086

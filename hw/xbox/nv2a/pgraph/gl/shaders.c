@@ -34,6 +34,7 @@
 #include "hw/xbox/nv2a/pgraph/glsl/uniform-cache.h"
 #include "debug.h"
 #include "renderer.h"
+#include "disk-writer.h"
 
 static const char *shader_gl_vendor = NULL;
 
@@ -345,83 +346,95 @@ out:
     return ok;
 }
 
-/* The flip-time save queue alone owns these bytes. Growth discards old
+/* An acquired disk slot alone owns these bytes. Growth discards old
  * contents rather than copying a binary the driver will replace. */
-static void *module_binary_reserve(PGRAPHGLState *r, size_t size)
+static void *module_binary_reserve(GLDiskSlot *slot, size_t size)
 {
-    if (size > r->module_binary_capacity) {
-        size_t grown = r->module_binary_capacity <= SIZE_MAX / 2 ?
-                       r->module_binary_capacity * 2 : size;
-        r->module_binary_capacity = MAX(size, grown);
-        g_free(r->module_binary_scratch);
-        r->module_binary_scratch = g_malloc(r->module_binary_capacity);
+    if (size > slot->capacity) {
+        size_t grown = slot->capacity <= SIZE_MAX / 2 ?
+                       slot->capacity * 2 : size;
+        slot->capacity = MAX(size, grown);
+        g_free(slot->scratch);
+        slot->scratch = g_malloc(slot->capacity);
     }
-    return r->module_binary_scratch;
+    return slot->scratch;
 }
 
-static void module_binary_release(PGRAPHGLState *r)
-{
-    g_free(r->module_binary_scratch);
-    r->module_binary_scratch = NULL;
-    r->module_binary_capacity = 0;
-}
-
-static void module_save_to_disk(PGRAPHGLState *r,
-                                ShaderModuleCacheEntry *module, uint64_t hash)
-{
-    GLint size = 0;
-    glGetProgramiv(module->gl_stage_program, GL_PROGRAM_BINARY_LENGTH, &size);
-    if (size <= 0) {
-        return;
-    }
-
-    void *bin = module_binary_reserve(r, size);
-    GLsizei copied;
+typedef struct ModuleDiskSave {
+    ShaderModuleCacheKey key;
+    uint64_t hash;
     GLenum format;
-    glGetProgramBinary(module->gl_stage_program, size, &copied, &format, bin);
-    if (glGetError() != GL_NO_ERROR) {
-        return;
-    }
+    GLsizei size;
+} ModuleDiskSave;
 
+static void module_write_to_disk(GLDiskSlot *slot)
+{
+    ModuleDiskSave *save=slot->data;
     char *parent = g_strdup_printf("%s/shader_modules",
-                                   xemu_settings_get_base_path());
+                                   slot->base_path);
     qemu_mkdir(parent);
     g_free(parent);
 
-    char *dir = module_get_dir(hash);
+    char *dir = g_strdup_printf("%s/shader_modules/%04x",
+                                slot->base_path, (uint32_t)(save->hash >> 48));
     qemu_mkdir(dir);
-    char *path = module_get_path(dir, hash);
+    char *path = module_get_path(dir, save->hash);
     g_free(dir);
 
     FILE *f = qemu_fopen(path, "wb");
     if (!f) {
         g_free(path);
+        g_free(save);
         return;
     }
 
     bool ok = shader_write_cache_version(f);
 #define WR(p, n) ok = ok && fwrite(p, n, 1, f) == 1
 
-    uint64_t len = strlen(shader_gl_vendor) + 1;
+    uint64_t len = strlen(slot->vendor) + 1;
     WR(&len, sizeof(len));
-    WR(shader_gl_vendor, len);
+    WR(slot->vendor, len);
 
-    len = sizeof(module->key);
+    len = sizeof(save->key);
     WR(&len, sizeof(len));
-    WR(&module->key, len);
+    WR(&save->key, len);
 
-    WR(&format, sizeof(format));
-    len = copied;
+    WR(&save->format, sizeof(save->format));
+    len = save->size;
     WR(&len, sizeof(len));
-    WR(bin, len);
+    WR(slot->scratch, len);
 
 #undef WR
 
-    fclose(f);
+    ok = fclose(f) == 0 && ok;
     if (!ok) {
         qemu_unlink(path);
     }
     g_free(path);
+    g_free(save);
+}
+
+static bool module_save_to_disk(PGRAPHGLState *r,
+                                ShaderModuleCacheEntry *module, uint64_t hash)
+{
+    GLDiskSlot *slot=gl_disk_writer_acquire(r->cache_writer);
+    if (!slot) return false;
+    GLint size=0;
+    glGetProgramiv(module->gl_stage_program, GL_PROGRAM_BINARY_LENGTH, &size);
+    if (size <= 0) return true;
+    void *bin=module_binary_reserve(slot,size);
+    GLsizei copied=0;
+    GLenum format;
+    glGetProgramBinary(module->gl_stage_program,size,&copied,&format,bin);
+    if (glGetError()!=GL_NO_ERROR || copied<=0 || copied>size) return true;
+    ModuleDiskSave *save=g_new(ModuleDiskSave,1);
+    save->key=module->key;
+    save->hash=hash;
+    save->format=format;
+    save->size=copied;
+    slot->data=save;slot->write=module_write_to_disk;
+    gl_disk_writer_submit(r->cache_writer);
+    return true;
 }
 
 /* Uniform locations belong to the stage program, not to the combination that
@@ -519,9 +532,11 @@ static void module_save_queue_drain(PGRAPHGLState *r, unsigned max_items)
             /* Link done: finalizing locations here is free and keeps the
              * first draw that uses this module from paying it. */
             module_locs_demand(module);
-            module_save_to_disk(r, module,
-                                fast_hash((void *)&module->key,
-                                          sizeof(ShaderModuleCacheKey)));
+            if (!module_save_to_disk(r, module,
+                                    fast_hash((void *)&module->key,
+                                              sizeof(ShaderModuleCacheKey)))) {
+                break; /* Disk slots busy: retry without exporting or waiting. */
+            }
         }
         r->module_save_r++;
     }
@@ -691,6 +706,9 @@ GLuint pgraph_gl_separable_program(GLenum kind, const char *src,
     glCompileShader(sh);
     GLuint prog = glCreateProgram();
     glProgramParameteri(prog, GL_PROGRAM_SEPARABLE, GL_TRUE);
+    if (g_config.perf.cache_shaders) {
+        glProgramParameteri(prog, GL_PROGRAM_BINARY_RETRIEVABLE_HINT, GL_TRUE);
+    }
     glAttachShader(prog, sh);
     glLinkProgram(prog);
     *shader = sh;
@@ -733,6 +751,11 @@ static ShaderModuleCacheEntry *get_shader_module_for_key(
 static void generate_shaders(PGRAPHGLState *r, ShaderBinding *binding)
 {
     GLuint program = gl_sso_enabled() ? 0 : glCreateProgram();
+    if (program && g_config.perf.cache_shaders &&
+        (xemu_gl_version() >= 41 ||
+         glo_check_extension("GL_ARB_get_program_binary"))) {
+        glProgramParameteri(program, GL_PROGRAM_BINARY_RETRIEVABLE_HINT, GL_TRUE);
+    }
 
     ShaderState *state = &binding->state;
     ShaderModuleCacheKey keys[3];
@@ -1172,7 +1195,6 @@ static void shader_cache_entry_init(Lru *lru, LruNode *node, const void *state)
     binding->cached = false;
     binding->program = NULL;
     binding->program_owner = (ShaderBinaryOwner){0};
-    binding->save_thread = NULL;
     binding->uses = 0;
     binding->gl_program = 0;
     binding->gl_pipeline = 0;
@@ -1198,10 +1220,6 @@ static void shader_cache_entry_post_evict(Lru *lru, LruNode *node)
     }
     binding->initialized = false;
 
-    if (binding->save_thread) {
-        sthread_join(binding->save_thread);
-    }
-
     glDeleteProgram(binding->gl_program);
     if (binding->gl_pipeline) {
         glDeleteProgramPipelines(1, &binding->gl_pipeline);
@@ -1212,7 +1230,6 @@ static void shader_cache_entry_post_evict(Lru *lru, LruNode *node)
     }
 
     binding->cached = false;
-    binding->save_thread = NULL;
     binding->program = NULL;
     memset(&binding->state, 0, sizeof(ShaderState));
 }
@@ -1232,13 +1249,13 @@ void pgraph_gl_init_shaders(PGRAPHState *pg)
     r->shader_disk_pending = NULL;
     retro_eventcount_init(&r->shader_cache_writeback_complete);
 
-    if (!shader_gl_vendor) {
+    {
         shader_gl_vendor = (const char *) glGetString(GL_VENDOR);
         if (!shader_gl_vendor) {
             shader_gl_vendor = "Unknown vendor";
         }
     }
-    if (!shader_gl_version) {
+    {
         shader_gl_version = (const char *) glGetString(GL_VERSION);
         if (!shader_gl_version) {
             shader_gl_version = "Unknown version";
@@ -1279,7 +1296,8 @@ void pgraph_gl_init_shaders(PGRAPHState *pg)
     r->shader_module_cache.compare_nodes = shader_module_cache_entry_compare;
     r->shader_module_cache.post_node_evict = shader_module_cache_entry_post_evict;
 
-    module_binary_reserve(r, 64 * 1024);
+    r->cache_writer=gl_disk_writer_create(xemu_settings_get_base_path(),
+                                                  shader_gl_vendor, shader_gl_version);
     r->seed.state = -1;
     r->prewarm.state = -1;
 }
@@ -1308,18 +1326,20 @@ void pgraph_gl_finalize_shaders(PGRAPHState *pg)
     lru_flush(&r->shader_module_cache);
     g_free(r->shader_module_cache_entries);
     r->shader_module_cache_entries = NULL;
-    module_binary_release(r);
+    gl_disk_writer_destroy(r->cache_writer);
+    r->cache_writer=NULL;
 }
 
-static void shader_write_to_disk(void *arg)
+static void shader_write_to_disk(GLDiskSlot *slot)
 {
-    ShaderDiskResult *binding = arg;
+    ShaderDiskResult *binding = slot->data;
 
-    char *shader_bin = shader_get_bin_directory(binding->hash);
+    char *shader_bin = g_strdup_printf("%s/shaders_boost/%04x", slot->base_path,
+                                       (uint32_t)(binding->hash >> 48));
     char *shader_path = shader_get_binary_path(shader_bin, binding->hash);
 
-    const uint64_t gl_vendor_len = strlen(shader_gl_vendor) + 1;
-    const uint64_t gl_version_len = strlen(shader_gl_version) + 1;
+    const uint64_t gl_vendor_len = strlen(slot->vendor) + 1;
+    const uint64_t gl_version_len = strlen(slot->version) + 1;
 
     qemu_mkdir(shader_bin);
     g_free(shader_bin);
@@ -1345,10 +1365,10 @@ static void shader_write_to_disk(void *arg)
     }
 
     WRITE_OR_ERR(&gl_vendor_len, sizeof(gl_vendor_len));
-    WRITE_OR_ERR(shader_gl_vendor, gl_vendor_len);
+    WRITE_OR_ERR(slot->vendor, gl_vendor_len);
 
     WRITE_OR_ERR(&gl_version_len, sizeof(gl_version_len));
-    WRITE_OR_ERR(shader_gl_version, gl_version_len);
+    WRITE_OR_ERR(slot->version, gl_version_len);
 
     {
         uint64_t state_size = sizeof(binding->state);
@@ -1362,7 +1382,9 @@ static void shader_write_to_disk(void *arg)
 
     #undef WRITE_OR_ERR
 
-    fclose(shader_file);
+    if (fclose(shader_file) != 0) {
+        goto error;
+    }
 
     g_free(shader_path);
     shader_binary_release(binding->program, &binding->program_owner);
@@ -1379,31 +1401,28 @@ error:
     return;
 }
 
-/* Transfer the binary snapshot before the writer can run. It never reads or
- * modifies the live binding, and eviction joins the worker before reuse. */
-static void shader_start_disk_save(ShaderBinding *binding)
+/* Publish an immutable snapshot; eviction never waits for a disk writer. */
+static bool shader_start_disk_save(GLDiskWriter *writer, ShaderBinding *binding)
 {
-    ShaderDiskResult *save = g_new(ShaderDiskResult, 1);
-    save->hash = binding->node.hash;
-    save->state = binding->state;
-    save->program_format = binding->program_format;
-    save->program_size = binding->program_size;
-    save->program = binding->program;
-    save->program_owner = binding->program_owner;
-    binding->program = NULL;
-    binding->program_owner = (ShaderBinaryOwner){0};
-    binding->save_thread = sthread_create(shader_write_to_disk, save);
-    if (!binding->save_thread) {
-        /* A disk-cache failure must not stop emulation. */
-        shader_binary_release(save->program, &save->program_owner);
-        g_free(save);
-        binding->cached = false;
-    }
+    GLDiskSlot *slot=gl_disk_writer_acquire(writer);
+    if (!slot) return false;
+    ShaderDiskResult *save=g_new(ShaderDiskResult,1);
+    save->hash=binding->node.hash;
+    save->state=binding->state;
+    save->program_format=binding->program_format;
+    save->program_size=binding->program_size;
+    save->program=binding->program;
+    save->program_owner=binding->program_owner;
+    binding->program=NULL;
+    binding->program_owner=(ShaderBinaryOwner){0};
+    slot->data=save;slot->write=shader_write_to_disk;
+    gl_disk_writer_submit(writer);
+    return true;
 }
 
-void pgraph_gl_shader_cache_to_disk(ShaderBinding *binding)
+void pgraph_gl_shader_cache_to_disk(PGRAPHGLState *r, ShaderBinding *binding)
 {
-    if (binding->cached) {
+    if (binding->cached || !gl_disk_writer_acquire(r->cache_writer)) {
         return;
     }
 
@@ -1416,20 +1435,25 @@ void pgraph_gl_shader_cache_to_disk(ShaderBinding *binding)
     }
 
     /* program_size might be zero on some systems, if no binary formats are supported */
-    if (program_size == 0) {
+    if (program_size <= 0) {
         return;
     }
 
     binding->program = g_malloc(program_size);
-    GLsizei program_size_copied;
+    GLsizei program_size_copied = 0;
     glGetProgramBinary(binding->gl_program, program_size, &program_size_copied,
                        &binding->program_format, binding->program);
-    assert(glGetError() == GL_NO_ERROR);
+    if (glGetError() != GL_NO_ERROR || program_size_copied <= 0 ||
+        program_size_copied > program_size) {
+        shader_binary_release(binding->program, &binding->program_owner);
+        binding->program = NULL;
+        return;
+    }
 
     binding->program_size = program_size_copied;
     binding->cached = true;
 
-    shader_start_disk_save(binding);
+    binding->cached=shader_start_disk_save(r->cache_writer,binding);
 }
 
 /* With GPU boost, refill only the uniform sections written since, and skip
@@ -2450,9 +2474,9 @@ void pgraph_gl_bind_shaders(PGRAPHState *pg)
         (gl_sso_enabled() || !pgraph_gl_shader_load_from_memory(binding))) {
         nv2a_profile_inc_counter(NV2A_PROF_SHADER_GEN);
         generate_shaders(r, binding);
-        if (g_config.perf.cache_shaders && !gl_sso_enabled()) {
-            pgraph_gl_shader_cache_to_disk(binding);
-        }
+    }
+    if (g_config.perf.cache_shaders && !gl_sso_enabled()) {
+        pgraph_gl_shader_cache_to_disk(r, binding);
     }
     assert(binding->initialized);
     binding->uses++;

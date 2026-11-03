@@ -4,12 +4,14 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
+#include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <retro_mpsc.h>
 #include <rthreads/rthreads.h>
 #include <retro_timers.h>
+#include "hw/xbox/nv2a/pgraph/gl/disk-writer.h"
 #include "qemu/lru.h"
 #include "../../hw/xbox/nv2a/pgraph/gl/shader-binary.h"
 
@@ -31,7 +33,6 @@ typedef struct {
     ShaderBinaryOwner program_owner;
     size_t program_size;
     GLenum program_format;
-    sthread_t *save_thread;
 } ShaderBinding;
 typedef struct {
     retro_mpsc_t shader_disk_results;
@@ -56,16 +57,36 @@ static void *poisoned_alloc(size_t size) {
 }
 #define g_new(type, n) ((type *)poisoned_alloc(sizeof(type) * (n)))
 #define g_free free
-#define qemu_fopen fopen
+static retro_atomic_int_t hold_save,save_entered;
+static retro_eventcount_t save_entered_event,save_release_event;
+static FILE *qemu_fopen(const char *path,const char *mode)
+{
+    if (!strcmp(mode,"wb") && retro_atomic_load_acquire_int(&hold_save)) {
+        assert(!owner);
+        retro_atomic_store_release_int(&save_entered,1);
+        retro_eventcount_notify(&save_entered_event);
+        while(retro_atomic_load_acquire_int(&hold_save)) {
+            int key=retro_eventcount_prepare_wait(&save_release_event);
+            if(!retro_atomic_load_acquire_int(&hold_save))retro_eventcount_cancel_wait(&save_release_event);
+            else retro_eventcount_commit_wait(&save_release_event,key);
+        }
+    }
+    return fopen(path,mode);
+}
 #define qemu_unlink remove
 static void qemu_mkdir(const char *path) { (void)path; }
+static char *g_strdup_printf(const char *format,...) {
+    va_list ap,copy;va_start(ap,format);va_copy(copy,ap);
+    int n=vsnprintf(NULL,0,format,copy);va_end(copy);assert(n>=0);
+    char *p=malloc(n+1);assert(p);vsnprintf(p,n+1,format,ap);va_end(ap);return p;
+}
 static char *shader_get_bin_directory(uint64_t hash) { return strdup(directory); }
 static char *shader_get_binary_path(const char *path, uint64_t hash)
 {
-    size_t size = strlen(path) + 40;
+    size_t size = strlen(directory) + 40;
     char *name = malloc(size);
     assert(name);
-    snprintf(name, size, "%s/%llu.bin", path, (unsigned long long)hash);
+    snprintf(name, size, "%s/%llu.bin", directory, (unsigned long long)hash);
     return name;
 }
 static bool shader_write_cache_version(FILE *file)
@@ -243,11 +264,23 @@ int main(int argc, char **argv)
     live.program = shader_binary_take_file(&live.program_owner, &file_owner,
         (char *)allocation + 16, 16, &renderer.shader_disk_mappings);
     memset(live.program, 0xab, 16);
-    shader_start_disk_save(&live);
-    assert(live.save_thread && !live.program);
+    retro_atomic_int_init(&hold_save,1);retro_atomic_int_init(&save_entered,0);
+    retro_eventcount_init(&save_entered_event);retro_eventcount_init(&save_release_event);
+    GLDiskWriter *writer=gl_disk_writer_create(directory,shader_gl_vendor,shader_gl_version);
+    assert(writer && shader_start_disk_save(writer,&live));
+    assert(!live.program);
+    while(!retro_atomic_load_acquire_int(&save_entered)) {
+        int key=retro_eventcount_prepare_wait(&save_entered_event);
+        if(retro_atomic_load_acquire_int(&save_entered))retro_eventcount_cancel_wait(&save_entered_event);
+        else retro_eventcount_commit_wait(&save_entered_event,key);
+    }
+    /* Reuse the live state while the real writer is held before opening. */
+    evict(NULL,&live.node);
     live.state.id = 99;
     live.program_size = 0;
-    sthread_join(live.save_thread);
+    retro_atomic_store_release_int(&hold_save,0);retro_eventcount_notify(&save_release_event);
+    gl_disk_writer_destroy(writer);
+    retro_eventcount_free(&save_entered_event);retro_eventcount_free(&save_release_event);
     assert(!live.program_owner.file.data);
     assert(retro_atomic_load_acquire_int(&renderer.shader_disk_mappings) == 0);
     char *name = shader_get_binary_path(directory, 123);

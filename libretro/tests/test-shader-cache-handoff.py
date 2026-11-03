@@ -14,7 +14,7 @@ source = (root / "hw/xbox/nv2a/pgraph/gl/shaders.c").read_text()
 starts = ["typedef struct ShaderDiskResult {", "static void shader_load_from_disk(", "static void shader_adopt_disk_results(",
           "static void shader_write_lru_list_entry_to_disk(",
           "void pgraph_gl_shader_write_cache_reload_list(",
-          "static void shader_write_to_disk(", "static void shader_start_disk_save("]
+          "static void shader_write_to_disk(", "static bool shader_start_disk_save("]
 pieces = []
 for start in starts:
     begin = source.index(start)
@@ -31,11 +31,11 @@ with tempfile.TemporaryDirectory(prefix="shader-cache-handoff-") as temporary:
         directory / ("test.exe" if windows else "test"))
     command = compiler + ["-O1", "-g", "-std=gnu11", "-Wall", "-Wextra", "-Werror",
                          "-Wno-unused-parameter", "-DHAVE_THREADS",
-                         "-I" + str(root / "include"),
+                         "-I" + str(root), "-I" + str(root / "include"),
                          "-I" + str(root / "libretro-common/include"), "-I" + str(directory)]
     command += shlex.split(os.environ.get("SHADER_CACHE_CFLAGS", ""))
     command += [str(root / path) for path in ["libretro/tests/test-shader-cache-handoff.c",
-                                            "libretro-common/rthreads/rthreads.c"]]
+                                            "libretro-common/rthreads/rthreads.c", "libretro-common/rthreads/retro_eventcount.c"]]
     if windows:
         command += ["-Wno-cast-function-type"]
         command += [str(root / path) for path in [
