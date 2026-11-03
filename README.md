@@ -329,3 +329,9 @@ of sixteen; fragmented destinations retain separate fills. Allocated data
 and compressed clusters end the run, and fills remain bounded by SIZE_MAX
 on 32-bit hosts. This changes operation counts, with no measured FPS or
 storage-throughput claim.
+
+Frontend VFS reads ignore NULL/non-NULL empty descriptors when coalescing
+adjacent destinations. A three-span contiguous request separated by empty
+entries needs one provider read instead of three when it completes fully.
+Short-read, EOF, cursor recovery and descriptor immutability remain covered;
+no staging buffer, allocation or throughput/FPS claim is added.

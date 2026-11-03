@@ -41,10 +41,10 @@ static inline int lr_vfs_readv(const struct retro_vfs_interface *vfs,
         uint8_t *data = iov[i].base;
         size_t left = iov[i++].len;
         /* Adjacent guest spans need one provider call, with no staging copy.
-         * Keep gaps separate and retry any short successful bulk read. */
-        while (i < count && left <= UINTPTR_MAX - (uintptr_t)data &&
-               (uintptr_t)iov[i].base == (uintptr_t)data + left &&
-               iov[i].len <= SIZE_MAX - left) {
+         * Ignore empty spans, keep gaps separate and retry short bulk reads. */
+        while (i < count && ((left <= UINTPTR_MAX - (uintptr_t)data &&
+                (uintptr_t)iov[i].base == (uintptr_t)data + left &&
+                iov[i].len <= SIZE_MAX - left) || !iov[i].len)) {
             left += iov[i++].len;
         }
         if (left > (uint64_t)(INT64_MAX - *cursor)) {

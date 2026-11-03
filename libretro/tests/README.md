@@ -3728,3 +3728,8 @@ requests over v2/v3 decoded metadata: partial/empty/gapped destinations,
 explicit zero entries and cached compressed boundaries. It compares every
 byte and guard against a scalar oracle, counts one fill for a contiguous
 16-cluster zero request, and retains the existing 30,000 cursor cases.
+
+The VFS fixture includes 1,280 empty-separated contiguous request cases
+across short-read caps, in-file/EOF offsets and errors/invalid replies after
+a transferred prefix. It verifies exact provider call counts, byte guards,
+unchanged descriptors and cursor invalidation/reseek recovery.

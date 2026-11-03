@@ -9,6 +9,7 @@ struct retro_vfs_file_handle {
     size_t max_read;
     int seek_error;
     int error;
+    unsigned fault_at;
 };
 
 static int64_t seek_file(struct retro_vfs_file_handle *f, int64_t off, int where)
@@ -25,7 +26,7 @@ static int64_t seek_file(struct retro_vfs_file_handle *f, int64_t off, int where
 static int64_t read_file(struct retro_vfs_file_handle *f, void *data, uint64_t len)
 {
     f->reads++;
-    if (f->error) {
+    if (f->error && (!f->fault_at || f->reads == f->fault_at)) {
         return f->error;
     }
     if (f->position >= sizeof(f->bytes)) {
@@ -131,5 +132,40 @@ int main(void)
     assert(f.seeks == seeks && f.reads == reads && cursor == saved_cursor);
     assert(f.position == saved_position);
     for (unsigned i = 0; i < sizeof(out); i++) { assert(out[i] == 0xcc); }
+    LRFileIOV separated[] = {{NULL,0}, {out,8}, {NULL,0},
+                             {out+8,16}, {out+45,0}, {out+24,8}, {NULL,0}};
+    LRFileIOV saved[7];
+    memcpy(saved,separated,sizeof(saved));
+    unsigned cases=0;
+    for(unsigned cap=0;cap<=17;cap++)for(unsigned offset=0;offset<=70;offset++){
+        f.max_read=cap;f.reads=f.seeks=0;cursor=-1;
+        memset(out,0xcc,sizeof(out));
+        assert(!lr_vfs_readv(&vfs,&f,&cursor,offset,separated,7));
+        size_t available=offset<64?64-offset:0;
+        size_t got=available<32?available:32;
+        unsigned calls=got?(cap?(unsigned)((got+cap-1)/cap):1):0;
+        if(got<32)calls++; /* Confirm EOF exactly once. */
+        assert(f.reads==calls && f.seeks==1 && cursor==(int64_t)(offset+got));
+        for(unsigned j=0;j<32;j++)assert(out[j]==(j<got?f.bytes[offset+j]:0));
+        for(unsigned j=32;j<sizeof(out);j++)assert(out[j]==0xcc);
+        assert(!memcmp(saved,separated,sizeof(saved)));
+        cases++;
+    }
+    /* A failed/invalid provider reply after a prefix must not fill untouched
+     * bytes or keep a trusted cursor; retry must seek and recover normally. */
+    for(unsigned invalid=0;invalid<2;invalid++){
+        f.max_read=7;f.reads=f.seeks=0;f.error=invalid?1000:-1;f.fault_at=3;
+        cursor=-1;memset(out,0xcc,sizeof(out));
+        assert(lr_vfs_readv(&vfs,&f,&cursor,0,separated,7)==-EIO);
+        assert(cursor==-1 && f.reads==3 && f.seeks==1);
+        assert(!memcmp(out,f.bytes,14));
+        for(unsigned j=14;j<sizeof(out);j++)assert(out[j]==0xcc);
+        f.error=0;f.fault_at=0;
+        assert(!lr_vfs_readv(&vfs,&f,&cursor,0,separated,7));
+        assert(f.seeks==2 && cursor==32 && !memcmp(out,f.bytes,32));
+        assert(!memcmp(saved,separated,sizeof(saved)));
+        cases++;
+    }
+    printf("VFS empty-separated spans: %u short/EOF/error/recovery cases; contiguous provider reads=1 PASS\n",cases);
     puts("VFS bulk spans, short reads, sequential seeks, gaps, EOF, empty spans and recovery: PASS");
 }
