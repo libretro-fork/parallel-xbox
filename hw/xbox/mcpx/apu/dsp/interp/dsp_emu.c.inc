@@ -6360,6 +6360,53 @@ static void emu_bset_aa(dsp_core_t* dsp)
     dsp->instr_cycle += 2;
 }
 
+static void emu_bscc_long(dsp_core_t* dsp)
+{
+    uint32_t displacement = read_memory_p(dsp, dsp->pc + 1);
+    dsp->cur_inst_len++;
+    if (emu_calc_cc(dsp, dsp->cur_inst & 15)) {
+        dsp_stack_push(dsp, dsp->pc + dsp->cur_inst_len, dsp->registers[DSP_REG_SR], 0);
+        dsp->pc = (dsp->pc + displacement) & BITMASK(24);
+        dsp->cur_inst_len = 0;
+    }
+    dsp->instr_cycle += 4;
+}
+
+static void emu_bscc_imm(dsp_core_t* dsp)
+{
+    uint32_t displacement = (dsp->cur_inst & 31) + ((dsp->cur_inst & (15 << 6)) >> 1);
+    if (emu_calc_cc(dsp, (dsp->cur_inst >> 12) & 15)) {
+        dsp_stack_push(dsp, dsp->pc + dsp->cur_inst_len, dsp->registers[DSP_REG_SR], 0);
+        dsp->pc = (dsp->pc + dsp_signextend(9, displacement)) & BITMASK(24);
+        dsp->cur_inst_len = 0;
+    }
+    dsp->instr_cycle += 2;
+}
+
+static void emu_bscc_reg(dsp_core_t* dsp)
+{
+    if (emu_calc_cc(dsp, dsp->cur_inst & 15)) {
+        uint32_t displacement = dsp->registers[DSP_REG_R0 + ((dsp->cur_inst >> 8) & 7)];
+        dsp_stack_push(dsp, dsp->pc + dsp->cur_inst_len, dsp->registers[DSP_REG_SR], 0);
+        dsp->pc = (dsp->pc + displacement) & BITMASK(24);
+        dsp->cur_inst_len = 0;
+    }
+    dsp->instr_cycle += 2;
+}
+
+static void emu_bsr_reg(dsp_core_t* dsp)
+{
+    uint32_t displacement = dsp->registers[DSP_REG_R0 + ((dsp->cur_inst >> 8) & 7)];
+    if (dsp->interrupt_state != DSP_INTERRUPT_LONG) {
+        dsp_stack_push(dsp, dsp->pc + dsp->cur_inst_len, dsp->registers[DSP_REG_SR], 0);
+    } else {
+        dsp->interrupt_state = DSP_INTERRUPT_DISABLED;
+    }
+    dsp->pc = (dsp->pc + displacement) & BITMASK(24);
+    dsp->cur_inst_len = 0;
+    dsp->instr_cycle += 2;
+}
+
 static void emu_bsr_long(dsp_core_t* dsp)
 {
     uint32_t xxxx = read_memory_p(dsp, dsp->pc+1);

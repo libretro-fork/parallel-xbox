@@ -3038,9 +3038,11 @@ static bool emit_control(Tr *t, const Insn *in)
 
     if (!strcmp(name, "jsr ea") || !strcmp(name, "jsr xxx") ||
         !strcmp(name, "jscc ea") || !strcmp(name, "jscc xxx") ||
-        !strcmp(name, "bsr xxxx") || !strcmp(name, "bsr xxx")) {
+        !strcmp(name, "bsr xxxx") || !strcmp(name, "bsr xxx") || !strcmp(name, "bsr Rn") ||
+        !strcmp(name, "bscc xxxx") || !strcmp(name, "bscc xxx") || !strcmp(name, "bscc Rn")) {
         bool relative = name[0] == 'b';
-        bool conditional = !relative && name[2] == 'c';
+        bool conditional = name[2] == 'c';
+        bool register_relative = relative && strstr(name, "Rn");
         bool computed = !relative && !strcmp(name + (conditional ? 5 : 4), "ea");
         uint32_t before = t->cyc;
         uint32_t base_cycles = 4;
@@ -3048,14 +3050,18 @@ static bool emit_control(Tr *t, const Insn *in)
         acc_spill_all(t, false);
         if (relative) {
             uint32_t target;
-            if (!strcmp(name, "bsr xxxx")) {
+            if (register_relative) {
+                h_ld32(e, EA1, REG_CORE, REGOFF(DSP_REG_R0 + ((inst >> 8) & 7)));
+                h_add_ri(e, 0, EA1, at);
+                h_and_ri(e, 0, EA1, 0xFFFFFF);
+            } else if (!strcmp(name, "bsr xxxx") || !strcmp(name, "bscc xxxx")) {
                 target = (at + in->ext) & 0xFFFFFF;
                 base_cycles = 6;
             } else {
                 uint32_t xxx = (inst & 0x1F) + ((inst & (0xF << 6)) >> 1);
                 target = (at + ((int32_t)(xxx << 23) >> 23)) & 0xFFFFFF;
             }
-            h_mov_ri(e, EA1, target);
+            if (!register_relative) h_mov_ri(e, EA1, target);
         } else if (!computed) {
             h_mov_ri(e, EA1, inst & 0xFFF);
         } else {
@@ -3070,7 +3076,8 @@ static bool emit_control(Tr *t, const Insn *in)
         uint32_t cycles = base_cycles + t->cyc - before;
         t->cyc = before;
         if (conditional) {
-            emit_cc(e, computed ? inst & 0xF : (inst >> 12) & 0xF);
+            bool low_condition = computed || register_relative || !strcmp(name, "bscc xxxx");
+            emit_cc(e, low_condition ? inst & 0xF : (inst >> 12) & 0xF);
             size_t taken = h_jcc(e, HC_NE);
             emit_exit_to(t, in, in->next, cycles);
             h_patch(e, taken, e->len);
@@ -3078,7 +3085,7 @@ static bool emit_control(Tr *t, const Insn *in)
         h_st32(e, REG_CORE, OFF(pc), EA1);
         /* Interrupt entry has already saved PC/SR for a long interrupt.
          * Only unconditional JSR/BSR get the vector's no-second-push
-         * behavior; JScc still performs its ordinary conditional push. */
+         * behavior; conditional calls still perform their ordinary push. */
         if (!conditional) {
             h_cmp_mem16_imm(e, REG_CORE, OFF(interrupt_state), DSP_INTERRUPT_LONG);
             long_irq = h_jcc(e, HC_EQ);

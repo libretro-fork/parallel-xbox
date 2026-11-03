@@ -29,6 +29,8 @@
 
 ## Unreleased
 
+- DSP: execute conditional relative calls and register-relative subroutine calls in the native JIT, with independent stack/return-address regressions.
+
 - Add a bounded DSP DMA compatibility aperture at 0x4000-0x7fff: output produces zeros and input is discarded without touching DSP memory. Preserve host walks, circular offsets, list completion and status polling; other unmapped addresses remain rejected. Add transfer, isolation and completion regressions. This policy follows Symphony behavior within a narrower range and is not yet hardware-verified.
 
 - Advance S/PDIF DMA descriptors on an independent 48 kHz virtual carrier clock, including completion interrupts, ring wrap and LVI resume, even when PCM is stopped or uses another rate. Avoid odd-descriptor stalls and unbounded time-gap arithmetic. Save the new clock state while retaining older-state loading; add synthetic pacing and reset regressions.

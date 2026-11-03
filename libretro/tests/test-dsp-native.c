@@ -2186,6 +2186,80 @@ static bool register_branch_condition(unsigned cc, unsigned sr)
     return conditions[cc];
 }
 
+static void check_relative_calls(Machine *a, Machine *b, unsigned mode)
+{
+    static const uint32_t offsets[] = {0, 1, 2, 0x20, 0x7fffff, 0x800000, 0xffffe0, 0xffffff};
+    static const int short_offsets[] = {-256, -1, 0, 1, 2, 255};
+    static const uint32_t pcs[] = {0, 1, 0x30, 0x7fe};
+    /* Ten conditional forms and eight unconditional register forms. The
+     * expected PC, registers and stack are computed without either engine. */
+    for (unsigned form = 0; form < 18; form++) {
+        for (unsigned cc = 0; cc < (form < 10 ? 16 : 1); cc++) {
+            for (unsigned flags = 0; flags < 256; flags++) {
+                unsigned n = form < 2 ? 0 : (form - 2) & 7;
+                uint32_t offset = offsets[(flags + n) & 7];
+                uint32_t op;
+                if (form == 0) op = 0x0d1000 | cc;
+                else if (form == 1) {
+                    offset = short_offsets[flags % ARRAY_SIZE(short_offsets)];
+                    op = 0x050000 | (cc << 12) | (offset & 31) | ((offset & 0x1e0) << 1);
+                } else op = (form < 10 ? 0x0d1800 | cc : 0x0d1880) | (n << 8);
+                uint32_t pc = pcs[(flags >> 6) & 3];
+                uint32_t next = pc + (form == 0 ? 2 : 1);
+                bool taken = form >= 10 || register_branch_condition(cc, flags);
+                uint32_t target = taken ? (pc + offset) & 0xffffff : next;
+                Machine *machines[] = {a, b};
+                dspjit_test_reset_fallback_count();
+                for (unsigned engine = 0; engine < 2; engine++) {
+                    Machine *m = machines[engine];
+                    prepare(m, op, offset & 0xffffff, 1, mode, false);
+                    dsp_core_t *c = m->dsp->backend;
+                    c->pc = pc;
+                    c->registers[DSP_REG_R0 + n] = offset;
+                    c->registers[DSP_REG_SR] = (mode << DSP_SR_S0) | flags;
+                    uint32_t expected[DSP_REG_MAX];
+                    memcpy(expected, c->registers, sizeof(expected));
+                    if (taken) {
+                        expected[DSP_REG_SP] = 3;
+                        expected[DSP_REG_SSH] = next & 0xffff;
+                        expected[DSP_REG_SSL] = expected[DSP_REG_SR] & 0xffff;
+                    }
+                    m->dsp->ops->write_memory(m->dsp, 'P', pc, op);
+                    if (form == 0) m->dsp->ops->write_memory(m->dsp, 'P', pc + 1, offset & 0xffffff);
+                    if (!engine) {
+                        m->dsp->ops->step(m->dsp);
+                        c->cycle_count += c->instr_cycle;
+                    } else m->dsp->ops->run(m->dsp, 1);
+                    if (c->pc != target || c->cycle_count != (form == 0 ? 6 : 4) ||
+                        memcmp(c->registers, expected, sizeof(expected))) {
+                        fprintf(stderr, "Relative call engine=%u form=%u cc=%u flags=%x PC=%x/%x cycles=%u\n",
+                                engine, form, cc, flags, c->pc, target, (unsigned)c->cycle_count);
+                        exit(1);
+                    }
+                    for (unsigned slot = 0; slot < ARRAY_SIZE(c->stack[0]); slot++) {
+                        uint32_t high = slot == 2 ? 0x20 : taken && slot == 3 ? next & 0xffff : 0;
+                        uint32_t low = taken && slot == 3 ? expected[DSP_REG_SR] & 0xffff : 0;
+                        if (c->stack[0][slot] != high || c->stack[1][slot] != low) {
+                            fputs("Relative call stack regression\n", stderr);
+                            exit(1);
+                        }
+                    }
+                }
+                if (dspjit_test_fallback_count() || compare_machines(a, b)) exit(1);
+                cases++;
+            }
+            static const unsigned contexts[] = {0x20000000, 0x40000, 0x80000};
+            for (unsigned ctx = 0; ctx < ARRAY_SIZE(contexts); ctx++) {
+                for (unsigned seed = 0; seed < 2; seed++) {
+                    uint32_t op = form == 0 ? 0x0d1000 | cc : form == 1 ? 0x050010 | (cc << 12) :
+                        (form < 10 ? 0x0d1800 | cc : 0x0d1880) | (((form - 2) & 7) << 8);
+                    check(a, b, op, 0x30, 0x400000 | 0x1000000 | contexts[ctx] | seed, mode, seed != 0);
+                }
+            }
+        }
+    }
+}
+
 static void check_register_relative_branches(Machine *a, Machine *b, unsigned mode)
 {
     static const uint32_t pcs[] = {0, 1, 0x30, 0x7FE};
@@ -2495,6 +2569,7 @@ static void check_program_write_sequences(Machine *a, Machine *b, unsigned mode)
 
 int main(int argc, char **argv)
 {
+    bool relative_calls_only = argc == 2 && !strcmp(argv[1], "--relative-calls");
     bool register_branches_only = argc == 2 && !strcmp(argv[1], "--register-branches");
     bool pc_relative_only = argc == 2 && !strcmp(argv[1], "--pc-relative-loads");
     bool rounded_multiply_only = argc == 2 && !strcmp(argv[1], "--rounded-multiply");
@@ -2521,8 +2596,8 @@ int main(int argc, char **argv)
     bool effective_only = argc == 2 && !strcmp(argv[1], "--effective-control");
     bool startup_only = argc == 2 && !strcmp(argv[1], "--startup");
     bool program_only = argc == 2 && !strcmp(argv[1], "--program");
-    if (argc != 1 && !register_branches_only && !pc_relative_only && !rounded_multiply_only && !y_long_only && !logical_shifts_only && !immediate_logic_only && !relative_only && !loops_only && !program_only && !compare_only && !startup_only && !effective_only && !register_only && !program_control_only && !peripheral_only && !program_peripheral_only && !multiply_only && !normalize_only && !divide_only && !byte_logic_only && !memory_bits_only && !control_bits_only && !offset_control_only && !shifts_only && !signed_right_only && !left_flags_only) {
-        fputs("usage: dspnative [--register-branches|--pc-relative-loads|--rounded-multiply|--y-long-offset|--logical-shifts|--immediate-logic|--relative|--loops|--program|--compare|--startup|--effective-control|--register-control|--program-control|--peripheral-control|--program-peripheral|--multiply|--normalize|--divide|--status-byte|--memory-bits|--control-bits|--offset-control|--shift-boundaries|--signed-right|--left-flags]\n", stderr);
+    if (argc != 1 && !relative_calls_only && !register_branches_only && !pc_relative_only && !rounded_multiply_only && !y_long_only && !logical_shifts_only && !immediate_logic_only && !relative_only && !loops_only && !program_only && !compare_only && !startup_only && !effective_only && !register_only && !program_control_only && !peripheral_only && !program_peripheral_only && !multiply_only && !normalize_only && !divide_only && !byte_logic_only && !memory_bits_only && !control_bits_only && !offset_control_only && !shifts_only && !signed_right_only && !left_flags_only) {
+        fputs("usage: dspnative [--relative-calls|--register-branches|--pc-relative-loads|--rounded-multiply|--y-long-offset|--logical-shifts|--immediate-logic|--relative|--loops|--program|--compare|--startup|--effective-control|--register-control|--program-control|--peripheral-control|--program-peripheral|--multiply|--normalize|--divide|--status-byte|--memory-bits|--control-bits|--offset-control|--shift-boundaries|--signed-right|--left-flags]\n", stderr);
         return 2;
     }
     Machine *a = machine_new(false), *b = machine_new(true);
@@ -2537,8 +2612,9 @@ int main(int argc, char **argv)
     assert(initially_committed == (64u << 10));
 #endif
     check_speculative_decode();
-    if (register_branches_only || pc_relative_only || rounded_multiply_only || y_long_only || logical_shifts_only || immediate_logic_only || relative_only || loops_only || program_only || compare_only || startup_only || effective_only || register_only || program_control_only || peripheral_only || program_peripheral_only || multiply_only || normalize_only || divide_only || byte_logic_only || memory_bits_only || control_bits_only || offset_control_only || shifts_only || signed_right_only || left_flags_only) {
+    if (relative_calls_only || register_branches_only || pc_relative_only || rounded_multiply_only || y_long_only || logical_shifts_only || immediate_logic_only || relative_only || loops_only || program_only || compare_only || startup_only || effective_only || register_only || program_control_only || peripheral_only || program_peripheral_only || multiply_only || normalize_only || divide_only || byte_logic_only || memory_bits_only || control_bits_only || offset_control_only || shifts_only || signed_right_only || left_flags_only) {
         for (unsigned mode = 0; mode < 4; mode++) {
+            if (relative_calls_only) check_relative_calls(a, b, mode);
             if (register_branches_only) check_register_relative_branches(a, b, mode);
             if (pc_relative_only) check_pc_relative_loads(a, b, mode);
             if (rounded_multiply_only) check_immediate_rounded_multiply(a, b, mode);
@@ -2597,6 +2673,7 @@ int main(int argc, char **argv)
     }
     check_status_restore_chains(a, b);
     check_logical_immediates(a, b);
+    for (unsigned mode = 0; mode < 4; mode++) check_relative_calls(a, b, mode);
     for (unsigned mode = 0; mode < 4; mode++) check_register_relative_branches(a, b, mode);
     for (unsigned mode = 0; mode < 4; mode++) check_pc_relative_loads(a, b, mode);
     for (unsigned mode = 0; mode < 4; mode++) check_immediate_rounded_multiply(a, b, mode);

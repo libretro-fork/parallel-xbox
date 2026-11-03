@@ -681,6 +681,38 @@ static void dis_bset_reg(dsp_core_t* dsp)
     sprintf(dsp->disasm_str_instr,"bset #%d,%s", numbit, registers_name[value]);
 }
 
+static void dis_bscc_long(dsp_core_t* dsp)
+{
+    char condition[16];
+    uint32_t displacement = read_memory_p(dsp, dsp->pc + 1);
+    dsp->disasm_cur_inst_len++;
+    dis_calc_cc(dsp, dsp->disasm_cur_inst & 15, condition);
+    sprintf(dsp->disasm_str_instr, "bs%s p:$%06x", condition, (dsp->pc + displacement) & BITMASK(24));
+}
+
+static void dis_bscc_imm(dsp_core_t* dsp)
+{
+    char condition[16];
+    uint32_t displacement = (dsp->disasm_cur_inst & 31) + ((dsp->disasm_cur_inst & (15 << 6)) >> 1);
+    dis_calc_cc(dsp, (dsp->disasm_cur_inst >> 12) & 15, condition);
+    sprintf(dsp->disasm_str_instr, "bs%s p:$%06x", condition,
+            (dsp->pc + dsp_signextend(9, displacement)) & BITMASK(24));
+}
+
+static void dis_bscc_reg(dsp_core_t* dsp)
+{
+    char condition[16];
+    dis_calc_cc(dsp, dsp->disasm_cur_inst & 15, condition);
+    sprintf(dsp->disasm_str_instr, "bs%s %s", condition,
+            registers_name[DSP_REG_R0 + ((dsp->disasm_cur_inst >> 8) & 7)]);
+}
+
+static void dis_bsr_reg(dsp_core_t* dsp)
+{
+    sprintf(dsp->disasm_str_instr, "bsr %s",
+            registers_name[DSP_REG_R0 + ((dsp->disasm_cur_inst >> 8) & 7)]);
+}
+
 static void dis_bsr_long(dsp_core_t* dsp)
 {
     dsp->disasm_cur_inst_len++;
