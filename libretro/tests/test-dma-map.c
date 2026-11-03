@@ -8,7 +8,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include <retro_atomic.h>
-#define XBOX 1
 #define BP_MEM_WRITE 2
 #define BP_MEM_READ 1
 #define BOUNCE_BUFFER_MAGIC 0x1234

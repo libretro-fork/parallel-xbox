@@ -119,10 +119,6 @@ const TCGCPUOps x86_tcg_ops = {
     .synchronize_from_tb = x86_cpu_synchronize_from_tb,
     .restore_state_to_opc = x86_restore_state_to_opc,
     .mmu_index = x86_cpu_mmu_index,
-#ifndef XBOX
-    .cpu_exec_enter = x86_cpu_exec_enter,
-    .cpu_exec_exit = x86_cpu_exec_exit,
-#endif
     .tlb_fill = x86_cpu_tlb_fill,
     .pointer_wrap = x86_pointer_wrap,
     .do_interrupt = x86_cpu_do_interrupt,

@@ -66,6 +66,8 @@ jobs:
         env:
           SPSC_PAIR_CFLAGS: -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=3 -fsanitize=address -fno-omit-frame-pointer
         run: python3 libretro/tests/test-spsc-pair.py . cc
+      - name: Core has one fixed guest target without a selection macro
+        run: python3 libretro/tests/test-single-target.py .
       - name: Fixed x86 execution binding preserves complete legacy boundary state
         run: python3 libretro/tests/test-fixed-x86-entry.py . cc
       - name: Fixed x86 binding under address and undefined behavior sanitizers

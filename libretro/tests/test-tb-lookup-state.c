@@ -79,11 +79,7 @@ int main(void) {
         assert(helper_lookup_tb_ptr(&cpu)==(hit?block.tc.ptr:tcg_code_gen_epilogue));
         assert(looked_up.pc==expected_pc && looked_up.cs_base==expected_base && looked_up.flags==expected_flags && looked_up.cflags==expected_cflags);
         assert(lookups==1 && breakpoint_checks==1 && logs==(unsigned)(hit && (loglevel&CPU_LOG_EXEC)));
-#ifdef XBOX
         assert(!indirect_calls);
-#else
-        assert(indirect_calls==1);
-#endif
         check_breakpoint(&cpu);cases++;
     }
     printf("TB lookup state: %u boost/debug/flags/PC/hit/miss/breakpoint cases passed\n",cases);

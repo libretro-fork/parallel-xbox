@@ -4,7 +4,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#define XBOX 1
 #define CF_PCREL 0x20u
 #define HF_CS64_MASK 0x40u
 #define TB_EXIT_IDX1 1

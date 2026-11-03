@@ -7,7 +7,6 @@
 #include <string.h>
 #undef assert
 #define assert(c) do{if(!(c)){fprintf(stderr,"TCG budget: %u: %s\n",__LINE__,#c);_Exit(1);}}while(0)
-#define XBOX 1
 #ifndef __x86_64__
 #define __x86_64__ 1
 #endif

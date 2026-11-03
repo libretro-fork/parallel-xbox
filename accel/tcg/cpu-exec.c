@@ -167,17 +167,11 @@ TranslationBlock *inv_tb_htable_lookup(CPUState *cpu, TCGTBCPUState s,
 
 /* The Xbox target always uses the x86 hook, including without CPU boost.
  * Boost still controls the guest flag specialization inside that hook. */
-#ifdef XBOX
 #include "target/i386/tcg/tcg-cpu.h"
-#endif
 
 static inline TCGTBCPUState xemu_get_tb_cpu_state(CPUState *cpu)
 {
-#ifdef XBOX
     return x86_tb_cpu_state(cpu);
-#else
-    return cpu->cc->tcg_ops->get_tb_cpu_state(cpu);
-#endif
 }
 
 /* Most indirect branches need only the already configured flags. Keep the
@@ -453,20 +447,7 @@ cpu_tb_exec(CPUState *cpu, TranslationBlock *itb, int *tb_exit)
          * counter hit zero); we must restore the guest PC to the address
          * of the start of the TB.
          */
-#ifdef XBOX
         x86_cpu_synchronize_from_tb(cpu, last_tb);
-#else
-        CPUClass *cc = cpu->cc;
-        const TCGCPUOps *tcg_ops = cc->tcg_ops;
-
-        if (tcg_ops->synchronize_from_tb) {
-            tcg_ops->synchronize_from_tb(cpu, last_tb);
-        } else {
-            tcg_debug_assert(!(tb_cflags(last_tb) & CF_PCREL));
-            assert(cc->set_pc);
-            cc->set_pc(cpu, last_tb->pc);
-        }
-#endif
         if (qemu_loglevel_mask(CPU_LOG_EXEC)) {
             vaddr pc = log_pc(cpu, last_tb);
             if (qemu_log_in_addr_range(pc)) {
@@ -493,28 +474,12 @@ cpu_tb_exec(CPUState *cpu, TranslationBlock *itb, int *tb_exit)
 
 static inline void cpu_exec_enter(CPUState *cpu)
 {
-#ifdef XBOX
     x86_cpu_exec_enter(cpu);
-#else
-    const TCGCPUOps *tcg_ops = cpu->cc->tcg_ops;
-
-    if (tcg_ops->cpu_exec_enter) {
-        tcg_ops->cpu_exec_enter(cpu);
-    }
-#endif
 }
 
 static inline void cpu_exec_exit(CPUState *cpu)
 {
-#ifdef XBOX
     x86_cpu_exec_exit(cpu);
-#else
-    const TCGCPUOps *tcg_ops = cpu->cc->tcg_ops;
-
-    if (tcg_ops->cpu_exec_exit) {
-        tcg_ops->cpu_exec_exit(cpu);
-    }
-#endif
 }
 
 static void cpu_exec_longjmp_cleanup(CPUState *cpu)

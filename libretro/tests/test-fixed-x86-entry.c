@@ -6,7 +6,6 @@
 #include <string.h>
 #define assert(c) do { if (!(c)) {fprintf(stderr,"fixed x86: %u: %s\n",__LINE__,#c);_Exit(1);} } while(0)
 #define g_assert assert
-#define XBOX 1
 #define CC_C 1u
 #define CC_P 4u
 #define CC_A 16u

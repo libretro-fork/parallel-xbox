@@ -1,5 +1,7 @@
 # The core's tests
 
+`test-single-target.py CHECKOUT` rejects the obsolete Xbox selection macro in core-owned C/header sources and the static Makefiles. Host architecture, word-size and feature guards remain supported; the CPU, floating-point and emitter fixtures exercise those independently.
+
 `test-spsc-pair.py CHECKOUT [CC]` compiles the production queue with a copy observer installed after the libc string header, so fortified inline wrappers cannot bypass publication checks. Checked and optimized builds cover plain/mirrored queues, rollover, rejected writes and concurrent records. Runtime negative controls must reject an absent observer and premature publication. `SPSC_PAIR_CFLAGS` adds flags; `SPSC_PAIR_RUNNER` supplies an optional cross-build runner. CI explicitly covers fortification level 3 with ASan/UBSan.
 
 `test-generated-tb-lookup.py CHECKOUT [CC]` executes production generated-cache lookup decisions in a TCG-operation interpreter using the actual cache layout. Its 21,504 cases cover cache identity, carry classes, mode flags, breakpoints, disabled paths, address boundaries and single/two-page exits. Negative controls must reject bypassed PC and cflags checks. When an experimental cache has mapping generations, the same fixture checks stale epochs and rejects incorrect address-width loads or omitted epoch guards. This covers the generated-code consumer separately from C lookup fixtures. CI runs the test normally and with AddressSanitizer/UBSan; it adds no instrumentation to the shipped core.

@@ -2,7 +2,7 @@
 #ifndef XEMU_I386_SSE_NATIVE_H
 #define XEMU_I386_SSE_NATIVE_H
 
-#if defined(XBOX) && defined(__x86_64__)
+#if defined(__x86_64__)
 /* Unsigned ranges accept positive normals; signed zeros are separate. */
 #define XEMU_SQRT_ORDINARY32(v) \
     (((uint32_t)(v) - UINT32_C(0x00800000)) < UINT32_C(0x7f000000) || \

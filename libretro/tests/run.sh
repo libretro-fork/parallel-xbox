@@ -170,6 +170,7 @@ python3 "$here/test-generated-tb-lookup.py" "$here/../.." "$cc"
 python3 "$here/test-owner-cpu-boundary.py" "$here/../.." "$cc"
 python3 "$here/test-fixed-x86-entry.py" "$here/../.." "$cc"
 python3 "$here/test-fixed-tb-sync.py" "$here/../.." "$cc"
+python3 "$here/test-single-target.py" "$here/../.."
 python3 "$here/test-byte-carry.py" "$here/../.." "$cc"
 python3 "$here/test-shift-class.py" "$here/../.." "$cc"
 python3 "$here/test-idle-interrupts.py" "$here/../.." "$cc"
@@ -1965,7 +1966,7 @@ t "Run-Ahead 1, EP DSP" $h "$(path "$core")" "$(path "$work/syse")" $dsp --opt x
 cmp "$work/rae0.wav" "$work/rae1.wav" || {
     echo "FAIL: the EP DSP's sound with Run-Ahead is not the sound without it"; exit 1; }
 
-# The main loop's step (util/main-loop.c, XBOX) runs the bottom halves and
+# The main loop's step (util/main-loop.c, core owner) runs the bottom halves and
 # timers straight: no GLib main context and no poll. Before, every pass of
 # the frame loop polled, about 30 ppoll a frame (8651 in 300 frames of the
 # busy ROM). Over 300 frames of the busy and the display ROM the core polls

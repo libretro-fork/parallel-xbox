@@ -61,11 +61,7 @@ int main(void)
   calls=0;xemu_cpu_boost=i&1;
   if(bits==32) {if(quiet)helper_ucomiss(&got,&a,src);else helper_comiss(&got,&a,src);}
   else {if(quiet)helper_ucomisd(&got,&a,src);else helper_comisd(&got,&a,src);}
-#ifdef XBOX
   assert(calls==(unsigned)!ordinary);
-#else
-  assert(calls==1);
-#endif
 #ifdef __x86_64__
   if(ordinary)assert(_mm_getcsr()==mxcsr);
 #endif

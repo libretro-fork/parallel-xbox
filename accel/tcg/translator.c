@@ -184,7 +184,6 @@ bool translator_io_start(DisasContextBase *db)
  * translated instruction, so ordinary TB invalidation covers their changes. */
 static bool lr_quiet_candidate_prefix(const DisasContextBase *db)
 {
-#ifdef XBOX
     const uint8_t *code = db->host_addr[0];
     if (!code) {
         return true; /* MMIO/non-RAM code: keep the conservative path. */
@@ -206,9 +205,6 @@ static bool lr_quiet_candidate_prefix(const DisasContextBase *db)
     default:
         return false;
     }
-#else
-    return true;
-#endif
 }
 
 static TCGOp *gen_tb_start(DisasContextBase *db, uint32_t cflags)

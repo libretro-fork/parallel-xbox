@@ -32,7 +32,7 @@ hard='\n'.join(function(translate,n) for n in ('fpu_rounding_to_single','gen_rou
 code=Path(__file__).with_suffix('.c').read_text().replace('/* SOFT HELPERS */',soft).replace('/* TRANSLATOR */',hard)
 with tempfile.TemporaryDirectory(prefix='x87-load-precision-') as directory:
     p=Path(directory);(p/'test.c').write_text(code)
-    args=[cc,'-O2','-std=gnu11','-fno-strict-aliasing','-frounding-math','-fwrapv','-DXBOX=1','-D_GNU_SOURCE',
+    args=[cc,'-O2','-std=gnu11','-fno-strict-aliasing','-frounding-math','-fwrapv','-D_GNU_SOURCE',
           '-Wall','-Werror','-Wno-unused-function','-Wno-unused-parameter']
     for inc in ['libretro/gen','.','libretro/glib','include','host/include/x86_64','host/include/generic','libretro-common/include']:
         args+=['-I'+str(repo/inc)]
