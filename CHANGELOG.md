@@ -29,6 +29,8 @@
 
 ## Unreleased
 
+- DSP: execute immediate and register-controlled EXTRACTU natively, with aliased operands, sixteen-bit layouts and carry/overflow regression coverage.
+
 - DSP: implement native CLB leading-sign-bit counts, preserving unrelated flags and handling both normal and sixteen-bit source layouts.
 
 - DSP: execute register-count arithmetic shifts natively on x86-64 and AArch64, including aliased count operands and flag regressions.

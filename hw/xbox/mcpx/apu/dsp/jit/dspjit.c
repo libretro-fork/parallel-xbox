@@ -902,6 +902,7 @@ static void emit_write_reg(Tr *t, int r, int val)
 /* --- the data ALU --- */
 
 enum {
+    OP_EXTRACTU,
     OP_CLB,
     OP_ASL_R, OP_ASR_R, /* register-controlled arithmetic shifts */
     OP_ASL_N, OP_ASR_N, /* by a count (shift), of accumulator s into d */
@@ -1453,6 +1454,63 @@ static void emit_alu(Tr *t, const AluOp *a)
         acc_written(t, a->d);
         emit_sr_result(t, SR_EUNZ | SR_V | SR_C | 0xFFFF0000u, T4, acc, a->d);
         break;
+
+    case OP_EXTRACTU: {
+        acc_load(t, a->s);
+        if (a->src == SRC_IMM) h_mov_ri(e, T3, a->imm);
+        else if (a->src == DSP_REG_A1 || a->src == DSP_REG_B1) {
+            unsigned n = a->src - DSP_REG_A1;
+            acc_load(t, n);
+            h_mov_rr(e, 1, T3, acc_reg(n));
+            h_shr_ri(e, 1, T3, 24);
+        } else h_ld32(e, T3, REG_CORE, REGOFF(a->src));
+        h_mov_rr(e, 1, T0, acc_reg(a->s));
+        h_shl_ri(e, 1, T0, 8);
+        h_shr_ri(e, 1, T0, 8);
+        h_ld32(e, T1, REG_CORE, REGOFF(DSP_REG_SR));
+        h_test_ri(e, 0, T1, 1u << DSP_SR_SA);
+        size_t ordinary = h_jcc(e, HC_EQ);
+        /* Compact the active EXP/MSP/LSP bits and decode SA's CO layout. */
+        h_mov_rr(e, 1, T2, T0);
+        h_shr_ri(e, 1, T2, 8);
+        h_and_ri(e, 0, T2, 0xffff);
+        h_shr_ri(e, 1, T0, 32);
+        h_shl_ri(e, 1, T0, 16);
+        h_or_rr(e, 1, T0, T2);
+        h_mov_rr(e, 0, T2, T3);
+        h_shr_ri(e, 0, T2, 16);
+        h_mov_rr(e, 0, T1, T3);
+        h_shr_ri(e, 0, T1, 8);
+        size_t decoded = h_jmp(e);
+        h_patch(e, ordinary, e->len);
+        h_mov_rr(e, 0, T2, T3);
+        h_shr_ri(e, 0, T2, 12);
+        h_mov_rr(e, 0, T1, T3);
+        h_patch(e, decoded, e->len);
+        h_and_ri(e, 0, T1, 63);
+        h_and_ri(e, 0, T2, 63);
+        h_shr_r1(e, 1, T0);
+        h_mov_rr(e, 0, T1, T2);
+        h_mov_ri(e, T4, 1);
+        h_shl_r1(e, 1, T4);
+        h_sub_ri(e, 1, T4, 1);
+        h_and_rr(e, 1, T0, T4);
+        h_ld32(e, T3, REG_CORE, REGOFF(DSP_REG_SR));
+        h_test_ri(e, 0, T3, 1u << DSP_SR_SA);
+        size_t packed = h_jcc(e, HC_EQ);
+        h_mov_rr(e, 1, T2, T0);
+        h_and_ri(e, 0, T2, 0xffff);
+        h_shl_ri(e, 1, T2, 8);
+        h_shr_ri(e, 1, T0, 16);
+        h_shl_ri(e, 1, T0, 32);
+        h_or_rr(e, 1, T0, T2);
+        h_patch(e, packed, e->len);
+        emit_sext56(e, T0);
+        h_mov_rr(e, 1, acc, T0);
+        acc_written(t, a->d);
+        emit_sr_result(t, SR_EUNZ | SR_V | SR_C, -1, acc, a->d);
+        break;
+    }
 
     case OP_CLB: {
         /* CLB preserves E/U/C/L: resolve pending flags before overwriting
@@ -2202,6 +2260,16 @@ static bool np_alu(const Insn *in, AluOp *a)
         a->op = name[2] == 'r' ? OP_LSR : OP_LSL;
         a->d = inst & 1;
         a->shift = (inst >> 1) & 31;
+        return true;
+    }
+    if (!strcmp(name, "extractu #CO, S2, D") || !strcmp(name, "extractu S1, S2, D")) {
+        static const int controls[] = {DSP_REG_A1, DSP_REG_B1, DSP_REG_X0,
+                                       DSP_REG_X1, DSP_REG_Y0, DSP_REG_Y1};
+        a->op = OP_EXTRACTU;
+        a->s = (inst >> 4) & 1;
+        a->d = inst & 1;
+        if (name[9] == '#') a->imm = in->ext;
+        else a->src = controls[((inst >> 1) & 7) - 2];
         return true;
     }
     if (!strcmp(name, "clb S, D")) {
