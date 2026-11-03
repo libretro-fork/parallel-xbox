@@ -23,6 +23,8 @@
 
 ## Unreleased
 
+- Dispatch queued idle callbacks without the legacy 10 ms host timeout; preserve their idle progress accounting.
+
 - Remove the unused timed main-loop entry point; device waits use notifications without a host timeout.
 
 - Timestamp USB captures with guest time, remove the unused compatibility sleep API and audit clock reads across the static Makefile source list.
