@@ -1422,23 +1422,6 @@ gint64 g_get_monotonic_time(void)
     return (gint64)cpu_features_get_time_usec();
 }
 
-gint64 g_get_real_time(void)
-{
-#ifdef _WIN32
-    FILETIME ft;
-    guint64 t;
-
-    GetSystemTimeAsFileTime(&ft);
-    t = ((guint64)ft.dwHighDateTime << 32) | ft.dwLowDateTime;
-    return (gint64)(t / 10) - G_GINT64_CONSTANT(11644473600000000);
-#else
-    struct timeval tv;
-
-    gettimeofday(&tv, NULL);
-    return (gint64)tv.tv_sec * G_USEC_PER_SEC + tv.tv_usec;
-#endif
-}
-
 void g_usleep(gulong microseconds)
 {
     retro_sleep_us((unsigned)microseconds);
@@ -1482,8 +1465,7 @@ GRand *g_rand_new_with_seed(guint32 seed)
 
 GRand *g_rand_new(void)
 {
-    guint32 seed[2] = { (guint32)g_get_real_time(),
-                        (guint32)g_get_monotonic_time() };
+    guint32 seed[2] = { g_random_int(), g_random_int() };
 
     return g_rand_new_with_seed_array(seed, 2);
 }
@@ -1518,6 +1500,39 @@ gdouble g_rand_double(GRand *r)
     return g_rand_int(r) / 4294967296.0;
 }
 
+/* Seed identities from OS randomness without reading any clock. GLib's
+ * generator remains non-cryptographic; if entropy is unavailable, ASLR and
+ * process identity still provide a process-specific seed. */
+static guint64 g_random_entropy(void)
+{
+    guint64 value = 0;
+#ifdef _WIN32
+    typedef BOOLEAN (WINAPI *GSystemRandom)(PVOID, ULONG);
+    HMODULE library = LoadLibraryA("advapi32.dll");
+    if (library) {
+        GSystemRandom random_bytes = (GSystemRandom)(void *)
+            GetProcAddress(library, "SystemFunction036");
+        if (random_bytes) {
+            random_bytes(&value, sizeof(value));
+        }
+        FreeLibrary(library);
+    }
+#else
+    FILE *random_file = fopen("/dev/urandom", "rb");
+    if (random_file) {
+        if (fread(&value, sizeof(value), 1, random_file) != 1) {
+            value = 0;
+        }
+        fclose(random_file);
+    }
+#endif
+    if (!value) {
+        value = (guint64)(uintptr_t)&g_random_entropy ^
+                (guint64)(uintptr_t)&value;
+    }
+    return value ? value : 1;
+}
+
 /* Global draws use a seeded counter and the SplitMix64 output permutation.
  * Fetch-add reserves a unique counter without serializing a mutable GRand.
  * Seed publication is speculative: a stopped initializer cannot hold up a
@@ -1535,8 +1550,7 @@ guint32 g_random_int(void)
     guint64 value;
 
     if (!seed) {
-        seed = (guint64)g_get_real_time() ^
-               ((guint64)g_get_monotonic_time() << 32);
+        seed = g_random_entropy();
         if (!seed) {
             seed = 1;
         }

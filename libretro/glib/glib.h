@@ -1138,7 +1138,6 @@ typedef gboolean (*GIOFunc)(GIOChannel *source, GIOCondition condition,
 /* ---- time ----------------------------------------------------------------- */
 
 gint64 g_get_monotonic_time(void);
-gint64 g_get_real_time(void);
 void g_usleep(gulong microseconds);
 
 /* ---- random numbers ------------------------------------------------------- */

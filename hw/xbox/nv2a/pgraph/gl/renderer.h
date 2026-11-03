@@ -483,7 +483,7 @@ typedef struct PGRAPHGLState {
         ShaderModuleCacheKey *mod_keys;
         unsigned mod_n, mod_idx;
         ShaderState *pipe_states;
-        unsigned pipe_n;
+        unsigned pipe_n, pipe_cursor;
         int state; /* -1 unloaded, 1 pumping, 0 done/absent */
         unsigned stall_flips, pipes_built;
     } seed;

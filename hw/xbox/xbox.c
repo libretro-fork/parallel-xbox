@@ -372,7 +372,6 @@ void xbox_init_common(MachineState *machine,
      * adds the mediaboard LPC I/O device, which provides the XBAM
      * identification string that SEGABOOT checks to detect the baseboard. */
     if (XBOX_MACHINE(machine)->chihiro) {
-        gint64 init_t0 = g_get_monotonic_time();
         printf("Chihiro: enabling the media board\n");
 
         chihiro_freeplay_setting = g_config.chihiro.settings.freeplay;
@@ -460,8 +459,7 @@ void xbox_init_common(MachineState *machine,
         } else {
             printf("Chihiro: WARNING — could not find USB bus on OHCI\n");
         }
-        printf("Chihiro: init complete (%lld ms)\n",
-               (long long)(g_get_monotonic_time() - init_t0) / 1000);
+        printf("Chihiro: init complete\n");
     }
 }
 

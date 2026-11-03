@@ -547,10 +547,10 @@ static void main_loop_wait_poll(int nonblocking, int64_t max_wait_ns)
  * thread (the GPU's thread parking, qemu_notify_event),
  * lock-free and without a descriptor.
  *
- * Device-completion barriers wait for notification. Non-deterministic GPU
- * waits can also end at the guest's next timer deadline: the frame loop
- * advances guest time by the elapsed host wait, then services that timer
- * while GPU work continues. Disk completions are bottom halves already due.
+ * Device-completion barriers wait for notification without advancing guest
+ * time. Timeout limits below bound host-service waits only; elapsed host
+ * time is never charged to the guest instruction clock. Disk completions
+ * are bottom halves already due.
  *
  * What does need poll goes the polling way (main_loop_wait_poll), as it
  * is: NAT networking's sockets (slirp's poll notifier) and a descriptor

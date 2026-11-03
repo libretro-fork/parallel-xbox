@@ -748,17 +748,26 @@ static int rtc_post_load(void *opaque, int version_id)
 {
     MC146818RtcState *s = opaque;
 
-    if (version_id <= 2 || rtc_clock == QEMU_CLOCK_REALTIME) {
+    if (version_id < 4) {
+        /* Legacy states saved CMOS calendar fields but no host-clock
+         * snapshot. Restore that saved second without consulting the host.
+         * Their subsecond phase cannot be recovered from the old format. */
         rtc_set_time(s);
         s->offset = 0;
+        s->period = rtc_periodic_clock_ticks(s);
+        periodic_timer_update(s, qemu_clock_get_ns(rtc_clock), s->period, false);
         check_update_timer(s);
     }
     s->period = rtc_periodic_clock_ticks(s);
 
     {
-        uint64_t now = qemu_clock_get_ns(rtc_clock);
-        if (now < s->next_periodic_time ||
-            now > (s->next_periodic_time + get_max_clock_jump())) {
+        int64_t now = qemu_clock_get_ns(rtc_clock);
+        int64_t next = s->next_periodic_time;
+        /* A valid future virtual deadline retains its saved phase. */
+        if ((next > now && (uint64_t)next - (uint64_t)now >
+                            (uint64_t)get_max_clock_jump()) ||
+            (next <= now && (uint64_t)now - (uint64_t)next >
+                             (uint64_t)get_max_clock_jump())) {
             periodic_timer_update(s, qemu_clock_get_ns(rtc_clock), s->period, false);
         }
     }
@@ -790,7 +799,7 @@ static const VMStateDescription vmstate_rtc_irq_reinject_on_ack_count = {
 
 static const VMStateDescription vmstate_rtc = {
     .name = "mc146818rtc",
-    .version_id = 3,
+    .version_id = 4,
     .minimum_version_id = 3,
     .pre_save = rtc_pre_save,
     .post_load = rtc_post_load,

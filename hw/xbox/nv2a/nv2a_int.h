@@ -84,9 +84,6 @@ typedef struct NV2AState {
     VGACommonState vga;
     GraphicHwOps hw_ops;
     QEMUTimer *vblank_timer;
-    /* QEMU_CLOCK_REALTIME of the next vblank, for the renderers' slack
-     * estimates on the GPU thread */
-    retro_atomic_64_t vblank_deadline;
     /* QEMU_CLOCK_VIRTUAL time of the last vblank (the core's raster) */
     int64_t vblank_vt;
 

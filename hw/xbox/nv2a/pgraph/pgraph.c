@@ -118,7 +118,6 @@ void pgraph_write(void *opaque, hwaddr addr, uint64_t val, unsigned int size)
                 pg, NV_PGRAPH_SURFACE, NV_PGRAPH_SURFACE_READ_3D,
                 (PG_GET_MASK(NV_PGRAPH_SURFACE, NV_PGRAPH_SURFACE_READ_3D) +
                  1) % modulo);
-            nv2a_profile_increment();
             pfifo_kick_guest(d);
         }
         break;
@@ -1331,8 +1330,6 @@ DEF_METHOD(NV097, FLIP_STALL)
     retro_atomic_store_relaxed_int(&pg->waiting_for_flip, 1);
 }
 
-int64_t xemu_flip_ready_ns;
-int64_t xemu_flip_completed_ns;
 
 // TODO: these should be loading the dma objects from ramin here?
 

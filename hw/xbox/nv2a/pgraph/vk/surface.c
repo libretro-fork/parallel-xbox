@@ -2322,11 +2322,8 @@ static void populate_surface_binding_target(NV2AState *d, bool color,
     populate_surface_binding_target_sized(d, color, width, height, target);
 }
 
-/* HEURISTIC: submit at render-target switches so the GPU starts while the
- * frame is recorded, as the NV2A consumes its pushbuffer continuously.
- * n submissions a frame cost n*c and leave a flip tail of about T/n, least
- * at n = sqrt(T/c), with T (frame GPU time) and c (one submission) measured
- * here. Switches count color and zeta parts apart. */
+/* Submit bounded batches of render-target switches so the GPU can work
+ * alongside guest execution. The policy uses workload counts, not clocks. */
 static void eager_submit_at_switch(PGRAPHState *pg)
 {
     PGRAPHVkState *r = pg->vk_renderer_state;
@@ -2345,27 +2342,14 @@ static void eager_submit_at_switch(PGRAPHState *pg)
     }
 }
 
-/* At the flip: choose next frame's eager interval from this frame's
- * switch count and the measured costs. */
+/* Spread four switch-driven batches over a similar next frame. */
 void pgraph_vk_eager_frame_update(PGRAPHState *pg)
 {
     PGRAPHVkState *r = pg->vk_renderer_state;
-
     unsigned switches = r->rt_switches;
     r->rt_switches = 0;
     r->eager_count = 0;
-    r->eager_interval = 0;
-    /* One submission costs its issue, the next buffer's begin and the
-     * wait when its slot comes round again, two submissions later. */
-    double c = r->submit_us + r->cb_begin_us + r->reuse_wait_us;
-    double t = r->frame_gpu.busy_us;
-    if (switches && c > 0.0 && t > 0.0) {
-        double n = sqrt(t / c);
-        if (n >= 1.0) {
-            unsigned interval = (unsigned)(switches / n);
-            r->eager_interval = interval ? interval : 1;
-        }
-    }
+    r->eager_interval = switches ? switches / 4 + (switches % 4 != 0) : 0;
 }
 
 /* Compatibility with the requested zeta format/address/pitch is checked by

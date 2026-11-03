@@ -290,7 +290,6 @@ QemuConsole *nv2a_get_vga_console(void)
 }
 
 /* Modelled-GPU backlog deadline (see xemu_cost_flip_deadline). */
-int64_t xemu_gpu_free_ns;
 
 
 
@@ -304,21 +303,14 @@ static void nv2a_vga_gfx_update(void *opaque)
      * surface on a page flip and a dirty-bitmap snapshot, and cleared
      * the scanout's dirty bits, so the CPU's next writes to those pages
      * took the slow path again. */
-    /* In the core the guest's vblank comes once in each frame of guest
-     * time the emulator thread runs, just before its end (ui/libretro.c
-     * lr_run_frame), not from the wall-clock timer below, so it follows
-     * the frontend's frames. The raster position (pcrtc.c) counts guest
-     * time from it; the renderer's own slack estimates (vblank_deadline)
-     * are wall-clock. */
+    /* Guest vblank follows the frontend frame's virtual-time budget.
+     * Renderer maintenance is bounded by work counts, not host time. */
     NV2AState *d = container_of(vga, NV2AState, vga);
     /* The encoder ticks with guest vblank, even if the previous interrupt
      * remains pending. Publish it before the guest can handle this one. */
     smbus_cx25871_notify_vblank();
     d->pcrtc.pending_interrupts |= NV_PCRTC_INTR_0_VBLANK;
     d->vblank_vt = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL);
-    retro_atomic_store_relaxed_64(&d->vblank_deadline,
-                                  qemu_clock_get_ns(QEMU_CLOCK_REALTIME) +
-                                  NV2A_VBLANK_INTERVAL_NS);
     nv2a_update_irq(d);
 }
 

@@ -24,14 +24,10 @@ static unsigned created,deleted,polls,flushes,services,closes,finishes,predownlo
 static unsigned displays,unlocks,locks,maintenance;
 static unsigned gpu_done,required,expected_scale;static bool dead[12000],complete_on_flush,profile,fail_fence;
 static int xemu_cost_segn;static bool xemu_cost_q_open,xemu_cost_q2_open;
-static int pgraph_gl_cost_ops,xemu_tbrate_fence_ns,xemu_tbrate_flipsvc_ns;
-static int64_t clock_now;
+static int pgraph_gl_cost_ops;
 static unsigned errors;
 static int expected_error(FILE *stream,const char *format,...){assert(stream==stderr&&format);errors++;return 0;}
 #define fprintf expected_error
-static bool xemu_tbrate_enabled(void){return profile;}
-static int64_t get_clock(void){return ++clock_now;}
-static void xemu_tbrate_add(int *p,int64_t n){assert(n>0);*p+=(int)n;}
 static GLsync glFenceSync(unsigned type,unsigned flags){assert(type==4&&!flags);if(fail_fence)return NULL;assert(++created<12000);return (void *)(uintptr_t)created;}
 static void glDeleteSync(GLsync sync){if(sync){unsigned n=(uintptr_t)sync;assert(n<=created&&!dead[n]);dead[n]=true;deleted++;}}
 static void glFlush(void){flushes++;if(complete_on_flush)gpu_done=created;}

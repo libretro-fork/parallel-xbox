@@ -127,8 +127,7 @@ def main():
                 # A fixed-frame oracle must not charge host GPU wait time
                 # against the guest work needed to finish all 192 cases.
                 command = [str(args.harness.resolve()), str(args.core.resolve()),
-                           str(output / "system"), "--frames", "240", "--strict",
-                           "--opt", "xemu_deterministic=enabled"]
+                           str(output / "system"), "--frames", "240", "--strict"]
                 command += ["--opt", f"xemu_renderer={'vulkan' if api == 'vk' else 'opengl'}"]
                 value = "enabled" if quality else "disabled"
                 command += ["--opt", f"xemu_force_quality_filtering={value}",

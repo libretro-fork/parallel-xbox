@@ -26,7 +26,6 @@ void nv2a_context_init(void);
 /* Acquire the display image and its resolved dimensions. Either output may
  * be NULL; missing images report zero dimensions. Release after use. */
 int nv2a_get_framebuffer_surface(unsigned *width, unsigned *height);
-void nv2a_profile_present(void);
 void nv2a_release_framebuffer_surface(void);
 /* VK display info for libretro VK HW render interface.
  * Only valid while framebuffer is in use (between get/release calls). */
@@ -49,7 +48,6 @@ const uint8_t *nv2a_get_dac_palette(void);
 bool nv2a_get_dac_palette_snapshot(uint32_t ramp[256], bool force);
 int nv2a_get_screen_off(void);
 struct QemuConsole *nv2a_get_vga_console(void);
-void nv2a_profile_present(void);
 
 /* The tuned GPU's own, of no use to the stock one. */
 /* Driver self-test for the GL optimization pack; why = short reason. */

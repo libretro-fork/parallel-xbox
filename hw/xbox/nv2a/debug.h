@@ -133,18 +133,10 @@ enum NV2A_PROF_COUNTERS_ENUM {
 #define NV2A_PROF_NUM_FRAMES 300
 
 typedef struct NV2AStats {
-    int64_t last_flip_time;
     unsigned int frame_count;
-    unsigned int increment_fps;
-    /* Displayed frame rate: distinct guest frames that reached the screen
-     * per second, counted at the UI present (nv2a_profile_present) -- the
-     * same on a 60 Hz or a 320 Hz monitor, vsync on or off. increment_fps
-     * counts NV097_FLIP submissions and overreads under GPU load. */
-    unsigned int display_fps;
     /* Identity of the frame the renderer handed to the UI (draw_time). */
     unsigned int presented_frame_id;
     struct {
-        int mspf;
         int counters[NV2A_PROF__COUNT];
     } frame_working, frame_history[NV2A_PROF_NUM_FRAMES];
     unsigned int frame_ptr;
@@ -158,7 +150,6 @@ extern NV2AStats g_nv2a_stats;
 
 const char *nv2a_profile_get_counter_name(unsigned int cnt);
 int nv2a_profile_get_counter_value(unsigned int cnt);
-void nv2a_profile_increment(void);
 void nv2a_profile_flip_stall(void);
 
 static inline void nv2a_profile_inc_counter(enum NV2A_PROF_COUNTERS_ENUM cnt)

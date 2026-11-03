@@ -112,13 +112,6 @@ static bool is_flip_stall_complete(NV2AState *d)
 {
     PGRAPHState *pg = &d->pgraph;
 
-    /* The flip may not complete before the modelled render deadline, a
-     * continuous one: the game's own vblank pacing supplies any grid. */
-    if (xemu_flip_ready_ns &&
-        qemu_clock_get_ns(QEMU_CLOCK_REALTIME) < xemu_flip_ready_ns) {
-        return false;
-    }
-
     uint32_t s = pgraph_reg_r(pg, NV_PGRAPH_SURFACE);
 
     NV2A_DPRINTF("flip stall read: %d, write: %d, modulo: %d\n",
@@ -144,9 +137,6 @@ static bool pfifo_stall_for_flip(NV2AState *d)
             should_stall = true;
         } else {
             retro_atomic_store_relaxed_int(&d->pgraph.waiting_for_flip, 0);
-            /* The guest resumes submitting: the modelled GPU queue starts. */
-            xemu_flip_completed_ns =
-                qemu_clock_get_ns(QEMU_CLOCK_REALTIME);
         }
     }
 
@@ -331,7 +321,7 @@ static ssize_t pfifo_run_puller(NV2AState *d, uint32_t method_entry,
 void pfifo_guest_lock(NV2AState *d)
 {
     retro_atomic_fetch_add_int(&d->pfifo.guest_waiting, 1);
-    xemu_tbrate_lock(&d->pfifo.lock);
+    qemu_mutex_lock(&d->pfifo.lock);
     retro_atomic_fetch_sub_int(&d->pfifo.guest_waiting, 1);
 }
 

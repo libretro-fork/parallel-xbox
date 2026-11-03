@@ -574,7 +574,9 @@ int64_t qemu_clock_get_ns(QEMUClockType type)
     case QEMU_CLOCK_VIRTUAL:
         return cpus_get_virtual_clock();
     case QEMU_CLOCK_HOST:
-        return get_clock_realtime();
+        /* No host-calendar clock exists in the core. Legacy users of this
+         * domain observe guest virtual time; the RTC uses VIRTUAL directly. */
+        return cpus_get_virtual_clock();
     case QEMU_CLOCK_VIRTUAL_RT:
         return cpu_get_clock();
     }

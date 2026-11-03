@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
-"""Owner-only elapsed clock against an independent lifecycle model."""
+"""Guest CPU clock ignores host-time changes across lifecycle operations."""
 from pathlib import Path
 import os,shlex,subprocess,sys,tempfile
 r=Path(sys.argv[1]).resolve();cc=shlex.split(sys.argv[2] if len(sys.argv)>2 else 'cc');baseline=os.environ.get('OWNER_CLOCK_BASELINE')

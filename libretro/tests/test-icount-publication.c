@@ -34,8 +34,6 @@ static __attribute__((unused)) unsigned seqlock_read_begin(QemuSeqLock *s){retur
 static __attribute__((unused)) bool seqlock_read_retry(QemuSeqLock*s,unsigned start){retro_atomic_thread_fence_acquire();return (unsigned)retro_atomic_load_relaxed_int(&s->sequence)!=start;}
 #define TS_LOAD64(f) retro_atomic_load_relaxed_64((retro_atomic_64_t *)&timers_state.f)
 #define TS_STORE64(f,v) retro_atomic_store_relaxed_64((retro_atomic_64_t *)&timers_state.f,(v))
-static int64_t cpu_get_host_ticks(void){return 200;}
-static int64_t get_clock(void){return 100;}
 int64_t icount_to_ns(int64_t);
 void icount_publish_time(void);
 /* PRODUCTION */

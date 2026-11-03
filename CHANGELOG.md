@@ -23,6 +23,10 @@
 
 ## Unreleased
 
+- Drive RTC and Chihiro calendars from guest virtual time with a fixed UTC epoch. Convert legacy RTC states at their saved calendar second and preserve virtual-clock phase in new states. Replace host-timed shader maintenance and Vulkan batching with work counts; remove wall-time diagnostic probes and time-based identifiers. Keep host-service timeout clocks to avoid hung I/O and worker waits.
+
+- Stop charging host GPU wait duration to the guest instruction clock. GPU and disk completion waits leave guest time unchanged. Remove the now redundant Deterministic Emulation option.
+
 - DSP: compile DIV non-restoring division steps natively, preserving carry feedback, shift-specific V/L and unchanged E/U/N/Z. Add 50,688 regression boundaries, an independent result/status oracle and 24-step repeat programs, including zero divisors.
 
 - DSP: compile NORM normalization natively, preserving flag-controlled shifts, sticky L and 16-bit Rn wrapping. REP publishes each iteration's flags before the next decision. Add 101,376 regression boundaries, an independent oracle and a production program.

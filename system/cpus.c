@@ -437,29 +437,6 @@ bool qemu_in_vcpu_thread(void)
     return current_cpu && qemu_cpu_is_self(current_cpu);
 }
 
-XemuVcpuWaits xemu_vcpu_waits;
-int xemu_tbrate_state = -1;
-retro_atomic_64_t xemu_tbrate_flipsvc_ns, xemu_tbrate_fence_ns;
-
-void xemu_tbrate_lock_slow(QemuMutex *m)
-{
-    if (qemu_mutex_trylock(m) != 0) {
-        int64_t t0 = get_clock();
-        qemu_mutex_lock(m);
-        t0 = get_clock() - t0;
-        xemu_vcpu_waits.gpu_ns += t0;
-        xemu_vcpu_waits.gpu_waits++;
-    }
-}
-
-bool xemu_tbrate_init(void)
-{
-    const char *e = getenv("XEMU_TBRATE");
-
-    xemu_tbrate_state = e && e[0] ? e[0] != '0' : xemu_debug_mode();
-    return xemu_tbrate_state;
-}
-
 QEMU_DEFINE_STATIC_THREAD_LOCAL(bool, bql_locked)
 
 bool mutex_is_bql(QemuMutex *mutex)
@@ -484,18 +461,6 @@ bool bql_locked(void)
 void bql_lock_impl(const char *file, int line)
 {
     g_assert(!bql_locked());
-    if (unlikely(xemu_tbrate_enabled()) &&
-        current_cpu) {
-        /* Only contention contributes to the diagnostic wait counter. */
-        if (qemu_mutex_trylock_impl(&bql, file, line) != 0) {
-            int64_t t0 = get_clock();
-            qemu_mutex_lock_impl(&bql, file, line);
-            t0 = get_clock() - t0;
-            xemu_vcpu_waits.bql_ns += t0;
-            xemu_vcpu_waits.bql_waits++;
-        }
-        return;
-    }
     qemu_mutex_lock_impl(&bql, file, line);
 }
 

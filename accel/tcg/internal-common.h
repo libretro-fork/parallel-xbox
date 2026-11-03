@@ -16,23 +16,6 @@
 
 extern retro_atomic_int_t one_insn_per_tb;
 
-/*
- * Debug probe (XEMU_TBRATE=1; the vCPU waits are in system/cpus.h). Blocks
- * count themselves from translated code, as chained blocks never pass
- * through the dispatcher; with the variable unset nothing is emitted.
- * `gen_ns` is the time spent translating. One vCPU, so plain counters.
- */
-typedef struct XemuTbRate {
-    uint64_t blocks;
-    uint64_t insns;
-    int64_t gen_ns;
-    /* What sent the vCPU back to the dispatcher: exit_tb(NULL) (missed
-     * jump-cache lookups, `lookup_miss`, are a subset), a stop request, a
-     * jump not chained yet or into a two-page block, or a longjmp. */
-    uint64_t exit_eob, lookup_miss, exit_req, exit_jump, jump_2page, longjmps;
-} XemuTbRate;
-extern XemuTbRate xemu_tbrate;
-
 /**
  * cpu_plugin_mem_cbs_enabled() - are plugin memory callbacks enabled?
  * @cs: CPUState pointer

@@ -169,9 +169,8 @@ void card_reader_insert(CardReaderState *s, const char *path,
         memcpy(&s->card_data[CARD_STOCK_OFFSET], stock->header,
                CARD_STOCK_BYTES);
         if (stock->numbered) {
-            /* HEURISTIC: the card number is its creation time in
-             * microseconds; the game only asks that no two cards share it. */
-            uint64_t number = (uint64_t)g_get_real_time();
+            /* The game needs a unique identity, not a host timestamp. */
+            uint64_t number = ((uint64_t)g_random_int() << 32) | g_random_int();
             memcpy(&s->card_data[0], &number, sizeof(number));
         }
     }

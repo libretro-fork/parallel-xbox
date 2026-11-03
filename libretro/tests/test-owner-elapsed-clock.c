@@ -12,12 +12,12 @@ typedef struct {unsigned depth;} QemuSpin;
 typedef struct QEMUTimer QEMUTimer;
 /* TIMERS */
 TimersState timers_state;
-static int64_t host_now;
+static int64_t host_now, guest_now;
 static bool use_count;
 static int64_t forwarded;
 static unsigned publications;
-static int64_t get_clock(void){return host_now;}
-static int64_t cpu_get_host_ticks(void){return host_now*3+200;}
+
+static int64_t icount_get(void){return guest_now;}
 static bool icount_enabled(void){return use_count;}
 static void icount_skip_to(int64_t vt){forwarded=vt;}
 static void icount_publish_time(void){publications++;}
@@ -30,40 +30,31 @@ static uint32_t seed=0xaab39453;
 static unsigned random32(void){seed^=seed<<13;seed^=seed>>17;return seed^=seed<<5;}
 static void oracle(void)
 {
- int64_t offset=0,ticks=0,saved_offset=0,saved_ticks=0;bool enabled=false;
+ bool enabled=false;
+ int64_t saved=0;
+ use_count=true;
  for(unsigned step=0;step<50000;step++){
-  host_now+=random32()%1000;
-  int64_t now=offset+(enabled?host_now:0);
+  int64_t before=cpu_get_clock();
+  host_now+=random32()%1000000;
+  assert(cpu_get_clock()==before);
   switch(random32()%6){
-  case 0:
-   if(!enabled){offset-=host_now;ticks-=cpu_get_host_ticks();enabled=true;}
-   cpu_enable_ticks();break;
-  case 1:
-   if(enabled){offset+=host_now;ticks+=cpu_get_host_ticks();enabled=false;}
-   cpu_disable_ticks();break;
-  case 2:{
-   int64_t vt=now+(int)(random32()%2000)-1000;
-   if(vt>now)offset+=vt-now;
-   cpu_clock_skip_to(vt);break;
+  case 0: cpu_enable_ticks();enabled=true;break;
+  case 1: cpu_disable_ticks();enabled=false;break;
+  case 2: if(enabled)guest_now+=random32()%10000;break;
+  case 3: saved=guest_now;break;
+  case 4: guest_now=saved;break;
+  case 5: forwarded=-1;cpu_clock_skip_to(98765);assert(forwarded==98765);break;
   }
-  case 3:
-   if(enabled){offset+=host_now;ticks+=cpu_get_host_ticks();enabled=false;}
-   cpu_disable_ticks();saved_offset=offset;saved_ticks=ticks;break;
-  case 4:
-   if(enabled){offset+=host_now;ticks+=cpu_get_host_ticks();enabled=false;}
-   cpu_disable_ticks();offset=saved_offset;ticks=saved_ticks;
-   timers_state.cpu_clock_offset=offset;timers_state.cpu_ticks_offset=ticks;break;
-  case 5:{
-   int64_t old=timers_state.cpu_clock_offset;use_count=true;forwarded=-1;
-   cpu_clock_skip_to(98765);assert(forwarded==98765&&timers_state.cpu_clock_offset==old);use_count=false;break;
-  }
-  }
-  assert(cpu_get_clock()==offset+(enabled?host_now:0));
-  assert(cpu_ticks_enabled()==enabled);
-  assert(timers_state.cpu_ticks_offset==ticks&&timers_state.cpu_clock_offset==offset);
+  assert(cpu_get_clock()==guest_now && cpu_ticks_enabled()==enabled);
+  assert(timers_state.cpu_ticks_offset==0 && timers_state.cpu_clock_offset==0);
  }
+ use_count=false;timers_state.cpu_clock_offset=123;
+ cpu_clock_skip_to(100);assert(cpu_get_clock()==123);
+ cpu_clock_skip_to(456);assert(cpu_get_clock()==456);
+ cpu_enable_ticks();host_now+=1000000000;assert(cpu_get_clock()==456);
+ cpu_disable_ticks();assert(cpu_get_clock()==456);
  assert(publications>0);
- puts("Owner elapsed clock: 50000 independent pause/resume/skip/save/restore steps and icount forwarding PASS");
+ puts("Guest CPU clock: 50000 host-jump/pause/resume/skip/save/restore cases PASS");
 }
 static void benchmark(void)
 {

@@ -78,6 +78,9 @@ python3 "$here/test-core-timers.py" "$here/../.." "$cc"
 python3 "$here/test-timer-deadline-readers.py" "$here/../.." "$cc"
 python3 "$here/test-icount-publication.py" "$here/../.." "$cc"
 python3 "$here/test-owner-elapsed-clock.py" "$here/../.." "$cc"
+python3 "$here/test-rtc-virtual-clock.py" "$here/../.." "$cc"
+python3 "$here/test-no-guest-wall-clock.py" "$here/../.."
+python3 "$here/test-gl-work-quota.py" "$here/../.." "$cc"
 ${cc} -O2 -std=gnu11 -Wall -Wextra -Werror -I"$here/../../include" \
     "$here/test-log-timestamp.c" -o "$work/bin/logtimestamp"
 "$work/bin/logtimestamp"
@@ -951,11 +954,8 @@ esac
 # 20 the CPU reads the surface's first and last pixels: the renderer
 # downloads it to RAM for that, and both are red (0xffff0000). From frame
 # 100 the guest waits on the GPU, a semaphore after a run of no-ops, up to
-# 4 times a frame: deterministic mode must manage all 4 in every frame.
-# Normal mode charges elapsed host GPU-wait time to the guest; a loaded
-# software-rendering runner can legitimately complete fewer. Keep the exact
-# count independent of host speed, not a relaxed threshold or a retry.
-# test-gpu-wait-deadline.py covers normal-mode elapsed-time accounting.
+# 4 times a frame. Host GPU wait duration must not change this count.
+# test-gpu-wait-deadline.py covers host-independent guest-clock ownership.
 # A guest waiting on the GPU had its time skip on to its next deadline while the GPU worked,
 # and managed 1 (Ninja Gaiden Black in slow motion). The ROM waits for each
 # vblank polling the GPU's interrupt register: a wait, so the OpenGL run
@@ -1007,7 +1007,7 @@ gpu_check() {
 echo "== the display, OpenGL"
 # Every oracle below addresses guest work by a fixed frontend frame.
 # Host GPU wait time must not move that work into a different frame.
-gpu="$vp --opt xemu_deterministic=enabled"
+gpu="$vp"
 timeout 300 $h "$(path "$core")" "$(path "$work/sysg")" $gpu --frames 485 --strict \
   --min-speed 0.2 --pixel 10 --pixel 25 --pixel 45 --pixel 85 --pixel 115 --pixel 130:4:20 --pixel 130:320:100 --pixel 130:320:350 \
   --pixel 130:4:100 --pixel 145:4:20 --pixel 165:320:120 --pixel 180 \

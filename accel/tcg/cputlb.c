@@ -327,7 +327,7 @@ static inline void tlb_n_used_entries_dec(CPUState *cpu, uintptr_t mmu_idx)
 
 void tlb_init(CPUState *cpu)
 {
-    int64_t now = get_clock_realtime();
+    int64_t now = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL);
     int i;
 
     qemu_spin_init(&cpu->neg.tlb.c.lock);
@@ -377,7 +377,7 @@ static void tlb_flush_by_mmuidx_async_work(CPUState *cpu, run_on_cpu_data data)
 {
     MMUIdxMap asked = data.host_int;
     MMUIdxMap all_dirty, work, to_clean;
-    int64_t now = get_clock_realtime();
+    int64_t now = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL);
 
     assert_cpu_is_self(cpu);
 
@@ -513,7 +513,7 @@ static void tlb_flush_page_locked(CPUState *cpu, int midx, vaddr page)
         tlb_debug("forcing full flush midx %d (%016"
                   VADDR_PRIx "/%016" VADDR_PRIx ")\n",
                   midx, lp_addr, lp_mask);
-        tlb_flush_one_mmuidx_locked(cpu, midx, get_clock_realtime());
+        tlb_flush_one_mmuidx_locked(cpu, midx, qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL));
     } else {
         if (tlb_flush_entry_locked(tlb_entry(cpu, midx, page), page)) {
             tlb_n_used_entries_dec(cpu, midx);
