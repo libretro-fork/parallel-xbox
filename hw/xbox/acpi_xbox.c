@@ -39,6 +39,7 @@
 # define XBOX_DPRINTF(format, ...)     do { } while (0)
 #endif
 
+#define XBOX_PM_FIXED_IO_BASE 0x8000
 #define XBOX_PM_BASE_BAR  0
 #define XBOX_PM_GPE_BASE  0x20
 #define XBOX_PM_GPE_LEN   4
@@ -188,7 +189,12 @@ void xbox_pm_init(PCIDevice *dev, XBOX_PMRegs *pm, qemu_irq sci_irq)
 
     memory_region_init_io(&pm->io_gpio, OBJECT(dev), &xbox_pm_gpio_ops, pm,
                           "xbox-pm-gpio", XBOX_PM_GPIO_LEN);
-    memory_region_add_subregion(&pm->io, XBOX_PM_GPIO_BASE, &pm->io_gpio);
+    /* Boot firmware probes GPIO before enabling the relocatable PM BAR.
+     * Keep the existing PM-owned region at its fixed LPC I/O decode; it
+     * neither moves nor gains an alias when the guest programs BAR0. */
+    memory_region_add_subregion(pci_address_space_io(dev),
+                                XBOX_PM_FIXED_IO_BASE + XBOX_PM_GPIO_BASE,
+                                &pm->io_gpio);
 
     pm->irq = sci_irq;
     qemu_register_reset(pm_reset, pm);

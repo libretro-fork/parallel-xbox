@@ -282,3 +282,8 @@ state cache. Repeated equivalent widths reuse driver state; display/conversion
 draw invalidation forces the next update. This does not add shader or pipeline
 variants, or change wide-line geometry expansion. No FPS or hardware cache-miss
 improvement is claimed from the reduced driver-call count alone.
+
+LPC GPIO ports remain decoded at 0x80c0-0x80d9 independently of PM BAR enable
+or relocation. Early firmware encoder probes therefore see the emulated GPIO
+value before PCI setup. The existing PM region owns the mapping; this adds no
+new device, serialized fields, waits or frame scheduling changes.

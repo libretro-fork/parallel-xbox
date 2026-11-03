@@ -3448,3 +3448,10 @@ For partial writes replacing at least half of a zero-filled cluster of 4 KiB or 
 `test-qcow2-zero-init.py CHECKOUT [CC]` runs production QCOW2/file/inflater code on generated disposable images. It poisons scratch bytes, independently checks the complete cluster at the host-write boundary, counts requested scratch zeroing, checks empty/edge/middle/multi-span patches and untouched bytes, injects full and partial host-write failures, and reopens the image. The sanitizer matrix covers 512/4096/65536/2097152-byte clusters; qemu-img checks successful metadata and independently compares logical contents after all three outcomes. Runs when qemu-img is available in the regression suite.
 
 `QCOW_ZERO_SOURCE` selects a frozen baseline; `QCOW_ZERO_EXPECT_FULL=1` checks its full-cluster zeroing count. Without that flag, the frozen baseline must fail the reduced-zeroing assertion as a negative control. `QCOW_ZERO_CLUSTER_SIZE`, `QCOW_ZERO_CFLAGS`, `QCOW_ZERO_BINARY`, `QCOW_ZERO_FIXTURE_DIR` and `QCOW_ZERO_SKIP_RUN` support sanitizers and supervised native validation. This deterministic fixture does not claim disk-throughput or game-FPS improvement.
+
+`rom/gpio-fixed.asm` probes GPIO before PM BAR setup, after enable at 0x8000,
+after relocation to 0x9000, and after disabling PCI I/O decode. It checks
+byte/word/dword encoder reads, the end of the fixed window, absence of a
+relocated GPIO alias, field-pin transitions and aspect writes. GPOK at
+0x300000 with zero at 0x300004 indicates success. The native suite runs it
+with exact audio/video cadence checks; an unmodified core fails its first probe.

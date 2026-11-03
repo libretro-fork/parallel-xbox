@@ -573,6 +573,9 @@ nasm -f bin -I"$here/rom/" -o "$work/sysfsw/xemu/Complex_4627v1.03.bin" "$here/r
 mkdir -p "$work/sysfpload/xemu"
 cp "$work/sys/xemu/mcpx_1.0.bin" "$work/sysfpload/xemu/"
 nasm -f bin -I"$here/rom/" -o "$work/sysfpload/xemu/Complex_4627v1.03.bin" "$here/rom/x87-load-precision.asm"
+mkdir -p "$work/sysgpio/xemu"
+cp "$work/sys/xemu/mcpx_1.0.bin" "$work/sysgpio/xemu/"
+nasm -f bin -I"$here/rom/" -o "$work/sysgpio/xemu/Complex_4627v1.03.bin" "$here/rom/gpio-fixed.asm"
 mkdir -p "$work/syspf/xemu"
 cp "$work/sys/xemu/mcpx_1.0.bin" "$work/syspf/xemu/"
 nasm -f bin -I"$here/rom/" -o "$work/syspf/xemu/Complex_4627v1.03.bin" "$here/rom/logic-parity.asm"
@@ -740,6 +743,17 @@ for hard in enabled disabled; do
       }
     done
   done
+done
+
+# Boot-time GPIO decode must not depend on PM BAR enable or relocation.
+t "fixed LPC GPIO" $h "$(path "$core")" "$(path "$work/sysgpio")" $vp \
+  --frames 60 --strict --peek 0x300000 --peek 0x300004 >"$work/gpio-fixed.txt" || {
+    cat "$work/gpio-fixed.txt"; exit 1;
+  }
+for want in "peek_0x300000=0x4b4f5047" "peek_0x300004=0x00000000"; do
+  grep -q "^$want$" "$work/gpio-fixed.txt" || {
+    cat "$work/gpio-fixed.txt"; echo "FAIL: fixed LPC GPIO"; exit 1;
+  }
 done
 
 # Arithmetic PF consumers must preserve the rest of the lazy flag state.
