@@ -321,6 +321,24 @@ static void dis_extractu_reg(dsp_core_t* dsp)
         registers_name[dsp->disasm_cur_inst & 1 ? DSP_REG_B : DSP_REG_A]);
 }
 
+static void dis_extract_imm(dsp_core_t* dsp)
+{
+    dsp->disasm_cur_inst_len++;
+    sprintf(dsp->disasm_str_instr, "extract #$%06x,%s,%s", read_memory_p(dsp, dsp->pc + 1),
+        registers_name[dsp->disasm_cur_inst & 16 ? DSP_REG_B : DSP_REG_A],
+        registers_name[dsp->disasm_cur_inst & 1 ? DSP_REG_B : DSP_REG_A]);
+}
+
+static void dis_extract_reg(dsp_core_t* dsp)
+{
+    static const unsigned controls[] = {DSP_REG_A1, DSP_REG_B1, DSP_REG_X0,
+                                        DSP_REG_X1, DSP_REG_Y0, DSP_REG_Y1};
+    sprintf(dsp->disasm_str_instr, "extract %s,%s,%s",
+        registers_name[controls[((dsp->disasm_cur_inst >> 1) & 7) - 2]],
+        registers_name[dsp->disasm_cur_inst & 16 ? DSP_REG_B : DSP_REG_A],
+        registers_name[dsp->disasm_cur_inst & 1 ? DSP_REG_B : DSP_REG_A]);
+}
+
 static void dis_clb(dsp_core_t* dsp)
 {
     sprintf(dsp->disasm_str_instr, "clb %s,%s",

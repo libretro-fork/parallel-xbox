@@ -669,6 +669,107 @@ static void check_unsigned_extract(Machine *a, Machine *b, unsigned mode)
     }
 }
 
+static void check_signed_extract(Machine *a, Machine *b, unsigned mode)
+{
+    static const unsigned controls[] = {DSP_REG_A1, DSP_REG_B1, DSP_REG_X0,
+                                       DSP_REG_X1, DSP_REG_Y0, DSP_REG_Y1};
+    static const uint64_t values[] = {0, UINT64_C(0xffffffffffffff), UINT64_C(1) << 55,
+        UINT64_C(1) << 47, UINT64_C(1) << 24, 1, UINT64_C(0xabcdef01234567), UINT64_C(0x55555555555555)};
+    for (unsigned short_words = 0; short_words < 2; short_words++) {
+        for (unsigned form = 0; form < 7; form++) {
+            for (unsigned width = 0; width < 64; width++) {
+                for (unsigned offset = 0; offset < 64; offset++) {
+                    unsigned src = (width >> 1) & 1, dst = (offset >> 1) & 1;
+                    uint32_t control = short_words ? (width << 16) | (offset << 8) | 0xc0c0ff :
+                        (width << 12) | offset | 0xc00fc0;
+                    uint32_t op = (form ? 0x0c1a00 | ((form + 1) << 1) : 0x0c1800) | (src << 4) | dst;
+                    uint64_t value = values[(width + offset + form) & 7];
+                    if (form && controls[form - 1] == DSP_REG_A1 + src)
+                        value = (value & ~UINT64_C(0x000000ffffff000000)) | ((uint64_t)control << 24);
+                    /* Independent bit routing: enumerate logical field bits
+                     * and map each to physical accumulator bits, without a
+                     * packed-word shift/mask implementation. */
+                    uint64_t result = 0;
+                    unsigned active = short_words ? 40 : 56;
+                    for (unsigned bit = 0; bit < width; bit++) {
+                        unsigned source_bit = offset + bit;
+                        if (source_bit >= active) continue;
+                        unsigned from = short_words ? source_bit + (source_bit < 16 ? 8 : 16) : source_bit;
+                        unsigned to = short_words ? bit + (bit < 16 ? 8 : 16) : bit;
+                        if ((value >> from) & 1) result |= UINT64_C(1) << to;
+                    }
+                    if (width && width <= active && offset + width <= active) {
+                        unsigned sign_index = offset + width - 1;
+                        unsigned physical = short_words ? sign_index + (sign_index < 16 ? 8 : 16) : sign_index;
+                        if ((value >> physical) & 1) {
+                            for (unsigned bit = width; bit < active; bit++) {
+                                unsigned to = short_words ? bit + (bit < 16 ? 8 : 16) : bit;
+                                result |= UINT64_C(1) << to;
+                            }
+                        }
+                    }
+                    uint32_t sr = ((width + offset + form) & 1 ? 0x3100ff : 0x80) |
+                                  (mode << DSP_SR_S0) | (short_words << DSP_SR_SA);
+                    uint32_t status = sr & ~0x3fu;
+                    if (mode != 3) {
+                        unsigned bit = mode == 1 ? 48 : mode == 2 ? 46 : 47;
+                        uint64_t upper = result >> bit;
+                        unsigned pair = (result >> (bit - 1)) & 3;
+                        status |= ((upper != 0 && upper != (UINT64_C(0xffffffffffffff) >> bit)) << DSP_SR_E) |
+                                  ((pair == 0 || pair == 3) << DSP_SR_U) |
+                                  ((result == 0) << DSP_SR_Z) | (((result >> 55) & 1) << DSP_SR_N);
+                    }
+                    Machine *machines[] = {a, b};
+                    dspjit_test_reset_fallback_count();
+                    for (unsigned engine = 0; engine < 2; engine++) {
+                        Machine *m = machines[engine];
+                        prepare(m, op, control, 1, mode, false);
+                        dsp_core_t *c = m->dsp->backend;
+                        c->registers[DSP_REG_SR] = sr;
+                        c->registers[DSP_REG_A0 + src] = value & 0xffffff;
+                        c->registers[DSP_REG_A1 + src] = (value >> 24) & 0xffffff;
+                        c->registers[DSP_REG_A2 + src] = value >> 48;
+                        if (form) c->registers[controls[form - 1]] = control;
+                        uint32_t expected[DSP_REG_MAX];
+                        memcpy(expected, c->registers, sizeof(expected));
+                        expected[DSP_REG_A0 + dst] = result & 0xffffff;
+                        expected[DSP_REG_A1 + dst] = (result >> 24) & 0xffffff;
+                        expected[DSP_REG_A2 + dst] = result >> 48;
+                        expected[DSP_REG_SR] = status;
+                        if (!engine) {
+                            m->dsp->ops->step(m->dsp);
+                            c->cycle_count += c->instr_cycle;
+                        } else m->dsp->ops->run(m->dsp, 1);
+                        if (c->pc != (form ? 1 : 2) || c->cycle_count != 2 ||
+                            memcmp(c->registers, expected, sizeof(expected))) {
+                            fprintf(stderr, "EXTRACT engine=%u SA=%u form=%u width=%u offset=%u src=%u dst=%u SR=%x/%x\n",
+                                    engine, short_words, form, width, offset, src, dst,
+                                    c->registers[DSP_REG_SR], status);
+                            exit(1);
+                        }
+                    }
+                    if (dspjit_test_fallback_count() || compare_machines(a, b)) exit(1);
+                    cases++;
+                }
+            }
+        }
+    }
+    static const unsigned contexts[] = {0x20000000, 0x40000, 0x80000, 0x40000000};
+    for (unsigned form = 0; form < 7; form++) {
+        for (unsigned src = 0; src < 2; src++) {
+            for (unsigned dst = 0; dst < 2; dst++) {
+                uint32_t op = (form ? 0x0c1a00 | ((form + 1) << 1) : 0x0c1800) | (src << 4) | dst;
+                for (unsigned seed = 0; seed < 8; seed++) {
+                    for (unsigned ctx = 0; ctx < ARRAY_SIZE(contexts); ctx++) {
+                        for (unsigned irq = 0; irq < 2; irq++)
+                            check(a, b, op, 0x018018, seed | 0x10000 | 0x1000000 | contexts[ctx], mode, irq);
+                    }
+                }
+            }
+        }
+    }
+}
+
 static void check_count_leading_bits(Machine *a, Machine *b, unsigned mode)
 {
     static const uint32_t profiles[] = {0, 0xff, 1, 0x10, 0x20, 0x40, 0x80, 0x310000};
@@ -3038,6 +3139,7 @@ static void check_program_write_sequences(Machine *a, Machine *b, unsigned mode)
 
 int main(int argc, char **argv)
 {
+    bool extract_only = argc == 2 && !strcmp(argv[1], "--extract");
     bool extractu_only = argc == 2 && !strcmp(argv[1], "--extractu");
     bool leading_bits_only = argc == 2 && !strcmp(argv[1], "--leading-bits");
     bool register_shifts_only = argc == 2 && !strcmp(argv[1], "--register-shifts");
@@ -3070,8 +3172,8 @@ int main(int argc, char **argv)
     bool effective_only = argc == 2 && !strcmp(argv[1], "--effective-control");
     bool startup_only = argc == 2 && !strcmp(argv[1], "--startup");
     bool program_only = argc == 2 && !strcmp(argv[1], "--program");
-    if (argc != 1 && !extractu_only && !leading_bits_only && !register_shifts_only && !indirect_memory_loops_only && !short_memory_loops_only && !relative_calls_only && !register_branches_only && !pc_relative_only && !rounded_multiply_only && !y_long_only && !logical_shifts_only && !immediate_logic_only && !relative_only && !loops_only && !program_only && !compare_only && !startup_only && !effective_only && !register_only && !program_control_only && !peripheral_only && !program_peripheral_only && !multiply_only && !normalize_only && !divide_only && !byte_logic_only && !memory_bits_only && !control_bits_only && !offset_control_only && !shifts_only && !signed_right_only && !left_flags_only) {
-        fputs("usage: dspnative [--extractu|--leading-bits|--register-shifts|--indirect-memory-loops|--short-memory-loops|--relative-calls|--register-branches|--pc-relative-loads|--rounded-multiply|--y-long-offset|--logical-shifts|--immediate-logic|--relative|--loops|--program|--compare|--startup|--effective-control|--register-control|--program-control|--peripheral-control|--program-peripheral|--multiply|--normalize|--divide|--status-byte|--memory-bits|--control-bits|--offset-control|--shift-boundaries|--signed-right|--left-flags]\n", stderr);
+    if (argc != 1 && !extract_only && !extractu_only && !leading_bits_only && !register_shifts_only && !indirect_memory_loops_only && !short_memory_loops_only && !relative_calls_only && !register_branches_only && !pc_relative_only && !rounded_multiply_only && !y_long_only && !logical_shifts_only && !immediate_logic_only && !relative_only && !loops_only && !program_only && !compare_only && !startup_only && !effective_only && !register_only && !program_control_only && !peripheral_only && !program_peripheral_only && !multiply_only && !normalize_only && !divide_only && !byte_logic_only && !memory_bits_only && !control_bits_only && !offset_control_only && !shifts_only && !signed_right_only && !left_flags_only) {
+        fputs("usage: dspnative [--extract|--extractu|--leading-bits|--register-shifts|--indirect-memory-loops|--short-memory-loops|--relative-calls|--register-branches|--pc-relative-loads|--rounded-multiply|--y-long-offset|--logical-shifts|--immediate-logic|--relative|--loops|--program|--compare|--startup|--effective-control|--register-control|--program-control|--peripheral-control|--program-peripheral|--multiply|--normalize|--divide|--status-byte|--memory-bits|--control-bits|--offset-control|--shift-boundaries|--signed-right|--left-flags]\n", stderr);
         return 2;
     }
     Machine *a = machine_new(false), *b = machine_new(true);
@@ -3086,8 +3188,9 @@ int main(int argc, char **argv)
     assert(initially_committed == (64u << 10));
 #endif
     check_speculative_decode();
-    if (extractu_only || leading_bits_only || register_shifts_only || indirect_memory_loops_only || short_memory_loops_only || relative_calls_only || register_branches_only || pc_relative_only || rounded_multiply_only || y_long_only || logical_shifts_only || immediate_logic_only || relative_only || loops_only || program_only || compare_only || startup_only || effective_only || register_only || program_control_only || peripheral_only || program_peripheral_only || multiply_only || normalize_only || divide_only || byte_logic_only || memory_bits_only || control_bits_only || offset_control_only || shifts_only || signed_right_only || left_flags_only) {
+    if (extract_only || extractu_only || leading_bits_only || register_shifts_only || indirect_memory_loops_only || short_memory_loops_only || relative_calls_only || register_branches_only || pc_relative_only || rounded_multiply_only || y_long_only || logical_shifts_only || immediate_logic_only || relative_only || loops_only || program_only || compare_only || startup_only || effective_only || register_only || program_control_only || peripheral_only || program_peripheral_only || multiply_only || normalize_only || divide_only || byte_logic_only || memory_bits_only || control_bits_only || offset_control_only || shifts_only || signed_right_only || left_flags_only) {
         for (unsigned mode = 0; mode < 4; mode++) {
+            if (extract_only) check_signed_extract(a, b, mode);
             if (extractu_only) check_unsigned_extract(a, b, mode);
             if (leading_bits_only) check_count_leading_bits(a, b, mode);
             if (register_shifts_only) check_register_arithmetic_shifts(a, b, mode);
@@ -3152,6 +3255,7 @@ int main(int argc, char **argv)
     }
     check_status_restore_chains(a, b);
     check_logical_immediates(a, b);
+    for (unsigned mode = 0; mode < 4; mode++) check_signed_extract(a, b, mode);
     for (unsigned mode = 0; mode < 4; mode++) check_unsigned_extract(a, b, mode);
     for (unsigned mode = 0; mode < 4; mode++) check_count_leading_bits(a, b, mode);
     for (unsigned mode = 0; mode < 4; mode++) check_register_arithmetic_shifts(a, b, mode);

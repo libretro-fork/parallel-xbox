@@ -29,6 +29,8 @@
 
 ## Unreleased
 
+- DSP: execute immediate and register-controlled signed EXTRACT natively, including field sign extension and aliased controls in normal/sixteen-bit layouts.
+
 - DSP: execute immediate and register-controlled EXTRACTU natively, with aliased operands, sixteen-bit layouts and carry/overflow regression coverage.
 
 - Coalesce adjacent buffer tails after short native vector reads and writes, avoiding a separate residual-span I/O call while retaining EOF zero-fill and error handling.

@@ -5922,7 +5922,7 @@ static void emu_andi(dsp_core_t* dsp)
     }
 }
 
-static void emu_extractu(dsp_core_t* dsp, uint32_t control)
+static void emu_extract_field(dsp_core_t* dsp, uint32_t control, bool signed_field)
 {
     unsigned src = (dsp->cur_inst >> 4) & 1, dst = dsp->cur_inst & 1;
     uint32_t sr = dsp->registers[DSP_REG_SR];
@@ -5935,7 +5935,10 @@ static void emu_extractu(dsp_core_t* dsp, uint32_t control)
     if (short_words) value = ((value >> 32) << 16) | ((value >> 8) & 0xffff);
     /* Fields outside the documented range use a zero-extended source.
      * Width and offset are at most 63: no host shift by 64 is possible. */
-    uint64_t result = (value >> offset) & ((UINT64_C(1) << width) - 1);
+    uint64_t mask = (UINT64_C(1) << width) - 1;
+    uint64_t result = (value >> offset) & mask;
+    if (signed_field && width && (result & (UINT64_C(1) << (width - 1)))) result |= ~mask;
+    result &= (UINT64_C(1) << (short_words ? 40 : 56)) - 1;
     if (short_words) result = ((result >> 16) << 32) | ((result & 0xffff) << 8);
     uint32_t lo = result & 0xffffff, mid = (result >> 24) & 0xffffff, hi = (result >> 48) & 0xff;
     dsp->registers[DSP_REG_A0 + dst] = lo;
@@ -5952,14 +5955,28 @@ static void emu_extractu_imm(dsp_core_t* dsp)
 {
     uint32_t control = read_memory_p(dsp, dsp->pc + 1);
     dsp->cur_inst_len++;
-    emu_extractu(dsp, control);
+    emu_extract_field(dsp, control, false);
 }
 
 static void emu_extractu_reg(dsp_core_t* dsp)
 {
     static const unsigned controls[] = {DSP_REG_A1, DSP_REG_B1, DSP_REG_X0,
                                         DSP_REG_X1, DSP_REG_Y0, DSP_REG_Y1};
-    emu_extractu(dsp, dsp->registers[controls[((dsp->cur_inst >> 1) & 7) - 2]]);
+    emu_extract_field(dsp, dsp->registers[controls[((dsp->cur_inst >> 1) & 7) - 2]], false);
+}
+
+static void emu_extract_imm(dsp_core_t* dsp)
+{
+    uint32_t control = read_memory_p(dsp, dsp->pc + 1);
+    dsp->cur_inst_len++;
+    emu_extract_field(dsp, control, true);
+}
+
+static void emu_extract_reg(dsp_core_t* dsp)
+{
+    static const unsigned controls[] = {DSP_REG_A1, DSP_REG_B1, DSP_REG_X0,
+                                        DSP_REG_X1, DSP_REG_Y0, DSP_REG_Y1};
+    emu_extract_field(dsp, dsp->registers[controls[((dsp->cur_inst >> 1) & 7) - 2]], true);
 }
 
 static void emu_clb(dsp_core_t* dsp)
