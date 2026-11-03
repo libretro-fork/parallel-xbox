@@ -3753,3 +3753,12 @@ and clear carry by emulator policy. SA clears the unused low MSP byte.
 The startup fixture checks changing aliases in REP/DO, zero-count carry
 clearing and deferred flags. Legacy immediate/parallel shift modes remain
 unchanged; complete extended arithmetic support is separate work.
+
+`test-gl-module-load.py` exercises production cache parsing/admission with
+73728 truncation/alignment/link/API-error combinations, plus missing-file and
+key-mismatch cases. It verifies a rejected stage is never published, failed
+programs are deleted, mappings are released, bad files are discarded, stale
+GL errors are cleared, and the driver receives the exact mapped payload
+pointer. Linux ASan/UBSan and native Win64 pass; the old loader fails the
+rejection oracle. `GL_MODULE_LOAD_SOURCE`, `GL_MODULE_LOAD_CFLAGS`,
+`GL_MODULE_LOAD_BINARY` and `GL_MODULE_LOAD_SKIP_RUN` support controls.

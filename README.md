@@ -335,3 +335,10 @@ adjacent destinations. A three-span contiguous request separated by empty
 entries needs one provider read instead of three when it completes fully.
 Short-read, EOF, cursor recovery and descriptor immutability remain covered;
 no staging buffer, allocation or throughput/FPS claim is added.
+
+GL module-cache admission checks driver link status before publishing the
+stage. Rejected binaries are discarded and regenerated through the normal
+compiler path; driver input still borrows the mapped payload directly. The
+check is at the existing uniform-location resolution completion boundary,
+which can already wait for driver linking. It adds no GPU resource readback,
+shader/PSO variants or binary staging copy.

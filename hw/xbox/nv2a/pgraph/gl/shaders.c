@@ -334,12 +334,24 @@ static bool module_load_from_disk(PGRAPHGLState *r,
     (void)glGetError();
     program = glCreateProgram();
     glProgramBinary(program, format, bin, len);
+    /* This admission path immediately resolves uniform locations, which
+     * already requires completed linking. Reject unusable cache binaries at
+     * that boundary instead of publishing an invalid stage to the LRU. */
+    GLint linked = GL_FALSE;
+    glGetProgramiv(program, GL_LINK_STATUS, &linked);
+    if (glGetError() != GL_NO_ERROR || !linked) {
+        goto out;
+    }
     module->gl_stage_program = program;
     ok = true;
 
 out:
     xemu_file_unmap(&m);
     if (!ok) {
+        if (program) {
+            /* This fresh handle was never published to the uniform cache. */
+            glDeleteProgram(program);
+        }
         qemu_unlink(path);
     }
     g_free(path);
