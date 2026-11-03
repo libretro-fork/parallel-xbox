@@ -1,4 +1,4 @@
-; NORM left/right/no-op, lazy flags, REP, scaling and Rn wrap independent of Mn.
+; NORM paths preserve carry, including REP followed by ADC and saved status.
         dd 0x0A8581 ; P:00
         dd 0x000000 ; P:01
         dd 0x08F485 ; P:02
@@ -36,10 +36,21 @@
         dd 0x000400 ; P:22
         dd 0x01DB1D ; P:23
         dd 0x01DB1D ; P:24
-        dd 0x67F400 ; P:25
-        dd 0x001400 ; P:26
-        dd 0x565F00 ; P:27
-        dd 0x08F484 ; P:28
-        dd 0x000001 ; P:29
-        dd 0x0AF080 ; P:2A
-        dd 0x000000 ; P:2B
+        dd 0x200013 ; P:25
+        dd 0x44F400 ; P:26
+        dd 0x000000 ; P:27
+        dd 0x45F400 ; P:28
+        dd 0x000000 ; P:29
+        dd 0x0001F9 ; P:2A
+        dd 0x0603A0 ; P:2B
+        dd 0x01D815 ; P:2C
+        dd 0x0460B9 ; P:2D
+        dd 0x052020 ; P:2E
+        dd 0x200021 ; P:2F
+        dd 0x67F400 ; P:30
+        dd 0x001400 ; P:31
+        dd 0x565F00 ; P:32
+        dd 0x08F484 ; P:33
+        dd 0x000001 ; P:34
+        dd 0x0AF080 ; P:35
+        dd 0x000000 ; P:36

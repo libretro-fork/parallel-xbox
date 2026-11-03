@@ -1270,8 +1270,58 @@ static void check_immediate_multiply(Machine *a, Machine *b, unsigned mode)
     }
 }
 
+static void check_norm_carry_consumers(Machine *a, Machine *b, unsigned mode)
+{
+    const uint64_t mask = UINT64_C(0xFFFFFFFFFFFFFF);
+    Machine *machines[] = {a, b};
+    for (unsigned path = 0; path < 5; path++) {
+        for (unsigned carry = 0; carry < 2; carry++) {
+            uint32_t program[] = {0x01D815, 0x200021, 0x08F484, 1, 0};
+            if (path == 1) {
+                program[0] = 0x0603A0;
+                program[1] = 0x01D815;
+                program[2] = 0x200021;
+                program[3] = 0x08F484;
+                program[4] = 1;
+            }
+            uint64_t initial = path == 2 ? 1 : path == 3 ? 2 : path == 4 ? mask : 0;
+            uint64_t normalized = path == 2 ? 2 : path == 3 ? 1 : initial;
+            uint64_t expected = (normalized + carry) & mask;
+            for (unsigned engine = 0; engine < 2; engine++) {
+                Machine *m = machines[engine];
+                prepare(m, program[0], 0, 1, mode, false);
+                dsp_core_t *c = m->dsp->backend;
+                c->registers[DSP_REG_SR] = (mode << DSP_SR_S0) | carry |
+                    (path < 2 ? 1u << DSP_SR_Z : path == 2 ? 1u << DSP_SR_U : 1u << DSP_SR_E);
+                c->registers[DSP_REG_A0] = initial & 0xFFFFFF;
+                c->registers[DSP_REG_A1] = (initial >> 24) & 0xFFFFFF;
+                c->registers[DSP_REG_A2] = initial >> 48;
+                c->registers[DSP_REG_R0] = 0x40;
+                c->registers[DSP_REG_X0] = c->registers[DSP_REG_X1] = 0;
+                for (unsigned pc = 0; pc < ARRAY_SIZE(program); pc++)
+                    m->dsp->ops->write_memory(m->dsp, 'P', pc, program[pc]);
+                dspjit_test_reset_fallback_count();
+                assert(run_frame(m, 100000, engine != 0) == 0);
+                assert(!dspjit_test_fallback_count());
+                uint64_t got = c->registers[DSP_REG_A0] |
+                    ((uint64_t)c->registers[DSP_REG_A1] << 24) |
+                    ((uint64_t)c->registers[DSP_REG_A2] << 48);
+                if (got != expected) {
+                    fprintf(stderr, "NORM carry consumer: engine=%u path=%u carry=%u result=%llx/%llx\n",
+                            engine, path, carry, (unsigned long long)got, (unsigned long long)expected);
+                    exit(1);
+                }
+                assert(c->registers[DSP_REG_R0] == (path < 2 ? 0x40 : path == 2 ? 0x3F : 0x41));
+            }
+            assert(compare_machines(a, b) == 0);
+            cases++;
+        }
+    }
+}
+
 static void check_normalize(Machine *a, Machine *b, unsigned mode)
 {
+    check_norm_carry_consumers(a, b, mode);
     static const uint64_t values[] = {
         0, 1, 0xFFFFFFFFFFFFFF, 0x7FFFFFFFFFFFFF, 0x80000000000000,
         0x40000000000000, 0xC0000000000000, 0x00000080000000,
@@ -1297,7 +1347,7 @@ static void check_normalize(Machine *a, Machine *b, unsigned mode)
                                 unsigned sr = (mode << DSP_SR_S0) | 0x8A | carry |
                                     (sticky << DSP_SR_L) | (e << DSP_SR_E) |
                                     (u << DSP_SR_U) | (z << DSP_SR_Z) | (1u << DSP_SR_FV);
-                                unsigned expected = (sr & 0xFFFF & ~0x3F) | carry_out |
+                                unsigned expected = (sr & 0xFFFF & ~0x3E) |
                                     (overflow << DSP_SR_V) | ((left && carry_out) << DSP_SR_L);
                                 if (mode != 3) {
                                     unsigned bit = mode == 1 ? 48 : mode == 2 ? 46 : 47;

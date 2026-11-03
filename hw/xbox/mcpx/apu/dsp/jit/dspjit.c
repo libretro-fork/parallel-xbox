@@ -2273,6 +2273,8 @@ static void emit_nonparallel(Tr *t, const Insn *in, int kind)
         h_and_ri(e, 0, T0, SR_C);
         h_shl_ri(e, 0, T0, DSP_SR_L);
         h_or_rr(e, 0, T4, T0);
+        /* Discard the helper carry after extracting the left-shift L bit. */
+        h_and_ri(e, 0, T4, ~SR_C);
         h_ld32(e, T0, REG_CORE, REGOFF(r));
         h_add_ri(e, 0, T0, -1);
         h_and_ri(e, 0, T0, 0xFFFF);
@@ -2280,8 +2282,7 @@ static void emit_nonparallel(Tr *t, const Insn *in, int kind)
         size_t left_done = h_jmp(e);
         h_patch(e, right, e->len);
         /* NORM's right shift is arithmetic, including negative extensions. */
-        h_mov_rr(e, 1, T4, acc);
-        h_and_ri(e, 0, T4, 1);
+        h_mov_ri(e, T4, 0);
         h_mov_rr(e, 1, T3, acc);
         h_sar_ri(e, 1, T3, 1);
         h_ld32(e, T0, REG_CORE, REGOFF(r));
@@ -2296,7 +2297,7 @@ static void emit_nonparallel(Tr *t, const Insn *in, int kind)
         h_patch(e, right_done, e->len);
         h_mov_rr(e, 1, acc, T3);
         acc_written(t, d);
-        emit_sr_result(t, SR_EUNZ | SR_C | SR_V | 0xFFFF0000u, T4, acc, d);
+        emit_sr_result(t, SR_EUNZ | SR_V | 0xFFFF0000u, T4, acc, d);
         break;
     }
     case NP_MOVEC_IMM:

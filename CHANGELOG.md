@@ -29,6 +29,8 @@
 
 ## Unreleased
 
+- DSP: preserve carry through every NORM path in both interpreter and JIT, including no-op and REP iterations. Strengthen the independent status oracle and add 40 NORM-to-ADC result regressions so lost carry cannot silently affect following arithmetic.
+
 - DSP: preserve the sign of negative accumulators in arithmetic right shifts in both interpreter and JIT, including immediate ASR, NORM and ADDR/SUBR. Clear upper SR bookkeeping bits on single-bit/combined arithmetic paths. Add 9,600 independent checks, strengthen the shift/NORM oracles and add a negative REP/DO production program.
 
 - DSP: eliminate undefined C shifts and interpreter fallback for all immediate ASL/ASR counts. ASR zero copies with cleared carry; wide ASL uses explicit zero-result/carry behavior with discarded-bit sticky L. Preserve negative zero-count copies for deferred flags. Expand the shift regression to 107,520 boundaries and exercise zero/wide counts in REP.

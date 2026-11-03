@@ -7863,8 +7863,9 @@ static void emu_norm(dsp_core_t* dsp)
 
     emu_ccr_update_e_u_n_z(dsp, dest[0], dest[1], dest[2]);
 
-    dsp->registers[DSP_REG_SR] &= BITMASK(16)-((1<<DSP_SR_V)|(1<<DSP_SR_C));
-    dsp->registers[DSP_REG_SR] |= newsr;
+    /* NORM preserves C for every path, unlike the ASL/ASR helpers. */
+    dsp->registers[DSP_REG_SR] &= BITMASK(16)-(1<<DSP_SR_V);
+    dsp->registers[DSP_REG_SR] |= newsr & ~(1<<DSP_SR_C);
 }
 
 static void emu_or_long(dsp_core_t* dsp)
