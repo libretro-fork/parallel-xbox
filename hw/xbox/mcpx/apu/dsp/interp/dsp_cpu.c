@@ -314,7 +314,7 @@ static const OpcodeEntry nonparallel_opcodes[] = {
     { "00000001001001111sdkQQQQ", "mpy_s_u S1, S2, D", NULL, NULL },
     { "000000010100000111qqdk00", "mpyi #xxxx, S, D", dis_mpyi, emu_mpyi },
     { "00000001000sssss11QQdk01", "mpyr S, #n, D", NULL, NULL },
-    { "000000010100000111qqdk01", "mpyri #xxxx, S, D", NULL, NULL },
+    { "000000010100000111qqdk01", "mpyri #xxxx, S, D", dis_mpyri, emu_mpyri },
     { "000000000000000000000000", "nop", NULL, emu_nop},
     { "0000000111011RRR0001d101", "norm Rn, D", dis_norm, emu_norm },
     { "00001100000111100010sssD", "normf S, D", NULL, NULL },

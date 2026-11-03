@@ -29,6 +29,8 @@
 
 ## Unreleased
 
+- Execute immediate signed multiply-and-round (MPYRI) in the interpreter and native DSP JIT. Add an independent nearest-even oracle for signed products, scaling, halfway cases and flags, plus REP and rewritten-extension coverage in CI.
+
 - Execute long-offset Y-memory MOVE instructions in the interpreter and native DSP JIT. Preserve 24-bit address wrap, control-register masks, raw stack stores and load side effects; add independent Y/X isolation and stack checks plus loop/interrupt regressions.
 
 - Execute immediate logical right shifts natively and correct LSL #0 to clear carry and update N/Z/V instead of preserving stale flags. Add independent all-count and REP checks; encoded counts above the documented range have defined zero results/carry.

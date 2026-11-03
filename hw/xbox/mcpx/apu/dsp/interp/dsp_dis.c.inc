@@ -1778,6 +1778,30 @@ static void dis_mpyi(dsp_core_t* dsp)
         registers_name[srcreg], registers_name[destreg]);
 }
 
+static void dis_mpyri(dsp_core_t* dsp)
+{
+    uint32_t xxxx = read_memory_p(dsp, dsp->pc+1);
+    dsp->disasm_cur_inst_len++;
+
+    uint32_t k = (dsp->disasm_cur_inst >> 2) & 1;
+    uint32_t d = (dsp->disasm_cur_inst >> 3) & 1;
+    uint32_t qq = (dsp->disasm_cur_inst >> 4) & BITMASK(2);
+
+    unsigned int srcreg = DSP_REG_NULL;
+    switch (qq) {
+    case 0: srcreg = DSP_REG_X0; break;
+    case 1: srcreg = DSP_REG_Y0; break;
+    case 2: srcreg = DSP_REG_X1; break;
+    case 3: srcreg = DSP_REG_Y1; break;
+    }
+
+    unsigned int destreg = d ? DSP_REG_B : DSP_REG_A;
+
+    sprintf(dsp->disasm_str_instr, "mpyri %s#$%06x,%s,%s",
+        k ? "-" : "+", xxxx,
+        registers_name[srcreg], registers_name[destreg]);
+}
+
 static void dis_norm(dsp_core_t* dsp)
 {
     uint32_t srcreg, destreg;

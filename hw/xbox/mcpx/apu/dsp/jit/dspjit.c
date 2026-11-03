@@ -2034,9 +2034,9 @@ static bool np_alu(const Insn *in, AluOp *a)
     memset(a, 0, sizeof(*a));
     a->src = SRC_IMM;
     a->d = (inst >> 3) & 1;
-    if (!strcmp(name, "mpyi #xxxx, S, D")) {
+    if (!strcmp(name, "mpyi #xxxx, S, D") || !strcmp(name, "mpyri #xxxx, S, D")) {
         static const int sources[] = {DSP_REG_X0, DSP_REG_Y0, DSP_REG_X1, DSP_REG_Y1};
-        a->op = OP_MPY;
+        a->op = name[3] == 'r' ? OP_MPYR : OP_MPY;
         a->mul_imm = true;
         a->imm = in->ext;
         a->src2 = sources[(inst >> 4) & 3];

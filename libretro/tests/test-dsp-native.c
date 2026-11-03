@@ -1474,24 +1474,35 @@ static void check_peripheral_control_transfers(Machine *a, Machine *b, unsigned 
     }
 }
 
-static void check_immediate_multiply(Machine *a, Machine *b, unsigned mode)
+static void check_immediate_multiply_kind(Machine *a, Machine *b, unsigned mode, bool rounded)
 {
     static const unsigned regs[] = {DSP_REG_X0, DSP_REG_Y0, DSP_REG_X1, DSP_REG_Y1};
     static const uint32_t words[] = {
         0, 1, 2, 0x7FFFFF, 0x800000, 0xFFFFFF,
-        0x400000, 0xC00000, 0x123456, 0xABCD01, 0x80, 0xFFFF80
+        0x400000, 0xC00000, 0x123456, 0xABCD01, 0x80, 0xFFFF80, 0x200000, 0x600000
     };
+    unsigned word_count = ARRAY_SIZE(words) - (rounded ? 0 : 2);
     const uint64_t mask = UINT64_C(0xFFFFFFFFFFFFFF);
     for (unsigned q = 0; q < 4; q++) {
         for (unsigned d = 0; d < 2; d++) {
             for (unsigned minus = 0; minus < 2; minus++) {
-                uint32_t op = 0x0141C0 | (q << 4) | (d << 3) | (minus << 2);
-                for (unsigned x = 0; x < ARRAY_SIZE(words); x++) {
-                    for (unsigned y = 0; y < ARRAY_SIZE(words); y++) {
+                uint32_t op = 0x0141C0 | rounded | (q << 4) | (d << 3) | (minus << 2);
+                for (unsigned x = 0; x < word_count; x++) {
+                    for (unsigned y = 0; y < word_count; y++) {
                         int64_t sx = words[x] & 0x800000 ? (int64_t)words[x] - 0x1000000 : words[x];
                         int64_t sy = words[y] & 0x800000 ? (int64_t)words[y] - 0x1000000 : words[y];
                         int64_t product = sx * sy * 2;
                         if (minus) product = -product;
+                        if (rounded) {
+                            /* Independent nearest-even oracle using quotient/remainder,
+                             * including negative values; no emulator rounding helpers. */
+                            int64_t unit = INT64_C(1) << (mode & 1 ? 25 : mode == 2 ? 23 : 24);
+                            int64_t quotient = product / unit, remainder = product % unit;
+                            if (remainder < 0) { quotient--; remainder += unit; }
+                            if (remainder > unit / 2 ||
+                                (remainder == unit / 2 && quotient % 2 != 0)) quotient++;
+                            product = quotient * unit;
+                        }
                         uint64_t result = (uint64_t)product & mask;
                         for (unsigned carry = 0; carry < 2; carry++) {
                             for (unsigned sticky = 0; sticky < 2; sticky++) {
@@ -1522,7 +1533,13 @@ static void check_immediate_multiply(Machine *a, Machine *b, unsigned mode)
                                     uint64_t actual = c->registers[DSP_REG_A0 + d] |
                                         ((uint64_t)c->registers[DSP_REG_A1 + d] << 24) |
                                         ((uint64_t)c->registers[DSP_REG_A2 + d] << 48);
-                                    assert(actual == result && c->registers[DSP_REG_SR] == expected);
+                                    if (actual != result || c->registers[DSP_REG_SR] != expected) {
+                                        fprintf(stderr, "Immediate multiply engine=%u round=%u mode=%u q=%u d=%u minus=%u x=%x y=%x result=%llx/%llx sr=%x/%x\n",
+                                                engine, rounded, mode, q, d, minus, words[x], words[y],
+                                                (unsigned long long)actual, (unsigned long long)result,
+                                                c->registers[DSP_REG_SR], expected);
+                                        exit(1);
+                                    }
                                 }
                                 assert(!dspjit_test_fallback_count());
                                 assert(compare_machines(a, b) == 0);
@@ -1541,6 +1558,16 @@ static void check_immediate_multiply(Machine *a, Machine *b, unsigned mode)
             }
         }
     }
+}
+
+static void check_immediate_multiply(Machine *a, Machine *b, unsigned mode)
+{
+    check_immediate_multiply_kind(a, b, mode, false);
+}
+
+static void check_immediate_rounded_multiply(Machine *a, Machine *b, unsigned mode)
+{
+    check_immediate_multiply_kind(a, b, mode, true);
 }
 
 static void check_norm_carry_consumers(Machine *a, Machine *b, unsigned mode)
@@ -2311,6 +2338,7 @@ static void check_program_write_sequences(Machine *a, Machine *b, unsigned mode)
 
 int main(int argc, char **argv)
 {
+    bool rounded_multiply_only = argc == 2 && !strcmp(argv[1], "--rounded-multiply");
     bool y_long_only = argc == 2 && !strcmp(argv[1], "--y-long-offset");
     bool logical_shifts_only = argc == 2 && !strcmp(argv[1], "--logical-shifts");
     bool immediate_logic_only = argc == 2 && !strcmp(argv[1], "--immediate-logic");
@@ -2334,8 +2362,8 @@ int main(int argc, char **argv)
     bool effective_only = argc == 2 && !strcmp(argv[1], "--effective-control");
     bool startup_only = argc == 2 && !strcmp(argv[1], "--startup");
     bool program_only = argc == 2 && !strcmp(argv[1], "--program");
-    if (argc != 1 && !y_long_only && !logical_shifts_only && !immediate_logic_only && !relative_only && !loops_only && !program_only && !compare_only && !startup_only && !effective_only && !register_only && !program_control_only && !peripheral_only && !program_peripheral_only && !multiply_only && !normalize_only && !divide_only && !byte_logic_only && !memory_bits_only && !control_bits_only && !offset_control_only && !shifts_only && !signed_right_only && !left_flags_only) {
-        fputs("usage: dspnative [--y-long-offset|--logical-shifts|--immediate-logic|--relative|--loops|--program|--compare|--startup|--effective-control|--register-control|--program-control|--peripheral-control|--program-peripheral|--multiply|--normalize|--divide|--status-byte|--memory-bits|--control-bits|--offset-control|--shift-boundaries|--signed-right|--left-flags]\n", stderr);
+    if (argc != 1 && !rounded_multiply_only && !y_long_only && !logical_shifts_only && !immediate_logic_only && !relative_only && !loops_only && !program_only && !compare_only && !startup_only && !effective_only && !register_only && !program_control_only && !peripheral_only && !program_peripheral_only && !multiply_only && !normalize_only && !divide_only && !byte_logic_only && !memory_bits_only && !control_bits_only && !offset_control_only && !shifts_only && !signed_right_only && !left_flags_only) {
+        fputs("usage: dspnative [--rounded-multiply|--y-long-offset|--logical-shifts|--immediate-logic|--relative|--loops|--program|--compare|--startup|--effective-control|--register-control|--program-control|--peripheral-control|--program-peripheral|--multiply|--normalize|--divide|--status-byte|--memory-bits|--control-bits|--offset-control|--shift-boundaries|--signed-right|--left-flags]\n", stderr);
         return 2;
     }
     Machine *a = machine_new(false), *b = machine_new(true);
@@ -2350,8 +2378,9 @@ int main(int argc, char **argv)
     assert(initially_committed == (64u << 10));
 #endif
     check_speculative_decode();
-    if (y_long_only || logical_shifts_only || immediate_logic_only || relative_only || loops_only || program_only || compare_only || startup_only || effective_only || register_only || program_control_only || peripheral_only || program_peripheral_only || multiply_only || normalize_only || divide_only || byte_logic_only || memory_bits_only || control_bits_only || offset_control_only || shifts_only || signed_right_only || left_flags_only) {
+    if (rounded_multiply_only || y_long_only || logical_shifts_only || immediate_logic_only || relative_only || loops_only || program_only || compare_only || startup_only || effective_only || register_only || program_control_only || peripheral_only || program_peripheral_only || multiply_only || normalize_only || divide_only || byte_logic_only || memory_bits_only || control_bits_only || offset_control_only || shifts_only || signed_right_only || left_flags_only) {
         for (unsigned mode = 0; mode < 4; mode++) {
+            if (rounded_multiply_only) check_immediate_rounded_multiply(a, b, mode);
             if (y_long_only) check_y_long_offset_moves(a, b, mode);
             if (logical_shifts_only) check_logical_shift_immediates(a, b, mode);
             if (immediate_logic_only) check_immediate_logic(a, b, mode);
@@ -2407,6 +2436,7 @@ int main(int argc, char **argv)
     }
     check_status_restore_chains(a, b);
     check_logical_immediates(a, b);
+    for (unsigned mode = 0; mode < 4; mode++) check_immediate_rounded_multiply(a, b, mode);
     for (unsigned mode = 0; mode < 4; mode++) check_y_long_offset_moves(a, b, mode);
     for (unsigned mode = 0; mode < 4; mode++) check_logical_shift_immediates(a, b, mode);
     for (unsigned mode = 0; mode < 4; mode++) check_immediate_logic(a, b, mode);
