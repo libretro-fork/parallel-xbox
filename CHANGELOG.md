@@ -26,6 +26,8 @@
 
 ## Unreleased
 
+- DSP: compile ANDI/ORI status-byte operations natively, preserving raw CCR/OMR masks and reselecting compiled code after MR scaling/loop changes. Add 81,920 regression boundaries, an independent status oracle and a production program.
+
 - Borrow immutable mapped compressed QCOW2 input during synchronous decompression, avoiding compressed-input staging when the complete range is mapped. Keep the read fallback, writable-image behavior and decompressed cache. Writable HDDs keep their existing input path; no overall throughput gain is claimed.
 
 - Exclude timed common-library wait APIs from the clockless build. Stop requesting 1 ms Windows timer resolution and probing high-resolution thread timers now that core device waits no longer use host deadlines.

@@ -1121,8 +1121,62 @@ static void check_divide_step(Machine *a, Machine *b, unsigned mode)
     }
 }
 
+static void check_status_byte_logic(Machine *a, Machine *b, unsigned mode)
+{
+    static const unsigned status[] = {0, 0xFF, 0x1234, 0xAF7F};
+    static const unsigned omrs[] = {0, 0xC7, 0x38, 0x1234FF};
+    for (unsigned is_or = 0; is_or < 2; is_or++) {
+        for (unsigned sel = 0; sel < 4; sel++) {
+            for (unsigned value = 0; value < 256; value++) {
+                uint32_t op = (is_or ? 0xF8 : 0xB8) | (value << 8) | sel;
+                for (unsigned f = 0; f < ARRAY_SIZE(status); f++) {
+                    unsigned sr = (status[f] & ~(3u << DSP_SR_S0)) |
+                        (mode << DSP_SR_S0) | (1u << DSP_SR_FV);
+                    unsigned expected_sr = sr, expected_omr = omrs[f];
+                    if (sel == 0) expected_sr = is_or ? sr | (value << 8) : sr & ((value << 8) | 255);
+                    if (sel == 1) expected_sr = is_or ? sr | value : sr & (0xFF00 | value);
+                    if (sel == 2) expected_omr = is_or ? omrs[f] | value : omrs[f] & value;
+                    Machine *machines[] = {a, b};
+                    dspjit_test_reset_fallback_count();
+                    for (unsigned engine = 0; engine < 2; engine++) {
+                        Machine *m = machines[engine];
+                        prepare(m, op, 0x30, 1, mode, false);
+                        dsp_core_t *c = m->dsp->backend;
+                        c->registers[DSP_REG_SR] = sr;
+                        c->registers[DSP_REG_OMR] = omrs[f];
+                        c->registers[DSP_REG_LA] = 0xFFF;
+                        c->registers[DSP_REG_LC] = 2;
+                        if (engine == 0) {
+                            m->dsp->ops->step(m->dsp);
+                            c->cycle_count += c->instr_cycle;
+                        } else m->dsp->ops->run(m->dsp, 1);
+                        if (c->registers[DSP_REG_SR] != expected_sr ||
+                            c->registers[DSP_REG_OMR] != expected_omr) {
+                            fprintf(stderr, "status byte engine=%u op=%06x mode=%u sr=%x/%x omr=%x/%x\n",
+                                    engine, op, mode, c->registers[DSP_REG_SR], expected_sr,
+                                    c->registers[DSP_REG_OMR], expected_omr);
+                            exit(1);
+                        }
+                    }
+                    assert(!dspjit_test_fallback_count());
+                    assert(compare_machines(a, b) == 0);
+                    cases++;
+                }
+                static const unsigned contexts[] = {0x20000000, 0x40000, 0x80000};
+                for (unsigned ctx = 0; ctx < ARRAY_SIZE(contexts); ctx++) {
+                    for (unsigned seed = 0; seed < 2; seed++) {
+                        check(a, b, op, 0x30, 0x400000 | 0x1000000 |
+                              contexts[ctx] | (seed ? 9 : 0), mode, seed != 0);
+                    }
+                }
+            }
+        }
+    }
+}
+
 static void check_startup_operations(Machine *a, Machine *b, unsigned mode)
 {
+    check_status_byte_logic(a, b, mode);
     check_divide_step(a, b, mode);
     check_normalize(a, b, mode);
     check_immediate_multiply(a, b, mode);
@@ -1496,6 +1550,7 @@ int main(int argc, char **argv)
     bool relative_only = argc == 2 && !strcmp(argv[1], "--relative");
     bool loops_only = argc == 2 && !strcmp(argv[1], "--loops");
     bool compare_only = argc == 2 && !strcmp(argv[1], "--compare");
+    bool byte_logic_only = argc == 2 && !strcmp(argv[1], "--status-byte");
     bool divide_only = argc == 2 && !strcmp(argv[1], "--divide");
     bool normalize_only = argc == 2 && !strcmp(argv[1], "--normalize");
     bool multiply_only = argc == 2 && !strcmp(argv[1], "--multiply");
@@ -1506,8 +1561,8 @@ int main(int argc, char **argv)
     bool effective_only = argc == 2 && !strcmp(argv[1], "--effective-control");
     bool startup_only = argc == 2 && !strcmp(argv[1], "--startup");
     bool program_only = argc == 2 && !strcmp(argv[1], "--program");
-    if (argc != 1 && !relative_only && !loops_only && !program_only && !compare_only && !startup_only && !effective_only && !register_only && !program_control_only && !peripheral_only && !program_peripheral_only && !multiply_only && !normalize_only && !divide_only) {
-        fputs("usage: dspnative [--relative|--loops|--program|--compare|--startup|--effective-control|--register-control|--program-control|--peripheral-control|--program-peripheral|--multiply|--normalize|--divide]\n", stderr);
+    if (argc != 1 && !relative_only && !loops_only && !program_only && !compare_only && !startup_only && !effective_only && !register_only && !program_control_only && !peripheral_only && !program_peripheral_only && !multiply_only && !normalize_only && !divide_only && !byte_logic_only) {
+        fputs("usage: dspnative [--relative|--loops|--program|--compare|--startup|--effective-control|--register-control|--program-control|--peripheral-control|--program-peripheral|--multiply|--normalize|--divide|--status-byte]\n", stderr);
         return 2;
     }
     Machine *a = machine_new(false), *b = machine_new(true);
@@ -1521,8 +1576,9 @@ int main(int argc, char **argv)
 #ifdef _WIN32
     assert(initially_committed == (64u << 10));
 #endif
-    if (relative_only || loops_only || program_only || compare_only || startup_only || effective_only || register_only || program_control_only || peripheral_only || program_peripheral_only || multiply_only || normalize_only || divide_only) {
+    if (relative_only || loops_only || program_only || compare_only || startup_only || effective_only || register_only || program_control_only || peripheral_only || program_peripheral_only || multiply_only || normalize_only || divide_only || byte_logic_only) {
         for (unsigned mode = 0; mode < 4; mode++) {
+            if (byte_logic_only) check_status_byte_logic(a, b, mode);
             if (divide_only) check_divide_step(a, b, mode);
             if (normalize_only) check_normalize(a, b, mode);
             if (multiply_only) check_immediate_multiply(a, b, mode);

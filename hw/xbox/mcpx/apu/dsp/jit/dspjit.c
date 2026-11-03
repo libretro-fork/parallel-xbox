@@ -1971,6 +1971,8 @@ enum {
     NP_LUA,
     NP_LUA_REL,
     NP_ALU_IMM,         /* add/cmp/and #, asl/asr #ii: an AluOp (np_alu) */
+    NP_STATUS_IMM,      /* raw ANDI/ORI CCR or OMR byte logic */
+    NP_STATUS_MODE,     /* MR byte logic: retire and reselect scale/LF */
     NP_DIV,             /* one non-restoring divide step */
     NP_NORM,            /* flag-controlled shift and 16-bit Rn update */
     NP_MOVEP_EA,        /* movep [X or Y]:ea <-> [X or Y]:pp */
@@ -2097,6 +2099,10 @@ static int np_kind(const Insn *in)
                !((reg == DSP_REG_A || reg == DSP_REG_B) && bit >= 24)
                ? NP_BIT_REG : NP_NONE;
     }
+    if (!strcmp(name, "andi #xx, D") || !strcmp(name, "ori #xx, D")) {
+        unsigned sel = in->inst & 3;
+        return sel == 3 ? NP_NOP : sel == 0 ? NP_STATUS_MODE : NP_STATUS_IMM;
+    }
     if (!strcmp(name, "div S, D")) return NP_DIV;
     if (!strcmp(name, "norm Rn, D")) return NP_NORM;
     if (!strcmp(name, "movec #xx, D1")) {
@@ -2167,6 +2173,24 @@ static void emit_nonparallel(Tr *t, const Insn *in, int kind)
     uint32_t inst = in->inst;
 
     switch (kind) {
+    case NP_STATUS_MODE:
+    case NP_STATUS_IMM: {
+        unsigned sel = inst & 3;
+        uint32_t value = (inst >> 8) & 255;
+        int reg = sel == 2 ? DSP_REG_OMR : DSP_REG_SR;
+        if (sel != 2) emit_flags_flush(t);
+        h_ld32(e, T0, REG_CORE, REGOFF(reg));
+        if (inst & 0x40) {
+            h_or_ri(e, 0, T0, sel == 0 ? value << 8 : value);
+        } else {
+            uint32_t mask = sel == 0 ? (value << 8) | 255 :
+                            sel == 1 ? 0xFF00 | value : value;
+            h_and_ri(e, 0, T0, mask);
+        }
+        /* Byte logic is raw: MOVEC's writable-bit masks do not apply. */
+        h_st32(e, REG_CORE, REGOFF(reg), T0);
+        break;
+    }
     case NP_DIV: {
         static const int sources[] = {DSP_REG_X0, DSP_REG_Y0, DSP_REG_X1, DSP_REG_Y1};
         unsigned d = (inst >> 3) & 1;
@@ -3568,7 +3592,8 @@ retry:
         if (insn_native(&in)) {
             emit_native(t, &in);
             if (np_kind(&in) == NP_MOVEC_SPECIAL || np_kind(&in) == NP_MOVEM_P_SPECIAL ||
-                np_kind(&in) == NP_MOVEP_SPECIAL || np_kind(&in) == NP_MOVEP_P) {
+                np_kind(&in) == NP_MOVEP_SPECIAL || np_kind(&in) == NP_MOVEP_P ||
+                np_kind(&in) == NP_STATUS_MODE) {
                 /* Control transfers may change scale/LF, stack state or LC.
                  * Post once, then select the resulting cache identity. */
                 acc_spill_all(t, false);
@@ -3696,7 +3721,7 @@ retry:
     t->cyc = 0;
     if (np_kind(&in) == NP_MOVEM_P_WRITE || np_kind(&in) == NP_MOVEC_SPECIAL ||
         np_kind(&in) == NP_MOVEM_P_SPECIAL || np_kind(&in) == NP_MOVEP_SPECIAL ||
-        np_kind(&in) == NP_MOVEP_P) {
+        np_kind(&in) == NP_MOVEP_P || np_kind(&in) == NP_STATUS_MODE) {
         /* P writes can replace REP's body; control writes can change its
          * count, mode or stack. Retire once and redispatch updated state. */
         if (np_kind(&in) == NP_MOVEM_P_WRITE) {
