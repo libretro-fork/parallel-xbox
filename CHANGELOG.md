@@ -29,6 +29,8 @@
 
 ## Unreleased
 
+- DSP: detect every sign transition during arithmetic left shifts and set sticky L for overflow rather than discarded one bits. Fix interpreter/JIT ASL and shared NORM, DIV and shift-left/add-subtract flags. Add 9,600 independent cases and strengthen the bit-at-a-time shift oracle and production status readbacks.
+
 - DSP: preserve carry through every NORM path in both interpreter and JIT, including no-op and REP iterations. Strengthen the independent status oracle and add 40 NORM-to-ADC result regressions so lost carry cannot silently affect following arithmetic.
 
 - DSP: preserve the sign of negative accumulators in arithmetic right shifts in both interpreter and JIT, including immediate ASR, NORM and ADDR/SUBR. Clear upper SR bookkeeping bits on single-bit/combined arithmetic paths. Add 9,600 independent checks, strengthen the shift/NORM oracles and add a negative REP/DO production program.

@@ -1347,7 +1347,7 @@ static void emit_alu(Tr *t, const AluOp *a)
         acc_load(t, a->d ^ 1);
         h_mov_rr(e, 1, T3, acc);
         if (left) {
-            /* dsp_asl56: C = L = bit 55, V = bit 55 ^ bit 54 */
+            /* dsp_asl56: C = bit 55; V and sticky L record sign overflow. */
             h_mov_rr(e, 1, T0, acc);
             h_shr_ri(e, 1, T0, 55);
             h_and_ri(e, 0, T0, 1);
@@ -1356,8 +1356,9 @@ static void emit_alu(Tr *t, const AluOp *a)
             h_xor_rr(e, 0, T1, T0);
             h_and_ri(e, 0, T1, 1);
             h_shl_ri(e, 0, T1, DSP_SR_V);
-            h_or_rr(e, 0, T1, T0);
-            h_shl_ri(e, 0, T0, DSP_SR_L);
+            h_mov_rr(e, 0, T2, T1);
+            h_shl_ri(e, 0, T2, DSP_SR_L - DSP_SR_V);
+            h_or_rr(e, 0, T1, T2);
             h_or_rr(e, 0, T1, T0);
             h_shl_ri(e, 1, T3, 9);
             h_sar_ri(e, 1, T3, 8);
@@ -1430,7 +1431,7 @@ static void emit_alu(Tr *t, const AluOp *a)
 
     case OP_ASL:
         acc_load(t, a->d);
-        /* dsp_asl56: C = L = bit 55, V = bit 55 ^ bit 54 */
+        /* dsp_asl56: C = bit 55; V and sticky L record sign overflow. */
         h_mov_rr(e, 1, T0, acc);
         h_shr_ri(e, 1, T0, 55);
         h_and_ri(e, 0, T0, 1);
@@ -1441,17 +1442,17 @@ static void emit_alu(Tr *t, const AluOp *a)
         h_shl_ri(e, 0, T2, DSP_SR_V);
         h_mov_rr(e, 0, T4, T0);
         h_or_rr(e, 0, T4, T2);
-        h_shl_ri(e, 0, T0, DSP_SR_L);
+        h_mov_rr(e, 0, T0, T2);
+        h_shl_ri(e, 0, T0, DSP_SR_L - DSP_SR_V);
         h_or_rr(e, 0, T4, T0);
         h_shl_ri(e, 1, acc, 9);
         h_sar_ri(e, 1, acc, 8);
         acc_written(t, a->d);
-        emit_sr_result(t, SR_EUNZ | SR_V | SR_C, T4, acc, a->d);
+        emit_sr_result(t, SR_EUNZ | SR_V | SR_C | 0xFFFF0000u, T4, acc, a->d);
         break;
 
     case OP_ASL_N: {
-        /* dsp_asl56 by n: C = bit 56-n, L = any of the bits from it up,
-         * V = bit 55 changed */
+        /* C is the last bit lost; V/L remember every sign transition. */
         int n = a->shift;
         acc_load(t, a->s);
         h_mov_rr(e, 1, T0, acc_reg(a->s));
@@ -1466,17 +1467,23 @@ static void emit_alu(Tr *t, const AluOp *a)
             /* Every source bit is discarded; the last shifted bit is zero. */
             h_mov_ri(e, T4, 0);
         }
-        h_test_rr(e, 1, T2, T2);
-        h_setcc(e, HC_NE, T2);
-        h_shl_ri(e, 0, T2, DSP_SR_L);
+        h_mov_rr(e, 1, T2, acc_reg(a->s));
+        if (n < 56) {
+            /* All traversed sign bits must be uniform: signed 0 or -1. */
+            h_sar_ri(e, 1, T2, 55 - n);
+            h_add_ri(e, 1, T2, 1);
+            h_cmp_ri(e, 1, T2, 1);
+            h_setcc(e, HC_A, T2);
+        } else {
+            h_test_rr(e, 1, T2, T2);
+            h_setcc(e, HC_NE, T2);
+        }
+        h_shl_ri(e, 0, T2, DSP_SR_V);
+        h_or_rr(e, 0, T4, T2);
+        h_shl_ri(e, 0, T2, DSP_SR_L - DSP_SR_V);
         h_or_rr(e, 0, T4, T2);
         h_shl_ri(e, 1, T0, n);
         emit_sext56(e, T0);
-        h_mov_rr(e, 1, T2, T0);
-        h_xor_rr(e, 1, T2, acc_reg(a->s));
-        h_shr_ri(e, 1, T2, 55 - DSP_SR_V);
-        h_and_ri(e, 0, T2, SR_V);
-        h_or_rr(e, 0, T4, T2);
         h_mov_rr(e, 1, acc, T0);
         acc_written(t, a->d);
         emit_sr_result(t, SR_EUNZ | SR_V | SR_C | 0xFFFF0000u, T4, acc, a->d);
@@ -2219,15 +2226,13 @@ static void emit_nonparallel(Tr *t, const Insn *in, int kind)
         h_mov_rr(e, 1, T3, acc);
         h_shl_ri(e, 1, T3, 1);
         emit_sext56(e, T3);
-        /* Only the initial shift contributes V/L. L is its discarded bit. */
+        /* Only the initial shift contributes V and sticky overflow L. */
         h_mov_rr(e, 1, V2, acc);
-        h_shr_ri(e, 1, V2, 55);
-        h_and_ri(e, 0, V2, 1);
-        h_shl_ri(e, 0, V2, DSP_SR_L);
-        h_mov_rr(e, 1, T0, acc);
-        h_xor_rr(e, 1, T0, T3);
-        h_shr_ri(e, 1, T0, 55 - DSP_SR_V);
-        h_and_ri(e, 0, T0, SR_V);
+        h_xor_rr(e, 1, V2, T3);
+        h_shr_ri(e, 1, V2, 55 - DSP_SR_V);
+        h_and_ri(e, 0, V2, SR_V);
+        h_mov_rr(e, 0, T0, V2);
+        h_shl_ri(e, 0, T0, DSP_SR_L - DSP_SR_V);
         h_or_rr(e, 0, V2, T0);
         h_ld32(e, T1, REG_CORE, REGOFF(sources[(inst >> 4) & 3]));
         h_shl_ri(e, 1, T1, 40);
@@ -2266,14 +2271,8 @@ static void emit_nonparallel(Tr *t, const Insn *in, int kind)
         h_and_ri(e, 0, T0, SR_U | SR_Z);
         h_cmp_ri(e, 0, T0, SR_U);
         size_t unchanged = h_jcc(e, HC_NE);
-        /* ASL shares doubling's C/V; L records the shifted-out sign bit. */
+        /* Doubling supplies ASL's V/L overflow flags; NORM preserves C. */
         emit_addsub56(e, acc, acc, false);
-        h_and_ri(e, 0, T4, ~SR_L);
-        h_mov_rr(e, 0, T0, T4);
-        h_and_ri(e, 0, T0, SR_C);
-        h_shl_ri(e, 0, T0, DSP_SR_L);
-        h_or_rr(e, 0, T4, T0);
-        /* Discard the helper carry after extracting the left-shift L bit. */
         h_and_ri(e, 0, T4, ~SR_C);
         h_ld32(e, T0, REG_CORE, REGOFF(r));
         h_add_ri(e, 0, T0, -1);

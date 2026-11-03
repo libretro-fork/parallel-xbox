@@ -424,25 +424,26 @@ static void check_immediate_shift_boundaries(Machine *a, Machine *b, unsigned mo
                         (src << 7) | (shift << 1) | dst;
                     for (unsigned v = 0; v < ARRAY_SIZE(values); v++) {
                         uint64_t value = values[v];
-                        uint64_t result = (value << shift) & mask;
-                        unsigned carry = shift <= 56 ? (value >> (56 - shift)) & 1 : 0;
-                        if (right) {
-                            /* Independent bit-at-a-time arithmetic oracle. */
-                            result = value;
-                            carry = 0;
-                            for (unsigned bit = 0; bit < shift; bit++) {
+                        uint64_t result = value;
+                        unsigned carry = 0, overflow = 0;
+                        /* Independent bit-at-a-time oracle: overflow remembers
+                         * every sign transition, not just the final sign. */
+                        for (unsigned bit = 0; bit < shift; bit++) {
+                            if (right) {
                                 carry = result & 1;
                                 result = (result >> 1) | (result & UINT64_C(0x80000000000000));
+                            } else {
+                                uint64_t next = (result << 1) & mask;
+                                carry = result >> 55;
+                                overflow |= ((result ^ next) >> 55) != 0;
+                                result = next;
                             }
                         }
-                        unsigned lost = !right && (shift <= 56 ?
-                            (value >> (56 - shift)) != 0 : value != 0);
-                        unsigned overflow = !right && ((value ^ result) >> 55) != 0;
                         for (unsigned f = 0; f < ARRAY_SIZE(profiles); f++) {
                             uint32_t sr = (profiles[f] & ~((3u << DSP_SR_S0) | (1u << DSP_SR_LF))) |
                                 (mode << DSP_SR_S0);
                             uint32_t expected = (sr & 0xFFFF & ~0x3F) | carry |
-                                (overflow << DSP_SR_V) | (lost << DSP_SR_L);
+                                (overflow << DSP_SR_V) | (overflow << DSP_SR_L);
                             if (mode != 3) {
                                 unsigned bit = mode == 1 ? 48 : mode == 2 ? 46 : 47;
                                 uint64_t upper = result >> bit;
@@ -565,6 +566,80 @@ static void check_signed_right_operations(Machine *a, Machine *b, unsigned mode)
                                 ((uint64_t)c->registers[DSP_REG_A2 + d] << 48);
                             if (got != result || c->registers[DSP_REG_SR] != expected) {
                                 fprintf(stderr, "signed right oracle: engine=%u op=%x value=%llx source=%llx result=%llx/%llx SR=%x/%x\n",
+                                        engine, opcodes[op], (unsigned long long)value, (unsigned long long)source,
+                                        (unsigned long long)got, (unsigned long long)result,
+                                        c->registers[DSP_REG_SR], expected);
+                                exit(1);
+                            }
+                        }
+                        assert(!dspjit_test_fallback_count());
+                        assert(compare_machines(a, b) == 0);
+                        cases++;
+                    }
+                }
+            }
+        }
+    }
+}
+
+static void check_left_shift_operations(Machine *a, Machine *b, unsigned mode)
+{
+    static const uint64_t values[] = {
+        0xFFFFFFFFFFFFFF, 0, 1, 2, 0xFFFFFF, 0x1000000,
+        0x7FFFFFFFFFFFFF, 0x80000000000000, 0x80000000000001,
+        0x00800000800000, 0x007FFFFF123456, 0xFF000000FFFFFF
+    };
+    static const uint32_t profiles[] = {0, 0xFF, 0x100FF, 0x2080};
+    static const uint32_t opcodes[] = {0x32, 0x12, 0x16}; /* ASL, ADDL, SUBL */
+    const uint64_t mask = UINT64_C(0xFFFFFFFFFFFFFF);
+    const uint64_t sign = UINT64_C(0x80000000000000);
+    Machine *machines[] = {a, b};
+    for (unsigned op = 0; op < ARRAY_SIZE(opcodes); op++) {
+        for (unsigned d = 0; d < 2; d++) {
+            for (unsigned v = 0; v < ARRAY_SIZE(values); v++) {
+                for (unsigned other = 0; other < (op ? ARRAY_SIZE(values) : 1); other++) {
+                    uint64_t value = values[v], source = values[other];
+                    uint64_t shifted = (value << 1) & mask;
+                    uint64_t result = op == 0 ? shifted :
+                        op == 1 ? (shifted + source) & mask : (shifted - source) & mask;
+                    bool overflow = ((value ^ shifted) & sign) != 0;
+                    overflow |= op == 1 ? (~(shifted ^ source) & (shifted ^ result) & sign) != 0 :
+                        op == 2 ? ((shifted ^ source) & (shifted ^ result) & sign) != 0 : false;
+                    unsigned carry = (value >> 55) | (op == 1 ? shifted + source > mask :
+                                                    op == 2 ? shifted < source : false);
+                    for (unsigned f = 0; f < ARRAY_SIZE(profiles); f++) {
+                        uint32_t sr = profiles[f] | (mode << DSP_SR_S0);
+                        uint32_t expected = (sr & 0xFFFF & ~0x3F) | carry |
+                            (overflow << DSP_SR_V) | (overflow << DSP_SR_L);
+                        if (mode != 3) {
+                            unsigned bit = mode == 1 ? 48 : mode == 2 ? 46 : 47;
+                            uint64_t upper = result >> bit;
+                            unsigned pair = (result >> (bit - 1)) & 3;
+                            expected |= ((upper != 0 && upper != (mask >> bit)) << DSP_SR_E) |
+                                ((pair == 0 || pair == 3) << DSP_SR_U) |
+                                ((result == 0) << DSP_SR_Z) | (((result >> 55) & 1) << DSP_SR_N);
+                        }
+                        dspjit_test_reset_fallback_count();
+                        for (unsigned engine = 0; engine < 2; engine++) {
+                            Machine *m = machines[engine];
+                            prepare(m, 0x200000 | opcodes[op] | (d << 3), 0, 1, mode, false);
+                            dsp_core_t *c = m->dsp->backend;
+                            c->registers[DSP_REG_SR] = sr;
+                            c->registers[DSP_REG_A0 + d] = value & 0xFFFFFF;
+                            c->registers[DSP_REG_A1 + d] = (value >> 24) & 0xFFFFFF;
+                            c->registers[DSP_REG_A2 + d] = value >> 48;
+                            c->registers[DSP_REG_A0 + (d ^ 1)] = source & 0xFFFFFF;
+                            c->registers[DSP_REG_A1 + (d ^ 1)] = (source >> 24) & 0xFFFFFF;
+                            c->registers[DSP_REG_A2 + (d ^ 1)] = source >> 48;
+                            if (engine == 0) {
+                                m->dsp->ops->step(m->dsp);
+                                c->cycle_count += c->instr_cycle;
+                            } else m->dsp->ops->run(m->dsp, 1);
+                            uint64_t got = c->registers[DSP_REG_A0 + d] |
+                                ((uint64_t)c->registers[DSP_REG_A1 + d] << 24) |
+                                ((uint64_t)c->registers[DSP_REG_A2 + d] << 48);
+                            if (got != result || c->registers[DSP_REG_SR] != expected) {
+                                fprintf(stderr, "left shift oracle: engine=%u op=%x value=%llx source=%llx result=%llx/%llx SR=%x/%x\n",
                                         engine, opcodes[op], (unsigned long long)value, (unsigned long long)source,
                                         (unsigned long long)got, (unsigned long long)result,
                                         c->registers[DSP_REG_SR], expected);
@@ -1338,7 +1413,6 @@ static void check_normalize(Machine *a, Machine *b, unsigned mode)
                     bool left = !e && u && !z, right = e;
                     uint64_t old = values[v];
                     uint64_t result = left ? (old * 2) & mask : right ? (old >> 1) | (old & UINT64_C(0x80000000000000)) : old;
-                    unsigned carry_out = left ? old >> 55 : right ? old & 1 : 0;
                     bool overflow = left && ((old ^ result) & (UINT64_C(1) << 55));
                     for (unsigned ar = 0; ar < ARRAY_SIZE(addresses); ar++) {
                         unsigned address = (addresses[ar] + (right ? 1 : left ? -1 : 0)) & 0xFFFF;
@@ -1348,7 +1422,7 @@ static void check_normalize(Machine *a, Machine *b, unsigned mode)
                                     (sticky << DSP_SR_L) | (e << DSP_SR_E) |
                                     (u << DSP_SR_U) | (z << DSP_SR_Z) | (1u << DSP_SR_FV);
                                 unsigned expected = (sr & 0xFFFF & ~0x3E) |
-                                    (overflow << DSP_SR_V) | ((left && carry_out) << DSP_SR_L);
+                                    (overflow << DSP_SR_V) | (overflow << DSP_SR_L);
                                 if (mode != 3) {
                                     unsigned bit = mode == 1 ? 48 : mode == 2 ? 46 : 47;
                                     uint64_t upper = result >> bit;
@@ -1436,7 +1510,7 @@ static void check_divide_step(Machine *a, Machine *b, unsigned mode)
                                     (sticky << DSP_SR_L) | (1u << DSP_SR_FV);
                                 unsigned expected = (sr & 0xFFFF & ~3u) |
                                     ((result & sign) == 0) | (overflow << DSP_SR_V) |
-                                    (((old & sign) != 0) << DSP_SR_L);
+                                    (overflow << DSP_SR_L);
                                 Machine *machines[] = {a, b};
                                 dspjit_test_reset_fallback_count();
                                 for (unsigned engine = 0; engine < 2; engine++) {
@@ -1662,6 +1736,7 @@ static void check_speculative_decode(void)
 
 static void check_startup_operations(Machine *a, Machine *b, unsigned mode)
 {
+    check_left_shift_operations(a, b, mode);
     check_signed_right_operations(a, b, mode);
     check_immediate_shift_boundaries(a, b, mode);
     check_offset_control_moves(a, b, mode);
@@ -2041,6 +2116,7 @@ int main(int argc, char **argv)
     bool relative_only = argc == 2 && !strcmp(argv[1], "--relative");
     bool loops_only = argc == 2 && !strcmp(argv[1], "--loops");
     bool compare_only = argc == 2 && !strcmp(argv[1], "--compare");
+    bool left_flags_only = argc == 2 && !strcmp(argv[1], "--left-flags");
     bool signed_right_only = argc == 2 && !strcmp(argv[1], "--signed-right");
     bool shifts_only = argc == 2 && !strcmp(argv[1], "--shift-boundaries");
     bool offset_control_only = argc == 2 && !strcmp(argv[1], "--offset-control");
@@ -2057,8 +2133,8 @@ int main(int argc, char **argv)
     bool effective_only = argc == 2 && !strcmp(argv[1], "--effective-control");
     bool startup_only = argc == 2 && !strcmp(argv[1], "--startup");
     bool program_only = argc == 2 && !strcmp(argv[1], "--program");
-    if (argc != 1 && !relative_only && !loops_only && !program_only && !compare_only && !startup_only && !effective_only && !register_only && !program_control_only && !peripheral_only && !program_peripheral_only && !multiply_only && !normalize_only && !divide_only && !byte_logic_only && !memory_bits_only && !control_bits_only && !offset_control_only && !shifts_only && !signed_right_only) {
-        fputs("usage: dspnative [--relative|--loops|--program|--compare|--startup|--effective-control|--register-control|--program-control|--peripheral-control|--program-peripheral|--multiply|--normalize|--divide|--status-byte|--memory-bits|--control-bits|--offset-control|--shift-boundaries|--signed-right]\n", stderr);
+    if (argc != 1 && !relative_only && !loops_only && !program_only && !compare_only && !startup_only && !effective_only && !register_only && !program_control_only && !peripheral_only && !program_peripheral_only && !multiply_only && !normalize_only && !divide_only && !byte_logic_only && !memory_bits_only && !control_bits_only && !offset_control_only && !shifts_only && !signed_right_only && !left_flags_only) {
+        fputs("usage: dspnative [--relative|--loops|--program|--compare|--startup|--effective-control|--register-control|--program-control|--peripheral-control|--program-peripheral|--multiply|--normalize|--divide|--status-byte|--memory-bits|--control-bits|--offset-control|--shift-boundaries|--signed-right|--left-flags]\n", stderr);
         return 2;
     }
     Machine *a = machine_new(false), *b = machine_new(true);
@@ -2073,8 +2149,14 @@ int main(int argc, char **argv)
     assert(initially_committed == (64u << 10));
 #endif
     check_speculative_decode();
-    if (relative_only || loops_only || program_only || compare_only || startup_only || effective_only || register_only || program_control_only || peripheral_only || program_peripheral_only || multiply_only || normalize_only || divide_only || byte_logic_only || memory_bits_only || control_bits_only || offset_control_only || shifts_only || signed_right_only) {
+    if (relative_only || loops_only || program_only || compare_only || startup_only || effective_only || register_only || program_control_only || peripheral_only || program_peripheral_only || multiply_only || normalize_only || divide_only || byte_logic_only || memory_bits_only || control_bits_only || offset_control_only || shifts_only || signed_right_only || left_flags_only) {
         for (unsigned mode = 0; mode < 4; mode++) {
+            if (left_flags_only) {
+                check_left_shift_operations(a, b, mode);
+                check_immediate_shift_boundaries(a, b, mode);
+                check_normalize(a, b, mode);
+                check_divide_step(a, b, mode);
+            }
             if (signed_right_only) {
                 check_signed_right_operations(a, b, mode);
                 check_immediate_shift_boundaries(a, b, mode);

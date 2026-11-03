@@ -1,4 +1,4 @@
-; All immediate shift counts: zero/wide, cross accumulators, flags, REP, DO and scaling.
+; Immediate shifts: intermediate overflow, sticky L, zero/wide, REP/DO and saved status.
         dd 0x0A8581 ; P:00
         dd 0x000000 ; P:01
         dd 0x08F485 ; P:02
@@ -53,10 +53,34 @@
         dd 0x052720 ; P:33
         dd 0x0602A0 ; P:34
         dd 0x0C1D7F ; P:35
-        dd 0x67F400 ; P:36
-        dd 0x001400 ; P:37
-        dd 0x565F00 ; P:38
-        dd 0x08F484 ; P:39
-        dd 0x000001 ; P:3A
-        dd 0x0AF080 ; P:3B
-        dd 0x000000 ; P:3C
+        dd 0x200013 ; P:36
+        dd 0x0540AA ; P:37
+        dd 0x0500B9 ; P:38
+        dd 0x0C1D05 ; P:39
+        dd 0x0460B9 ; P:3A
+        dd 0x052820 ; P:3B
+        dd 0x05FFAA ; P:3C
+        dd 0x05F40C ; P:3D
+        dd 0xFFFFFF ; P:3E
+        dd 0x05F408 ; P:3F
+        dd 0xFFFFFF ; P:40
+        dd 0x0500B9 ; P:41
+        dd 0x0C1D03 ; P:42
+        dd 0x0460B9 ; P:43
+        dd 0x052920 ; P:44
+        dd 0x0040F9 ; P:45
+        dd 0x0C1D01 ; P:46
+        dd 0x0460B9 ; P:47
+        dd 0x052A20 ; P:48
+        dd 0x0500B9 ; P:49
+        dd 0x0603A0 ; P:4A
+        dd 0x0C1D05 ; P:4B
+        dd 0x0460B9 ; P:4C
+        dd 0x052B20 ; P:4D
+        dd 0x67F400 ; P:4E
+        dd 0x001400 ; P:4F
+        dd 0x565F00 ; P:50
+        dd 0x08F484 ; P:51
+        dd 0x000001 ; P:52
+        dd 0x0AF080 ; P:53
+        dd 0x000000 ; P:54
