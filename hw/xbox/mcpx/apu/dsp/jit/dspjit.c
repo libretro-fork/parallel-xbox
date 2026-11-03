@@ -3161,6 +3161,21 @@ static bool emit_control(Tr *t, const Insn *in)
         return true;
     }
 
+    if (!strcmp(name, "bcc Rn") || !strcmp(name, "bra Rn")) {
+        acc_spill_all(t, false);
+        if (name[1] == 'c') {
+            emit_cc(e, inst & 15);
+            size_t taken = h_jcc(e, HC_NE);
+            emit_exit_to(t, in, in->next, 2);
+            h_patch(e, taken, e->len);
+        }
+        h_ld32(e, EA1, REG_CORE, REGOFF(DSP_REG_R0 + ((inst >> 8) & 7)));
+        h_add_ri(e, 0, EA1, at);
+        h_and_ri(e, 0, EA1, 0xFFFFFF);
+        emit_exit_to_reg(t, in, EA1, 2);
+        return true;
+    }
+
     if (!strcmp(name, "bcc xxxx") || !strcmp(name, "bcc xxx") ||
         !strcmp(name, "bra xxxx") || !strcmp(name, "bra xxx")) {
         uint32_t target;

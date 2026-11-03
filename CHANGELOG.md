@@ -29,6 +29,8 @@
 
 ## Unreleased
 
+- Execute register-relative BRA and conditional Bcc in the interpreter and native DSP JIT. Add independent checks for all condition codes and CCR values, current-PC targets, address wrap, preserved registers and single retirement at DO boundaries, plus interrupt and frame regressions.
+
 - Execute both PC-relative address load (LRA) forms in the interpreter and native DSP JIT. Add independent current-PC, address-wrap, width, alias and flag-preservation checks, plus REP and deferred-flag coverage in CI.
 
 - Execute immediate signed multiply-and-round (MPYRI) in the interpreter and native DSP JIT. Add an independent nearest-even oracle for signed products, scaling, halfway cases and flags, plus REP and rewritten-extension coverage in CI.

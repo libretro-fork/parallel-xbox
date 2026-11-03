@@ -345,6 +345,20 @@ static void dis_asr_imm(dsp_core_t* dsp)
         registers_name[D ? DSP_REG_B : DSP_REG_A]);
 }
 
+static void dis_bcc_reg(dsp_core_t* dsp)
+{
+    char condition[16];
+    dis_calc_cc(dsp, dsp->disasm_cur_inst & 15, condition);
+    sprintf(dsp->disasm_str_instr, "b%s %s", condition,
+            registers_name[DSP_REG_R0 + ((dsp->disasm_cur_inst >> 8) & 7)]);
+}
+
+static void dis_bra_reg(dsp_core_t* dsp)
+{
+    sprintf(dsp->disasm_str_instr, "bra %s",
+            registers_name[DSP_REG_R0 + ((dsp->disasm_cur_inst >> 8) & 7)]);
+}
+
 static void dis_bcc_long(dsp_core_t* dsp) {
     dsp->disasm_cur_inst_len++;
 

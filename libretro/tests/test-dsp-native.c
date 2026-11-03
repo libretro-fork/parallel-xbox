@@ -2176,6 +2176,95 @@ static void check_loop_address_reload(Machine *a, Machine *b)
     }
 }
 
+static bool register_branch_condition(unsigned cc, unsigned sr)
+{
+    bool c = sr & 1, v = sr & 2, z = sr & 4, n = sr & 8;
+    bool u = sr & 16, e = sr & 32, l = sr & 64;
+    bool conditions[] = {!c, n == v, !z, !n, !z && (u || e), !e, !l,
+                         !z && n == v, c, n != v, z, n, z || (!u && !e), e, l,
+                         z || n != v, true};
+    return conditions[cc];
+}
+
+static void check_register_relative_branches(Machine *a, Machine *b, unsigned mode)
+{
+    static const uint32_t pcs[] = {0, 1, 0x30, 0x7FE};
+    static const uint32_t offsets[] = {0, 1, 2, 0x20, 0x7FFFFF, 0x800000, 0xFFFFE0, 0xFFFFFF};
+    for (unsigned n = 0; n < 8; n++) {
+        for (unsigned cc = 0; cc <= 16; cc++) {
+            uint32_t op = (cc == 16 ? 0x0D18C0 : 0x0D1840 | cc) | (n << 8);
+            for (unsigned flags = 0; flags < 256; flags++) {
+                uint32_t pc = pcs[(flags >> 6) & 3];
+                uint32_t offset = offsets[(flags + n) & 7];
+                uint32_t target = register_branch_condition(cc, flags) ? (pc + offset) & 0xFFFFFF : pc + 1;
+                Machine *machines[] = {a, b};
+                dspjit_test_reset_fallback_count();
+                for (unsigned engine = 0; engine < 2; engine++) {
+                    Machine *m = machines[engine];
+                    prepare(m, op, 0, 1, mode, false);
+                    dsp_core_t *c = m->dsp->backend;
+                    c->pc = pc;
+                    c->registers[DSP_REG_R0 + n] = offset;
+                    c->registers[DSP_REG_SR] = (mode << DSP_SR_S0) | flags | (n & 1 ? 1u << DSP_SR_FV : 0);
+                    uint32_t expected[DSP_REG_MAX];
+                    memcpy(expected, c->registers, sizeof(expected));
+                    m->dsp->ops->write_memory(m->dsp, 'P', pc, op);
+                    if (!engine) {
+                        m->dsp->ops->step(m->dsp);
+                        c->cycle_count += c->instr_cycle;
+                    } else m->dsp->ops->run(m->dsp, 1);
+                    if (c->pc != target || c->cycle_count != 2 ||
+                        memcmp(c->registers, expected, sizeof(expected))) {
+                        fprintf(stderr, "Register branch engine=%u n=%u cc=%u flags=%x pc=%x offset=%x target=%x/%x\n",
+                                engine, n, cc, flags, pc, offset, c->pc, target);
+                        exit(1);
+                    }
+                }
+                if (dspjit_test_fallback_count() || compare_machines(a, b)) {
+                    fputs("Register branch state/fallback regression\n", stderr);
+                    exit(1);
+                }
+                cases++;
+            }
+            static const unsigned contexts[] = {0x20000000, 0x40000, 0x80000};
+            for (unsigned ctx = 0; ctx < ARRAY_SIZE(contexts); ctx++) {
+                for (unsigned seed = 0; seed < 2; seed++)
+                    check(a, b, op, 0x30, 0x400000 | 0x1000000 | contexts[ctx] | seed,
+                          mode, seed != 0);
+            }
+        }
+        /* Both the taken target and the untaken fallthrough can finish DO.
+         * LC must decrement once, then PC resumes at SSH. */
+        for (unsigned path = 0; path < 3; path++) {
+            uint32_t op = (path == 0 ? 0x0D18C0 : 0x0D1840) | (n << 8);
+            Machine *machines[] = {a, b};
+            dspjit_test_reset_fallback_count();
+            for (unsigned engine = 0; engine < 2; engine++) {
+                Machine *m = machines[engine];
+                prepare(m, op, 0, 1, mode, false);
+                dsp_core_t *c = m->dsp->backend;
+                c->registers[DSP_REG_R0 + n] = 0x10;
+                c->registers[DSP_REG_SR] = (mode << DSP_SR_S0) | (1u << DSP_SR_LF) | (path == 2);
+                c->registers[DSP_REG_LA] = path == 2 ? 0 : 0xF;
+                c->registers[DSP_REG_LC] = 2;
+                c->registers[DSP_REG_SSH] = c->stack[0][2] = 0x40;
+                if (!engine) {
+                    m->dsp->ops->step(m->dsp);
+                    c->cycle_count += c->instr_cycle;
+                } else m->dsp->ops->run(m->dsp, 1);
+                if (c->pc != 0x40 || c->registers[DSP_REG_LC] != 1 ||
+                    c->registers[DSP_REG_R0 + n] != 0x10 || c->cycle_count != 2) {
+                    fprintf(stderr, "Register branch DO retirement engine=%u n=%u path=%u pc=%x LC=%u\n",
+                            engine, n, path, c->pc, c->registers[DSP_REG_LC]);
+                    exit(1);
+                }
+            }
+            if (dspjit_test_fallback_count() || compare_machines(a, b)) exit(1);
+            cases++;
+        }
+    }
+}
+
 static void check_relative_branches(Machine *a, Machine *b, unsigned mode)
 {
     static const uint32_t status[] = { 0, 0xFF, 2, 8, 0x10, 0x20, 0x40, 4 };
@@ -2406,6 +2495,7 @@ static void check_program_write_sequences(Machine *a, Machine *b, unsigned mode)
 
 int main(int argc, char **argv)
 {
+    bool register_branches_only = argc == 2 && !strcmp(argv[1], "--register-branches");
     bool pc_relative_only = argc == 2 && !strcmp(argv[1], "--pc-relative-loads");
     bool rounded_multiply_only = argc == 2 && !strcmp(argv[1], "--rounded-multiply");
     bool y_long_only = argc == 2 && !strcmp(argv[1], "--y-long-offset");
@@ -2431,8 +2521,8 @@ int main(int argc, char **argv)
     bool effective_only = argc == 2 && !strcmp(argv[1], "--effective-control");
     bool startup_only = argc == 2 && !strcmp(argv[1], "--startup");
     bool program_only = argc == 2 && !strcmp(argv[1], "--program");
-    if (argc != 1 && !pc_relative_only && !rounded_multiply_only && !y_long_only && !logical_shifts_only && !immediate_logic_only && !relative_only && !loops_only && !program_only && !compare_only && !startup_only && !effective_only && !register_only && !program_control_only && !peripheral_only && !program_peripheral_only && !multiply_only && !normalize_only && !divide_only && !byte_logic_only && !memory_bits_only && !control_bits_only && !offset_control_only && !shifts_only && !signed_right_only && !left_flags_only) {
-        fputs("usage: dspnative [--pc-relative-loads|--rounded-multiply|--y-long-offset|--logical-shifts|--immediate-logic|--relative|--loops|--program|--compare|--startup|--effective-control|--register-control|--program-control|--peripheral-control|--program-peripheral|--multiply|--normalize|--divide|--status-byte|--memory-bits|--control-bits|--offset-control|--shift-boundaries|--signed-right|--left-flags]\n", stderr);
+    if (argc != 1 && !register_branches_only && !pc_relative_only && !rounded_multiply_only && !y_long_only && !logical_shifts_only && !immediate_logic_only && !relative_only && !loops_only && !program_only && !compare_only && !startup_only && !effective_only && !register_only && !program_control_only && !peripheral_only && !program_peripheral_only && !multiply_only && !normalize_only && !divide_only && !byte_logic_only && !memory_bits_only && !control_bits_only && !offset_control_only && !shifts_only && !signed_right_only && !left_flags_only) {
+        fputs("usage: dspnative [--register-branches|--pc-relative-loads|--rounded-multiply|--y-long-offset|--logical-shifts|--immediate-logic|--relative|--loops|--program|--compare|--startup|--effective-control|--register-control|--program-control|--peripheral-control|--program-peripheral|--multiply|--normalize|--divide|--status-byte|--memory-bits|--control-bits|--offset-control|--shift-boundaries|--signed-right|--left-flags]\n", stderr);
         return 2;
     }
     Machine *a = machine_new(false), *b = machine_new(true);
@@ -2447,8 +2537,9 @@ int main(int argc, char **argv)
     assert(initially_committed == (64u << 10));
 #endif
     check_speculative_decode();
-    if (pc_relative_only || rounded_multiply_only || y_long_only || logical_shifts_only || immediate_logic_only || relative_only || loops_only || program_only || compare_only || startup_only || effective_only || register_only || program_control_only || peripheral_only || program_peripheral_only || multiply_only || normalize_only || divide_only || byte_logic_only || memory_bits_only || control_bits_only || offset_control_only || shifts_only || signed_right_only || left_flags_only) {
+    if (register_branches_only || pc_relative_only || rounded_multiply_only || y_long_only || logical_shifts_only || immediate_logic_only || relative_only || loops_only || program_only || compare_only || startup_only || effective_only || register_only || program_control_only || peripheral_only || program_peripheral_only || multiply_only || normalize_only || divide_only || byte_logic_only || memory_bits_only || control_bits_only || offset_control_only || shifts_only || signed_right_only || left_flags_only) {
         for (unsigned mode = 0; mode < 4; mode++) {
+            if (register_branches_only) check_register_relative_branches(a, b, mode);
             if (pc_relative_only) check_pc_relative_loads(a, b, mode);
             if (rounded_multiply_only) check_immediate_rounded_multiply(a, b, mode);
             if (y_long_only) check_y_long_offset_moves(a, b, mode);
@@ -2506,6 +2597,7 @@ int main(int argc, char **argv)
     }
     check_status_restore_chains(a, b);
     check_logical_immediates(a, b);
+    for (unsigned mode = 0; mode < 4; mode++) check_register_relative_branches(a, b, mode);
     for (unsigned mode = 0; mode < 4; mode++) check_pc_relative_loads(a, b, mode);
     for (unsigned mode = 0; mode < 4; mode++) check_immediate_rounded_multiply(a, b, mode);
     for (unsigned mode = 0; mode < 4; mode++) check_y_long_offset_moves(a, b, mode);

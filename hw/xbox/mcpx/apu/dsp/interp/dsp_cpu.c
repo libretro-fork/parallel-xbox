@@ -169,7 +169,7 @@ static const OpcodeEntry nonparallel_opcodes[] = {
     { "0000110000011110011SsssD", "asr S1, S2, D", NULL, NULL },
     { "00001101000100000100CCCC", "bcc xxxx", dis_bcc_long, emu_bcc_long }, //??
     { "00000101CCCC01aaaa0aaaaa", "bcc xxx", dis_bcc_imm, emu_bcc_imm },
-    { "0000110100011RRR0100CCCC", "bcc Rn", NULL, NULL },
+    { "0000110100011RRR0100CCCC", "bcc Rn", dis_bcc_reg, emu_bcc_reg },
     { "0000101101MMMRRR0S00bbbb", "bchg #n, [X or Y]:ea", dis_bchg_ea, emu_bchg_ea, match_MMMRRR },
     { "0000101100aaaaaa0S00bbbb", "bchg #n, [X or Y]:aa", dis_bchg_aa, emu_bchg_aa },
     { "0000101110pppppp0S00bbbb", "bchg #n, [X or Y]:pp", dis_bchg_pp, emu_bchg_pp },
@@ -182,7 +182,7 @@ static const OpcodeEntry nonparallel_opcodes[] = {
     { "0000101011DDDDDD010bbbbb", "bclr #n, D", dis_bclr_reg, emu_bclr_reg },
     { "000011010001000011000000", "bra xxxx", dis_bra_long, emu_bra_long },
     { "00000101000011aaaa0aaaaa", "bra xxx", dis_bra_imm, emu_bra_imm },
-    { "0000110100011RRR11000000", "bra Rn", NULL, NULL },
+    { "0000110100011RRR11000000", "bra Rn", dis_bra_reg, emu_bra_reg },
     { "0000110010MMMRRR0S0bbbbb", "brclr #n, [X or Y]:ea, xxxx", NULL, NULL, match_MMMRRR },
     { "0000110010aaaaaa1S0bbbbb", "brclr #n, [X or Y]:aa, xxxx", NULL, NULL },
     { "0000110011pppppp0S0bbbbb", "brclr #n, [X or Y]:pp, xxxx", dis_brclr_pp, emu_brclr_pp },

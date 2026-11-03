@@ -5993,6 +5993,22 @@ static void emu_asr_imm(dsp_core_t* dsp)
     emu_ccr_update_e_u_n_z(dsp, dest[0], dest[1], dest[2]);
 }
 
+static void emu_bcc_reg(dsp_core_t* dsp)
+{
+    if (emu_calc_cc(dsp, dsp->cur_inst & 15)) {
+        uint32_t n = (dsp->cur_inst >> 8) & 7;
+        dsp->pc = (dsp->pc + dsp->registers[DSP_REG_R0 + n]) & BITMASK(24);
+        dsp->cur_inst_len = 0;
+    }
+}
+
+static void emu_bra_reg(dsp_core_t* dsp)
+{
+    uint32_t n = (dsp->cur_inst >> 8) & 7;
+    dsp->pc = (dsp->pc + dsp->registers[DSP_REG_R0 + n]) & BITMASK(24);
+    dsp->cur_inst_len = 0;
+}
+
 static void emu_bcc_long(dsp_core_t* dsp)
 {
     uint32_t xxxx = read_memory_p(dsp, dsp->pc+1);
