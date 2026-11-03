@@ -29,6 +29,8 @@
 
 ## Unreleased
 
+- DSP: execute register-indirect X/Y DO/DOR loop counts natively, including address updates and single-read peripheral counts.
+
 - DSP: run DO/DOR loops with counts from short X/Y memory addresses in native code, with loop-state regression coverage.
 
 - DSP: execute conditional relative calls and register-relative subroutine calls in the native JIT, with independent stack/return-address regressions.

@@ -3272,8 +3272,14 @@ static bool emit_control(Tr *t, const Insn *in)
 
     if (!strcmp(name, "dor #xxx, label") || !strcmp(name, "dor S, label") ||
         !strcmp(name, "do S, expr") || !strcmp(name, "do [X or Y]:aa, expr") ||
-        !strcmp(name, "dor [X or Y]:aa, label")) {
-        bool from_memory = strstr(name, ":aa,") != NULL;
+        !strcmp(name, "dor [X or Y]:aa, label") ||
+        !strcmp(name, "do [X or Y]:ea, expr") || !strcmp(name, "dor [X or Y]:ea, label")) {
+        bool indirect = strstr(name, ":ea,") != NULL;
+        bool from_memory = indirect || strstr(name, ":aa,") != NULL;
+        /* The endpoint occupies the extension word. Retain the legacy DO
+         * decoder path for its non-indirect encodings. */
+        if (indirect && ((inst >> 11) & 7) == 6) return false;
+        uint32_t before = t->cyc;
         bool from_reg = !from_memory && strcmp(name, "dor #xxx, label") != 0;
         bool absolute = !strncmp(name, "do ", 3);
         unsigned reg = (inst >> 8) & 63;
@@ -3303,8 +3309,14 @@ static bool emit_control(Tr *t, const Insn *in)
         h_or_mem32_imm(e, REG_CORE, REGOFF(DSP_REG_SR), 1 << DSP_SR_LF);
         if (from_memory) {
             /* Memory counts are read once after both stack pushes and LF. */
-            h_mov_ri(e, EA1, (inst >> 8) & 63);
-            emit_read_mem(t, (inst >> 6) & 1, EA1, V1);
+            if (indirect) {
+                Ea ea;
+                emit_calc_ea(t, (inst >> 8) & 63, in->ext, EA1, &ea);
+                emit_read_mem(t, (inst >> 6) & 1, ea_addr_reg(t, &ea), V1);
+            } else {
+                h_mov_ri(e, EA1, (inst >> 8) & 63);
+                emit_read_mem(t, (inst >> 6) & 1, EA1, V1);
+            }
             h_and_ri(e, 0, V1, 0xFFFF);
             h_st32(e, REG_CORE, REGOFF(DSP_REG_LC), V1);
         } else if (!from_reg) {
@@ -3316,15 +3328,17 @@ static bool emit_control(Tr *t, const Insn *in)
             h_and_ri(e, 0, V1, 0xFFFF);
             h_st32(e, REG_CORE, REGOFF(DSP_REG_LC), V1);
         }
-        emit_stack_check(t, in, in->next, 6);
+        uint32_t cycles = 6 + t->cyc - before;
+        t->cyc = before;
+        emit_stack_check(t, in, in->next, cycles);
         /* DOR enables LF. Chain through that identity's stable table;
          * a missing translation still leaves through the normal path. */
         dspjit_block_fn *previous_table = t->table;
         t->table = t->loop_table;
         if (in->next == la + 1) {
-            emit_exit_to(t, in, in->next, 6);
+            emit_exit_to(t, in, in->next, cycles);
         } else {
-            emit_chain_to(t, in->next, t->cyc + 6);
+            emit_chain_to(t, in->next, t->cyc + cycles);
         }
         t->table = previous_table;
         return true;

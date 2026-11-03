@@ -157,6 +157,13 @@ static bool match_MMMRRR(uint32_t op)
     return true;
 }
 
+/* Loop instructions already use their extension word for the endpoint.
+ * DOR ea accepts the seven register-indirect modes, not long/immediate EA. */
+static bool match_loop_indirect(uint32_t op)
+{
+    return ((op >> 11) & 7) != 6;
+}
+
 static const OpcodeEntry nonparallel_opcodes[] = {
     { "0000000101iiiiii1000d000", "add #xx, D", dis_add_imm, emu_add_imm },
     { "00000001010000001100d000", "add #xxxx, D", dis_add_long, emu_add_long },
@@ -234,7 +241,7 @@ static const OpcodeEntry nonparallel_opcodes[] = {
     { "00000110iiiiiiii1000hhhh", "do #xxx, expr", dis_do_imm, emu_do_imm },
     { "0000011011DDDDDD00000000", "do S, expr", dis_do_reg, emu_do_reg },
     { "000000000000001000000011", "do_f", NULL, NULL },
-    { "0000011001MMMRRR0S010000", "dor [X or Y]:ea, label", NULL, NULL, match_MMMRRR },
+    { "0000011001MMMRRR0S010000", "dor [X or Y]:ea, label", dis_dor_ea, emu_dor_ea, match_loop_indirect },
     { "0000011000aaaaaa0S010000", "dor [X or Y]:aa, label", dis_dor_aa, emu_dor_aa },
     { "00000110iiiiiiii1001hhhh", "dor #xxx, label", dis_dor_imm, emu_dor_imm },
     { "0000011011DDDDDD00010000", "dor S, label", dis_dor_reg, emu_dor_reg },

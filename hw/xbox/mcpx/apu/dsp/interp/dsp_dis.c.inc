@@ -918,6 +918,28 @@ static void dis_do_ea(dsp_core_t* dsp)
     );
 }
 
+static void dis_dor_ea(dsp_core_t* dsp)
+{
+    char addr_name[12], name[16];
+    uint32_t ea_mode;
+
+    dsp->disasm_cur_inst_len++;
+
+    ea_mode = (dsp->disasm_cur_inst>>8) & BITMASK(6);
+    dis_calc_ea(dsp, ea_mode, addr_name);
+
+    if (dsp->disasm_cur_inst & (1<<6)) {
+        sprintf(name, "y:%s", addr_name);
+    } else {
+        sprintf(name, "x:%s", addr_name);
+    }
+
+    sprintf(dsp->disasm_str_instr,"dor %s,p:$%04x",
+        name,
+        (dsp->pc + read_memory_p(dsp, dsp->pc+1)) & BITMASK(24)
+    );
+}
+
 static void dis_do_reg(dsp_core_t* dsp)
 {
     dsp->disasm_cur_inst_len++;
