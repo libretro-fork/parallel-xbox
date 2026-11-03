@@ -17,4 +17,5 @@ flags=(root/'Makefile.common').read_text()
 assert '-DRETRO_EVENTCOUNT_FIXED_SPIN=256' in flags
 assert '-DRTHREADS_SCOND_FIXED_SPIN=256' in flags
 assert 'retro_eventcount_commit_wait_timeout' not in (root/'hw/xbox/nv2a/pfifo.c').read_text()
+assert 'g_usleep(' not in (root/'chardev/char.c').read_text()
 print(f'Clock audit: {len(files)} guest files and service-clock providers contain no host timestamp reads')

@@ -23,6 +23,7 @@
  */
 
 #include "qemu/osdep.h"
+#include <rthreads/rthreads.h>
 #include "qemu/cutils.h"
 #include "monitor/monitor.h"
 #include "monitor/qmp-helpers.h"
@@ -96,7 +97,7 @@ static void qemu_chr_write_log(Chardev *s, const uint8_t *buf, size_t len)
     retry:
         ret = write(s->logfd, buf + done, len - done);
         if (ret == -1 && errno == EAGAIN) {
-            g_usleep(100);
+            sthread_yield();
             goto retry;
         }
 
@@ -132,7 +133,7 @@ static int qemu_chr_write_buffer(Chardev *s,
     retry:
         res = cc->chr_write(s, buf + *offset, len - *offset);
         if (res < 0 && errno == EAGAIN && write_all) {
-            g_usleep(100);
+            sthread_yield();
             goto retry;
         }
 
