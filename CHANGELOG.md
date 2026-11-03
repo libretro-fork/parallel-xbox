@@ -19,6 +19,8 @@
 
 ## Unreleased
 
+- Borrow immutable mapped compressed QCOW2 input during synchronous decompression, avoiding compressed-input staging when the complete range is mapped. Keep the read fallback, writable-image behavior and decompressed cache. Writable HDDs keep their existing input path; no overall throughput gain is claimed.
+
 - Add an all-or-nothing two-span SPSC write as the queue prerequisite for borrowed shader states. Copy spans directly into plain or mirrored rings and publish once after both are complete; reject oversized or non-fitting records without a partial write. Existing queue callers and renderer behavior are unchanged.
 
 - Return DMA descriptor storage before completion callbacks so successor transfers reuse it, reserve larger SG hints in one resize, and clear the owner cache on content close. Remove descriptor-cache TLS and fix the completion-reference leak when cancelling a mapping wait; guest payload mapping and copies are unchanged.

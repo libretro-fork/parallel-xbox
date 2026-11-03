@@ -42,3 +42,6 @@ build.log
 /libretro/tests/s3tctest.exe
 libretro/tests/fileiotest
 libretro/tests/fileiotest.exe
+
+/libretro/tests/qcowinputtest
+/libretro/tests/qcowinputtest.exe

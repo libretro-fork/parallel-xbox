@@ -437,12 +437,20 @@ static int read_compressed(LRQcow2 *q, uint64_t gc, uint64_t e)
     if (q->cached == gc) {
         return 0;
     }
-    r = lr_file_pread(q->f, (int64_t)coff, q->cbuf, csize);
-    if (r < 0) {
-        return r;
+    /* Decompression is synchronous while the image remains open. Borrow
+     * immutable mapped input when available; writable images and incomplete
+     * mappings retain the positional-read/zero-padding behavior. */
+    const uint8_t *input = q->writable ? NULL :
+        lr_file_view(q->f, (int64_t)coff, csize);
+    if (!input) {
+        r = lr_file_pread(q->f, (int64_t)coff, q->cbuf, csize);
+        if (r < 0) {
+            return r;
+        }
+        input = q->cbuf;
     }
     rinflate_reset(q->inflate, -12);
-    rinflate_set_in(q->inflate, q->cbuf, csize);
+    rinflate_set_in(q->inflate, input, csize);
     rinflate_set_out(q->inflate, q->dcache, (size_t)q->cs);
     r = rinflate_process(q->inflate, NULL, &wrote);
     if (r == RDEFLATE_PROCESS_ERROR || wrote != q->cs) {

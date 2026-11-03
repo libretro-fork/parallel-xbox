@@ -3384,3 +3384,13 @@ resampler phase/head/range cases against a 128-bit oracle. These controls reject
 a proposed exact-row specialization: outlined Win64 trials reduced exact-row
 time but regressed integer-position time and added a 128-byte helper frame.
 The production interpolator stays unchanged.
+
+## Compressed QCOW2 input borrowing
+
+Read-only mapped compressed input feeds synchronous inflation directly. A missing complete view retains the staging read and EOF-zero-padding behavior; writable images bypass view lookup. Decompressed caching, allocation and guest destination copies remain unchanged. This removes a compressed-input copy only when a complete immutable mapping exists, and makes no whole-core throughput claim.
+
+`test-qcow2-input-view.py CHECKOUT [CC]` checks pointer identity, staging-read counts, untouched cbuf on mapped reads, cached rereads, corrupt streams after partial cache output, fallback read failures, exact-end/short mappings and recovery. The production file/view functions operate on a fixture mapping or native read-only/writable files. A short range is compared with forced fallback rather than assumed to fail: the missing byte may be unused sector padding. The frozen prior source must fail the no-staging assertion as a negative control.
+
+`make qcowinputtest` links the same fixture with core common/file-stream objects and adds a mode requiring actual libretro-common mapping through `lr_file_open`. Run it against a disposable generated compressed image; supervise Windows executables with the native debugger harness. Both entry points repeat close/reopen. The standalone sanitizer matrix covers 512/4096/65536/2097152-byte clusters; native x86/x64 and the actual Linux common mapping path are also checked during development.
+
+`QCOW_INPUT_SOURCE` selects a frozen production source. `QCOW_INPUT_CLUSTER_SIZE`, `QCOW_INPUT_CFLAGS`, `QCOW_INPUT_BINARY`, `QCOW_INPUT_FIXTURE_DIR` and `QCOW_INPUT_SKIP_RUN` support generated-image and supervised native validation. There is no timing mode.

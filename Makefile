@@ -452,6 +452,20 @@ $(FILEIOTEST): $(CORE_DIR)/libretro/tests/test-file-io.c \
 		$(DEPS_LIBS) $(OS_LIBS)
 fileiotest: $(FILEIOTEST)
 
+# Correctness fixture for mapped compressed QCOW2 input. Build only;
+# execute against a disposable generated compressed image through the harness.
+QCOWINPUTTEST := $(CORE_DIR)/libretro/tests/qcowinputtest$(if $(filter win,$(platform)),.exe,)
+$(QCOWINPUTTEST): $(CORE_DIR)/libretro/tests/test-qcow2-input-view.c \
+        $(CORE_DIR)/block/libretro-file.c $(CORE_DIR)/block/libretro-qcow2.c \
+        $(CORE_DIR)/block/libretro-file.h $(CORE_DIR)/block/libretro-qcow2.h \
+        $(OBJS_LRCOMMON) $(OBJS_GLIB) $(LIBQEMUUTIL)
+	$(CC) -O2 $(CFLAGS_TARGET) $(if $(filter win,$(platform)),-static,) -o $@ \
+		$(CORE_DIR)/libretro/tests/test-qcow2-input-view.c \
+		$(OBJS_LRCOMMON) $(OBJS_GLIB) $(LIBQEMUUTIL) \
+		$(FILEIOTEST_GC) $(DEPS_LIBS) $(OS_LIBS)
+qcowinputtest: $(QCOWINPUTTEST)
+.PHONY: qcowinputtest
+
 .PHONY: all clean dspdiff dspnative dsprelative dsploops dspprogram dspregisterloops dspcompare dspstartup dsptcc dsplogical dspstatus dspbudget seedshaders s3tctest fileiotest FORCE
 
 -include $(ALL_OBJECTS:.o=.d)

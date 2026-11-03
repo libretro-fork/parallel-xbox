@@ -405,6 +405,7 @@ Linux*)
 esac
 if command -v qemu-img >/dev/null 2>&1; then
     python3 "$here/test-qcow2-workspace.py" "$here/../.." "$cc"
+    python3 "$here/test-qcow2-input-view.py" "$here/../.." "$cc"
 fi
 
 # Count the production qcow2 layer's file calls without replacing its backend.
