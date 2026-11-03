@@ -1589,18 +1589,16 @@ static void emit_alu(Tr *t, const AluOp *a)
     case OP_LSR:
     case OP_ROL:
     case OP_ROR: {
-        unsigned shift = a->op == OP_LSL && a->src == SRC_IMM ? a->shift : 1;
-        if (!shift) {
-            /* LSL #0 is a no-op, including every status bit. */
-            break;
-        }
+        unsigned shift = a->src == SRC_IMM ? a->shift : 1;
         emit_flags_flush(t);
         acc_load(t, a->d);
         h_mov_rr(e, 1, T0, acc);
         h_shr_ri(e, 1, T0, 24);
         h_and_ri(e, 0, T0, 0xFFFFFF);
         h_mov_rr(e, 0, T4, T0);
-        if (a->op == OP_LSL || a->op == OP_ROL) {
+        if (!shift) {
+            h_mov_ri(e, T4, 0);
+        } else if (a->op == OP_LSL || a->op == OP_ROL) {
             if (shift <= 24) {
                 h_shr_ri(e, 0, T4, 24 - shift);
                 if (shift != 1) {
@@ -1621,8 +1619,17 @@ static void emit_alu(Tr *t, const AluOp *a)
                 h_or_rr(e, 0, T0, T2);
             }
         } else {
-            h_and_ri(e, 0, T4, 1);
-            h_shr_ri(e, 0, T0, 1);
+            if (shift <= 24) {
+                h_shr_ri(e, 0, T4, shift - 1);
+                h_and_ri(e, 0, T4, 1);
+            } else {
+                h_mov_ri(e, T4, 0);
+            }
+            if (shift < 24) {
+                h_shr_ri(e, 0, T0, shift);
+            } else {
+                h_mov_ri(e, T0, 0);
+            }
             if (a->op == OP_ROR) {
                 h_ld32(e, T2, REG_CORE, REGOFF(DSP_REG_SR));
                 h_and_ri(e, 0, T2, SR_C);
@@ -2078,8 +2085,8 @@ static bool np_alu(const Insn *in, AluOp *a)
         a->imm = strstr(name, "#xx,") ? (inst >> 8) & 0x3F : in->ext;
         return true;
     }
-    if (!strcmp(name, "lsl #ii, D")) {
-        a->op = OP_LSL;
+    if (!strcmp(name, "lsl #ii, D") || !strcmp(name, "lsr #ii, D")) {
+        a->op = name[2] == 'r' ? OP_LSR : OP_LSL;
         a->d = inst & 1;
         a->shift = (inst >> 1) & 31;
         return true;

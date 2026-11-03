@@ -29,6 +29,8 @@
 
 ## Unreleased
 
+- Execute immediate logical right shifts natively and correct LSL #0 to clear carry and update N/Z/V instead of preserving stale flags. Add independent all-count and REP checks; encoded counts above the documented range have defined zero results/carry.
+
 - Execute short-immediate OR and short/long-immediate EOR natively in the DSP JIT instead of treating them as undefined instructions. Add interpreter/disassembly support and independent result, flag and REP regressions for all short immediates and both accumulators.
 
 - Reuse each DSP instruction's native classification throughout block and REP compilation, avoiding repeated opcode-name scans. Generated execution and interpreter fallback decisions are unchanged.

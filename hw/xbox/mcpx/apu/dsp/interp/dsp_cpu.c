@@ -282,7 +282,7 @@ static const OpcodeEntry nonparallel_opcodes[] = {
     { "0000010001000000010ddddd", "lra xxxx, D", NULL, NULL },
     { "000011000001111010iiiiiD", "lsl #ii, D", dis_lsl_imm, emu_lsl_imm },
     { "00001100000111100001sssD", "lsl S, D", NULL, NULL },
-    { "000011000001111011iiiiiD", "lsr #ii, D", NULL, NULL },
+    { "000011000001111011iiiiiD", "lsr #ii, D", dis_lsr_imm, emu_lsr_imm },
     { "00001100000111100011sssD", "lsr S, D", NULL, NULL },
     { "00000100010MMRRR000ddddd", "lua ea, D", dis_lua, emu_lua },
     { "0000010000aaaRRRaaaadddd", "lua (Rn + aa), D", dis_lua_rel, emu_lua_rel },

@@ -1,6 +1,6 @@
 ; Frame handshake and nested sample/pass loops from gp.inc.
-; Observe every intermediate result in X memory. LSL #0 must preserve
-; the ADD's deferred flags for Tcc; long OR and short AND stay native.
+; Observe every intermediate result in X memory. LSL #0 must replace
+; the ADD's deferred flags before Tcc; long OR and short AND stay native.
 ; Counts 1, 24 and 31 cover ordinary shifts, final carry and overshifts.
         dd 0x0A8581 ; P:00
         dd 0x000000

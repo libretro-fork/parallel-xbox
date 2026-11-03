@@ -1684,15 +1684,35 @@ static void emu_lsl_b(dsp_core_t* dsp)
     dsp->registers[DSP_REG_SR] |= (dsp->registers[DSP_REG_B1]==0)<<DSP_SR_Z;
 }
 
+/* Immediate logical shifts operate only on A1/B1. Count zero still
+ * updates N/Z, clears V/C, and preserves the remaining CCR bits. */
+static void emu_logical_shift_imm(dsp_core_t* dsp, bool right)
+{
+    uint32_t dst = DSP_REG_A1 + (dsp->cur_inst & 1);
+    uint32_t count = (dsp->cur_inst >> 1) & BITMASK(5);
+    uint32_t value = dsp->registers[dst];
+    uint32_t carry = 0;
+    if (count) {
+        if (count <= 24) {
+            carry = (value >> (right ? count - 1 : 24 - count)) & 1;
+        }
+        value = count >= 24 ? 0 : right ? value >> count : (value << count) & BITMASK(24);
+    }
+    dsp->registers[dst] = value;
+    dsp->registers[DSP_REG_SR] &= BITMASK(16) -
+        ((1 << DSP_SR_C) | (1 << DSP_SR_N) | (1 << DSP_SR_Z) | (1 << DSP_SR_V));
+    dsp->registers[DSP_REG_SR] |= carry | (((value >> 23) & 1) << DSP_SR_N) |
+        ((value == 0) << DSP_SR_Z);
+}
+
 static void emu_lsl_imm(dsp_core_t* dsp)
 {
-    uint32_t D = dsp->cur_inst & 1;
-    uint32_t ii = (dsp->cur_inst >> 1) & BITMASK(5);
-    // FIXME
-    void (*func)(dsp_core_t *dsp) = D ? emu_lsl_b : emu_lsl_a;
-    while (ii--) {
-        func(dsp);
-    }
+    emu_logical_shift_imm(dsp, false);
+}
+
+static void emu_lsr_imm(dsp_core_t* dsp)
+{
+    emu_logical_shift_imm(dsp, true);
 }
 
 static void emu_lsr_a(dsp_core_t* dsp)

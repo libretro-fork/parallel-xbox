@@ -1102,6 +1102,70 @@ static void check_immediate_logic(Machine *a, Machine *b, unsigned mode)
     }
 }
 
+/* Walk one bit at a time, independently of either engine's shift helpers. */
+static void check_logical_shift_immediates(Machine *a, Machine *b, unsigned mode)
+{
+    static const uint32_t words[] = {0, 1, 2, 0x800000, 0xFFFFFF, 0x7FFFFF, 0x123456, 0x800001};
+    static const uint32_t flags[] = {0, 0xFF, 0x55, 0xAA};
+    for (unsigned right = 0; right < 2; right++) {
+        for (unsigned d = 0; d < 2; d++) {
+            for (unsigned shift = 0; shift < 32; shift++) {
+                uint32_t op = (right ? 0x0C1EC0 : 0x0C1E80) | (shift << 1) | d;
+                for (unsigned w = 0; w < ARRAY_SIZE(words); w++) {
+                    for (unsigned f = 0; f < ARRAY_SIZE(flags); f++) {
+                        for (unsigned repeated = 0; repeated < 2; repeated++) {
+                            uint32_t result = words[w], carry = 0;
+                            for (unsigned iteration = 0; iteration <= repeated; iteration++) {
+                                carry = 0;
+                                for (unsigned bit = 0; bit < shift; bit++) {
+                                    carry = right ? result & 1 : result >> 23;
+                                    result = right ? result >> 1 : (result * 2) & 0xFFFFFF;
+                                }
+                            }
+                            uint32_t sr = (mode << DSP_SR_S0) | flags[f];
+                            uint32_t expected = (sr & ~0xFu) | carry |
+                                ((result >> 23) << DSP_SR_N) | ((result == 0) << DSP_SR_Z);
+                            Machine *machines[] = {a, b};
+                            dspjit_test_reset_fallback_count();
+                            for (unsigned engine = 0; engine < 2; engine++) {
+                                Machine *m = machines[engine];
+                                prepare(m, op, 0, 1, mode, false);
+                                dsp_core_t *c = m->dsp->backend;
+                                c->registers[DSP_REG_SR] = sr;
+                                c->registers[DSP_REG_A0 + d] = 0x123456;
+                                c->registers[DSP_REG_A1 + d] = words[w];
+                                c->registers[DSP_REG_A2 + d] = 0xAB;
+                                if (repeated) {
+                                    uint32_t program[] = {0x0602A0, op, 0x08F484, 1};
+                                    for (unsigned pc = 0; pc < ARRAY_SIZE(program); pc++)
+                                        m->dsp->ops->write_memory(m->dsp, 'P', pc, program[pc]);
+                                    assert(run_frame(m, 100000, engine != 0) == 0);
+                                } else if (engine == 0) {
+                                    m->dsp->ops->step(m->dsp);
+                                    c->cycle_count += c->instr_cycle;
+                                } else m->dsp->ops->run(m->dsp, 1);
+                                if (c->registers[DSP_REG_A1 + d] != result ||
+                                    c->registers[DSP_REG_A0 + d] != 0x123456 ||
+                                    c->registers[DSP_REG_A2 + d] != 0xAB ||
+                                    c->registers[DSP_REG_SR] != expected) {
+                                    fprintf(stderr, "Logical shift engine=%u right=%u d=%u count=%u old=%x rep=%u result=%x/%x sr=%x/%x\n",
+                                            engine, right, d, shift, words[w], repeated,
+                                            c->registers[DSP_REG_A1 + d], result,
+                                            c->registers[DSP_REG_SR], expected);
+                                    exit(1);
+                                }
+                            }
+                            assert(!dspjit_test_fallback_count());
+                            assert(compare_machines(a, b) == 0);
+                            cases++;
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 static void check_logical_immediates(Machine *a, Machine *b)
 {
     static const uint32_t words[] = {
@@ -1115,12 +1179,9 @@ static void check_logical_immediates(Machine *a, Machine *b)
                         uint32_t word = words[w];
                         uint32_t sr = 0xFE | (mode << DSP_SR_S0) | carry;
                         uint32_t result = shift >= 24 ? 0 : (word << shift) & 0xFFFFFF;
-                        uint32_t expected_sr = sr;
-                        if (shift) {
-                            unsigned c = shift <= 24 ? (word >> (24 - shift)) & 1 : 0;
-                            expected_sr = (sr & ~0xF) | c |
-                                ((result >> 23) << DSP_SR_N) | ((result == 0) << DSP_SR_Z);
-                        }
+                        unsigned c = shift && shift <= 24 ? (word >> (24 - shift)) & 1 : 0;
+                        uint32_t expected_sr = (sr & ~0xF) | c |
+                            ((result >> 23) << DSP_SR_N) | ((result == 0) << DSP_SR_Z);
                         Machine *machines[] = { a, b };
                         dspjit_test_reset_fallback_count();
                         for (unsigned i = 0; i < ARRAY_SIZE(machines); i++) {
@@ -2181,6 +2242,7 @@ static void check_program_write_sequences(Machine *a, Machine *b, unsigned mode)
 
 int main(int argc, char **argv)
 {
+    bool logical_shifts_only = argc == 2 && !strcmp(argv[1], "--logical-shifts");
     bool immediate_logic_only = argc == 2 && !strcmp(argv[1], "--immediate-logic");
     bool relative_only = argc == 2 && !strcmp(argv[1], "--relative");
     bool loops_only = argc == 2 && !strcmp(argv[1], "--loops");
@@ -2202,8 +2264,8 @@ int main(int argc, char **argv)
     bool effective_only = argc == 2 && !strcmp(argv[1], "--effective-control");
     bool startup_only = argc == 2 && !strcmp(argv[1], "--startup");
     bool program_only = argc == 2 && !strcmp(argv[1], "--program");
-    if (argc != 1 && !immediate_logic_only && !relative_only && !loops_only && !program_only && !compare_only && !startup_only && !effective_only && !register_only && !program_control_only && !peripheral_only && !program_peripheral_only && !multiply_only && !normalize_only && !divide_only && !byte_logic_only && !memory_bits_only && !control_bits_only && !offset_control_only && !shifts_only && !signed_right_only && !left_flags_only) {
-        fputs("usage: dspnative [--immediate-logic|--relative|--loops|--program|--compare|--startup|--effective-control|--register-control|--program-control|--peripheral-control|--program-peripheral|--multiply|--normalize|--divide|--status-byte|--memory-bits|--control-bits|--offset-control|--shift-boundaries|--signed-right|--left-flags]\n", stderr);
+    if (argc != 1 && !logical_shifts_only && !immediate_logic_only && !relative_only && !loops_only && !program_only && !compare_only && !startup_only && !effective_only && !register_only && !program_control_only && !peripheral_only && !program_peripheral_only && !multiply_only && !normalize_only && !divide_only && !byte_logic_only && !memory_bits_only && !control_bits_only && !offset_control_only && !shifts_only && !signed_right_only && !left_flags_only) {
+        fputs("usage: dspnative [--logical-shifts|--immediate-logic|--relative|--loops|--program|--compare|--startup|--effective-control|--register-control|--program-control|--peripheral-control|--program-peripheral|--multiply|--normalize|--divide|--status-byte|--memory-bits|--control-bits|--offset-control|--shift-boundaries|--signed-right|--left-flags]\n", stderr);
         return 2;
     }
     Machine *a = machine_new(false), *b = machine_new(true);
@@ -2218,8 +2280,9 @@ int main(int argc, char **argv)
     assert(initially_committed == (64u << 10));
 #endif
     check_speculative_decode();
-    if (immediate_logic_only || relative_only || loops_only || program_only || compare_only || startup_only || effective_only || register_only || program_control_only || peripheral_only || program_peripheral_only || multiply_only || normalize_only || divide_only || byte_logic_only || memory_bits_only || control_bits_only || offset_control_only || shifts_only || signed_right_only || left_flags_only) {
+    if (logical_shifts_only || immediate_logic_only || relative_only || loops_only || program_only || compare_only || startup_only || effective_only || register_only || program_control_only || peripheral_only || program_peripheral_only || multiply_only || normalize_only || divide_only || byte_logic_only || memory_bits_only || control_bits_only || offset_control_only || shifts_only || signed_right_only || left_flags_only) {
         for (unsigned mode = 0; mode < 4; mode++) {
+            if (logical_shifts_only) check_logical_shift_immediates(a, b, mode);
             if (immediate_logic_only) check_immediate_logic(a, b, mode);
             if (left_flags_only) {
                 check_left_shift_operations(a, b, mode);
@@ -2273,6 +2336,7 @@ int main(int argc, char **argv)
     }
     check_status_restore_chains(a, b);
     check_logical_immediates(a, b);
+    for (unsigned mode = 0; mode < 4; mode++) check_logical_shift_immediates(a, b, mode);
     for (unsigned mode = 0; mode < 4; mode++) check_immediate_logic(a, b, mode);
     check_loop_address_reload(a, b);
     for (unsigned sr = 0; sr < 256; sr++) {
