@@ -3595,5 +3595,29 @@ restore shared-line deassertion, missing control/FIFO updates or omitted
 S/PDIF reset. `ACI_IRQ_CFLAGS` and `ACI_IRQ_RUNNER` select sanitizers/cross
 execution. Runs in the frame suite and regression-only CI.
 
-This fixes bus-master status/IRQ semantics; S/PDIF descriptor progression
-and Dolby-enabled game compatibility remain separate validation work.
+This fixture covers bus-master status/IRQ semantics; descriptor timing is
+covered below. Dolby-enabled game compatibility remains separate validation work.
+
+## ACI S/PDIF descriptor progression
+
+`test-aci-playback.py CHECKOUT [CC]` compiles production pacing, descriptor
+fetch/walking, MMIO, IRQ and post-load functions with a synthetic virtual
+clock and bounded descriptor RAM. It checks S/PDIF-only 192,000 B/s progress,
+independent simultaneous 44.1 kHz PCM/48 kHz S/PDIF, stop/reset/rate isolation,
+IOC/end-of-list interrupts, partial W1C, LVI restart, ring wrap, odd and zero
+length descriptors, fractional credit, backward/large clock gaps, and v1/v2
+clock initialization versus v3 continuation. Payload reads are rejected;
+only descriptor reads are allowed. Four negative controls remove the S/PDIF
+clock, steal PCM credit, retain frame-only descriptor rounding or skip legacy
+clock initialization. The 48 kHz stereo carrier advances 16-bit DMA units;
+it does not infer byte ratios from PCM/S/PDIF descriptor sizes.
+
+The core saves the independent S/PDIF timer/credit/remainder in ACI state
+version 3; earlier states initialize its clock from their restored run bit.
+The fixture checks the state-field wiring and post-load behavior, not an
+actual serialized save-file round trip. S/PDIF transport progress does not
+add AC-3 encoding or establish Dolby-enabled real-game compatibility.
+`ACI_PLAYBACK_CFLAGS` and `ACI_PLAYBACK_RUNNER` select sanitizer/cross runs.
+Reference timing/unit evidence: Linux nForce AC97 driver and NVIDIA notes:
+https://github.com/torvalds/linux/blob/master/sound/pci/intel8x0.c
+https://download.nvidia.com/XFree86/nforce/1.0-0269/ReleaseNotes.html

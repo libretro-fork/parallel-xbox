@@ -167,6 +167,10 @@ enum {
 #define PO_DEPTH_FRAMES  1024
 #define PO_DEPTH_FREQ    48000
 #define PO_FRAME_BYTES   4      /* 16-bit stereo */
+#define SO_FREQ          48000  /* S/PDIF stereo carrier, 16-bit DMA units */
+#define SO_FRAME_BYTES   4
+#define SO_DMA_UNIT_BYTES 2
+#define SO_CAP_BYTES     (1024 * SO_FRAME_BYTES)
 
 typedef struct BD {
     uint32_t addr;
@@ -204,6 +208,10 @@ typedef struct MCPXACIState {
     int64_t po_credit;          /* bytes it may take now */
     int64_t po_last_ns;
     int64_t po_rem;             /* frame remainder, 1/NANOSECONDS_PER_SECOND */
+
+    QEMUTimer *so_timer;
+    bool so_active;
+    int64_t so_credit, so_last_ns, so_rem;
 
     MemoryRegion io_nam, io_nabm;
     MemoryRegion mmio;
@@ -283,6 +291,57 @@ static uint32_t po_take(MCPXACIState *s, uint32_t n)
     return got;
 }
 
+/* S/PDIF has its own carrier clock; PCM-out may be stopped or use a
+ * different codec rate. Payload comes from the APU, not this DMA walker. */
+static void so_set_active(MCPXACIState *s, bool on)
+{
+    if (s->so_active == on) {
+        return;
+    }
+    s->so_active = on;
+    if (!on) {
+        timer_del(s->so_timer);
+        return;
+    }
+    s->so_credit = SO_CAP_BYTES;
+    s->so_last_ns = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL);
+    s->so_rem = 0;
+    timer_mod(s->so_timer, s->so_last_ns + PO_PERIOD_NS);
+}
+
+static void so_earn(MCPXACIState *s, int64_t now)
+{
+    int64_t ns = now - s->so_last_ns;
+    s->so_last_ns = now;
+    if (ns <= 0) {
+        return;
+    }
+    if (s->so_credit >= SO_CAP_BYTES) {
+        s->so_rem = 0;
+        return;
+    }
+    /* A delayed tick can only refill the bounded carrier window. Avoid
+     * multiplying an arbitrarily long save/restore time gap by the rate. */
+    if (ns >= ((SO_CAP_BYTES / SO_FRAME_BYTES) * NANOSECONDS_PER_SECOND +
+               SO_FREQ - 1) / SO_FREQ) {
+        s->so_credit = SO_CAP_BYTES;
+        s->so_rem = 0;
+        return;
+    }
+    int64_t frames = ns * SO_FREQ + s->so_rem;
+    s->so_rem = frames % NANOSECONDS_PER_SECOND;
+    s->so_credit = MIN(SO_CAP_BYTES, s->so_credit +
+                       frames / NANOSECONDS_PER_SECOND * SO_FRAME_BYTES);
+}
+
+static uint32_t so_take(MCPXACIState *s, uint32_t n)
+{
+    int64_t got = MIN((int64_t)n, s->so_credit);
+    got -= got % SO_DMA_UNIT_BYTES;
+    s->so_credit -= got;
+    return got;
+}
+
 /* --- Bus masters --------------------------------------------------------- */
 
 static void fetch_bd(MCPXACIState *s, AC97BusMasterRegs *r)
@@ -326,6 +385,8 @@ static void voice_set_active(MCPXACIState *s, int bm_index, bool on)
 {
     if (bm_index == PO_INDEX) {
         po_set_active(s, on);
+    } else if (bm_index == SO_INDEX) {
+        so_set_active(s, on);
     }
 }
 
@@ -351,17 +412,21 @@ static void reset_bus_masters(MCPXACIState *s)
     reset_bm_regs(s, &s->bm_regs[SO_INDEX]);
 }
 
-/* PCM out: the bus master takes what it may of the current buffer, up to
+/* Playback: the bus master takes what it may of the current buffer, up to
  * max bytes; the samples themselves are never read */
-static void transfer_po(MCPXACIState *s, int elapsed)
+static void transfer_playback(MCPXACIState *s, unsigned index, int elapsed)
 {
-    AC97BusMasterRegs *r = &s->bm_regs[PO_INDEX];
+    AC97BusMasterRegs *r = &s->bm_regs[index];
     int stop = 0;
 
     if (r->sr & SR_DCH) {
         if (r->cr & CR_RPBM) {
             /* halted while running: underrun, the codec plays on */
-            po_take(s, elapsed);
+            if (index == SO_INDEX) {
+                so_take(s, elapsed);
+            } else {
+                po_take(s, elapsed);
+            }
         }
         return;
     }
@@ -386,7 +451,7 @@ static void transfer_po(MCPXACIState *s, int elapsed)
         }
 
         temp = MIN((uint32_t)r->picb << 1, (uint32_t)elapsed);
-        temp = po_take(s, temp);
+        temp = index == SO_INDEX ? so_take(s, temp) : po_take(s, temp);
         if (!temp) {
             break;
         }
@@ -415,6 +480,16 @@ static void transfer_po(MCPXACIState *s, int elapsed)
     }
 }
 
+static void transfer_po(MCPXACIState *s, int elapsed)
+{
+    transfer_playback(s, PO_INDEX, elapsed);
+}
+
+static void transfer_so(MCPXACIState *s, int elapsed)
+{
+    transfer_playback(s, SO_INDEX, elapsed);
+}
+
 static void po_tick(void *opaque)
 {
     MCPXACIState *s = opaque;
@@ -429,6 +504,22 @@ static void po_tick(void *opaque)
     }
     if (s->po_active) {
         timer_mod(s->po_timer, now + PO_PERIOD_NS);
+    }
+}
+
+static void so_tick(void *opaque)
+{
+    MCPXACIState *s = opaque;
+    int64_t now = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL);
+    if (!s->so_active) {
+        return;
+    }
+    so_earn(s, now);
+    if (s->so_credit >= SO_DMA_UNIT_BYTES) {
+        transfer_so(s, s->so_credit);
+    }
+    if (s->so_active) {
+        timer_mod(s->so_timer, now + PO_PERIOD_NS);
     }
 }
 
@@ -863,6 +954,8 @@ static void mcpx_aci_realize(PCIDevice *dev, Error **errp)
     /* Private DSP overlap: Codec position and descriptor DMA; descriptors use guarded DMA APIs. */
     lr_dsp_register_guarded_timer(po_tick);
     d->po_timer = timer_new_ns(QEMU_CLOCK_VIRTUAL, po_tick, d);
+    lr_dsp_register_guarded_timer(so_tick);
+    d->so_timer = timer_new_ns(QEMU_CLOCK_VIRTUAL, so_tick, d);
 
     reset_bus_masters(d);
     mixer_reset(d);
@@ -874,6 +967,8 @@ static void mcpx_aci_exit(PCIDevice *dev)
 
     timer_free(d->po_timer);
     d->po_timer = NULL;
+    timer_free(d->so_timer);
+    d->so_timer = NULL;
 }
 
 static const VMStateDescription vmstate_aci_bm_regs = {
@@ -895,11 +990,25 @@ static const VMStateDescription vmstate_aci_bm_regs = {
     },
 };
 
+static int mcpx_aci_post_load(void *opaque, int version)
+{
+    MCPXACIState *s = opaque;
+    if (version < 3) {
+        timer_del(s->so_timer);
+        s->so_active = false;
+        s->so_credit = s->so_last_ns = s->so_rem = 0;
+        so_set_active(s, (s->bm_regs[SO_INDEX].cr & CR_RPBM) != 0);
+    }
+    return 0;
+}
+
 /* Version 1 had the PCI device alone: a state from then loads with the
- * AC97 link as the running session has it */
+ * AC97 link as the running session has it. Version 3 adds the independent
+ * S/PDIF carrier clock; older streams restart from their restored CR. */
 static const VMStateDescription vmstate_mcpx_aci = {
     .name = "mcpx-aci",
-    .version_id = 2,
+    .version_id = 3,
+    .post_load = mcpx_aci_post_load,
     .minimum_version_id = 1,
     .fields = (const VMStateField[]) {
         VMSTATE_PCI_DEVICE(dev, MCPXACIState),
@@ -917,6 +1026,11 @@ static const VMStateDescription vmstate_mcpx_aci = {
         VMSTATE_INT64_V(po_last_ns, MCPXACIState, 2),
         VMSTATE_INT64_V(po_rem, MCPXACIState, 2),
         VMSTATE_TIMER_PTR_V(po_timer, MCPXACIState, 2),
+        VMSTATE_BOOL_V(so_active, MCPXACIState, 3),
+        VMSTATE_INT64_V(so_credit, MCPXACIState, 3),
+        VMSTATE_INT64_V(so_last_ns, MCPXACIState, 3),
+        VMSTATE_INT64_V(so_rem, MCPXACIState, 3),
+        VMSTATE_TIMER_PTR_V(so_timer, MCPXACIState, 3),
         VMSTATE_END_OF_LIST()
     },
 };

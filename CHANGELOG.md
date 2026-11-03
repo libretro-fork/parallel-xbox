@@ -29,6 +29,8 @@
 
 ## Unreleased
 
+- Advance S/PDIF DMA descriptors on an independent 48 kHz virtual carrier clock, including completion interrupts, ring wrap and LVI resume, even when PCM is stopped or uses another rate. Avoid odd-descriptor stalls and unbounded time-gap arithmetic. Save the new clock state while retaining older-state loading; add synthetic pacing and reset regressions.
+
 - Keep the ACI PCI interrupt asserted while another PCM, capture or S/PDIF source remains pending. Reevaluate pending interrupts when control enables change, honor FIFO-error enables, and initialize the S/PDIF bus master halted like the other streams. Add exhaustive shared-IRQ, acknowledgement and reset regressions.
 
 - Execute register-relative BRA and conditional Bcc in the interpreter and native DSP JIT. Add independent checks for all condition codes and CCR values, current-PC targets, address wrap, preserved registers and single retirement at DO boundaries, plus interrupt and frame regressions.
