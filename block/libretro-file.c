@@ -533,28 +533,33 @@ const uint8_t *lr_file_view(LRFile *f, int64_t off, size_t len)
     return f->mapped + off;
 }
 
+/* The caller has validated the range before touching any destination. */
+static inline void lr_file_read_mapped(LRFile *f, int64_t off, void *buf,
+                                       size_t len)
+{
+    uint64_t available = off >= f->mapped_size ? 0 :
+                         (uint64_t)(f->mapped_size - off);
+    size_t done = available < len ? (size_t)available : len;
+
+    if (done) {
+        memcpy(buf, f->mapped + off, done);
+    }
+    if (done < len) {
+        memset((uint8_t *)buf + done, 0, len - done);
+    }
+}
+
 int lr_file_pread(LRFile *f, int64_t off, void *buf, size_t len)
 {
     if (off < 0 || len > (uint64_t)(INT64_MAX - off)) {
         return -EINVAL;
     }
-    size_t done;
-    int ret;
     if (f->mapped) {
-        if (off < 0) {
-            return -EINVAL;
-        }
-        done = off >= f->mapped_size ? 0 : (size_t)(f->mapped_size - off);
-        if (done > len) {
-            done = len;
-        }
-        if (done) {
-            memcpy(buf, f->mapped + off, done);
-        }
-        ret = 0;
-    } else {
-        ret = lr_file_rw(f, off, buf, len, false, &done);
+        lr_file_read_mapped(f, off, buf, len);
+        return 0;
     }
+    size_t done;
+    int ret = lr_file_rw(f, off, buf, len, false, &done);
 
     if (ret == 0 && done < len) {
         memset((uint8_t *)buf + done, 0, len - done);
@@ -575,18 +580,14 @@ int lr_file_pwrite(LRFile *f, int64_t off, const void *buf, size_t len)
     return lr_file_rw(f, off, (void *)buf, len, true, &done);
 }
 
-/* EOF supplies zeros for the remaining destinations, without more host reads.
+/* The vector was prevalidated. EOF supplies zeros without more host reads.
  * skip is within the first span; empty NULL spans need no pointer arithmetic. */
-static int lr_file_zero_tail(const LRFileIOV *iov, int n, int64_t off, size_t skip)
+static int lr_file_zero_tail(const LRFileIOV *iov, int n, size_t skip)
 {
     for (int i = 0; i < n; i++) {
-        if (off < 0 || iov[i].len > (uint64_t)(INT64_MAX - off)) {
-            return -EINVAL;
-        }
         if (iov[i].len > skip) {
             memset((uint8_t *)iov[i].base + skip, 0, iov[i].len - skip);
         }
-        off += iov[i].len;
         skip = 0;
     }
     return 0;
@@ -627,13 +628,7 @@ int lr_file_preadv(LRFile *f, int64_t off, const LRFileIOV *iov, int n)
                    iov[i].len <= SIZE_MAX - length) {
                 length += iov[i++].len;
             }
-            if (off < 0 || length > (uint64_t)(INT64_MAX - off)) {
-                return -EINVAL;
-            }
-            int ret = lr_file_pread(f, off, base, length);
-            if (ret < 0) {
-                return ret;
-            }
+            lr_file_read_mapped(f, off, base, length);
             off += length;
         }
         return 0;
@@ -653,7 +648,7 @@ int lr_file_preadv(LRFile *f, int64_t off, const LRFileIOV *iov, int n)
             return 0;
         }
         if (!got) {
-            return lr_file_zero_tail(iov, n, off, 0);
+            return lr_file_zero_tail(iov, n, 0);
         }
         while (n && (size_t)got >= iov->len) {
             got -= iov->len;
@@ -669,7 +664,7 @@ int lr_file_preadv(LRFile *f, int64_t off, const LRFileIOV *iov, int n)
                 return ret;
             }
             if (done < iov->len - got) {
-                return lr_file_zero_tail(iov, n, off, (size_t)got + done);
+                return lr_file_zero_tail(iov, n, (size_t)got + done);
             }
             off += iov->len;
             iov++;
@@ -685,9 +680,6 @@ int lr_file_preadv(LRFile *f, int64_t off, const LRFileIOV *iov, int n)
                iov[i].len <= SIZE_MAX - length) {
             length += iov[i++].len;
         }
-        if (off < 0 || length > (uint64_t)(INT64_MAX - off)) {
-            return -EINVAL;
-        }
         size_t done;
         int ret = lr_file_rw(f, off, base, length, false, &done);
         if (ret < 0) {
@@ -695,7 +687,7 @@ int lr_file_preadv(LRFile *f, int64_t off, const LRFileIOV *iov, int n)
         }
         if (done < length) {
             memset((uint8_t *)base + done, 0, length - done);
-            return lr_file_zero_tail(iov + i, n - i, off + length, 0);
+            return lr_file_zero_tail(iov + i, n - i, 0);
         }
         off += length;
     }
@@ -753,10 +745,8 @@ int lr_file_pwritev(LRFile *f, int64_t off, const LRFileIOV *iov, int n)
                iov[i].len <= SIZE_MAX - length) {
             length += iov[i++].len;
         }
-        if (off < 0 || length > (uint64_t)(INT64_MAX - off)) {
-            return -EINVAL;
-        }
-        int ret = lr_file_pwrite(f, off, base, length);
+        size_t done;
+        int ret = lr_file_rw(f, off, (void *)base, length, true, &done);
         if (ret < 0) {
             return ret;
         }

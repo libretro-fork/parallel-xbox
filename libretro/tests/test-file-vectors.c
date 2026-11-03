@@ -1,9 +1,13 @@
 /* Production backend, including its immutable mapped lane without a VFS SDK.
  * Only the small mapped byte view is modeled; native file I/O is real. */
 #define LR_FILE_FILESTREAM 0
-#include "block/libretro-file.c"
+#ifndef FILE_VECTOR_SOURCE
+#define FILE_VECTOR_SOURCE "block/libretro-file.c"
+#endif
+#include FILE_VECTOR_SOURCE
 #include <assert.h>
 #include <stdio.h>
+#include <time.h>
 
 static void rejected_scalars(LRFile *f, bool writable)
 {
@@ -48,9 +52,88 @@ static void rejected_reads(LRFile *f)
     for (unsigned i = 0; i < sizeof(out); i++) { assert(out[i] == 0xcc); }
 }
 
-int main(int argc, char **argv)
+static uint32_t random_state = 0x271af329;
+static unsigned random_word(void)
 {
+    random_state ^= random_state << 13;
+    random_state ^= random_state >> 17;
+    random_state ^= random_state << 5;
+    return random_state;
+}
+
+static void mapped_oracle(void)
+{
+    uint8_t source[2048], actual[8192], expected[8192];
+    for (unsigned j = 0; j < sizeof(source); j++) source[j] = (uint8_t)(j * 29 + j / 17);
+    for (unsigned trial = 0; trial < 20000; trial++) {
+        LRFile mapped = {.mapped = source, .mapped_size = random_word() % (sizeof(source) + 1)};
+        LRFileIOV pieces[32];
+        int n = random_word() % 33;
+        int64_t offset = random_word() % 4097;
+        size_t place = 0, consumed = 0;
+        memset(actual, 0xcc, sizeof(actual));
+        memset(expected, 0xcc, sizeof(expected));
+        for (int i = 0; i < n; i++) {
+            size_t len = random_word() % 129;
+            place += random_word() % 9;
+            pieces[i] = (LRFileIOV){len ? actual + place : NULL, len};
+            for (size_t j = 0; j < len; j++) {
+                uint64_t at = (uint64_t)offset + consumed + j;
+                expected[place + j] = at < (uint64_t)mapped.mapped_size ? source[at] : 0;
+            }
+            place += len;
+            consumed += len;
+        }
+        assert(!lr_file_preadv(&mapped, offset, pieces, n));
+        assert(!memcmp(actual, expected, sizeof(actual)));
+    }
+    puts("mapped file vectors: 20000 empty/adjacent/gapped/EOF requests and untouched guards PASS");
+}
+
+#ifdef _WIN32
+static double now_ns(void) { LARGE_INTEGER t, f; QueryPerformanceCounter(&t); QueryPerformanceFrequency(&f); return (double)t.QuadPart * 1e9 / f.QuadPart; }
+#else
+static double now_ns(void) { struct timespec t; clock_gettime(CLOCK_MONOTONIC, &t); return t.tv_sec * 1e9 + t.tv_nsec; }
+#endif
+static uint8_t bench_source[65536], bench_destination[131072];
+static void benchmark(void)
+{
+    for (unsigned j = 0; j < sizeof(bench_source); j++) bench_source[j] = (uint8_t)(j * 29 + j / 17);
+    LRFile mapped = {.mapped = bench_source, .mapped_size = sizeof(bench_source)};
+    int (*volatile readv_fn)(LRFile *,int64_t,const LRFileIOV *,int) = lr_file_preadv;
+    for (unsigned layout = 0; layout < 3; layout++) for (unsigned eof = 0; eof < 2; eof++) {
+        const unsigned sizes[] = {512, 2048, 65536};
+        for (unsigned k = 0; k < 3; k++) {
+            unsigned size = sizes[k], loops = size == 65536 ? 20000 : 500000;
+            int n = layout ? 16 : 1;
+            LRFileIOV pieces[16];
+            for (int i = 0; i < n; i++) pieces[i] = (LRFileIOV){bench_destination + i * (size / n + (layout == 2 ? 16 : 0)), size / n};
+            int64_t offset = eof ? sizeof(bench_source) - size / 2 : 0;
+            assert(!readv_fn(&mapped, offset, pieces, n));
+            int ret = 0; double begin = now_ns();
+            for (unsigned j = 0; j < loops; j++) {
+                ret |= readv_fn(&mapped, offset, pieces, n);
+                __asm__ __volatile__("" : : "r"(bench_destination) : "memory");
+            }
+            assert(!ret);
+            printf("layout=%u eof=%u size=%u ns=%.3f\n",layout,eof,size,(now_ns()-begin)/loops);
+        }
+    }
+}
+
+#ifdef FILE_VECTOR_SHARED
+#ifdef _WIN32
+__declspec(dllexport)
+#endif
+int file_vector_fixture(int argc, char **argv)
+#else
+int main(int argc, char **argv)
+#endif
+
+{
+    if (argc > 1 && !strcmp(argv[1], "--bench")) { benchmark(); return 0; }
     assert(argc == 2);
+    mapped_oracle();
     uint8_t bytes[64], out[64], source[64];
     memset(bytes, 0x5a, sizeof(bytes));
     memset(source, 0xa5, sizeof(source));
@@ -96,4 +179,5 @@ int main(int argc, char **argv)
     assert(out[8] == 0xcc);
     lr_file_close(f);
     puts("file scalar/vector ranges: preflight preserves mapped/native destinations and native files: PASS");
+    return 0;
 }

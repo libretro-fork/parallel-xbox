@@ -27,6 +27,8 @@
 
 ## Unreleased
 
+- Reuse complete file-vector preflight through mapped reads, native fallback writes and EOF zero filling. Remove redundant per-span checks/scalar dispatch while preserving invalid-request rejection before any destination or file changes.
+
 - Avoid clearing scratch bytes immediately overwritten by bulk partial writes into zero-filled QCOW2 clusters. Preserve the single-clear path for small patches/clusters and retain full data-before-metadata writes and failure behavior.
 
 - Reuse completed IDE buffered-read requests and scratch buffers before completion callbacks start successor reads. Preserve deferred destination copying, error/orphan suppression and callback-close cleanup while reducing callback-chain scratch allocations.

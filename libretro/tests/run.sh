@@ -395,9 +395,8 @@ ${cc} -O2 -std=gnu99 -Wall -DLR_FILE_FILESTREAM=0 -I"$here/../.." -I"$lrc/includ
     -lpthread -o "$work/bin/qcow2tailtest"
 "$work/bin/qcow2tailtest" "$work/qcow2-tail.img"
 # File-vector validation applies before native or mapped I/O.
-${cc} -O2 -std=gnu99 -Wall -Wextra -Werror -I"$here/../.." \
-    "$here/test-file-vectors.c" -o "$work/bin/filevectorstest"
-"$work/bin/filevectorstest" "$work/file-vectors.img"
+FILE_VECTOR_CFLAGS='' FILE_VECTOR_BINARY="$work/bin/filevectorstest" \
+    python3 "$here/test-file-vectors.py" "$here/../.." "$cc" "$work/file-vectors.img"
 # The POSIX backend retries interrupted syncs, including during close.
 case $(uname -s) in
 MINGW*|MSYS*) ;;
