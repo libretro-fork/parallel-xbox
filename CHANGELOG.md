@@ -28,6 +28,8 @@
 
 ## Unreleased
 
+- Skip fixed-slot scans when a drain has no queued disk completions, while retaining generic bottom-half progress. Ignore empty scatter spans on the Chihiro memory-backed path without issuing address-space transactions; retain nonempty offsets, errors and deferred callbacks.
+
 - Reuse complete file-vector preflight through mapped reads, native fallback writes and EOF zero filling. Remove redundant per-span checks/scalar dispatch while preserving invalid-request rejection before any destination or file changes.
 
 - DSP: compile status, stack and loop register bit operations without interpreter fallback. Preserve SSH pushes, BTST reads, carry and register masks; retire control changes before running subsequent code or REP iterations. Add 43,040 boundary checks and a production regression program.

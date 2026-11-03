@@ -273,6 +273,9 @@ static int lr_disk_rw(BlockBackend *blk, int64_t offset, QEMUIOVector *qiov,
         break;
     case LR_MEDIUM_MEMORY:
         for (int i = 0; i < qiov->niov; i++) {
+            if (!qiov->iov[i].iov_len) {
+                continue;
+            }
             MemTxResult result;
             if (write) {
                 result = address_space_write(m->as, offset,
@@ -485,6 +488,12 @@ static bool lr_disk_run_pending(void)
 {
     bool ran = false;
     BlockBackend *blk;
+
+    /* Completing callbacks are not queued work. Leave generic BH progress
+     * to the caller when no disk completion can run. */
+    if (!lr_disk_pending) {
+        return false;
+    }
 
     QTAILQ_FOREACH(blk, &lr_disks, link) {
         for (int i = 0; i < LR_DISK_REQS; i++) {

@@ -39,11 +39,16 @@ struct BlockBackend {
 static const AIOCBInfo lr_disk_aiocb_info = {sizeof(LRDiskReq), NULL};
 static QTAILQ_HEAD(, BlockBackend) lr_disks = QTAILQ_HEAD_INITIALIZER(lr_disks);
 static int lr_disk_pending;
-static unsigned kicks;
+static unsigned kicks, slot_visits, bh_polls;
+static void (*bh_work)(void);
 static void *first_cpu=(void *)(uintptr_t)1;
 static void lr_vcpu_exit(void *cpu){assert(cpu==first_cpu);kicks++;}
 static void *qemu_get_aio_context(void) { return NULL; }
-static int aio_bh_poll(void *ctx) { (void)ctx; return 0; }
+static int aio_bh_poll(void *ctx) {
+    (void)ctx; bh_polls++;
+    if (bh_work) { void (*work)(void) = bh_work; bh_work = NULL; work(); return 1; }
+    return 0;
+}
 static void qemu_aio_ref(BlockAIOCB *a) { a->refcnt++; }
 static void qemu_aio_unref(BlockAIOCB *a) { a->refcnt--; }
 static const char *blk_name(BlockBackend *b) { return b->name; }
@@ -88,7 +93,7 @@ static void completion(void *opaque, int ret)
     assert(lr_disk_pending >= 0 && p->blk->in_flight > 0);
     LRDiskReq *own = container_of(p->acb, LRDiskReq, common);
     assert(own->busy); /* a callback must not make its slot reusable */
-    if (!strcmp(mode,"stress")) return;
+    if (!strcmp(mode,"stress") || !strcmp(mode,"empty-progress")) return;
     if (p->id == 0) {
         if (!strcmp(mode,"poll-deferred") || !strcmp(mode,"poll-cross") || !strcmp(mode,"poll-reuse")) {
             if(!strcmp(mode,"poll-reuse"))blk_aio_cancel(payload[1].acb);
@@ -120,6 +125,30 @@ static void completion(void *opaque, int ret)
     }
 }
 
+static void enqueue_from_bh(void) { submit(0, 0, -EIO); }
+static void empty_progress(void)
+{
+#ifdef DISK_EMPTY_FASTPATH
+    const unsigned empty_visits = 0;
+#else
+    const unsigned empty_visits = 2 * LR_DISK_REQS;
+#endif
+    assert(!lr_disk_run_pending());
+    assert(slot_visits == empty_visits && !bh_polls);
+    slot_visits = 0; bh_work = enqueue_from_bh;
+    assert(lr_disk_progress());
+    assert(slot_visits == empty_visits && bh_polls == 1);
+    assert(lr_disk_pending == 1 && !payload[0].calls);
+    slot_visits = 0;
+    assert(lr_disk_progress());
+    assert(slot_visits == 2 * LR_DISK_REQS && bh_polls == 1);
+    assert(payload[0].calls == 1 && !lr_disk_pending && !backends[0].in_flight);
+    slot_visits = 0;
+    assert(!lr_disk_progress());
+    assert(slot_visits == empty_visits && bh_polls == 2 && kicks == 1);
+    printf("empty block progress: slot visits=%u, BH fallback and deferred enqueue/callback PASS\n",empty_visits);
+}
+
 int main(int argc, char **argv)
 {
     assert(argc == 2);
@@ -135,6 +164,7 @@ int main(int argc, char **argv)
         }
         QTAILQ_INSERT_TAIL(&lr_disks, blk, link);
     }
+    if(!strcmp(mode,"empty-progress")) { empty_progress(); return 0; }
     if(!strcmp(mode,"stress")) {
         bool live[2*LR_DISK_REQS+8]={0};unsigned rng=42,submitted=0,finished=0;
         for(unsigned n=0;n<100000;n++) {

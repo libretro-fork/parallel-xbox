@@ -42,6 +42,7 @@ static int calls, fail_at, failure, writing;
 static int64_t next_offset;
 static MemTxResult transfer(void *as, int64_t off, int attr, const void *buf, size_t len, bool write) {
     (void)as; (void)attr; (void)buf;
+    assert(len > 0); /* Empty spans must not issue memory/MMIO transactions. */
     assert(off == next_offset && write == writing);
     calls++; next_offset += len;
     return calls == fail_at ? failure : MEMTX_OK;
@@ -86,6 +87,29 @@ int main(void) {
             }
         }
     }
+    IOV mixed[] = {{NULL,0}, {data,17}, {NULL,0}, {data+17,4096}, {NULL,0}, {data+4113,4080}, {NULL,0}};
+    QEMUIOVector scattered = {mixed,7,sizeof(data)};
+    for (writing = 0; writing <= 1; writing++) {
+        failure = 7;
+        for (fail_at = 0; fail_at <= 3; fail_at++) {
+            calls = 0; next_offset = 123;
+            int ret = lr_disk_rw(&b,123,&scattered,writing);
+            assert(ret == (fail_at ? -EIO : 0));
+            assert(calls == (fail_at ? fail_at : 3));
+        }
+    }
+    IOV empty_spans[] = {{NULL,0},{NULL,0}};
+    QEMUIOVector empty = {empty_spans,2,0};
+    calls = 0; next_offset = b.m.length; fail_at = 0;
+    for (writing = 0; writing <= 1; writing++) assert(!lr_disk_rw(&b,b.m.length,&empty,writing));
+    assert(!calls && next_offset == b.m.length);
+    b.m.writable = false;
+    assert(lr_disk_rw(&b,0,&empty,true) == -EPERM && !calls);
+    b.m.writable = true;
+    assert(lr_disk_rw(&b,b.m.length,&scattered,false) == -EIO && !calls);
+    b.m.kind = LR_MEDIUM_NONE;
+    assert(lr_disk_rw(&b,0,&empty,false) == -ENOMEDIUM && !calls);
+    puts("block memory: empty spans skipped; nonempty offsets/errors, bounds and permissions preserved PASS");
     puts("block memory: read/write/zero errors propagated, later transfers stopped: PASS");
 }
 '''.replace("/* PRODUCTION */", function("static int lr_disk_rw(") + "\n" + function("int lr_disk_zero("))
