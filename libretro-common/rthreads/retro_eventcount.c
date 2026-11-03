@@ -602,6 +602,7 @@ static void ec_win32_resolve(void)
    ec_g.tls_timer = TLS_OUT_OF_INDEXES;
    /* RETRO_EVENTCOUNT_HIRES=0 keeps the kernel timeout alone, for
     * measuring against it */
+#ifndef RETRO_DISABLE_HOST_CLOCK
    if (     ec_g.sleep
          && !((force = getenv("RETRO_EVENTCOUNT_HIRES")) && !strcmp(force, "0")))
    {
@@ -628,6 +629,7 @@ static void ec_win32_resolve(void)
          }
       }
    }
+#endif
 
    /* Spinning before the kernel wait only pays where the thread being
     * waited for can run at the same time.  On one processor it is pure
@@ -1791,6 +1793,7 @@ void retro_eventcount_commit_wait(retro_eventcount_t *ec, int key)
 #endif
 }
 
+#ifndef RETRO_DISABLE_HOST_CLOCK
 bool retro_eventcount_commit_wait_timeout(retro_eventcount_t *ec,
       int key, int64_t timeout_us)
 {
@@ -1891,6 +1894,7 @@ bool retro_eventcount_commit_wait_timeout(retro_eventcount_t *ec,
 
    return signalled;
 }
+#endif /* RETRO_DISABLE_HOST_CLOCK */
 
 unsigned retro_eventcount_spin_iters(void)
 {

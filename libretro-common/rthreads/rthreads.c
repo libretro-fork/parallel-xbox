@@ -2839,7 +2839,7 @@ static void scond_global_resolve(void)
     * measuring against it. */
    scond_g.hires     = false;
    scond_g.tls_timer = TLS_OUT_OF_INDEXES;
-#if !defined(_XBOX) && !defined(__WINRT__) && !(defined(WINAPI_FAMILY) && WINAPI_FAMILY == WINAPI_FAMILY_PHONE_APP)
+#if !defined(RETRO_DISABLE_HOST_CLOCK) && !defined(_XBOX) && !defined(__WINRT__) && !(defined(WINAPI_FAMILY) && WINAPI_FAMILY == WINAPI_FAMILY_PHONE_APP)
    env = getenv("RTHREADS_SCOND_HIRES");
    if (!(env && !strcmp(env, "0")))
    {
@@ -3515,6 +3515,7 @@ void scond_signal(scond_t *cond)
 }
 
 
+#ifndef RETRO_DISABLE_HOST_CLOCK
 bool scond_wait_timeout(scond_t *cond, slock_t *lock, int64_t timeout_us)
 {
 #if defined(USE_WIN32_THREADS)
@@ -3771,6 +3772,7 @@ bool scond_wait_timeout(scond_t *cond, slock_t *lock, int64_t timeout_us)
    return (pthread_cond_timedwait(&cond->cond, &lock->lock, &now) == 0);
 #endif
 }
+#endif /* RETRO_DISABLE_HOST_CLOCK */
 
 #ifdef HAVE_THREAD_STORAGE
 bool sthread_tls_create(sthread_tls_t *tls)

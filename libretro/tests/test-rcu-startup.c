@@ -45,7 +45,7 @@ static _Thread_local bool paused,waited;
 #define INC(p) (__atomic_add_fetch((p),1,__ATOMIC_ACQ_REL))
 static void qemu_eventcount_after_fork(void) {assert(!LOAD(&init_calls));INC(&parking_resets);}
 static void await(unsigned *p,unsigned n) {uint64_t end=now_ms()+5000;while(LOAD(p)<n){assert(now_ms()<end);YIELD();}}
-static void retro_sleep(unsigned ms) {if(concurrent&&!waited){waited=true;INC(&blocked);}YIELD();}
+static void g_compat_yield(void) {if(concurrent&&!waited){waited=true;INC(&blocked);}YIELD();}
 /* ONCE */
 struct rcu_head {retro_mpsc_node_t node;void (*func)(struct rcu_head *);};
 static void queue_read_hook(struct rcu_head *next) {

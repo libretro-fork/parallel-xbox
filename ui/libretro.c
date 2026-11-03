@@ -2708,21 +2708,7 @@ RETRO_API void retro_init(void)
     }
 #endif
 
-#ifdef _WIN32
-    /* Keep bounded GPU/device deadline waits responsive on Windows.
-     * APU samples follow guest time; this does not pace their production. */
-    {
-        typedef unsigned int (__stdcall *timeBeginPeriod_t)(unsigned int);
-        HMODULE winmm = LoadLibraryA("winmm.dll");
-        if (winmm) {
-            timeBeginPeriod_t fn = (timeBeginPeriod_t)GetProcAddress(winmm, "timeBeginPeriod");
-            if (fn) {
-                fn(1);
-                LRLOG_INFO("[xemu] Set Windows timer resolution to 1ms\n");
-            }
-        }
-    }
-#endif
+
 
 }
 

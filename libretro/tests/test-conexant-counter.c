@@ -36,7 +36,6 @@ typedef struct {VGACommonState vga;struct {uint32_t pending_interrupts;} pcrtc;i
 static NV2AState gpu;
 static int64_t clocks[2];static bool running;static unsigned irqs;static int expected_counter=-1;
 static int64_t qemu_clock_get_ns(int clock) {assert(clock<2);return clocks[clock];}
-static void retro_atomic_store_relaxed_64(int64_t *p,int64_t v) {*p=v;}
 static bool runstate_is_running(void) {return running;}
 /* DECLARATIONS */
 static void nv2a_update_irq(NV2AState *d) {
@@ -77,7 +76,7 @@ int main(void) {
             assert(cx.registers[6]==((initial&0xf0)|((initial+frame-1)&15)));
             running=true;clocks[0]=49;dispatch_frame_vblank(&done,50,150);assert(!done && irqs==previous_irqs);
             clocks[0]=50;clocks[1]=123456;dispatch_frame_vblank(&done,50,150);
-            assert(done && irqs==previous_irqs+1 && gpu.vblank_vt==50 && gpu.vblank_deadline==123456+NV2A_VBLANK_INTERVAL_NS);
+            assert(done && irqs==previous_irqs+1 && gpu.vblank_vt==50);
             for(unsigned again=0;again<3;again++) dispatch_frame_vblank(&done,50,150);
             assert(irqs==previous_irqs+1);
             uint8_t select=6;klass.write_data(&cx.smbusdev,&select,1);

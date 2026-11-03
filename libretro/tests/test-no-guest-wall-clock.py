@@ -59,3 +59,5 @@ assert '-DRETRO_DISABLE_HOST_CLOCK' in flags
 
 assert 'libretro-common/time/rtime.c' not in manifest
 assert 'retro_sleep' not in (root/'libretro/glib/gcore.c').read_text()
+
+assert 'timeBeginPeriod' not in (root/'ui/libretro.c').read_text()

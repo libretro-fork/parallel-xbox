@@ -15,6 +15,7 @@
 #define NV097_DRAW_ARRAYS_COUNT 0xff000000u
 #define NV_KELVIN_PRIMITIVE 0x97u
 #define retro_atomic_store_relaxed_int(p,v) (*(p)=(v))
+#define retro_atomic_store_release_int(p,v) (*(p)=(v))
 typedef struct {
  unsigned inline_elements_length,inline_array_length,inline_buffer_length;
  uint32_t inline_elements_min,inline_elements_max,inline_elements[NV2A_MAX_BATCH_LENGTH+2];
@@ -23,7 +24,7 @@ typedef struct {
  int ctx_switch_subchannel,flush_pending;
  bool texture_dirty[NV2A_MAX_TEXTURES];
 } PGRAPHState;
-typedef struct {PGRAPHState pgraph;} NV2AState;
+typedef struct {PGRAPHState pgraph;struct {uint8_t palette[768];int packed[256],dirty;} puserdac;} NV2AState;
 static NV2AState d;
 static uint32_t reference[NV2A_MAX_BATCH_LENGTH],words[NV2A_MAX_BATCH_LENGTH+7];
 static unsigned nref,flushes,reads,ntrace;

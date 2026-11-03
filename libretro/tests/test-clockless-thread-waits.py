@@ -55,6 +55,8 @@ int main(void){
 #if defined(USE_WIN32_THREADS)
  assert(scond_g.spin==SCOND_SPIN_NONE||scond_g.spin==SCOND_SPIN_PAUSE);
  assert(scond_g.spin_iters==256);
+ assert(!scond_g.hires&&!ec_g.hires);
+ assert(!scond_g.create_timer_ex&&!ec_g.create_timer_ex);
 #endif
  scond_free(request_cond);scond_free(reply_cond);slock_free(lock);
  puts("Clockless thread waits: 500 eventcount and 500 condition handoffs passed with host-clock calls trapped");

@@ -23,6 +23,8 @@
 
 ## Unreleased
 
+- Exclude timed common-library wait APIs from the clockless build. Stop requesting 1 ms Windows timer resolution and probing high-resolution thread timers now that core device waits no longer use host deadlines.
+
 - Drop the unused rtime sleep/timer-resolution implementation from the core. Compatibility locks yield directly to the scheduler; host-dated filename helpers are excluded from this build.
 
 - Exclude unused host-clock/performance-counter helpers and deadline sleeps from the bundled support library. Remove unused timed QEMU condition-variable and semaphore APIs.

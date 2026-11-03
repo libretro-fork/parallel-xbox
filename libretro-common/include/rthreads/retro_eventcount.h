@@ -275,8 +275,10 @@ void retro_eventcount_commit_wait(retro_eventcount_t *ec, int key);
  * spurious early return reports true, so the caller's loop still owns
  * the decision.
  */
+#ifndef RETRO_DISABLE_HOST_CLOCK
 bool retro_eventcount_commit_wait_timeout(retro_eventcount_t *ec,
       int key, int64_t timeout_us);
+#endif
 
 /**
  * retro_eventcount_spin_iters:
