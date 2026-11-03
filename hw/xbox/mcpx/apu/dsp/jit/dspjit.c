@@ -1970,6 +1970,7 @@ enum {
     NP_NONE,
     NP_NOP,
     NP_MOVE_XY_SHORT,   /* move X/Y:(Rn + xxx) <-> R, 7-bit offset */
+    NP_MOVE_X_LONG_SPECIAL, /* offset moves with control-register effects */
     NP_MOVE_X_LONG,     /* move X:(Rn + xxxx) <-> R, a second word */
     NP_LUA,
     NP_LUA_REL,
@@ -2144,11 +2145,10 @@ static int np_kind(const Insn *in)
                ? NP_MOVEC_REG : NP_MOVEC_SPECIAL;
     }
     if (!strcmp(name, "move X:(Rn + xxx) <-> R") || !strcmp(name, "move Y:(Rn + xxx) <-> R")) {
-        int numreg = in->inst & 0xF;
-        return numreg >= DSP_REG_X0 ? NP_MOVE_XY_SHORT : NP_NONE;
+        return NP_MOVE_XY_SHORT;
     }
     if (!strcmp(name, "move X:(Rn + xxxx) <-> R")) {
-        return reg_supported(in->inst & 0x3F) ? NP_MOVE_X_LONG : NP_NONE;
+        return reg_supported(in->inst & 0x3F) ? NP_MOVE_X_LONG : NP_MOVE_X_LONG_SPECIAL;
     }
     if (!strcmp(name, "lua ea, D")) {
         return NP_LUA;
@@ -2704,7 +2704,12 @@ static void emit_nonparallel(Tr *t, const Insn *in, int kind)
         h_and_ri(e, 0, EA1, 0xFFFFFF);
         if (W) {
             emit_read_mem(t, space, EA1, V1);
-            emit_write_reg(t, numreg, V1);
+            if (numreg < DSP_REG_X0) {
+                /* Encoded zero-width registers discard loads. */
+                h_st32_imm(e, REG_CORE, REGOFF(numreg), 0);
+            } else {
+                emit_write_reg(t, numreg, V1);
+            }
         } else {
             emit_read_reg(t, numreg, V1);
             emit_write_mem(t, space, EA1, V1);
@@ -2712,17 +2717,26 @@ static void emit_nonparallel(Tr *t, const Insn *in, int kind)
         break;
     }
 
+    case NP_MOVE_X_LONG_SPECIAL:
     case NP_MOVE_X_LONG: {
         /* emu_move_x_long */
         bool W = (inst >> 6) & 1;
         int n = (inst >> 8) & 7;
         int numreg = inst & 0x3F;
+        if (kind == NP_MOVE_X_LONG_SPECIAL) acc_spill_all(t, false);
         h_ld32(e, EA1, REG_CORE, REGOFF(DSP_REG_R0 + n));
         h_add_ri(e, 0, EA1, in->ext);
         h_and_ri(e, 0, EA1, 0xFFFFFF);
         if (W) {
             emit_read_x(t, EA1, V1);
-            emit_write_reg(t, numreg, V1);
+            if (kind == NP_MOVE_X_LONG_SPECIAL) {
+                h_mov_rr(e, 0, H_ARG2, V1);
+                h_mov_ri(e, H_ARG1, numreg);
+                h_mov_rr(e, 1, H_ARG0, REG_CORE);
+                h_call(e, (const void *)dsp56k_write_reg);
+            } else {
+                emit_write_reg(t, numreg, V1);
+            }
         } else {
             emit_read_reg(t, numreg, V1);
             emit_write_x(t, EA1, V1);
@@ -3681,7 +3695,8 @@ retry:
             emit_native(t, &in);
             if (np_kind(&in) == NP_MOVEC_SPECIAL || np_kind(&in) == NP_MOVEM_P_SPECIAL ||
                 np_kind(&in) == NP_MOVEP_SPECIAL || np_kind(&in) == NP_MOVEP_P ||
-                np_kind(&in) == NP_STATUS_MODE || np_kind(&in) == NP_BIT_CONTROL) {
+                np_kind(&in) == NP_STATUS_MODE || np_kind(&in) == NP_BIT_CONTROL ||
+                np_kind(&in) == NP_MOVE_X_LONG_SPECIAL) {
                 /* Control transfers may change scale/LF, stack state or LC.
                  * Post once, then select the resulting cache identity. */
                 acc_spill_all(t, false);
@@ -3809,7 +3824,8 @@ retry:
     t->cyc = 0;
     if (np_kind(&in) == NP_MOVEM_P_WRITE || np_kind(&in) == NP_MOVEC_SPECIAL ||
         np_kind(&in) == NP_MOVEM_P_SPECIAL || np_kind(&in) == NP_MOVEP_SPECIAL ||
-        np_kind(&in) == NP_MOVEP_P || np_kind(&in) == NP_STATUS_MODE || np_kind(&in) == NP_BIT_CONTROL) {
+        np_kind(&in) == NP_MOVEP_P || np_kind(&in) == NP_STATUS_MODE || np_kind(&in) == NP_BIT_CONTROL ||
+        np_kind(&in) == NP_MOVE_X_LONG_SPECIAL) {
         /* P writes can replace REP's body; control writes can change its
          * count, mode or stack. Retire once and redispatch updated state. */
         if (np_kind(&in) == NP_MOVEM_P_WRITE) {
