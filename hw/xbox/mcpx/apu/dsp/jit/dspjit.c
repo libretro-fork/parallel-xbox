@@ -266,6 +266,7 @@ typedef struct Insn {
     uint32_t ext;       /* its second word, if any */
     uint32_t len;
     uint32_t next;
+    int np;            /* nonparallel classification, shared by block/REP emission */
     DspDecoded d;
 } Insn;
 
@@ -3571,6 +3572,7 @@ static bool decode_insn(dsp_core_t *core, uint32_t at, Insn *in)
     in->len = in->d.len;
     in->ext = at + 1 < DSP_PRAM_SIZE ? core->pram[at + 1] & 0xFFFFFF : 0;
     in->next = (at + in->len) & (DSP_PRAM_SIZE - 1);
+    in->np = np_kind(in);
     return in->d.emu != NULL;
 }
 
@@ -3583,7 +3585,7 @@ static bool insn_native(const Insn *in)
     if (in->inst >= 0x100000) {
         return pm_supported(in);
     }
-    return np_kind(in) != NP_NONE;
+    return in->np != NP_NONE;
 }
 
 /* the native code for an instruction insn_native says yes to, without
@@ -3594,7 +3596,7 @@ static void emit_native(Tr *t, const Insn *in)
     if (in->inst >= 0x100000) {
         emit_parallel(t, in);
     } else {
-        emit_nonparallel(t, in, np_kind(in));
+        emit_nonparallel(t, in, in->np);
     }
 }
 
@@ -3696,10 +3698,10 @@ retry:
 
         if (insn_native(&in)) {
             emit_native(t, &in);
-            if (np_kind(&in) == NP_MOVEC_SPECIAL || np_kind(&in) == NP_MOVEM_P_SPECIAL ||
-                np_kind(&in) == NP_MOVEP_SPECIAL || np_kind(&in) == NP_MOVEP_P ||
-                np_kind(&in) == NP_STATUS_MODE || np_kind(&in) == NP_BIT_CONTROL ||
-                np_kind(&in) == NP_MOVE_X_LONG_SPECIAL) {
+            if (in.np == NP_MOVEC_SPECIAL || in.np == NP_MOVEM_P_SPECIAL ||
+                in.np == NP_MOVEP_SPECIAL || in.np == NP_MOVEP_P ||
+                in.np == NP_STATUS_MODE || in.np == NP_BIT_CONTROL ||
+                in.np == NP_MOVE_X_LONG_SPECIAL) {
                 /* Control transfers may change scale/LF, stack state or LC.
                  * Post once, then select the resulting cache identity. */
                 acc_spill_all(t, false);
@@ -3712,7 +3714,7 @@ retry:
                 emit_jump_to_epilogue(t);
                 t->cyc = 0;
                 done = true;
-            } else if (np_kind(&in) == NP_MOVEM_P_WRITE) {
+            } else if (in.np == NP_MOVEM_P_WRITE) {
                 /* A write can replace this opcode, its extension, or the
                  * next instruction. Never translate past it or resume
                  * already decoded code from before invalidation. */
@@ -3722,7 +3724,7 @@ retry:
                 t->cyc = 0;
                 done = true;
             } else {
-                if (np_kind(&in) == NP_MOVEC_SR) {
+                if (in.np == NP_MOVEC_SR) {
                     /* Leave only when this write changes the code's scale/LF
                      * identity. Ordinary flag restores stay in native code. */
                     h_ld32(&t->e, T0, REG_CORE, REGOFF(DSP_REG_SR));
@@ -3804,7 +3806,7 @@ static dspjit_block_fn dspjit_translate_rep(DspJit *jit, int mode, uint32_t pc)
         return NULL;
     }
     if (!decode_insn(core, pc, &in)) return NULL;
-    if (!insn_native(&in) || np_kind(&in) == NP_MOVEC_SR) {
+    if (!insn_native(&in) || in.np == NP_MOVEC_SR) {
         return NULL;
     }
 
@@ -3819,19 +3821,19 @@ retry:
 
     top = e->len;
     emit_native(t, &in);
-    if (np_kind(&in) == NP_NORM) {
+    if (in.np == NP_NORM) {
         /* NORM's next iteration consumes the E/U/Z from this iteration. */
         emit_flags_flush(t);
     }
     cycles = t->cyc;
     t->cyc = 0;
-    if (np_kind(&in) == NP_MOVEM_P_WRITE || np_kind(&in) == NP_MOVEC_SPECIAL ||
-        np_kind(&in) == NP_MOVEM_P_SPECIAL || np_kind(&in) == NP_MOVEP_SPECIAL ||
-        np_kind(&in) == NP_MOVEP_P || np_kind(&in) == NP_STATUS_MODE || np_kind(&in) == NP_BIT_CONTROL ||
-        np_kind(&in) == NP_MOVE_X_LONG_SPECIAL) {
+    if (in.np == NP_MOVEM_P_WRITE || in.np == NP_MOVEC_SPECIAL ||
+        in.np == NP_MOVEM_P_SPECIAL || in.np == NP_MOVEP_SPECIAL ||
+        in.np == NP_MOVEP_P || in.np == NP_STATUS_MODE || in.np == NP_BIT_CONTROL ||
+        in.np == NP_MOVE_X_LONG_SPECIAL) {
         /* P writes can replace REP's body; control writes can change its
          * count, mode or stack. Retire once and redispatch updated state. */
-        if (np_kind(&in) == NP_MOVEM_P_WRITE) {
+        if (in.np == NP_MOVEM_P_WRITE) {
             h_st32(e, REG_CORE, REGOFF(DSP_REG_LC), REG_LC);
         }
         acc_spill_all(t, false);

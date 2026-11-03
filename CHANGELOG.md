@@ -29,6 +29,8 @@
 
 ## Unreleased
 
+- Reuse each DSP instruction's native classification throughout block and REP compilation, avoiding repeated opcode-name scans. Generated execution and interpreter fallback decisions are unchanged.
+
 - Build the Intel macOS core on GitHub's Intel runner pool, so ARM64 runner shortages no longer block both macOS architectures. Apple Silicon builds continue using ARM64 runners.
 
 - Fix recursive BQL acquisition when guest data watchpoints restart an instruction under the libretro frame owner. Preserve ownership while publishing the debug interrupt, and retain conditional acquisition for unowned callers. Add read/write restart regressions and an unconditional-lock negative control.
