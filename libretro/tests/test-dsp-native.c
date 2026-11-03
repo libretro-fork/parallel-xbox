@@ -417,7 +417,7 @@ static void check_immediate_shift_boundaries(Machine *a, Machine *b, unsigned mo
     const uint64_t mask = UINT64_C(0xFFFFFFFFFFFFFF);
     Machine *machines[] = {a, b};
     for (unsigned right = 0; right < 2; right++) {
-        for (unsigned shift = right ? 1 : 0; shift <= (right ? 63 : 56); shift++) {
+        for (unsigned shift = 0; shift < 64; shift++) {
             for (unsigned src = 0; src < 2; src++) {
                 for (unsigned dst = 0; dst < 2; dst++) {
                     uint32_t op = (right ? 0x0C1C00 : 0x0C1D00) |
@@ -425,9 +425,10 @@ static void check_immediate_shift_boundaries(Machine *a, Machine *b, unsigned mo
                     for (unsigned v = 0; v < ARRAY_SIZE(values); v++) {
                         uint64_t value = values[v];
                         uint64_t result = right ? value >> shift : (value << shift) & mask;
-                        unsigned carry = right ? (value >> (shift - 1)) & 1 :
-                            (value >> (56 - shift)) & 1;
-                        unsigned lost = !right && (value >> (56 - shift)) != 0;
+                        unsigned carry = right ? (shift ? (value >> (shift - 1)) & 1 : 0) :
+                            (shift <= 56 ? (value >> (56 - shift)) & 1 : 0);
+                        unsigned lost = !right && (shift <= 56 ?
+                            (value >> (56 - shift)) != 0 : value != 0);
                         unsigned overflow = !right && ((value ^ result) >> 55) != 0;
                         for (unsigned f = 0; f < ARRAY_SIZE(profiles); f++) {
                             uint32_t sr = (profiles[f] & ~((3u << DSP_SR_S0) | (1u << DSP_SR_LF))) |
@@ -479,7 +480,9 @@ static void check_immediate_shift_boundaries(Machine *a, Machine *b, unsigned mo
     }
     static const unsigned contexts[] = {0x20000000, 0x40000, 0x80000, 0x40000000};
     for (unsigned right = 0; right < 2; right++) {
-        for (unsigned shift = right ? 56 : 0; shift <= (right ? 63 : 56); shift += right ? 1 : 56) {
+        static const unsigned endpoints[] = {0, 56, 57, 58, 59, 60, 61, 62, 63};
+        for (unsigned index = 0; index < ARRAY_SIZE(endpoints); index++) {
+            unsigned shift = endpoints[index];
             for (unsigned src = 0; src < 2; src++) {
                 for (unsigned dst = 0; dst < 2; dst++) {
                     for (unsigned seed = 0; seed < 4; seed++) {

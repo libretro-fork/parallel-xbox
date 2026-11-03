@@ -29,6 +29,8 @@
 
 ## Unreleased
 
+- DSP: eliminate undefined C shifts and interpreter fallback for all immediate ASL/ASR counts. ASR zero copies with cleared carry; wide ASL uses explicit zero-result/carry behavior with discarded-bit sticky L. Preserve negative zero-count copies for deferred flags. Expand the shift regression to 107,520 boundaries and exercise zero/wide counts in REP.
+
 - Skip fixed-slot scans when a drain has no queued disk completions, while retaining generic bottom-half progress. Ignore empty scatter spans on the Chihiro memory-backed path without issuing address-space transactions; retain nonempty offsets, errors and deferred callbacks.
 
 - DSP: compile defined immediate-shift endpoints (ASL 0/56 and ASR 56-63) without fallback and clear upper SR bookkeeping bits after immediate arithmetic shifts, matching the interpreter. Add 97,280 regression boundaries with independent result/status checks and REP/DO production coverage.

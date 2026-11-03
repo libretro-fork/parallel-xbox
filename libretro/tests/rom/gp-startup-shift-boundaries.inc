@@ -1,4 +1,4 @@
-; Defined zero/wide immediate shifts, cross accumulators, flags, REP, DO and scaling.
+; All immediate shift counts: zero/wide, cross accumulators, flags, REP, DO and scaling.
         dd 0x0A8581 ; P:00
         dd 0x000000 ; P:01
         dd 0x08F485 ; P:02
@@ -39,10 +39,24 @@
         dd 0x0C1C70 ; P:25
         dd 0x0460B9 ; P:26
         dd 0x052420 ; P:27
-        dd 0x67F400 ; P:28
-        dd 0x001400 ; P:29
-        dd 0x565F00 ; P:2A
-        dd 0x08F484 ; P:2B
-        dd 0x000001 ; P:2C
-        dd 0x0AF080 ; P:2D
-        dd 0x000000 ; P:2E
+        dd 0x0580AA ; P:28
+        dd 0x0501A8 ; P:29
+        dd 0x0C1D73 ; P:2A
+        dd 0x0460B9 ; P:2B
+        dd 0x052520 ; P:2C
+        dd 0x0C1D7F ; P:2D
+        dd 0x0460B9 ; P:2E
+        dd 0x052620 ; P:2F
+        dd 0x0603A0 ; P:30
+        dd 0x0C1C01 ; P:31
+        dd 0x0460B9 ; P:32
+        dd 0x052720 ; P:33
+        dd 0x0602A0 ; P:34
+        dd 0x0C1D7F ; P:35
+        dd 0x67F400 ; P:36
+        dd 0x001400 ; P:37
+        dd 0x565F00 ; P:38
+        dd 0x08F484 ; P:39
+        dd 0x000001 ; P:3A
+        dd 0x0AF080 ; P:3B
+        dd 0x000000 ; P:3C

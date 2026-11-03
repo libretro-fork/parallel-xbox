@@ -1199,14 +1199,17 @@ static uint16_t dsp_asl56(uint32_t *dest, int n)
 
     uint64_t dest_v = dest[2] | ((uint64_t)dest[1] << 24) | ((uint64_t)dest[0] << 48);
 
-    uint32_t carry = (dest_v >> (56-n)) & 1;
+    /* Immediate counts occupy six bits. Beyond the accumulator width,
+     * use zero carry and retain discarded bits for sticky L; never form
+     * a negative host shift count. */
+    uint32_t carry = n <= 56 ? (dest_v >> (56-n)) & 1 : 0;
 
     uint64_t dest_s = dest_v << n;
     dest[2] = dest_s & BITMASK(24);
     dest[1] = (dest_s >> 24) & BITMASK(24);
     dest[0] = (dest_s >> 48) & BITMASK(8);
 
-    uint32_t overflow = (dest_v >> (56-n)) != 0;
+    uint32_t overflow = n <= 56 ? (dest_v >> (56-n)) != 0 : dest_v != 0;
     uint32_t v = ((dest_v >> 55) & 1) != ((dest_s >> 55) & 1);
 
     return (overflow<<DSP_SR_L)|(v<<DSP_SR_V)|(carry<<DSP_SR_C);
@@ -1218,7 +1221,8 @@ static uint16_t dsp_asr56(uint32_t *dest, int n)
 
     uint64_t dest_v = dest[2] | ((uint64_t)dest[1] << 24) | ((uint64_t)dest[0] << 48);
 
-    uint16_t carry = (dest_v >> (n-1)) & 1;
+    /* ASR #0 copies its source and clears carry. */
+    uint16_t carry = n ? (dest_v >> (n-1)) & 1 : 0;
 
     dest_v >>= n;
     dest[2] = dest_v & BITMASK(24);

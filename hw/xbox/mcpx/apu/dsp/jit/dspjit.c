@@ -1459,9 +1459,14 @@ static void emit_alu(Tr *t, const AluOp *a)
         h_shl_ri(e, 1, T0, 8);
         h_shr_ri(e, 1, T0, 8);
         h_mov_rr(e, 1, T2, T0);
-        h_shr_ri(e, 1, T2, 56 - n);
-        h_mov_rr(e, 0, T4, T2);
-        h_and_ri(e, 0, T4, 1);
+        if (n <= 56) {
+            h_shr_ri(e, 1, T2, 56 - n);
+            h_mov_rr(e, 0, T4, T2);
+            h_and_ri(e, 0, T4, 1);
+        } else {
+            /* Every source bit is discarded; the last shifted bit is zero. */
+            h_mov_ri(e, T4, 0);
+        }
         h_test_rr(e, 1, T2, T2);
         h_setcc(e, HC_NE, T2);
         h_shl_ri(e, 0, T2, DSP_SR_L);
@@ -1486,10 +1491,17 @@ static void emit_alu(Tr *t, const AluOp *a)
         h_mov_rr(e, 1, T0, acc_reg(a->s));
         h_shl_ri(e, 1, T0, 8);
         h_shr_ri(e, 1, T0, 8);
-        h_mov_rr(e, 1, T4, T0);
-        h_shr_ri(e, 1, T4, (n - 1) & 63);
-        h_and_ri(e, 0, T4, 1);
+        if (n) {
+            h_mov_rr(e, 1, T4, T0);
+            h_shr_ri(e, 1, T4, n - 1);
+            h_and_ri(e, 0, T4, 1);
+        } else {
+            h_mov_ri(e, T4, 0);
+        }
         h_shr_ri(e, 1, T0, n);
+        /* With no right shift the source can still be negative. Lazy E/U
+         * computation requires the usual sign-extended host accumulator. */
+        if (!n) emit_sext56(e, T0);
         h_mov_rr(e, 1, acc, T0);
         acc_written(t, a->d);
         emit_sr_result(t, SR_EUNZ | SR_V | SR_C | 0xFFFF0000u, T4, acc, a->d);
@@ -2071,9 +2083,8 @@ static bool np_alu(const Insn *in, AluOp *a)
         a->s = (inst >> 7) & 1;
         a->d = inst & 1;
         a->shift = (inst >> 1) & 0x3F;
-        /* Preserve the interpreter's defined shift range: ASL includes
-         * zero/56; logical ASR is defined through 63, excluding zero. */
-        return a->op == OP_ASL_N ? a->shift <= 56 : a->shift >= 1;
+        /* The interpreter and emitter define every six-bit count. */
+        return true;
     }
     return false;
 }
