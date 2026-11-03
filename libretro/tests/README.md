@@ -3579,3 +3579,21 @@ and resume at SSH. Additional loop/interrupt comparisons and a CI frame
 fixture cover deferred flags and computed targets without interpreter calls.
 Reference: DSP56300 Family Manual, Bcc/BRA.
 https://www.nxp.com/docs/en/reference-manual/DSP56300FM.pdf
+
+## ACI shared stream interrupts
+
+`test-aci-irq.py CHECKOUT [CC]` compiles the production status, MMIO
+byte/word/dword write and bus-master reset functions. It independently
+checks 275,339 status/control/acknowledgement/reset boundaries across PCM
+in/out, microphone and S/PDIF. Enabled BCIS, LVBCI and FIFO-error sources
+keep the shared PCI IRQ high until every source is acknowledged or disabled.
+It covers all 32 status/control bit patterns, every four-stream acknowledge
+order, partial W1C, enable changes with unchanged status, reserved banks,
+unrelated global status preservation, S/PDIF initialization and resetting
+one pending stream while another remains active. Four negative controls
+restore shared-line deassertion, missing control/FIFO updates or omitted
+S/PDIF reset. `ACI_IRQ_CFLAGS` and `ACI_IRQ_RUNNER` select sanitizers/cross
+execution. Runs in the frame suite and regression-only CI.
+
+This fixes bus-master status/IRQ semantics; S/PDIF descriptor progression
+and Dolby-enabled game compatibility remain separate validation work.

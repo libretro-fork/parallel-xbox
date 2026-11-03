@@ -298,42 +298,26 @@ static void fetch_bd(MCPXACIState *s, AC97BusMasterRegs *r)
 
 static void update_sr(MCPXACIState *s, AC97BusMasterRegs *r, uint32_t new_sr)
 {
-    /* (QEMU's read past a 3-entry table for S/PDIF out) */
     static const uint32_t masks[LAST_INDEX] = {
         [PI_INDEX] = GS_PIINT, [PO_INDEX] = GS_POINT, [MC_INDEX] = GS_MINT,
         [SO_INDEX] = GS_SOINT,
     };
-    int event = 0;
-    int level = 0;
-    uint32_t new_mask = new_sr & SR_INT_MASK;
-    uint32_t old_mask = r->sr & SR_INT_MASK;
-
-    if (new_mask ^ old_mask) {
-        if (!new_mask) {
-            event = 1;
-            level = 0;
-        } else {
-            if ((new_mask & SR_LVBCI) && (r->cr & CR_LVBIE)) {
-                event = 1;
-                level = 1;
-            }
-            if ((new_mask & SR_BCIS) && (r->cr & CR_IOCE)) {
-                event = 1;
-                level = 1;
-            }
-        }
-    }
+    uint32_t mask = masks[r - s->bm_regs];
+    bool pending = ((new_sr & SR_BCIS) && (r->cr & CR_IOCE)) ||
+                   ((new_sr & SR_LVBCI) && (r->cr & CR_LVBIE)) ||
+                   ((new_sr & SR_FIFOE) && (r->cr & CR_FEIE));
 
     r->sr = new_sr;
-
-    if (!event) {
-        return;
+    if (pending) {
+        s->glob_sta |= mask;
+    } else {
+        s->glob_sta &= ~mask;
     }
-    if (level) {
-        s->glob_sta |= masks[r - s->bm_regs];
+    /* The four streams share one PCI interrupt. Acknowledging one source
+     * must not lower it while another enabled source is still pending. */
+    if (s->glob_sta & (GS_PIINT | GS_POINT | GS_MINT | GS_SOINT)) {
         pci_irq_assert(&s->dev);
     } else {
-        s->glob_sta &= ~masks[r - s->bm_regs];
         pci_irq_deassert(&s->dev);
     }
 }
@@ -357,6 +341,14 @@ static void reset_bm_regs(MCPXACIState *s, AC97BusMasterRegs *r)
     r->bd_valid = 0;
 
     voice_set_active(s, r - s->bm_regs, false);
+}
+
+static void reset_bus_masters(MCPXACIState *s)
+{
+    reset_bm_regs(s, &s->bm_regs[PI_INDEX]);
+    reset_bm_regs(s, &s->bm_regs[PO_INDEX]);
+    reset_bm_regs(s, &s->bm_regs[MC_INDEX]);
+    reset_bm_regs(s, &s->bm_regs[SO_INDEX]);
 }
 
 /* PCM out: the bus master takes what it may of the current buffer, up to
@@ -739,6 +731,8 @@ static void nabm_writeb(MCPXACIState *s, uint32_t addr, uint32_t val)
                 r->sr &= ~SR_DCH;
                 voice_set_active(s, r - s->bm_regs, true);
             }
+            /* Enables can change while the interrupt status stays set. */
+            update_sr(s, r, r->sr);
         }
         break;
     case PI_SR:
@@ -870,9 +864,7 @@ static void mcpx_aci_realize(PCIDevice *dev, Error **errp)
     lr_dsp_register_guarded_timer(po_tick);
     d->po_timer = timer_new_ns(QEMU_CLOCK_VIRTUAL, po_tick, d);
 
-    reset_bm_regs(d, &d->bm_regs[PI_INDEX]);
-    reset_bm_regs(d, &d->bm_regs[PO_INDEX]);
-    reset_bm_regs(d, &d->bm_regs[MC_INDEX]);
+    reset_bus_masters(d);
     mixer_reset(d);
 }
 

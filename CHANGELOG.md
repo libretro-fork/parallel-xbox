@@ -29,6 +29,8 @@
 
 ## Unreleased
 
+- Keep the ACI PCI interrupt asserted while another PCM, capture or S/PDIF source remains pending. Reevaluate pending interrupts when control enables change, honor FIFO-error enables, and initialize the S/PDIF bus master halted like the other streams. Add exhaustive shared-IRQ, acknowledgement and reset regressions.
+
 - Execute register-relative BRA and conditional Bcc in the interpreter and native DSP JIT. Add independent checks for all condition codes and CCR values, current-PC targets, address wrap, preserved registers and single retirement at DO boundaries, plus interrupt and frame regressions.
 
 - Execute both PC-relative address load (LRA) forms in the interpreter and native DSP JIT. Add independent current-PC, address-wrap, width, alias and flag-preservation checks, plus REP and deferred-flag coverage in CI.

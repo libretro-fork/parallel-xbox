@@ -68,6 +68,12 @@ jobs:
         env:
           WATCHPOINT_OWNER_CFLAGS: -fsanitize=address,undefined -fno-omit-frame-pointer -fno-sanitize-recover=all
         run: python3 libretro/tests/test-watchpoint-owner.py . cc
+      - name: ACI shared stream interrupts and S/PDIF reset
+        run: python3 libretro/tests/test-aci-irq.py . cc
+      - name: ACI interrupts under address and undefined behavior sanitizers
+        env:
+          ACI_IRQ_CFLAGS: -fsanitize=address,undefined -fno-omit-frame-pointer -fno-sanitize-recover=all
+        run: python3 libretro/tests/test-aci-irq.py . cc
       - name: SPSC pair publication with fortified libc and sanitizers
         env:
           SPSC_PAIR_CFLAGS: -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=3 -fsanitize=address -fno-omit-frame-pointer
