@@ -29,6 +29,8 @@
 
 ## Unreleased
 
+- Read-only QCOW2 images skip the write-cluster workspace and release metadata decode scratch after open, retaining two fewer cluster-sized buffers without adding read-time allocations.
+
 - Keep adjacent file buffers coalesced across empty vector descriptors, avoiding split fallback reads/writes and mapped copy calls without staging or descriptor rewrites.
 
 - DSP: execute immediate and register-controlled EXTRACTU natively, with aliased operands, sixteen-bit layouts and carry/overflow regression coverage.

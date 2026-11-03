@@ -597,11 +597,11 @@ LRQcow2 *lr_qcow2_open(LRFile *f, bool writable, char *err, size_t errlen)
     q->l1 = calloc(q->l1_size ? q->l1_size : 1, 8);
     q->l2 = calloc((size_t)q->l1_size * q->l2e + 1, 8);
     q->table = malloc((size_t)q->cs);
-    q->cluster = malloc((size_t)q->cs);
+    q->cluster = writable ? malloc((size_t)q->cs) : NULL;
     q->dcache = malloc((size_t)q->cs);
     q->cbuf = malloc((size_t)q->cs * 2 + 512);
     q->inflate = rinflate_new(-12);
-    if (!q->l1 || !q->l2 || !q->table || !q->cluster || !q->dcache ||
+    if (!q->l1 || !q->l2 || !q->table || (writable && !q->cluster) || !q->dcache ||
         !q->cbuf || !q->inflate) {
         FAIL("out of memory");
     }
@@ -674,6 +674,11 @@ LRQcow2 *lr_qcow2_open(LRFile *f, bool writable, char *err, size_t errlen)
                                                    q->table[k * 2 + 1]);
             }
         }
+    }
+    /* Readers have decoded all metadata and never rewrite its disk layout. */
+    if (!writable) {
+        free(q->table);
+        q->table = NULL;
     }
     return q;
 

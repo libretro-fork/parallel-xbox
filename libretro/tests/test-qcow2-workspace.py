@@ -4,7 +4,7 @@ from pathlib import Path
 import contextlib,os,shlex,shutil,subprocess,sys,tempfile
 cs=int(os.environ.get('QCOW_WORKSPACE_CLUSTER_SIZE','65536'))
 r=Path(sys.argv[1]).resolve();cc=sys.argv[2] if len(sys.argv)>2 else 'cc';base=os.environ.get('QCOW_WORKSPACE_BASELINE')
-s=subprocess.check_output(['git','-C',str(r),'show',base+':block/libretro-qcow2.c'],text=True) if base else (r/'block/libretro-qcow2.c').read_text()
+s=subprocess.check_output(['git','-C',str(r),'show',base+':block/libretro-qcow2.c'],text=True) if base else Path(os.environ.get('QCOW_WORKSPACE_SOURCE',str(r/'block/libretro-qcow2.c'))).read_text()
 code=Path(__file__).with_suffix('.c').read_text().replace('/* PRODUCTION */',s)
 fixture=os.environ.get('QCOW_WORKSPACE_FIXTURE_DIR')
 ctx=contextlib.nullcontext(fixture) if fixture else tempfile.TemporaryDirectory(prefix='qcow-workspace-')

@@ -315,3 +315,10 @@ buffers. The 3,898-case syscall fixture covers interspersed NULL/non-NULL
 empty spans, short transfers and the >IOV_MAX scalar fallback; a full
 contiguous fallback transfers in one successful call instead of three.
 Descriptor arrays remain immutable, with existing EOF and range checks.
+
+Read-only QCOW2 opens omit the write-cluster workspace and release temporary
+metadata decode storage after loading tables. This retains two fewer cluster
+sizes per image (128 KiB at 64 KiB clusters); compressed input/output buffers
+and eager inflater creation remain available for reads. Writable workspace
+behavior is unchanged. Allocation-failure and byte checks cover this saving;
+no startup-time or frame-rate improvement is claimed.

@@ -3696,3 +3696,9 @@ the production shift/mask algorithm. Carry/overflow clear, and upper status is
 preserved. Out-of-range fields are a deterministic zero-extension policy,
 not hardware-defined behavior. The startup fixture checks changing accumulator
 control aliases in REP/DO. Extended arithmetic support remains instruction-local.
+
+The QCOW2 workspace fixture also counts read-only workspace allocations,
+checks that table and write scratch are absent after open, injects each
+workspace allocation failure, and verifies compressed reads and write
+rejection. QCOW_WORKSPACE_SOURCE=PATH selects a frozen production source
+for a negative control without changing expected current allocation counts.
