@@ -25,7 +25,7 @@ print(f'Clock audit: {len(files)} guest files and service-clock providers contai
 # core paths are tested with trapped clock reads by test-clockless-thread-waits.
 manifest=set(re.findall(r'\$\(CORE_DIR\)/([\w./-]+\.c)\b',flags))
 assert len(manifest)>300, 'static Makefile source inventory unexpectedly empty'
-providers={'libretro-common/time/rtime.c','libretro-common/features/features_cpu.c','libretro-common/rthreads/rthreads.c',
+providers={'libretro-common/features/features_cpu.c','libretro-common/rthreads/rthreads.c',
            'libretro-common/rthreads/retro_eventcount.c','libretro-common/file/file_path.c'}
 physical_all=re.compile(r'\b(?:QueryPerformanceCounter|QueryPerformanceFrequency|GetSystemTimeAsFileTime|GetSystemTimePreciseAsFileTime|GetTickCount64?|clock_gettime|ra_clock_gettime|gettimeofday|timespec_get|mach_absolute_time|cpu_features_get_time_usec|time)\s*\(')
 # These helpers read host time or schedule an explicit host duration. No
@@ -56,3 +56,6 @@ for name in ['include/qemu/thread.h','util/qemu-thread-win32.c','util/qemu-threa
  assert 'qemu_timedwait_clockid' not in text, name
 
 assert '-DRETRO_DISABLE_HOST_CLOCK' in flags
+
+assert 'libretro-common/time/rtime.c' not in manifest
+assert 'retro_sleep' not in (root/'libretro/glib/gcore.c').read_text()

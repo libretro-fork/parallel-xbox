@@ -23,6 +23,8 @@
 
 ## Unreleased
 
+- Drop the unused rtime sleep/timer-resolution implementation from the core. Compatibility locks yield directly to the scheduler; host-dated filename helpers are excluded from this build.
+
 - Exclude unused host-clock/performance-counter helpers and deadline sleeps from the bundled support library. Remove unused timed QEMU condition-variable and semaphore APIs.
 
 - Remove the unused Windows high-resolution polling timer. Polling now waits for notifications or checks readiness, without scheduling positive host-time delays.

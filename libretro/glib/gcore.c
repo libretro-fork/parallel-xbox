@@ -4,7 +4,7 @@
  *
  * On libretro-common: strlcpy/strlcat (compat_strl), UTF-8 and UTF-16
  * (encoding_utf), base64 (encoding_base64), SHA-1 (lrc_hash),
- * the processor count (features_cpu), scheduler yields (retro_timers), atomics
+ * the processor count (features_cpu), native scheduler yields, atomics
  * (retro_atomic). What is left (GLib's own semantics on top of libc) is
  * written here. There is no GMutex: nothing in the core takes one.
  *
@@ -19,6 +19,7 @@
 #include <windows.h>
 #else
 #include <sys/time.h>
+#include <sched.h>
 #endif
 
 #include <compat/strl.h>
@@ -27,13 +28,22 @@
 #include <features/features_cpu.h>
 #include <lrc_hash.h>
 #include <retro_atomic.h>
-#include <retro_timers.h>
+
+/* Scheduler yield only: no host duration, clock or timer setup. */
+static void g_compat_yield(void)
+{
+#ifdef _WIN32
+    SwitchToThread();
+#else
+    sched_yield();
+#endif
+}
 
 /* Protect process-wide compatibility state, including on hosts without GLib. */
 static void g_compat_lock(retro_atomic_int_t *lock)
 {
     while (!retro_atomic_cas_int(lock, 0, 1)) {
-        retro_sleep(0);
+        g_compat_yield();
     }
 }
 
@@ -1627,7 +1637,7 @@ gboolean g_once_init_enter(volatile void *location)
             return TRUE;
         }
         g_compat_unlock(&g_once_lock);
-        retro_sleep(0);
+        g_compat_yield();
     }
 }
 

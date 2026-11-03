@@ -652,7 +652,6 @@ SOURCES_LRCOMMON := \
 	$(CORE_DIR)/libretro-common/streams/file_stream.c \
 	$(CORE_DIR)/libretro-common/string/rstrtod.c \
 	$(CORE_DIR)/libretro-common/string/stdstring.c \
-	$(CORE_DIR)/libretro-common/time/rtime.c \
 	$(CORE_DIR)/libretro-common/vfs/vfs_implementation.c \
 
 ifeq ($(HOST_OS),darwin)
