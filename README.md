@@ -309,3 +309,9 @@ adjacent-buffer coalescer, avoiding a separate native call when those remaining
 buffers are contiguous. Descriptors stay immutable and no staging copy is added.
 The fault-injection fixture checks 3,875 short/EINTR/EOF/error cases, including
 residual call counts; this is not a measured disk-throughput or FPS gain.
+
+Empty vector descriptors no longer split adjacent mapped/native fallback
+buffers. The 3,898-case syscall fixture covers interspersed NULL/non-NULL
+empty spans, short transfers and the >IOV_MAX scalar fallback; a full
+contiguous fallback transfers in one successful call instead of three.
+Descriptor arrays remain immutable, with existing EOF and range checks.

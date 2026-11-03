@@ -622,9 +622,10 @@ int lr_file_preadv(LRFile *f, int64_t off, const LRFileIOV *iov, int n)
         for (int i = 0; i < n;) {
             void *base = iov[i].base;
             size_t length = iov[i++].len;
-            while (i < n && length <= UINTPTR_MAX - (uintptr_t)base &&
-                   (uintptr_t)iov[i].base == (uintptr_t)base + length &&
-                   iov[i].len <= SIZE_MAX - length) {
+            /* Empty descriptors do not separate adjacent byte ranges. */
+            while (i < n && ((length <= UINTPTR_MAX - (uintptr_t)base &&
+                    (uintptr_t)iov[i].base == (uintptr_t)base + length &&
+                    iov[i].len <= SIZE_MAX - length) || !iov[i].len)) {
                 length += iov[i++].len;
             }
             lr_file_read_mapped(f, off, base, length);
@@ -670,9 +671,10 @@ int lr_file_preadv(LRFile *f, int64_t off, const LRFileIOV *iov, int n)
             length -= skip;
             skip = 0;
         }
-        while (i < n && length <= UINTPTR_MAX - (uintptr_t)base &&
-               (uintptr_t)iov[i].base == (uintptr_t)base + length &&
-               iov[i].len <= SIZE_MAX - length) {
+        /* Empty descriptors do not separate adjacent byte ranges. */
+        while (i < n && ((length <= UINTPTR_MAX - (uintptr_t)base &&
+                (uintptr_t)iov[i].base == (uintptr_t)base + length &&
+                iov[i].len <= SIZE_MAX - length) || !iov[i].len)) {
             length += iov[i++].len;
         }
         size_t done;
@@ -732,9 +734,10 @@ int lr_file_pwritev(LRFile *f, int64_t off, const LRFileIOV *iov, int n)
             length -= skip;
             skip = 0;
         }
-        while (i < n && length <= UINTPTR_MAX - (uintptr_t)base &&
-               (uintptr_t)iov[i].base == (uintptr_t)base + length &&
-               iov[i].len <= SIZE_MAX - length) {
+        /* Empty descriptors do not separate adjacent byte ranges. */
+        while (i < n && ((length <= UINTPTR_MAX - (uintptr_t)base &&
+                (uintptr_t)iov[i].base == (uintptr_t)base + length &&
+                iov[i].len <= SIZE_MAX - length) || !iov[i].len)) {
             length += iov[i++].len;
         }
         size_t done;

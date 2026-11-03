@@ -177,6 +177,25 @@ int main(int argc, char **argv)
     assert(!memcmp(out, bytes, 8));
     assert(!memcmp(out + 16, (uint8_t[8]){0}, 8));
     assert(out[8] == 0xcc);
+    /* Exercise the same empty-separated contiguous run in mapped and native
+     * fallbacks, including Windows where native preadv is unavailable. */
+    LRFileIOV many[1300] = {{NULL,0}}, saved[1300];
+    many[1] = (LRFileIOV){out,5};
+    many[650] = (LRFileIOV){out+5,7};
+    many[900] = (LRFileIOV){out+37,0};
+    many[1298] = (LRFileIOV){out+12,9};
+    memcpy(saved, many, sizeof(many));
+    memset(out, 0xa5, sizeof(out));
+    assert(lr_file_pwritev(f, 0, many, 1300) == 0);
+    memset(out, 0xcc, sizeof(out));
+    assert(lr_file_preadv(f, 0, many, 1300) == 0);
+    for (unsigned i = 0; i < 21; i++) { assert(out[i] == 0xa5); }
+    assert(out[21] == 0xcc && out[63] == 0xcc);
+    memset(out, 0xcc, sizeof(out));
+    assert(lr_file_preadv(&mapped, 56, many, 1300) == 0);
+    for (unsigned i = 0; i < 21; i++) { assert(out[i] == (i < 8 ? 0x5a : 0)); }
+    assert(out[21] == 0xcc && out[63] == 0xcc);
+    assert(!memcmp(saved, many, sizeof(many)));
     lr_file_close(f);
     puts("file scalar/vector ranges: preflight preserves mapped/native destinations and native files: PASS");
     return 0;

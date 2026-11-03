@@ -160,14 +160,14 @@ int main(int argc, char **argv)
         cases++;
     }
     /* Coalesce a partial first span with adjacent residual spans. */
-    LRFileIOV adjacent[] = {{NULL,0}, {out,5}, {out+5,7},
-                            {out+12,9}, {NULL,0}};
+    LRFileIOV adjacent[] = {{NULL,0}, {out,5}, {NULL,0}, {out+5,7},
+                            {out+37,0}, {out+12,9}, {NULL,0}};
     for (size_t cap = 1; cap <= 21; cap++) {
         for (size_t length = 0; length <= 21; length++) {
             assert(ftruncate(fd, 3 + length) == 0);
             assert(pwrite(fd, input, length, 3) == (ssize_t)length);
             memset(out, 0xcc, sizeof(out)); reset(cap, SIZE_MAX);
-            assert(lr_file_preadv(f, 3, adjacent, 5) == 0);
+            assert(lr_file_preadv(f, 3, adjacent, 7) == 0);
             assert(next_offset == (off_t)(3 + length) && eof_calls <= 1);
             for (unsigned i = 0; i < 21; i++) {
                 assert(out[i] == (i < length ? input[i] : 0));
@@ -181,7 +181,7 @@ int main(int argc, char **argv)
         }
         memcpy(out, input, 21); reset(cap, SIZE_MAX);
         assert(ftruncate(fd, 0) == 0);
-        assert(lr_file_pwritev(f, 3, adjacent, 5) == 0);
+        assert(lr_file_pwritev(f, 3, adjacent, 7) == 0);
         assert(next_offset == 24 && vector_calls == 2);
         assert(scalar_calls == (cap < 21 ? 2 : 0));
         assert(pread(fd, readback, 21, 3) == 21);
@@ -194,8 +194,8 @@ int main(int argc, char **argv)
             assert(pwrite(fd, input, 21, 3) == 21);
             memset(out, 0xcc, sizeof(out)); reset(3, SIZE_MAX);
             if (zero) { scalar_zero = 1; } else { scalar_error = ENOSPC; }
-            int ret = write ? lr_file_pwritev(f, 3, adjacent, 5)
-                            : lr_file_preadv(f, 3, adjacent, 5);
+            int ret = write ? lr_file_pwritev(f, 3, adjacent, 7)
+                            : lr_file_preadv(f, 3, adjacent, 7);
             assert(ret == (zero ? (write ? -EIO : 0) : -ENOSPC));
             assert(next_offset == 6 && scalar_calls == 2);
             if (!write) {
@@ -208,6 +208,33 @@ int main(int argc, char **argv)
             cases++;
         }
     }
+    /* More than IOV_MAX descriptors force the scalar lane on POSIX too.
+     * NULL and non-NULL empty spans must not split a contiguous request. */
+    LRFileIOV many[1300] = {{NULL,0}};
+    many[1] = (LRFileIOV){out,5};
+    many[650] = (LRFileIOV){out+5,7};
+    many[1298] = (LRFileIOV){out+12,9};
+    many[900] = (LRFileIOV){out+37,0};
+    for (size_t length = 0; length <= 21; length++) {
+        assert(ftruncate(fd, 3 + length) == 0);
+        assert(pwrite(fd, input, length, 3) == (ssize_t)length);
+        memset(out, 0xcc, sizeof(out)); reset(SIZE_MAX, SIZE_MAX);
+        assert(lr_file_preadv(f, 3, many, 1300) == 0);
+        assert(vector_calls == 0 && next_offset == (off_t)(3 + length));
+        assert(scalar_calls == (length == 0 || length == 21 ? 2 : 3));
+        for (unsigned i = 0; i < 21; i++) {
+            assert(out[i] == (i < length ? input[i] : 0));
+        }
+        assert(out[21] == 0xcc && out[39] == 0xcc);
+        cases++;
+    }
+    memcpy(out, input, 21); reset(SIZE_MAX, SIZE_MAX);
+    assert(ftruncate(fd, 0) == 0);
+    assert(lr_file_pwritev(f, 3, many, 1300) == 0);
+    assert(vector_calls == 0 && scalar_calls == 2 && next_offset == 24);
+    assert(pread(fd, readback, 21, 3) == 21);
+    assert(memcmp(readback, input, 21) == 0);
+    cases++;
     lr_file_close(f); close(fd);
     printf("native partial transfers: %u short/EINTR/EOF/error cases PASS\n", cases);
 }
