@@ -1,5 +1,6 @@
 # Changelog of the libretro core
 
+- Fix the SPSC pair publication test observer under fortified libc headers; keep strict copy/publication checks, add missing-observer and early-publication negative controls, and run explicit fortified sanitizer coverage in CI.
 - Bind interrupted-block PC synchronization directly to x86, bypassing generic callback and set-PC fallback dispatch while preserving PC-relative behavior, segment subtraction and 32-bit wraparound.
 - Paused audio voices no longer enter the worker queue, avoiding needless dispatch and completion work while preserving their playback position and next-frame resume.
 - Compare NVNet MAC filter fields directly as six-byte scalar values, removing temporary address copies and partial initialization. Broadcast, masked multicast, unicast and trace behavior stay unchanged; reserved upper register bits remain ignored.

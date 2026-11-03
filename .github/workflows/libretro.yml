@@ -62,6 +62,10 @@ jobs:
         env:
           OWNER_CPU_CFLAGS: -fsanitize=address -fno-omit-frame-pointer
         run: python3 libretro/tests/test-owner-cpu-boundary.py . cc
+      - name: SPSC pair publication with fortified libc and sanitizers
+        env:
+          SPSC_PAIR_CFLAGS: -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=3 -fsanitize=address -fno-omit-frame-pointer
+        run: python3 libretro/tests/test-spsc-pair.py . cc
       - name: Fixed x86 execution binding preserves complete legacy boundary state
         run: python3 libretro/tests/test-fixed-x86-entry.py . cc
       - name: Fixed x86 binding under address and undefined behavior sanitizers
