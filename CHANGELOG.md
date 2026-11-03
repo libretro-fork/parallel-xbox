@@ -32,6 +32,8 @@
 
 - Reuse complete file-vector preflight through mapped reads, native fallback writes and EOF zero filling. Remove redundant per-span checks/scalar dispatch while preserving invalid-request rejection before any destination or file changes.
 
+- DSP: compile accepted long-offset memory moves involving control registers and short-offset zero-width register fields without interpreter fallback. Preserve raw SSH stores without popping, stack/mode effects on loads and signed/wrapped addresses. Add 229,440 regression boundaries and a production program covering REP and deferred flags.
+
 - DSP: compile status, stack and loop register bit operations without interpreter fallback. Preserve SSH pushes, BTST reads, carry and register masks; retire control changes before running subsequent code or REP iterations. Add 43,040 boundary checks and a production regression program.
 
 - DSP: isolate the opcode decode cache per host thread so concurrent GP/EP decoding cannot pair one instruction with another instruction's handler. Add a two-million-decode collision regression that rejects the previous shared cache.
