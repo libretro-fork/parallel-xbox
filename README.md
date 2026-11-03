@@ -303,3 +303,9 @@ nonblocking claim or a measured FPS/cache-miss improvement.
 Cache-enabled GL links explicitly request retrievable program binaries (the
 legacy path checks API/extension support first). This changes cache policy,
 not generated shader state or its keys.
+
+Short POSIX vector transfers feed their remaining first span into the existing
+adjacent-buffer coalescer, avoiding a separate native call when those remaining
+buffers are contiguous. Descriptors stay immutable and no staging copy is added.
+The fault-injection fixture checks 3,875 short/EINTR/EOF/error cases, including
+residual call counts; this is not a measured disk-throughput or FPS gain.
