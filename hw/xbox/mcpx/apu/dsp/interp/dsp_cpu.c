@@ -313,7 +313,7 @@ static const OpcodeEntry nonparallel_opcodes[] = {
     { "00000001001001101sdkQQQQ", "mac_s_u S1, S2, D", NULL, NULL },
     { "00000001000sssss11QQdk11", "macr S1, S2, D", NULL, NULL },
     { "000000010100000111qqdk11", "macri #xxxx, S, D", NULL, NULL },
-    { "00001100000110111000sssD", "merge S, D", NULL, NULL },
+    { "00001100000110111000sssD", "merge S, D", dis_merge, emu_merge, match_shift_control },
     { "0000101001110RRR1WDDDDDD", "move X:(Rn + xxxx) <-> R", dis_move_x_long, emu_move_x_long },
     { "0000101101110RRR1WDDDDDD", "move Y:(Rn + xxxx) <-> R", dis_move_y_long, emu_move_y_long },
     { "0000001aaaaaaRRR1a0WDDDD", "move X:(Rn + xxx) <-> R", dis_move_x_imm, emu_move_x_imm },

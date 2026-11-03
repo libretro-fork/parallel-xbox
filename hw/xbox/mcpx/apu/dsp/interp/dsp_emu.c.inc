@@ -5922,6 +5922,23 @@ static void emu_andi(dsp_core_t* dsp)
     }
 }
 
+static void emu_merge(dsp_core_t* dsp)
+{
+    static const unsigned sources[] = {DSP_REG_A1, DSP_REG_B1, DSP_REG_X0,
+                                       DSP_REG_X1, DSP_REG_Y0, DSP_REG_Y1};
+    unsigned dst = dsp->cur_inst & 1;
+    uint32_t source = dsp->registers[sources[((dsp->cur_inst >> 1) & 7) - 2]];
+    uint32_t mid = dsp->registers[DSP_REG_A1 + dst];
+    if (dsp->registers[DSP_REG_SR] & (1u << DSP_SR_SA)) {
+        /* Only bits 47..32 are written in SA; remaining bits stay intact. */
+        mid = ((source & 0xff00) << 8) | (mid & 0xffff);
+    } else mid = ((source & 0xfff) << 12) | (mid & 0xfff);
+    dsp->registers[DSP_REG_A1 + dst] = mid;
+    dsp->registers[DSP_REG_SR] &= ~((1u << DSP_SR_N) | (1u << DSP_SR_Z) | (1u << DSP_SR_V));
+    dsp->registers[DSP_REG_SR] |= ((mid >> 20) & (1u << DSP_SR_N)) |
+                               (mid == 0 ? 1u << DSP_SR_Z : 0);
+}
+
 static void emu_insert_field(dsp_core_t* dsp, uint32_t control)
 {
     static const unsigned sources[] = {DSP_REG_A0, DSP_REG_B0, DSP_REG_X0,

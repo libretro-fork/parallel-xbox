@@ -303,6 +303,15 @@ static void dis_arithmetic_shift_reg(dsp_core_t* dsp, const char *name)
 static void dis_asl_reg(dsp_core_t* dsp) { dis_arithmetic_shift_reg(dsp, "asl"); }
 static void dis_asr_reg(dsp_core_t* dsp) { dis_arithmetic_shift_reg(dsp, "asr"); }
 
+static void dis_merge(dsp_core_t* dsp)
+{
+    static const unsigned sources[] = {DSP_REG_A1, DSP_REG_B1, DSP_REG_X0,
+                                       DSP_REG_X1, DSP_REG_Y0, DSP_REG_Y1};
+    sprintf(dsp->disasm_str_instr, "merge %s,%s",
+        registers_name[sources[((dsp->disasm_cur_inst >> 1) & 7) - 2]],
+        registers_name[dsp->disasm_cur_inst & 1 ? DSP_REG_B : DSP_REG_A]);
+}
+
 static void dis_insert_imm(dsp_core_t* dsp)
 {
     static const unsigned sources[] = {DSP_REG_A0, DSP_REG_B0, DSP_REG_X0,
