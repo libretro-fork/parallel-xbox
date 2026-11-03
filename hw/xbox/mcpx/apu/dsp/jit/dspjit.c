@@ -227,6 +227,9 @@ static void dspjit_code_written(void *buf, size_t len)
  **********************************/
 
 #define OFF(f) ((int32_t)offsetof(dsp_core_t, f))
+_Static_assert(sizeof(bool) == 1, "native stop flags require byte booleans");
+_Static_assert(offsetof(dsp_core_t, jit_code_changed) == offsetof(dsp_core_t, is_idle) + 1,
+               "native stop flags must be adjacent");
 #define REGOFF(i) (OFF(registers) + 4 * (i))
 
 /* the registers the generated code works in (host.h) */
@@ -280,7 +283,7 @@ enum {
     STUB_RN_UPDATE,     /* an Rn update with Mn not linear */
     STUB_EA_RN_PLUS_N,  /* an (Rn+Nn) address with Mn not linear */
     STUB_LIMIT,         /* an accumulator read that limits */
-    STUB_HALT,          /* the DSP halted (a peripheral write) */
+    STUB_WRITE_EXIT,          /* halt or P changed in an X-write callback */
     STUB_REP_POST,      /* a REP's repeat ended through dsp56k_post */
     STUB_REP_SETUP_POST, /* REP setup coincides with a DO boundary */
     STUB_CTRL_POST,     /* the instruction's work done, the PC to be imm
@@ -1986,7 +1989,9 @@ enum {
     NP_MOVEM_P_READ,
     NP_MOVEM_P_WRITE,
     NP_MOVEM_P_SPECIAL, /* control effects plus possible P invalidation */
+    NP_BIT_MEM,
     NP_BIT_REG,
+    NP_BIT_CONTROL,     /* status, stack and loop bit operations */
     NP_BIT_SR_UPPER,
     NP_MOVEC_EA,
     NP_MOVEC_IMM,
@@ -2086,6 +2091,12 @@ static int np_kind(const Insn *in)
         unsigned pair = (in->inst >> 3) & 15;
         return pair < 2 || pair >= 8 ? NP_TCC : NP_NONE;
     }
+    if ((!strncmp(name, "bclr #n,", 8) || !strncmp(name, "bset #n,", 8) ||
+         !strncmp(name, "bchg #n,", 8) || !strncmp(name, "btst #n,", 8)) &&
+        (!strcmp(name + 8, " [X or Y]:aa") || !strcmp(name + 8, " [X or Y]:ea") ||
+         !strcmp(name + 8, " [X or Y]:pp"))) {
+        return NP_BIT_MEM;
+    }
     if (!strcmp(name, "bclr #n, D") || !strcmp(name, "bset, #n, D") ||
         !strcmp(name, "bchg, #n, D") || !strcmp(name, "btst #n, D")) {
         unsigned reg = (in->inst >> 8) & 63;
@@ -2093,6 +2104,7 @@ static int np_kind(const Insn *in)
         if (reg == DSP_REG_SR && bit >= 16 && strcmp(name, "btst #n, D")) {
             return NP_BIT_SR_UPPER;
         }
+        if (reg >= DSP_REG_SR && reg != DSP_REG_OMR) return NP_BIT_CONTROL;
         /* The interpreter exposes malformed upper accumulator words for
          * out-of-width modifying bit numbers; keep that path unchanged. */
         return (reg_supported(reg) || reg == DSP_REG_OMR) &&
@@ -2386,6 +2398,45 @@ static void emit_nonparallel(Tr *t, const Insn *in, int kind)
         }
         break;
     }
+    case NP_BIT_MEM: {
+        unsigned form = (inst >> 14) & 3;
+        unsigned operation = ((inst >> 15) & 2) | ((inst >> 5) & 1);
+        unsigned bit = inst & 31;
+        unsigned space = (inst >> 6) & 1;
+        Ea ea;
+        emit_flags_flush(t);
+        if (form == 1) {
+            emit_calc_ea(t, (inst >> 8) & 63, in->ext, EA1, &ea);
+            if (ea.kind == EA_IMM) {
+                ea.kind = EA_ABS;
+                ea.abs = ea.imm;
+            }
+        } else {
+            ea.kind = EA_ABS;
+            ea.reg = EA1;
+            ea.abs = ((inst >> 8) & 63) + (form == 2 ? 0xFFFFC0 : 0);
+        }
+        int addr = ea_addr_reg(t, &ea);
+        /* The read/write stubs preserve both the address and old carry. */
+        emit_read_mem(t, space, addr, V1);
+        h_mov_rr(e, 0, V2, V1);
+        h_shr_ri(e, 0, V2, bit);
+        h_and_ri(e, 0, V2, 1);
+        uint32_t mask = 1u << bit;
+        switch (operation) {
+        case 0: h_and_ri(e, 0, V1, ~mask); break;
+        case 1: h_or_ri(e, 0, V1, mask); break;
+        case 2: h_xor_ri(e, 0, V1, mask); break;
+        }
+        /* Unchanged modifying writes still have peripheral side effects. */
+        if (operation != 3) emit_write_mem(t, space, addr, V1);
+        h_ld32(e, T0, REG_CORE, REGOFF(DSP_REG_SR));
+        h_and_ri(e, 0, T0, 0xFFFE);
+        h_or_rr(e, 0, T0, V2);
+        h_st32(e, REG_CORE, REGOFF(DSP_REG_SR), T0);
+        t->cyc += 2;
+        break;
+    }
     case NP_BIT_SR_UPPER: {
         /* Modifying a non-writable upper SR bit still masks reserved bits
          * and reports its previous value in carry. Scale and LF survive. */
@@ -2400,12 +2451,14 @@ static void emit_nonparallel(Tr *t, const Insn *in, int kind)
         t->cyc += 2;
         break;
     }
+    case NP_BIT_CONTROL:
     case NP_BIT_REG: {
         unsigned reg = (inst >> 8) & 63;
         unsigned bit = inst & 31;
         unsigned operation = ((inst >> 15) & 2) | ((inst >> 5) & 1);
         uint32_t mask = 1u << bit;
         emit_flags_flush(t);
+        if (kind == NP_BIT_CONTROL) acc_spill_all(t, false);
         emit_read_reg(t, reg, V1);
         h_mov_rr(e, 0, V2, V1);
         h_shr_ri(e, 0, V2, bit);
@@ -2416,7 +2469,18 @@ static void emit_nonparallel(Tr *t, const Insn *in, int kind)
         case 2: h_xor_ri(e, 0, V1, mask); break;
         }
         if (operation != 3) {
-            emit_write_reg(t, reg, V1);
+            if (kind == NP_BIT_CONTROL) {
+                /* Preserve the old bit across the register side-effect helper.
+                 * SSH reads here do not pop; writes push even if unchanged. */
+                h_stub_call_begin(e);
+                h_mov_rr(e, 0, H_ARG2, V1);
+                h_mov_ri(e, H_ARG1, reg);
+                h_mov_rr(e, 1, H_ARG0, REG_CORE);
+                h_call(e, (const void *)dsp56k_write_reg);
+                h_stub_call_end(e);
+            } else {
+                emit_write_reg(t, reg, V1);
+            }
         }
         /* Match the interpreter's 16-bit status mask, including clearing
          * its upper FV bookkeeping bit, while replacing only carry below. */
@@ -3232,16 +3296,16 @@ static bool emit_control(Tr *t, const Insn *in)
 
 /* after a native instruction: the DO loop's end, when the PC reached
  * LA+1 inside one; and, after one that wrote X, the halt a write to the
- * peripherals may have asked for (the interpreter stops right after it) */
+ * peripherals may have asked for, or P code changed by a DMA callback. */
 static void emit_insn_checks(Tr *t, const Insn *in, uint32_t cycles)
 {
     Emitter *e = &t->e;
     size_t j;
 
     if (t->wrote_x) {
-        h_cmp_mem8_imm(e, REG_CORE, OFF(is_idle), 0);
+        h_cmp_mem16_imm(e, REG_CORE, OFF(jit_stop_flags), 0);
         j = h_jcc(e, HC_NE);
-        stub_set_insn(t, stub_new(t, STUB_HALT, j), in, cycles, t->cyc - cycles);
+        stub_set_insn(t, stub_new(t, STUB_WRITE_EXIT, j), in, cycles, t->cyc - cycles);
         t->wrote_x = false;
     }
     if (t->loop_active) {
@@ -3345,17 +3409,30 @@ static void emit_stubs(Tr *t)
             emit_jump_to_epilogue(t);
             continue;
 
-        case STUB_HALT:
+        case STUB_WRITE_EXIT: {
             emit_flags_flush_stub(t, s);
             for (int n = 0; n < 2; n++) {
                 if (s->dirty[n]) {
                     emit_acc_store(e, n);
                 }
             }
+            /* Preserve the existing halted exit. A callback that changed P
+             * instead retires this instruction fully, then redispatches. */
+            h_cmp_mem8_imm(e, REG_CORE, OFF(is_idle), 0);
+            size_t halted = h_jcc(e, HC_NE);
+            h_st32_imm(e, REG_CORE, OFF(pc), s->at);
+            h_st32_imm(e, REG_CORE, OFF(cur_inst_len), s->len);
+            h_st16_imm(e, REG_CORE, OFF(instr_cycle), s->cycles);
+            h_mov_rr(e, 1, H_ARG0, REG_CORE);
+            h_call(e, (const void *)dsp56k_post);
+            emit_charge(e, s->cyc_before);
+            emit_jump_to_epilogue(t);
+            h_patch(e, halted, e->len);
             h_st32_imm(e, REG_CORE, OFF(pc), s->next);
             emit_charge(e, s->cyc_before + s->cycles);
             emit_jump_to_epilogue(t);
             continue;
+        }
 
         case STUB_READ_X: {
             size_t j;
@@ -3469,7 +3546,7 @@ static void emit_stubs(Tr *t)
     }
 }
 
-static void decode_insn(dsp_core_t *core, uint32_t at, Insn *in)
+static bool decode_insn(dsp_core_t *core, uint32_t at, Insn *in)
 {
     dsp56k_decode(core, at, &in->d);
     in->at = at;
@@ -3477,6 +3554,7 @@ static void decode_insn(dsp_core_t *core, uint32_t at, Insn *in)
     in->len = in->d.len;
     in->ext = at + 1 < DSP_PRAM_SIZE ? core->pram[at + 1] & 0xFFFFFF : 0;
     in->next = (at + in->len) & (DSP_PRAM_SIZE - 1);
+    return in->d.emu != NULL;
 }
 
 /* whether the translator makes native code for the instruction */
@@ -3585,7 +3663,17 @@ retry:
         if (at >= DSP_PRAM_SIZE) {
             break;
         }
-        decode_insn(core, at, &in);
+        if (!decode_insn(core, at, &in)) {
+            /* A preceding DMA write may populate this word at run time.
+             * Do not fault or execute a guessed instruction speculatively. */
+            if (n == 0) return NULL;
+            t->end = at;
+            acc_spill_all(t, false);
+            emit_chain_to(t, at, t->cyc);
+            t->cyc = 0;
+            done = true;
+            break;
+        }
         cyc_before = t->cyc;
         t->end = at + in.len;
 
@@ -3593,7 +3681,7 @@ retry:
             emit_native(t, &in);
             if (np_kind(&in) == NP_MOVEC_SPECIAL || np_kind(&in) == NP_MOVEM_P_SPECIAL ||
                 np_kind(&in) == NP_MOVEP_SPECIAL || np_kind(&in) == NP_MOVEP_P ||
-                np_kind(&in) == NP_STATUS_MODE) {
+                np_kind(&in) == NP_STATUS_MODE || np_kind(&in) == NP_BIT_CONTROL) {
                 /* Control transfers may change scale/LF, stack state or LC.
                  * Post once, then select the resulting cache identity. */
                 acc_spill_all(t, false);
@@ -3697,7 +3785,7 @@ static dspjit_block_fn dspjit_translate_rep(DspJit *jit, int mode, uint32_t pc)
     if (pc >= DSP_PRAM_SIZE) {
         return NULL;
     }
-    decode_insn(core, pc, &in);
+    if (!decode_insn(core, pc, &in)) return NULL;
     if (!insn_native(&in) || np_kind(&in) == NP_MOVEC_SR) {
         return NULL;
     }
@@ -3721,7 +3809,7 @@ retry:
     t->cyc = 0;
     if (np_kind(&in) == NP_MOVEM_P_WRITE || np_kind(&in) == NP_MOVEC_SPECIAL ||
         np_kind(&in) == NP_MOVEM_P_SPECIAL || np_kind(&in) == NP_MOVEP_SPECIAL ||
-        np_kind(&in) == NP_MOVEP_P || np_kind(&in) == NP_STATUS_MODE) {
+        np_kind(&in) == NP_MOVEP_P || np_kind(&in) == NP_STATUS_MODE || np_kind(&in) == NP_BIT_CONTROL) {
         /* P writes can replace REP's body; control writes can change its
          * count, mode or stack. Retire once and redispatch updated state. */
         if (np_kind(&in) == NP_MOVEM_P_WRITE) {
@@ -3739,7 +3827,7 @@ retry:
     if (t->wrote_x) {
         /* halted: this repeat ends the interpreter's way, then out */
         size_t j;
-        h_cmp_mem8_imm(e, REG_CORE, OFF(is_idle), 0);
+        h_cmp_mem16_imm(e, REG_CORE, OFF(jit_stop_flags), 0);
         j = h_jcc(e, HC_NE);
         stub_set_insn(t, stub_new(t, STUB_REP_POST, j), &in, cycles, 0);
         t->wrote_x = false;
@@ -3866,6 +3954,9 @@ void dspjit_invalidate(DspJit *jit, uint32_t address)
 #ifdef DSPJIT_TEST
     test_invalidation_scans++;
 #endif
+    /* DMA can write P inside an X-peripheral callback while native code
+     * is active. Its next post-write guard must leave the stale block. */
+    jit->core->jit_code_changed = true;
     for (int m = 0; m < DSPJIT_MODES; m++) {
         if (!jit->blocks[m]) {
             continue;
@@ -3954,6 +4045,7 @@ void dspjit_run(DspJit *jit, int cycles)
 #ifdef DSPJIT_TEST
                 test_entry_count++;
 #endif
+                core->jit_code_changed = false;
                 jit->enter(core, fn);
             }
             continue;
@@ -3984,6 +4076,7 @@ void dspjit_run(DspJit *jit, int cycles)
 #ifdef DSPJIT_TEST
         test_entry_count++;
 #endif
+        core->jit_code_changed = false;
         jit->enter(core, fn);
     }
 }

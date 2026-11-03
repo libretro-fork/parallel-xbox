@@ -1,5 +1,6 @@
 # Changelog of the libretro core
 
+- GPIO boot probes at fixed LPC ports now work before the PM BAR is enabled, allowing firmware to identify the emulated Conexant encoder correctly. GPIO no longer follows PM BAR relocation.
 - OpenGL avoids redundant line-width driver updates when the effective width is unchanged, including widths clamped to the same host limit.
 - Remove the always-defined XBOX selection macro and unreachable non-Xbox core paths. Keep host-architecture guards and ARM64 floating-point fallbacks; update fixtures and audit single-target sources/build flags in CI.
 - Fix the SPSC pair publication test observer under fortified libc headers; keep strict copy/publication checks, add missing-observer and early-publication negative controls, and run explicit fortified sanitizer coverage in CI.
@@ -29,11 +30,16 @@
 
 - Reuse complete file-vector preflight through mapped reads, native fallback writes and EOF zero filling. Remove redundant per-span checks/scalar dispatch while preserving invalid-request rejection before any destination or file changes.
 
+- DSP: compile status, stack and loop register bit operations without interpreter fallback. Preserve SSH pushes, BTST reads, carry and register masks; retire control changes before running subsequent code or REP iterations. Add 43,040 boundary checks and a production regression program.
+
+- DSP: isolate the opcode decode cache per host thread so concurrent GP/EP decoding cannot pair one instruction with another instruction's handler. Add a two-million-decode collision regression that rejects the previous shared cache.
+
 - Avoid clearing scratch bytes immediately overwritten by bulk partial writes into zero-filled QCOW2 clusters. Preserve the single-clear path for small patches/clusters and retain full data-before-metadata writes and failure behavior.
 
 - Reuse completed IDE buffered-read requests and scratch buffers before completion callbacks start successor reads. Preserve deferred destination copying, error/orphan suppression and callback-close cleanup while reducing callback-chain scratch allocations.
 
 - Consume contiguous QCOW2 memory-copy spans directly instead of staging them through the general multi-vector builder. Preserve compressed-read caching, partial-write workspaces, coalescing and destination bytes. Reduce small-copy cursor bookkeeping without changing payload copying or zero-fill.
+- DSP: compile memory bit operations natively and leave compiled code when a peripheral callback loads new program words through DMA. Cover MOVEP/parallel stores and REP too; speculative decode no longer faults on words DMA has not populated. Add 179,600 regression boundaries, independent memory/status checks and DMA replacement programs.
 
 - DSP: compile ANDI/ORI status-byte operations natively, preserving raw CCR/OMR masks and reselecting compiled code after MR scaling/loop changes. Add 81,920 regression boundaries, an independent status oracle and a production program.
 

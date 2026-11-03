@@ -362,6 +362,16 @@ $(DSPNATIVE): $(DSPNATIVE_SRC) $(CORE_DIR)/libretro/tests/dspdiff.c $(DSP_TEST_H
 dspnative: $(DSPNATIVE)
 	$(DSPNATIVE)
 
+# Independent GP/EP decode stress; all machine resets precede worker startup.
+DSPDECODE := $(CORE_DIR)/libretro/tests/dspdecode$(if $(filter win,$(platform)),.exe,)
+$(DSPDECODE): $(DSPDIFF_SRC) $(CORE_DIR)/libretro/tests/test-dsp-decode.c $(DSP_TEST_HEADERS)
+	$(CC) -O2 $(QEMU_CFLAGS) $(ARCH_CFLAGS) -pthread \
+		-I$(CORE_DIR)/hw/xbox/mcpx/apu/dsp -I$(CORE_DIR)/hw/xbox/mcpx/apu/dsp/interp \
+		-o $@ $(filter-out $(CORE_DIR)/libretro/tests/dspdiff.c,$(DSPDIFF_SRC)) $(CORE_DIR)/libretro/tests/test-dsp-decode.c
+dspdecode: $(DSPDECODE)
+	$(DSPDECODE)
+.PHONY: dspdecode
+
 dsprelative: $(DSPNATIVE) $(DSPDIFF)
 	$(DSPNATIVE) --relative
 	$(DSPDIFF) --until-halt --frames 100 --x 0=4 --seed 1 $(CORE_DIR)/libretro/tests/rom/gp-relative.inc
@@ -396,7 +406,7 @@ dspcompare: $(DSPNATIVE) $(DSPDIFF)
 		$(DSP_PROGRAM_RUNNER) $(DSPDIFF) --until-halt --baseline-jit --frames 100 --seed 2 $(CORE_DIR)/libretro/tests/rom/$$rom.inc || exit $$?; \
 	done
 
-DSP_STARTUP_ROMS := gp-startup-control gp-startup-peripheral gp-startup-register gp-startup-short-control gp-startup-effective-control gp-startup-register-read gp-startup-peripheral-control gp-startup-multiply gp-startup-normalize gp-startup-divide gp-startup-status-byte
+DSP_STARTUP_ROMS := gp-startup-control-bits gp-startup-control gp-startup-peripheral gp-startup-register gp-startup-short-control gp-startup-effective-control gp-startup-register-read gp-startup-peripheral-control gp-startup-multiply gp-startup-normalize gp-startup-divide gp-startup-status-byte gp-startup-memory-bits gp-startup-memory-bit-dma gp-startup-movep-dma gp-startup-move-dma gp-startup-movep-dma-selfrep gp-startup-memory-bit-dma-unpopulated
 DSP_STARTUP_ARGS ?= --startup
 dspstartup: $(DSPNATIVE) $(DSPDIFF)
 	$(DSP_PROGRAM_RUNNER) $(DSPNATIVE) $(DSP_STARTUP_ARGS)

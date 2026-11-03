@@ -127,7 +127,15 @@ static const int registers_mask[64] = {
 };
 
 #include "dsp_emu.c.inc"
+/* Formatting/speculative length decoding must not fault on an extension
+ * that DMA has not populated yet. Execution still uses strict P reads. */
+static uint32_t read_memory_p_disasm(dsp_core_t *dsp, uint32_t address)
+{
+    return address < DSP_PRAM_SIZE ? ldl_le_p(&dsp->pram[address]) & BITMASK(24) : 0;
+}
+#define read_memory_p read_memory_p_disasm
 #include "dsp_dis.c.inc"
+#undef read_memory_p
 
 typedef bool (*match_func_t)(uint32_t op);
 
@@ -394,6 +402,7 @@ void dsp56k_reset_cpu(dsp_core_t* dsp)
     }
 
     /* Misc */
+    dsp->jit_code_changed = false;
     dsp->loop_rep = 0;
 
 
@@ -414,13 +423,12 @@ static const OpcodeEntry *lookup_opcode_slow(uint32_t op) {
         }
     }
 
-    fprintf(stderr, "op = %08x\n", op);
-    assert(!"Invalid op code in dsp_cpu");
     return NULL;
 }
 
-static const OpcodeEntry *lookup_opcode(uint32_t op) {
-    static struct opcache_entry {
+static const OpcodeEntry *lookup_opcode_try(uint32_t op) {
+    /* GP and EP decoding must not publish mismatched opcode/handler pairs. */
+    static _Thread_local struct opcache_entry {
         uint32_t op;
         const OpcodeEntry *entry;
     } opcache[256];
@@ -436,6 +444,16 @@ static const OpcodeEntry *lookup_opcode(uint32_t op) {
     }
 
     return opcache[tag].entry;
+}
+
+static const OpcodeEntry *lookup_opcode(uint32_t op)
+{
+    const OpcodeEntry *entry = lookup_opcode_try(op);
+    if (!entry) {
+        fprintf(stderr, "op = %08x\n", op);
+        assert(!"Invalid op code in dsp_cpu");
+    }
+    return entry;
 }
 
 static uint16_t disasm_instruction(dsp_core_t* dsp, dsp_trace_disasm_t mode)
@@ -1401,11 +1419,15 @@ void dsp56k_decode(dsp_core_t *dsp, uint32_t pc, DspDecoded *d)
 {
     uint32_t saved_pc = dsp->pc;
 
-    d->inst = read_memory_p(dsp, pc);
+    d->inst = pc < DSP_PRAM_SIZE ? ldl_le_p(&dsp->pram[pc]) : UINT32_MAX;
     d->control = false;
     d->name = NULL;
+    d->emu = NULL;
+    d->len = 1;
+    if (d->inst & 0xFF000000) return;
     if (d->inst < 0x100000) {
-        const OpcodeEntry *op = lookup_opcode(d->inst);
+        const OpcodeEntry *op = lookup_opcode_try(d->inst);
+        if (!op) return;
         d->emu = op->emu_func ? op->emu_func : emu_undefined;
         d->control = dsp56k_name_is_control(op->name);
         d->name = op->name;
@@ -1418,6 +1440,10 @@ void dsp56k_decode(dsp_core_t *dsp, uint32_t pc, DspDecoded *d)
     dsp->pc = saved_pc;
     if (d->len < 1 || d->len > 2) {
         d->len = 1;
+    }
+    if (d->len == 2 && (pc + 1 >= DSP_PRAM_SIZE ||
+        (ldl_le_p(&dsp->pram[pc + 1]) & 0xFF000000))) {
+        d->emu = NULL;
     }
 }
 
