@@ -902,7 +902,7 @@ static void emit_write_reg(Tr *t, int r, int val)
 /* --- the data ALU --- */
 
 enum {
-    OP_EXTRACTU,
+    OP_EXTRACT, OP_EXTRACTU,
     OP_CLB,
     OP_ASL_R, OP_ASR_R, /* register-controlled arithmetic shifts */
     OP_ASL_N, OP_ASR_N, /* by a count (shift), of accumulator s into d */
@@ -1455,6 +1455,7 @@ static void emit_alu(Tr *t, const AluOp *a)
         emit_sr_result(t, SR_EUNZ | SR_V | SR_C | 0xFFFF0000u, T4, acc, a->d);
         break;
 
+    case OP_EXTRACT:
     case OP_EXTRACTU: {
         acc_load(t, a->s);
         if (a->src == SRC_IMM) h_mov_ri(e, T3, a->imm);
@@ -1495,6 +1496,17 @@ static void emit_alu(Tr *t, const AluOp *a)
         h_shl_r1(e, 1, T4);
         h_sub_ri(e, 1, T4, 1);
         h_and_rr(e, 1, T0, T4);
+        if (a->op == OP_EXTRACT) {
+            /* Extend the field's sign, not the source accumulator's sign.
+             * Width zero follows our deterministic zero-result policy. */
+            h_test_rr(e, 0, T2, T2);
+            size_t empty = h_jcc(e, HC_EQ);
+            h_mov_ri(e, T1, 64);
+            h_sub_rr(e, 0, T1, T2);
+            h_shl_r1(e, 1, T0);
+            h_sar_r1(e, 1, T0);
+            h_patch(e, empty, e->len);
+        }
         h_ld32(e, T3, REG_CORE, REGOFF(DSP_REG_SR));
         h_test_ri(e, 0, T3, 1u << DSP_SR_SA);
         size_t packed = h_jcc(e, HC_EQ);
@@ -2262,13 +2274,15 @@ static bool np_alu(const Insn *in, AluOp *a)
         a->shift = (inst >> 1) & 31;
         return true;
     }
-    if (!strcmp(name, "extractu #CO, S2, D") || !strcmp(name, "extractu S1, S2, D")) {
+    if (!strcmp(name, "extractu #CO, S2, D") || !strcmp(name, "extractu S1, S2, D") ||
+        !strcmp(name, "extract #CO, S2, D") || !strcmp(name, "extract S1, S2, D")) {
         static const int controls[] = {DSP_REG_A1, DSP_REG_B1, DSP_REG_X0,
                                        DSP_REG_X1, DSP_REG_Y0, DSP_REG_Y1};
-        a->op = OP_EXTRACTU;
+        bool unsigned_field = name[7] == 'u';
+        a->op = unsigned_field ? OP_EXTRACTU : OP_EXTRACT;
         a->s = (inst >> 4) & 1;
         a->d = inst & 1;
-        if (name[9] == '#') a->imm = in->ext;
+        if (strchr(name, '#')) a->imm = in->ext;
         else a->src = controls[((inst >> 1) & 7) - 2];
         return true;
     }
