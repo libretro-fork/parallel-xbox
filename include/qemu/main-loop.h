@@ -70,10 +70,6 @@ int qemu_init_main_loop(Error **errp);
  */
 void main_loop_wait(int nonblocking);
 
-/* Emulation-thread device wait, also bounded by the next guest deadline.
- * A negative bound adds no limit to the usual main-loop wait. */
-void main_loop_wait_timeout(int64_t max_wait_ns);
-
 /**
  * qemu_get_aio_context: Return the main loop's AioContext
  */

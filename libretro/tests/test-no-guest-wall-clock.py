@@ -41,3 +41,6 @@ for name in sorted(manifest):
  assert not helpers.search(text), 'host-time support helper in built source: '+name
 assert 'g_usleep' not in (root/'libretro/glib/glib.h').read_text()
 print(f'Static Makefile audit: {len(manifest)} source files checked across platform variants; {len(providers)} generic API providers explicitly isolated')
+
+assert 'main_loop_wait_timeout' not in (root/'util/main-loop.c').read_text()
+assert 'retro_eventcount_commit_wait_timeout' not in (root/'util/main-loop.c').read_text()

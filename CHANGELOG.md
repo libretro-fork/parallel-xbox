@@ -23,6 +23,8 @@
 
 ## Unreleased
 
+- Remove the unused timed main-loop entry point; device waits use notifications without a host timeout.
+
 - Timestamp USB captures with guest time, remove the unused compatibility sleep API and audit clock reads across the static Makefile source list.
 
 - Yield instead of sleeping on character-device output retries, including attached UART logs.

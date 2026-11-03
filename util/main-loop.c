@@ -490,7 +490,7 @@ void main_loop_poll_remove_notifier(Notifier *notify)
 }
 
 /* the loop that polls: NAT networking's sockets, and descriptors */
-static void main_loop_wait_poll(int nonblocking, int64_t max_wait_ns)
+static void main_loop_wait_poll(int nonblocking)
 {
     LR_DSP_EXTERNAL_GUARD;
     lr_dsp_ownership_fence(LR_DSP_FENCE_POLL);
@@ -518,7 +518,6 @@ static void main_loop_wait_poll(int nonblocking, int64_t max_wait_ns)
     timeout_ns = qemu_soonest_timeout(timeout_ns,
                                       qemu_clock_deadline_ns());
 
-    timeout_ns = qemu_soonest_timeout(timeout_ns, max_wait_ns);
     ret = os_host_main_loop_wait(timeout_ns);
     mlpoll.state = ret < 0 ? MAIN_LOOP_POLL_ERR : MAIN_LOOP_POLL_OK;
     notifier_list_notify(&main_loop_poll_notifiers, &mlpoll);
@@ -576,14 +575,14 @@ static bool main_loop_dispatch(AioContext *io)
 /* The libretro emulation thread owns main-loop dispatch, including nested
  * frame completion and renderer-switch waits. Other threads publish work
  * and notify it; no second main-loop owner needs a separate UI mutex. */
-static void main_loop_wait_internal(int nonblocking, int64_t max_wait_ns)
+static void main_loop_wait_internal(int nonblocking)
 {
     AioContext *io = iohandler_get_aio_context();
     bool disk_progress = lr_disk_pending > 0 && lr_disk_poll();
 
     if (!QLIST_EMPTY(&main_loop_poll_notifiers.notifiers) ||
         aio_has_fd_handlers(qemu_aio_context) || aio_has_fd_handlers(io)) {
-        main_loop_wait_poll(nonblocking || disk_progress, max_wait_ns);
+        main_loop_wait_poll(nonblocking || disk_progress);
         return;
     }
 
@@ -596,13 +595,7 @@ static void main_loop_wait_internal(int nonblocking, int64_t max_wait_ns)
         } else {
             /* Other threads can take the BQL meanwhile, as around poll. */
             bql_unlock();
-            if (max_wait_ns < 0) {
-                retro_eventcount_commit_wait(&main_loop_ec, key);
-            } else {
-                /* Round up to the eventcount's microsecond resolution. */
-                int64_t us = max_wait_ns / 1000 + (max_wait_ns % 1000 != 0);
-                retro_eventcount_commit_wait_timeout(&main_loop_ec, key, us);
-            }
+            retro_eventcount_commit_wait(&main_loop_ec, key);
             bql_lock();
         }
         main_loop_dispatch(io);
@@ -614,12 +607,7 @@ static void main_loop_wait_internal(int nonblocking, int64_t max_wait_ns)
 
 void main_loop_wait(int nonblocking)
 {
-    main_loop_wait_internal(nonblocking, -1);
-}
-
-void main_loop_wait_timeout(int64_t max_wait_ns)
-{
-    main_loop_wait_internal(false, max_wait_ns);
+    main_loop_wait_internal(nonblocking);
 }
 
 /* Functions to operate on the main QEMU AioContext.  */

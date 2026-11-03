@@ -4,7 +4,7 @@ from pathlib import Path
 import ctypes,os,re,subprocess,sys,tempfile
 r=Path(sys.argv[1]).resolve();cc=sys.argv[2] if len(sys.argv)>2 else 'cc'
 parts=[]
-for path,names in [('util/main-loop.c',['main_loop_wait_poll','main_loop_notified','main_loop_dispatch','main_loop_wait_internal','main_loop_wait','main_loop_wait_timeout']),('ui/libretro.c',['lr_wait_for_device','lr_idle_wait'])]:
+for path,names in [('util/main-loop.c',['main_loop_wait_poll','main_loop_notified','main_loop_dispatch','main_loop_wait_internal','main_loop_wait']),('ui/libretro.c',['lr_wait_for_device','lr_idle_wait'])]:
  s=(r/path).read_text()
  for name in names:
   m=re.search(r'^(?:static )?(?:void|bool) '+name+r'\(',s,re.M);assert m,name
