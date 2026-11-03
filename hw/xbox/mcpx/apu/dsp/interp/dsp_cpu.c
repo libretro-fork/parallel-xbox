@@ -179,6 +179,13 @@ static bool match_insert_controls(uint32_t op)
     return match_insert_source(op) && match_shift_control(op);
 }
 
+/* MCPX currently implements X peripheral callbacks only. Retain strict
+ * unsupported Y handling and exclude bit numbers outside the 24-bit word. */
+static bool match_x_qq_bit(uint32_t op)
+{
+    return !(op & (1u << 6)) && (op & 31) < 24;
+}
+
 static const OpcodeEntry nonparallel_opcodes[] = {
     { "0000000101iiiiii1000d000", "add #xx, D", dis_add_imm, emu_add_imm },
     { "00000001010000001100d000", "add #xxxx, D", dis_add_long, emu_add_long },
@@ -195,12 +202,12 @@ static const OpcodeEntry nonparallel_opcodes[] = {
     { "0000101101MMMRRR0S00bbbb", "bchg #n, [X or Y]:ea", dis_bchg_ea, emu_bchg_ea, match_MMMRRR },
     { "0000101100aaaaaa0S00bbbb", "bchg #n, [X or Y]:aa", dis_bchg_aa, emu_bchg_aa },
     { "0000101110pppppp0S00bbbb", "bchg #n, [X or Y]:pp", dis_bchg_pp, emu_bchg_pp },
-    { "0000000101qqqqqq0S0bbbbb", "bchg #n, [X or Y]:qq", NULL, NULL },
+    { "0000000101qqqqqq0S0bbbbb", "bchg #n, [X or Y]:qq", dis_bchg_qq, emu_bchg_qq, match_x_qq_bit },
     { "0000101111DDDDDD010bbbbb", "bchg, #n, D", dis_bchg_reg, emu_bchg_reg },
     { "0000101001MMMRRR0S00bbbb", "bclr #n, [X or Y]:ea", dis_bclr_ea, emu_bclr_ea, match_MMMRRR },
     { "0000101000aaaaaa0S00bbbb", "bclr #n, [X or Y]:aa", dis_bclr_aa, emu_bclr_aa },
     { "0000101010pppppp0S00bbbb", "bclr #n, [X or Y]:pp", dis_bclr_pp, emu_bclr_pp },
-    { "0000000100qqqqqq0S00bbbb", "bclr #n, [X or Y]:qq", NULL, NULL },
+    { "0000000100qqqqqq0S00bbbb", "bclr #n, [X or Y]:qq", dis_bclr_qq, emu_bclr_qq, match_x_qq_bit },
     { "0000101011DDDDDD010bbbbb", "bclr #n, D", dis_bclr_reg, emu_bclr_reg },
     { "000011010001000011000000", "bra xxxx", dis_bra_long, emu_bra_long },
     { "00000101000011aaaa0aaaaa", "bra xxx", dis_bra_imm, emu_bra_imm },
@@ -227,7 +234,7 @@ static const OpcodeEntry nonparallel_opcodes[] = {
     { "0000101001MMMRRR0S1bbbbb", "bset #n, [X or Y]:ea", dis_bset_ea, emu_bset_ea, match_MMMRRR },
     { "0000101000aaaaaa0S1bbbbb", "bset #n, [X or Y]:aa", dis_bset_aa, emu_bset_aa },
     { "0000101010pppppp0S1bbbbb", "bset #n, [X or Y]:pp", dis_bset_pp, emu_bset_pp },
-    { "0000000100qqqqqq0S1bbbbb", "bset #n, [X or Y]:qq", NULL, NULL },
+    { "0000000100qqqqqq0S1bbbbb", "bset #n, [X or Y]:qq", dis_bset_qq, emu_bset_qq, match_x_qq_bit },
     { "0000101011DDDDDD011bbbbb", "bset, #n, D", dis_bset_reg, emu_bset_reg },
     { "000011010001000010000000", "bsr xxxx", dis_bsr_long, emu_bsr_long },
     { "00000101000010aaaa0aaaaa", "bsr xxx", dis_bsr_imm, emu_bsr_imm },
@@ -240,7 +247,7 @@ static const OpcodeEntry nonparallel_opcodes[] = {
     { "0000101101MMMRRR0S10bbbb", "btst #n, [X or Y]:ea", dis_btst_ea, emu_btst_ea, match_MMMRRR },
     { "0000101100aaaaaa0S10bbbb", "btst #n, [X or Y]:aa", dis_btst_aa, emu_btst_aa },
     { "0000101110pppppp0S10bbbb", "btst #n, [X or Y]:pp", dis_btst_pp, emu_btst_pp },
-    { "0000000101qqqqqq0S10bbbb", "btst #n, [X or Y]:qq", NULL, NULL },
+    { "0000000101qqqqqq0S10bbbb", "btst #n, [X or Y]:qq", dis_btst_qq, emu_btst_qq, match_x_qq_bit },
     { "0000101111DDDDDD0110bbbb", "btst #n, D", dis_btst_reg, emu_btst_reg },
     { "0000110000011110000000SD", "clb S, D", dis_clb, emu_clb },
     { "0000000101iiiiii1000d101", "cmp #xx, S2", dis_cmp_imm, emu_cmp_imm },

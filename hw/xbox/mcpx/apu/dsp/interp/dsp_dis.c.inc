@@ -525,6 +525,17 @@ static void dis_bchg_ea(dsp_core_t* dsp)
     sprintf(dsp->disasm_str_instr,"bchg #%d,%s", numbit, name);
 }
 
+static void dis_bit_qq(dsp_core_t* dsp, const char *name)
+{
+    sprintf(dsp->disasm_str_instr, "%s #%u,x:$%06x", name,
+            dsp->disasm_cur_inst & 31, 0xffff80 + ((dsp->disasm_cur_inst >> 8) & 63));
+}
+
+static void dis_bclr_qq(dsp_core_t* dsp) { dis_bit_qq(dsp, "bclr"); }
+static void dis_bset_qq(dsp_core_t* dsp) { dis_bit_qq(dsp, "bset"); }
+static void dis_bchg_qq(dsp_core_t* dsp) { dis_bit_qq(dsp, "bchg"); }
+static void dis_btst_qq(dsp_core_t* dsp) { dis_bit_qq(dsp, "btst"); }
+
 static void dis_bchg_pp(dsp_core_t* dsp)
 {
     /* bchg #n,x:pp */

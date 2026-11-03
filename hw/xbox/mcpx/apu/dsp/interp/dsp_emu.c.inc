@@ -6340,6 +6340,25 @@ static void emu_bchg_ea(dsp_core_t* dsp)
     dsp->instr_cycle += 2;
 }
 
+static void emu_bit_qq(dsp_core_t* dsp, unsigned operation)
+{
+    uint32_t address = 0xffff80 + ((dsp->cur_inst >> 8) & 63);
+    unsigned bit = dsp->cur_inst & 31;
+    uint32_t value = dsp56k_read_memory(dsp, DSP_SPACE_X, address);
+    uint32_t carry = (value >> bit) & 1, mask = 1u << bit;
+    if (operation == 0) value &= ~mask;
+    else if (operation == 1) value |= mask;
+    else if (operation == 2) value ^= mask;
+    if (operation != 3) dsp56k_write_memory(dsp, DSP_SPACE_X, address, value);
+    dsp->registers[DSP_REG_SR] = (dsp->registers[DSP_REG_SR] & ~1u) | carry;
+    dsp->instr_cycle += 2;
+}
+
+static void emu_bclr_qq(dsp_core_t* dsp) { emu_bit_qq(dsp, 0); }
+static void emu_bset_qq(dsp_core_t* dsp) { emu_bit_qq(dsp, 1); }
+static void emu_bchg_qq(dsp_core_t* dsp) { emu_bit_qq(dsp, 2); }
+static void emu_btst_qq(dsp_core_t* dsp) { emu_bit_qq(dsp, 3); }
+
 static void emu_bchg_pp(dsp_core_t* dsp)
 {
     uint32_t memspace, addr, value, newcarry, numbit;

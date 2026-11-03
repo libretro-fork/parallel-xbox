@@ -2514,7 +2514,7 @@ static int np_kind(const Insn *in)
     if ((!strncmp(name, "bclr #n,", 8) || !strncmp(name, "bset #n,", 8) ||
          !strncmp(name, "bchg #n,", 8) || !strncmp(name, "btst #n,", 8)) &&
         (!strcmp(name + 8, " [X or Y]:aa") || !strcmp(name + 8, " [X or Y]:ea") ||
-         !strcmp(name + 8, " [X or Y]:pp"))) {
+         !strcmp(name + 8, " [X or Y]:pp") || !strcmp(name + 8, " [X or Y]:qq"))) {
         return NP_BIT_MEM;
     }
     if (!strcmp(name, "bclr #n, D") || !strcmp(name, "bset, #n, D") ||
@@ -2813,12 +2813,18 @@ static void emit_nonparallel(Tr *t, const Insn *in, int kind)
     }
     case NP_BIT_MEM: {
         unsigned form = (inst >> 14) & 3;
-        unsigned operation = ((inst >> 15) & 2) | ((inst >> 5) & 1);
+        bool low_peripheral = strstr(in->d.name, ":qq") != NULL;
+        unsigned operation = low_peripheral ? ((inst >> 13) & 2) | ((inst >> 5) & 1) :
+                                             ((inst >> 15) & 2) | ((inst >> 5) & 1);
         unsigned bit = inst & 31;
         unsigned space = (inst >> 6) & 1;
         Ea ea;
         emit_flags_flush(t);
-        if (form == 1) {
+        if (low_peripheral) {
+            ea.kind = EA_ABS;
+            ea.reg = EA1;
+            ea.abs = 0xffff80 + ((inst >> 8) & 63);
+        } else if (form == 1) {
             emit_calc_ea(t, (inst >> 8) & 63, in->ext, EA1, &ea);
             if (ea.kind == EA_IMM) {
                 ea.kind = EA_ABS;
@@ -2844,7 +2850,7 @@ static void emit_nonparallel(Tr *t, const Insn *in, int kind)
         /* Unchanged modifying writes still have peripheral side effects. */
         if (operation != 3) emit_write_mem(t, space, addr, V1);
         h_ld32(e, T0, REG_CORE, REGOFF(DSP_REG_SR));
-        h_and_ri(e, 0, T0, 0xFFFE);
+        h_and_ri(e, 0, T0, low_peripheral ? ~1u : 0xFFFE);
         h_or_rr(e, 0, T0, V2);
         h_st32(e, REG_CORE, REGOFF(DSP_REG_SR), T0);
         t->cyc += 2;

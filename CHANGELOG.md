@@ -30,6 +30,8 @@
 
 ## Unreleased
 
+- DSP: execute X:qq peripheral bit operations natively, with exact read/modify/write side effects, carry and status regression coverage.
+
 - Keep frontend VFS reads coalesced across empty descriptors, avoiding extra provider calls for contiguous destinations while preserving short reads, EOF zero-fill and cursor recovery.
 
 - DSP: execute register-count logical shifts natively, preserving EXP/LSP and prior flags while handling aliased counts and normal/sixteen-bit words.
