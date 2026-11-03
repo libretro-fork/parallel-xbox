@@ -1991,6 +1991,7 @@ enum {
     NP_MOVEM_P_SPECIAL, /* control effects plus possible P invalidation */
     NP_BIT_MEM,
     NP_BIT_REG,
+    NP_BIT_CONTROL,     /* status, stack and loop bit operations */
     NP_BIT_SR_UPPER,
     NP_MOVEC_EA,
     NP_MOVEC_IMM,
@@ -2103,6 +2104,7 @@ static int np_kind(const Insn *in)
         if (reg == DSP_REG_SR && bit >= 16 && strcmp(name, "btst #n, D")) {
             return NP_BIT_SR_UPPER;
         }
+        if (reg >= DSP_REG_SR && reg != DSP_REG_OMR) return NP_BIT_CONTROL;
         /* The interpreter exposes malformed upper accumulator words for
          * out-of-width modifying bit numbers; keep that path unchanged. */
         return (reg_supported(reg) || reg == DSP_REG_OMR) &&
@@ -2449,12 +2451,14 @@ static void emit_nonparallel(Tr *t, const Insn *in, int kind)
         t->cyc += 2;
         break;
     }
+    case NP_BIT_CONTROL:
     case NP_BIT_REG: {
         unsigned reg = (inst >> 8) & 63;
         unsigned bit = inst & 31;
         unsigned operation = ((inst >> 15) & 2) | ((inst >> 5) & 1);
         uint32_t mask = 1u << bit;
         emit_flags_flush(t);
+        if (kind == NP_BIT_CONTROL) acc_spill_all(t, false);
         emit_read_reg(t, reg, V1);
         h_mov_rr(e, 0, V2, V1);
         h_shr_ri(e, 0, V2, bit);
@@ -2465,7 +2469,18 @@ static void emit_nonparallel(Tr *t, const Insn *in, int kind)
         case 2: h_xor_ri(e, 0, V1, mask); break;
         }
         if (operation != 3) {
-            emit_write_reg(t, reg, V1);
+            if (kind == NP_BIT_CONTROL) {
+                /* Preserve the old bit across the register side-effect helper.
+                 * SSH reads here do not pop; writes push even if unchanged. */
+                h_stub_call_begin(e);
+                h_mov_rr(e, 0, H_ARG2, V1);
+                h_mov_ri(e, H_ARG1, reg);
+                h_mov_rr(e, 1, H_ARG0, REG_CORE);
+                h_call(e, (const void *)dsp56k_write_reg);
+                h_stub_call_end(e);
+            } else {
+                emit_write_reg(t, reg, V1);
+            }
         }
         /* Match the interpreter's 16-bit status mask, including clearing
          * its upper FV bookkeeping bit, while replacing only carry below. */
@@ -3666,7 +3681,7 @@ retry:
             emit_native(t, &in);
             if (np_kind(&in) == NP_MOVEC_SPECIAL || np_kind(&in) == NP_MOVEM_P_SPECIAL ||
                 np_kind(&in) == NP_MOVEP_SPECIAL || np_kind(&in) == NP_MOVEP_P ||
-                np_kind(&in) == NP_STATUS_MODE) {
+                np_kind(&in) == NP_STATUS_MODE || np_kind(&in) == NP_BIT_CONTROL) {
                 /* Control transfers may change scale/LF, stack state or LC.
                  * Post once, then select the resulting cache identity. */
                 acc_spill_all(t, false);
@@ -3794,7 +3809,7 @@ retry:
     t->cyc = 0;
     if (np_kind(&in) == NP_MOVEM_P_WRITE || np_kind(&in) == NP_MOVEC_SPECIAL ||
         np_kind(&in) == NP_MOVEM_P_SPECIAL || np_kind(&in) == NP_MOVEP_SPECIAL ||
-        np_kind(&in) == NP_MOVEP_P || np_kind(&in) == NP_STATUS_MODE) {
+        np_kind(&in) == NP_MOVEP_P || np_kind(&in) == NP_STATUS_MODE || np_kind(&in) == NP_BIT_CONTROL) {
         /* P writes can replace REP's body; control writes can change its
          * count, mode or stack. Retire once and redispatch updated state. */
         if (np_kind(&in) == NP_MOVEM_P_WRITE) {

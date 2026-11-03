@@ -270,6 +270,56 @@ static void check_register_bits(Machine *a, Machine *b)
     }
 }
 
+static void check_control_register_bits(Machine *a, Machine *b, unsigned mode)
+{
+    static const uint32_t encodings[] = {0x0AC040, 0x0AC060, 0x0BC040, 0x0BC060};
+    static const unsigned regs[] = {
+        DSP_REG_SR, DSP_REG_SP, DSP_REG_SSH, DSP_REG_SSL, DSP_REG_LA, DSP_REG_LC
+    };
+    /* Independent SSH oracle: even an unchanged RMW pushes once; BTST
+     * only observes the old value and must neither push nor pop. */
+    for (unsigned op = 0; op < ARRAY_SIZE(encodings); op++) {
+        for (unsigned old = 0; old < 2; old++) {
+            uint32_t value = old << 5;
+            uint32_t result = op == 0 ? 0 : op == 1 ? 0x20 : op == 2 ? value ^ 0x20 : value;
+            prepare(b, encodings[op] | (DSP_REG_SSH << 8) | 5, 0, 1, mode, false);
+            dsp_core_t *c = b->dsp->backend;
+            c->registers[DSP_REG_SR] = (mode << DSP_SR_S0) | (1u << DSP_SR_FV) | 0xAA;
+            c->registers[DSP_REG_SP] = 2;
+            c->registers[DSP_REG_SSH] = c->stack[0][2] = value;
+            c->stack[0][3] = 0x1234;
+            c->stack[1][3] = 0x5678;
+            dspjit_test_reset_fallback_count();
+            b->dsp->ops->run(b->dsp, 1);
+            assert(!dspjit_test_fallback_count());
+            assert(c->pc == 1 && c->cycle_count == 4);
+            assert(c->registers[DSP_REG_SP] == (op == 3 ? 2 : 3));
+            assert(c->registers[DSP_REG_SSH] == result);
+            assert(c->stack[0][2] == value);
+            assert(c->stack[0][3] == (op == 3 ? 0x1234 : result));
+            assert(c->stack[1][3] == 0x5678);
+            assert(c->registers[DSP_REG_SSL] == (op == 3 ? 0 : 0x5678));
+            assert(c->registers[DSP_REG_SR] == ((mode << DSP_SR_S0) | 0xAA | old));
+            cases++;
+        }
+    }
+
+    static const unsigned contexts[] = {0x20000000, 0x40000, 0x80000, 0x40000000};
+    for (unsigned r = 0; r < ARRAY_SIZE(regs); r++) {
+        for (unsigned op = 0; op < ARRAY_SIZE(encodings); op++) {
+            for (unsigned bit = 0; bit < (op == 3 ? 16 : 32); bit++) {
+                for (unsigned seed = 0; seed < 4; seed++) {
+                    for (unsigned ctx = 0; ctx < ARRAY_SIZE(contexts); ctx++) {
+                        check(a, b, encodings[op] | (regs[r] << 8) | bit, 0,
+                              0x400000 | 0x1000000 | contexts[ctx] | seed,
+                              mode, seed & 1);
+                    }
+                }
+            }
+        }
+    }
+}
+
 static void check_call_chains(Machine *a, Machine *b)
 {
     static const uint32_t program[] = {0x0D0003, 0x200040, 0x0C0000, 0x200048, 0x00000C};
@@ -1301,6 +1351,7 @@ static void check_speculative_decode(void)
 
 static void check_startup_operations(Machine *a, Machine *b, unsigned mode)
 {
+    check_control_register_bits(a, b, mode);
     check_memory_bits(a, b, mode);
     check_status_byte_logic(a, b, mode);
     check_divide_step(a, b, mode);
@@ -1676,6 +1727,7 @@ int main(int argc, char **argv)
     bool relative_only = argc == 2 && !strcmp(argv[1], "--relative");
     bool loops_only = argc == 2 && !strcmp(argv[1], "--loops");
     bool compare_only = argc == 2 && !strcmp(argv[1], "--compare");
+    bool control_bits_only = argc == 2 && !strcmp(argv[1], "--control-bits");
     bool memory_bits_only = argc == 2 && !strcmp(argv[1], "--memory-bits");
     bool byte_logic_only = argc == 2 && !strcmp(argv[1], "--status-byte");
     bool divide_only = argc == 2 && !strcmp(argv[1], "--divide");
@@ -1688,8 +1740,8 @@ int main(int argc, char **argv)
     bool effective_only = argc == 2 && !strcmp(argv[1], "--effective-control");
     bool startup_only = argc == 2 && !strcmp(argv[1], "--startup");
     bool program_only = argc == 2 && !strcmp(argv[1], "--program");
-    if (argc != 1 && !relative_only && !loops_only && !program_only && !compare_only && !startup_only && !effective_only && !register_only && !program_control_only && !peripheral_only && !program_peripheral_only && !multiply_only && !normalize_only && !divide_only && !byte_logic_only && !memory_bits_only) {
-        fputs("usage: dspnative [--relative|--loops|--program|--compare|--startup|--effective-control|--register-control|--program-control|--peripheral-control|--program-peripheral|--multiply|--normalize|--divide|--status-byte|--memory-bits]\n", stderr);
+    if (argc != 1 && !relative_only && !loops_only && !program_only && !compare_only && !startup_only && !effective_only && !register_only && !program_control_only && !peripheral_only && !program_peripheral_only && !multiply_only && !normalize_only && !divide_only && !byte_logic_only && !memory_bits_only && !control_bits_only) {
+        fputs("usage: dspnative [--relative|--loops|--program|--compare|--startup|--effective-control|--register-control|--program-control|--peripheral-control|--program-peripheral|--multiply|--normalize|--divide|--status-byte|--memory-bits|--control-bits]\n", stderr);
         return 2;
     }
     Machine *a = machine_new(false), *b = machine_new(true);
@@ -1704,8 +1756,9 @@ int main(int argc, char **argv)
     assert(initially_committed == (64u << 10));
 #endif
     check_speculative_decode();
-    if (relative_only || loops_only || program_only || compare_only || startup_only || effective_only || register_only || program_control_only || peripheral_only || program_peripheral_only || multiply_only || normalize_only || divide_only || byte_logic_only || memory_bits_only) {
+    if (relative_only || loops_only || program_only || compare_only || startup_only || effective_only || register_only || program_control_only || peripheral_only || program_peripheral_only || multiply_only || normalize_only || divide_only || byte_logic_only || memory_bits_only || control_bits_only) {
         for (unsigned mode = 0; mode < 4; mode++) {
+            if (control_bits_only) check_control_register_bits(a, b, mode);
             if (memory_bits_only) check_memory_bits(a, b, mode);
             if (byte_logic_only) check_status_byte_logic(a, b, mode);
             if (divide_only) check_divide_step(a, b, mode);

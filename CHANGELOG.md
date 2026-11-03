@@ -28,6 +28,8 @@
 
 ## Unreleased
 
+- DSP: compile status, stack and loop register bit operations without interpreter fallback. Preserve SSH pushes, BTST reads, carry and register masks; retire control changes before running subsequent code or REP iterations. Add 43,040 boundary checks and a production regression program.
+
 - DSP: isolate the opcode decode cache per host thread so concurrent GP/EP decoding cannot pair one instruction with another instruction's handler. Add a two-million-decode collision regression that rejects the previous shared cache.
 
 - Avoid clearing scratch bytes immediately overwritten by bulk partial writes into zero-filled QCOW2 clusters. Preserve the single-clear path for small patches/clusters and retain full data-before-metadata writes and failure behavior.
