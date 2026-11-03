@@ -26,6 +26,8 @@
 
 ## Unreleased
 
+- DSP: compile memory bit operations natively and leave compiled code when a peripheral callback loads new program words through DMA. Cover MOVEP/parallel stores and REP too; speculative decode no longer faults on words DMA has not populated. Add 179,600 regression boundaries, independent memory/status checks and DMA replacement programs.
+
 - DSP: compile ANDI/ORI status-byte operations natively, preserving raw CCR/OMR masks and reselecting compiled code after MR scaling/loop changes. Add 81,920 regression boundaries, an independent status oracle and a production program.
 
 - Borrow immutable mapped compressed QCOW2 input during synchronous decompression, avoiding compressed-input staging when the complete range is mapped. Keep the read fallback, writable-image behavior and decompressed cache. Writable HDDs keep their existing input path; no overall throughput gain is claimed.
