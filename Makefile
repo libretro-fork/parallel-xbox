@@ -362,6 +362,16 @@ $(DSPNATIVE): $(DSPNATIVE_SRC) $(CORE_DIR)/libretro/tests/dspdiff.c $(DSP_TEST_H
 dspnative: $(DSPNATIVE)
 	$(DSPNATIVE)
 
+# Independent GP/EP decode stress; all machine resets precede worker startup.
+DSPDECODE := $(CORE_DIR)/libretro/tests/dspdecode$(if $(filter win,$(platform)),.exe,)
+$(DSPDECODE): $(DSPDIFF_SRC) $(CORE_DIR)/libretro/tests/test-dsp-decode.c $(DSP_TEST_HEADERS)
+	$(CC) -O2 $(QEMU_CFLAGS) $(ARCH_CFLAGS) -pthread \
+		-I$(CORE_DIR)/hw/xbox/mcpx/apu/dsp -I$(CORE_DIR)/hw/xbox/mcpx/apu/dsp/interp \
+		-o $@ $(filter-out $(CORE_DIR)/libretro/tests/dspdiff.c,$(DSPDIFF_SRC)) $(CORE_DIR)/libretro/tests/test-dsp-decode.c
+dspdecode: $(DSPDECODE)
+	$(DSPDECODE)
+.PHONY: dspdecode
+
 dsprelative: $(DSPNATIVE) $(DSPDIFF)
 	$(DSPNATIVE) --relative
 	$(DSPDIFF) --until-halt --frames 100 --x 0=4 --seed 1 $(CORE_DIR)/libretro/tests/rom/gp-relative.inc

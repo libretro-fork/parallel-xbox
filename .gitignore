@@ -45,3 +45,6 @@ libretro/tests/fileiotest.exe
 
 /libretro/tests/qcowinputtest
 /libretro/tests/qcowinputtest.exe
+
+/libretro/tests/dspdecode
+/libretro/tests/dspdecode.exe

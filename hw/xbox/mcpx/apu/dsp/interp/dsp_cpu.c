@@ -427,7 +427,8 @@ static const OpcodeEntry *lookup_opcode_slow(uint32_t op) {
 }
 
 static const OpcodeEntry *lookup_opcode_try(uint32_t op) {
-    static struct opcache_entry {
+    /* GP and EP decoding must not publish mismatched opcode/handler pairs. */
+    static _Thread_local struct opcache_entry {
         uint32_t op;
         const OpcodeEntry *entry;
     } opcache[256];
