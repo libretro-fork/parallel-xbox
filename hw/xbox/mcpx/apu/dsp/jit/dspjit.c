@@ -26,7 +26,7 @@
  * SR-changing control paths select the matching table or return through
  * dispatch when that identity changes. A REP repeats its instruction in a loop of its own
  * (rep_blocks). Interrupt pipelines use native single-instruction retirement
- * for data and supported control instructions; REP setup still steps. A
+ * for data and supported control instructions, including REP setup. A
  * block charges its cycles when it ends, so a run may go a block past its
  * budget; the budget carries over,
  * as the interpreter's does.
@@ -4071,6 +4071,20 @@ static bool emit_control(Tr *t, const Insn *in)
             h_st32_imm(e, REG_CORE, REGOFF(DSP_REG_LC), lc ? lc : 0x10000);
         }
         h_st32_imm(e, REG_CORE, OFF(loop_rep), 1);
+        if (t->interrupt_retirement) {
+            /* Publish REP's setup marker, not a completed body iteration.
+             * Post handles zero counts, coincident DO ends and defers the
+             * interrupt pipeline while the repeat remains active. */
+            h_st32_imm(e, REG_CORE, OFF(pc_on_rep), 1);
+            h_st32_imm(e, REG_CORE, OFF(pc), in->at);
+            h_st32_imm(e, REG_CORE, OFF(cur_inst_len), in->len);
+            h_st16_imm(e, REG_CORE, OFF(instr_cycle), 4);
+            h_mov_rr(e, 1, H_ARG0, REG_CORE);
+            h_call(e, (const void *)dsp56k_post);
+            emit_charge(e, t->cyc);
+            emit_jump_to_epilogue(t);
+            return true;
+        }
         h_st32_imm(e, REG_CORE, OFF(pc_on_rep), 0);
         h_st32_imm(e, REG_CORE, OFF(pc), in->next);
         /* LF is part of the cache identity; without a DO loop no check
@@ -4563,10 +4577,6 @@ static dspjit_block_fn dspjit_translate_interrupt(DspJit *jit, int mode, uint32_
     Tr *t = jit->tr;
     dspjit_block_fn fn;
     if (!decode_insn(jit->core, pc, &in)) return NULL;
-    /* REP setup has its own first-pass PC semantics. Retain that path
-     * until its native pipeline retirement is implemented separately. */
-    if (in.d.control && (!strcmp(in.d.name, "rep #xxx") ||
-                         !strcmp(in.d.name, "rep S"))) return NULL;
     if (!in.d.control && !insn_native(&in)) return NULL;
 retry:
     translate_begin(jit, mode);
@@ -4867,10 +4877,10 @@ void dspjit_run(DspJit *jit, int cycles)
                    (((sr >> DSP_SR_LF) & 1) << 2);
         dspjit_prepare_mode(jit, mode);
 
-        /* Pending interrupts and pipeline stages retire one instruction at
-         * a time. REP setup/body and unsupported encodings retain their step. */
-        if (core->interrupt_state == DSP_INTERRUPT_DISABLED ||
-            core->interrupt_counter != 0 || core->pc_on_rep) {
+        /* REP bodies defer interrupts until their final retirement. Setup
+         * and ordinary pipeline stages retire a single native instruction. */
+        if ((!core->loop_rep && (core->interrupt_state == DSP_INTERRUPT_DISABLED ||
+                                core->interrupt_counter != 0)) || core->pc_on_rep) {
             fn = NULL;
 #if DSPJIT_HOST
             if (!core->pc_on_rep && !core->loop_rep) {

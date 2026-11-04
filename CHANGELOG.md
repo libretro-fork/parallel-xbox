@@ -47,6 +47,8 @@
 
 ## Unreleased
 
+- Immediate/register DSP repeats now start natively during interrupt pipelines. Native repeat bodies also keep running with pending interrupts, deferring them until the repeat ends instead of stepping every iteration through the interpreter.
+
 - DSP native branches, calls, returns, loop setup and exception controls now remain in native code during interrupt pipelines while preserving per-instruction retirement, vector stack saves and return timing.
 
 - DSP data instructions now remain in native code while interrupts are pending or moving through the fast-interrupt pipeline, with instruction-by-instruction loop and interrupt retirement and regression coverage.
