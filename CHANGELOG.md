@@ -59,6 +59,8 @@
 
 ## Unreleased
 
+- DSP: specialize constant RAM addresses in memory bit operations while preserving mapped aliases, peripheral side effects and extension timing.
+
 - Read-only mapped QCOW2 data clusters can supply retained IDE read spans directly, avoiding the intermediate scratch copy for uncompressed image data too.
 - DSP: specialize constant RAM addresses in Class I/II moves while preserving pre-ALU snapshots, X aliases and callback retirement.
 

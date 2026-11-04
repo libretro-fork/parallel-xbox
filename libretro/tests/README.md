@@ -4329,8 +4329,8 @@ scaling mode and zero/all-one input. Independent memory/carry/status/PC/cycle
 oracles supplement full-state comparisons. Both peripheral read/write
 callbacks are poisoned so any device access fails. Short addresses 0..63
 emit direct RAM loads/stores; they cannot invoke a device and need no
-callback-stop guard. Effective-address and peripheral forms retain their
-existing guarded paths. The existing memory-bit matrix checks those paths,
+callback-stop guard. Computed effective-address and peripheral forms retain their
+guarded paths; constant-address specialization is described below. The existing memory-bit matrix checks those paths,
 and negative controls catch wrong RAM offsets and overly broad fast paths.
 `gp-startup-short-bit-ram.inc` exercises all four operations on both buses
 inside REP and counted DO loops across frames, and serves as an optional
@@ -4462,3 +4462,15 @@ replacements and atomic flag changes. Immediate-free and missing-guard
 negative controls must fail. The grace provider is modeled here;
 `test-rcu-owner.py` and `test-rcu-callbacks.py` exercise the production RCU
 registry/grace-period owner and deferred callback worker independently.
+
+`dspnative --constant-bit-ram` checks 15,360 independent memory/carry/status/
+PC/cycle boundaries for constant-address bit operations: all four operations,
+encoded bits, absolute/tagged operands, modes, RAM boundary words and X aliases.
+Peripheral callbacks are poisoned. Constant ordinary RAM now uses fixed-offset
+accesses; extension decoding and its two extra cycles remain. Computed, mapped
+alias and peripheral operands retain their existing paths, including unchanged
+modifying writes and read-only BTST behavior. The prior memory-bit and short-RAM
+matrices also run, totaling 260,496 focused boundaries with zero interpreter
+calls. Negative controls catch an EA-code/address mix-up and direct access to
+X alias storage. A production fixture combines RAM limits, both buses, tagged
+addresses, REP and counted DO across frames and supports synthetic timing.

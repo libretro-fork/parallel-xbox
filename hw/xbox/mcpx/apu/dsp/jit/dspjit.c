@@ -3032,7 +3032,6 @@ static void emit_nonparallel(Tr *t, const Insn *in, int kind)
     case NP_BIT_MEM: {
         unsigned form = (inst >> 14) & 3;
         bool low_peripheral = strstr(in->d.name, ":qq") != NULL;
-        bool short_ram = !low_peripheral && form == 0;
         unsigned operation = low_peripheral ? ((inst >> 13) & 2) | ((inst >> 5) & 1) :
                                              ((inst >> 15) & 2) | ((inst >> 5) & 1);
         unsigned bit = inst & 31;
@@ -3054,11 +3053,11 @@ static void emit_nonparallel(Tr *t, const Insn *in, int kind)
             ea.reg = EA1;
             ea.abs = ((inst >> 8) & 63) + (form == 2 ? 0xFFFFC0 : 0);
         }
-        /* Short addresses are always 0..63: neither bus can call a device.
-         * Keep their loads/stores direct and omit callback exit checks. */
-        int ramoff = (space ? OFF(yram) : OFF(xram)) + ((inst >> 8) & 63) * 4;
-        int addr = short_ram ? 0 : ea_addr_reg(t, &ea);
-        if (short_ram) h_ld32(e, V1, REG_CORE, ramoff);
+        /* Resolve ordinary RAM constants without changing mapped/device EAs. */
+        bool fixed_ram = ea.kind == EA_ABS && single_ram_address(space, ea.abs);
+        int ramoff = fixed_ram ? (space ? OFF(yram) : OFF(xram)) + ea.abs * 4 : 0;
+        int addr = fixed_ram ? 0 : ea_addr_reg(t, &ea);
+        if (fixed_ram) h_ld32(e, V1, REG_CORE, ramoff);
         else emit_read_mem(t, space, addr, V1);
         h_mov_rr(e, 0, V2, V1);
         h_shr_ri(e, 0, V2, bit);
@@ -3071,7 +3070,7 @@ static void emit_nonparallel(Tr *t, const Insn *in, int kind)
         }
         /* Unchanged modifying writes still have peripheral side effects. */
         if (operation != 3) {
-            if (short_ram) h_st32(e, REG_CORE, ramoff, V1);
+            if (fixed_ram) h_st32(e, REG_CORE, ramoff, V1);
             else emit_write_mem(t, space, addr, V1);
         }
         h_ld32(e, T0, REG_CORE, REGOFF(DSP_REG_SR));
