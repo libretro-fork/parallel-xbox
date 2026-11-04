@@ -41,11 +41,7 @@
  * builds; the load/store internals retain their real address-width branches. */
 static inline void tcg_debug_assert_addr_type(TCGType addr_type)
 {
-#if defined(CONFIG_DEBUG_TCG) || defined(QEMU_STATIC_ANALYSIS)
-    tcg_debug_assert(addr_type == tcg_ctx->addr_type);
-#else
-    (void)addr_type;
-#endif
+    tcg_debug_check(addr_type == tcg_ctx->addr_type);
 }
 
 static void check_max_alignment(unsigned a_bits)

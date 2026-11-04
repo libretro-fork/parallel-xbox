@@ -6417,7 +6417,7 @@ int tcg_gen_code(TCGContext *s, TranslationBlock *tb)
         default:
         do_default:
             /* Sanity check that we've not introduced any unhandled opcodes. */
-            tcg_debug_assert(tcg_op_supported(opc, TCGOP_TYPE(op),
+            tcg_debug_check(tcg_op_supported(opc, TCGOP_TYPE(op),
                                               TCGOP_FLAGS(op)));
             /* Note: in order to speed up the code, it would be much
                faster to have specialized register allocator functions for

@@ -16,6 +16,7 @@ static uint32_t tb_cf_flags(int c) { return ((uint32_t)(c&3)<<30)|((uint32_t)(c>
 #define TB_EXIT_IDXMAX 1
 #define INDEX_op_goto_tb 2
 #define tcg_debug_assert assert
+#define tcg_debug_check assert
 #define CC_OP_DYNAMIC (-1)
 typedef uint64_t vaddr;
 #define INDEX_op_goto_ptr 1

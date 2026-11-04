@@ -4179,6 +4179,8 @@ outside this change.
 
 `test-tcg-addr-check.py CHECKOUT [CC]` runs the production address-type diagnostic helper with the real assertion macro in release, debug and static-analysis modes. It requires zero release context fetches and verifies that both diagnostic modes fetch the owner and catch a mismatched type. It does not disable memory-operation constraints or the real address-width branches.
 
+The same mode fixture also checks `tcg_debug_check`: diagnostic predicates are not evaluated in release, mismatches remain visible in debug/static-analysis modes, and valid `tcg_debug_assert` predicates still evaluate in every mode. Live capability queries and real chaining guards remain separate from these sanity checks.
+
 `dspnative --rep-events` checks 99,152 repeated DEBUG/DEBUGcc, TRAP/TRAPcc
 and cache-control boundaries with zero interpreter calls. These emitters now
 retire from the original PC and decoded length, letting REP suppress advancement

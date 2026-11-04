@@ -1,5 +1,6 @@
 # Changelog of the libretro core
 
+- Keep expensive TCG diagnostic predicates out of release translation. Remove the per-ordinary-op support sanity query and redundant direct-chain TLS check while preserving debug/static-analysis validation, live capability decisions and optimizer assumptions.
 - Avoid release-build TLS lookups used only by TCG load/store address-type diagnostics. Keep those checks in debug/static-analysis builds, and preserve memory-operation constraints and real address-width handling.
 - Remove disabled QEMU assembly printers, dump-only symbol lookup and unused CPU/translator disassembly callbacks. Keep the Xbox instruction decoder, execution, frontend/error logging and private test capture unchanged.
 - Remove the unused TCG label-presence marker and its per-label write. Keep live binding/value state, branch/relocation queues and generated code behavior unchanged.
