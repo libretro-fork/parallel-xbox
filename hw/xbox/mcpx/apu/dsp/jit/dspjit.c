@@ -3531,6 +3531,27 @@ static bool emit_control(Tr *t, const Insn *in)
         return false;
     }
 
+    if (!strcmp(name, "wait") || !strcmp(name, "stop") ||
+        !strcmp(name, "reset") || !strcmp(name, "ill")) {
+        acc_spill_all(t, false);
+        /* Match the current MCPX model: WAIT/STOP do not halt, and RESET
+         * has no peripheral side effects. All four still retire normally. */
+        h_st32_imm(e, REG_CORE, OFF(pc), in->at);
+        h_st32_imm(e, REG_CORE, OFF(cur_inst), in->inst);
+        h_st32_imm(e, REG_CORE, OFF(cur_inst_len), in->len);
+        h_st16_imm(e, REG_CORE, OFF(instr_cycle), !strcmp(name, "reset") ? 4 : 2);
+        if (!strcmp(name, "ill")) {
+            /* Share exception delivery and the interpreter's debug policy. */
+            h_mov_rr(e, 1, H_ARG0, REG_CORE);
+            h_call(e, (const void *)dsp56k_raise_illegal);
+        }
+        h_mov_rr(e, 1, H_ARG0, REG_CORE);
+        h_call(e, (const void *)dsp56k_post);
+        emit_charge(e, t->cyc);
+        emit_jump_to_epilogue(t);
+        return true;
+    }
+
     if (!strcmp(name, "do_f") || !strcmp(name, "dor_f")) {
         bool relative = !strcmp(name, "dor_f");
         acc_spill_all(t, false);

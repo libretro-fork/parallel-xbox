@@ -7285,11 +7285,7 @@ static void emu_cache_control(dsp_core_t *dsp)
 
 static void emu_illegal(dsp_core_t* dsp)
 {
-    /* Raise interrupt p:0x003e */
-    dsp56k_add_interrupt(dsp, DSP_INTER_ILLEGAL);
-    if (dsp->exception_debugging) {
-        assert(!"Illegal dsp instruction - interrupt 0x003e raised");
-    }
+    dsp56k_raise_illegal(dsp);
 }
 
 static void emu_inc(dsp_core_t* dsp)

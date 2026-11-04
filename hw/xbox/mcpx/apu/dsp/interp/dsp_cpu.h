@@ -166,6 +166,7 @@ uint32_t *dsp56k_memory_ptr(dsp_core_t* dsp, int space, uint32_t address, uint32
 
 /* Interrupt relative functions */
 void dsp56k_add_interrupt(dsp_core_t* dsp, uint16_t inter);
+void dsp56k_raise_illegal(dsp_core_t *dsp);
 
 /* For the JIT (../jit/dspjit.c): an instruction decoded the interpreter's
  * way, to be run by the interpreter's own function for it */
