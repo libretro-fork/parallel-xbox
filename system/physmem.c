@@ -805,18 +805,26 @@ AddressSpace *cpu_get_address_space(CPUState *cpu, int asidx)
 
 #include "libretro/dsp-ownership.h"
 
+/* Work in offsets from the overlap start: an empty access must not become
+ * addr - 1, and callback lengths must describe only the actual overlap. */
 static inline bool access_callback_address_matches(MemAccessCallback *cb,
-                                                   hwaddr addr, hwaddr len)
+                                                   hwaddr addr, hwaddr len,
+                                                   hwaddr *hit_addr,
+                                                   hwaddr *hit_len)
 {
-    hwaddr watch_end = cb->addr + cb->len - 1;
-    hwaddr access_end = addr + len - 1;
-
-    bool hit = !(addr > watch_end || cb->addr > access_end);
-    if (hit && cb->func == lr_dsp_ownership_callback) {
-        hwaddr start = MAX(addr, cb->addr), end = MIN(access_end, watch_end);
-        return lr_dsp_ownership_match(cb->mr, start - cb->addr, end - start + 1);
+    hwaddr start = MAX(addr, cb->addr);
+    hwaddr access_skip = start - addr, watch_skip = start - cb->addr;
+    if (access_skip >= len || watch_skip >= cb->len) {
+        return false;
     }
-    return hit;
+    hwaddr bytes = MIN(len - access_skip, cb->len - watch_skip);
+    if (cb->func == lr_dsp_ownership_callback &&
+        !lr_dsp_ownership_match(cb->mr, watch_skip, bytes)) {
+        return false;
+    }
+    if (hit_addr) *hit_addr = start;
+    if (hit_len) *hit_len = bytes;
+    return true;
 }
 
 int mem_access_callback_address_matches(CPUState *cpu, hwaddr addr, hwaddr len)
@@ -825,7 +833,7 @@ int mem_access_callback_address_matches(CPUState *cpu, hwaddr addr, hwaddr len)
 
     MemAccessCallback *cb;
     QTAILQ_FOREACH(cb, &cpu->mem_access_callbacks, entry) {
-        if (access_callback_address_matches(cb, addr, len)) {
+        if (access_callback_address_matches(cb, addr, len, NULL, NULL)) {
             ret |= retro_atomic_load_relaxed_int(&cb->watch_flags);
         }
     }
@@ -914,13 +922,14 @@ void mem_check_access_callback_ramaddr(CPUState *cpu,
     LR_DSP_EXTERNAL_GUARD;
     MemAccessCallback *cb;
     QTAILQ_FOREACH(cb, &cpu->mem_access_callbacks, entry) {
-        if (access_callback_address_matches(cb, ram_addr, len)) {
+        hwaddr hit_addr, hit_len;
+        if (access_callback_address_matches(cb, ram_addr, len,
+                                             &hit_addr, &hit_len)) {
             ram_addr_t ram_addr_base = memory_region_get_ram_addr(cb->mr);
             assert(ram_addr_base != RAM_ADDR_INVALID);
-            ram_addr_t hit_addr = MAX(ram_addr, cb->addr);
             hwaddr mr_offset = hit_addr - ram_addr_base;
             bool is_write = (flags & BP_MEM_WRITE) != 0;
-            cb->func(cb->opaque, cb->mr, mr_offset, len, is_write);
+            cb->func(cb->opaque, cb->mr, mr_offset, hit_len, is_write);
         }
     }
 }

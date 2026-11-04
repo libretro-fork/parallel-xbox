@@ -4414,3 +4414,8 @@ with ADD, REP, DO, all selectors and both directions across frames.
 `test-qcow2-read-views.py CHECKOUT [CC]` runs the production QCOW2 retained-view provider and IDE submission/completion/cancellation helpers against compressed disposable images. It checks removed cache-to-scratch copies, one-view fallback, overlapping decode allocation and failure, immutable snapshots across writes, malformed streams without caller publication or retry, scattered subcluster reads, and successful/canceled completions after image close. ASan/UBSan are enabled by default; `QCOW_READ_VIEW_CLUSTER_SIZE`, `QCOW_READ_VIEW_CFLAGS`, `QCOW_READ_VIEW_BINARY`, `QCOW_READ_VIEW_FIXTURE` and `QCOW_READ_VIEW_SKIP_RUN` support alternate cluster sizes and native cross-built fixtures. qemu-img checks the resulting image. These are correctness and copy-count checks, not benchmarks.
 
 The retained-view fixture also counts preserved bytes during large partial writes/zeroes with a pinned decoded cluster. Prefix-only, suffix-only, two-edge and small patches run with successful and injected-failure writes. Pending payloads must remain immutable and failed writes must preserve disk contents.
+`test-memory-callback-overlap.py` extracts production callback matching, flag
+aggregation and dispatch. An independent 128-bit interval oracle covers400056
+read/write/DSP-acceptance cases, including accesses starting before a watch,
+empty spans, near-final-address ranges and offsets relative to the memory
+region. The pre-change source fails the exact callback-span oracle.
