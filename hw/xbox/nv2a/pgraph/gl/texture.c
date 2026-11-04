@@ -590,6 +590,7 @@ void pgraph_gl_bind_textures(NV2AState *d)
                 if (logo_err == GL_NO_ERROR) {
                     glDeleteTextures(1, &key_out->binding->gl_texture);
                     key_out->binding->gl_texture = logo_tex;
+                    sampled_texture_key_store(key_out->binding->recycle_key, 0);
                     fprintf(stderr, "nv2a: SEGABOOT logo replaced\n");
                 } else {
                     glDeleteTextures(1, &logo_tex);
@@ -618,6 +619,7 @@ void pgraph_gl_bind_textures(NV2AState *d)
             binding->scale = pg->surface_scale_factor;
         }
         if (surf_to_tex && binding->draw_time < surface->draw_time) {
+            sampled_texture_key_store(binding->recycle_key, 0);
 
             trace_nv2a_pgraph_surface_render_to_texture(
                 surface->vram_addr, surface->width, surface->height);
@@ -1058,9 +1060,19 @@ static TextureBinding* generate_texture(const TextureShape s,
 {
     ColorFormatInfo f = kelvin_color_format_gl_map[s.color_format];
 
-    /* Create a new opengl texture */
-    GLuint gl_texture;
-    glGenTextures(1, &gl_texture);
+    PGRAPHGLState *r = g_nv2a->pgraph.gl_renderer_state;
+    /* Start with the common linear RGBA8 case. Compressed, mipmapped,
+     * bordered, cube and surface-derived storage retain their old lifetime. */
+    uint32_t recycle_key = !empty && !s.cubemap && !s.border &&
+        s.dimensionality == 2 && s.levels == 1 &&
+        s.color_format == NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_A8R8G8B8
+        ? sampled_texture_key(s.width, s.height) : 0;
+    GLuint gl_texture = sampled_texture_take(&r->sampled_texture_pool,
+                                              recycle_key);
+    bool recycled = gl_texture != 0;
+    if (!recycled) {
+        glGenTextures(1, &gl_texture);
+    }
 
     GLenum gl_target;
     if (s.cubemap) {
@@ -1085,6 +1097,9 @@ static TextureBinding* generate_texture(const TextureShape s,
     }
 
     glBindTexture(gl_target, gl_texture);
+    if (recycled) {
+        sampled_texture_reset();
+    }
 
     NV2A_GL_DLABEL(GL_TEXTURE, gl_texture,
                    "offset: 0x%08lx, format: 0x%02X%s, %d dimensions%s, "
@@ -1101,6 +1116,9 @@ static TextureBinding* generate_texture(const TextureShape s,
         glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB565, s.width, s.height, 0,
                      GL_RGB, GL_UNSIGNED_SHORT_5_6_5, NULL);
         glBindBuffer(GL_PIXEL_UNPACK_BUFFER, unpack);
+    } else if (recycled) {
+        nv2a_profile_inc_counter(NV2A_PROF_TEX_UPLOAD);
+        sampled_texture_upload(s.width, s.height, s.pitch, texture_data);
     } else if (gl_target == GL_TEXTURE_CUBE_MAP) {
         size_t length = pgraph_get_cubemap_face_length(&g_nv2a->pgraph, s);
 
@@ -1143,6 +1161,7 @@ static TextureBinding* generate_texture(const TextureShape s,
         obj_pool_take(&g_nv2a->pgraph.gl_renderer_state->texture_pool);
     ret->gl_target = gl_target;
     ret->gl_texture = gl_texture;
+    sampled_texture_key_store(ret->recycle_key, recycle_key);
     ret->refcnt = 1;
     ret->draw_time = empty ? -1 : 0;
     ret->data_hash = 0;
@@ -1164,7 +1183,9 @@ static void texture_binding_destroy(gpointer data)
     assert(binding->refcnt > 0);
     binding->refcnt--;
     if (binding->refcnt == 0) {
-        glDeleteTextures(1, &binding->gl_texture);
+        sampled_texture_put(
+            &g_nv2a->pgraph.gl_renderer_state->sampled_texture_pool,
+            sampled_texture_key_load(binding->recycle_key), binding->gl_texture);
         obj_pool_give(&g_nv2a->pgraph.gl_renderer_state->texture_pool,
                       binding);
     }
@@ -1251,6 +1272,7 @@ void pgraph_gl_finalize_textures(PGRAPHState *pg)
     memset(&r->s3tc_decode, 0, sizeof(r->s3tc_decode));
 
     lru_flush(&r->texture_cache);
+    sampled_texture_finalize(&r->sampled_texture_pool);
     free(r->texture_cache_entries);
     obj_pool_finalize(&r->texture_pool);
 

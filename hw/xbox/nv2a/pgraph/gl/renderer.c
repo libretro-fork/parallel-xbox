@@ -156,6 +156,8 @@ static bool pgraph_gl_flip_stall_ready(NV2AState *d)
         if (status != GL_SIGNALED) {
             return false;
         }
+        sampled_texture_complete(&r->sampled_texture_pool,
+                                 r->sampled_flip_wait_serial);
         glDeleteSync(r->flip_wait_fence);
         r->flip_wait_fence = NULL;
     }
@@ -185,15 +187,22 @@ static void pgraph_gl_flip_stall(NV2AState *d)
         fprintf(stderr, "nv2a: failed to create a GL flip completion fence\n");
         return;
     }
+    if (sampled_texture_rollover(&r->sampled_texture_pool)) {
+        r->sampled_flip_serial = r->sampled_flip_wait_serial = 0;
+    }
+    uint64_t sampled_serial = sampled_texture_seal(&r->sampled_texture_pool);
     if (xemu_cost_segn) {
         /* Query slots cannot be reused until this frame completes. Its
          * fence also covers all preceding work, so the old one is redundant. */
         glDeleteSync(r->flip_fence);
         r->flip_fence = NULL;
         r->flip_wait_fence = current;
+        r->sampled_flip_wait_serial = sampled_serial;
     } else {
         /* Preserve the previous-frame bound without waiting on this thread. */
         r->flip_wait_fence = r->flip_fence;
+        r->sampled_flip_wait_serial = r->sampled_flip_serial;
+        r->sampled_flip_serial = sampled_serial;
         r->flip_fence = current;
     }
     glFlush();

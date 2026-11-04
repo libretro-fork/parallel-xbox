@@ -2372,8 +2372,9 @@ static void touch_fresh_textures(PGRAPHGLState *r, unsigned max_items)
         }
         GLuint tex = r->fresh_tex[r->fresh_tex_r % ARRAY_SIZE(r->fresh_tex)];
         r->fresh_tex_r++;
-        if (!glIsTexture(tex)) {
-            continue; /* destroyed since queueing */
+        if (sampled_texture_contains(&r->sampled_texture_pool, tex) ||
+            !glIsTexture(tex)) {
+            continue; /* destroyed or parked since queueing */
         }
         glBindTexture(GL_TEXTURE_2D, tex);
         glDrawArrays(GL_POINTS, 0, 1);

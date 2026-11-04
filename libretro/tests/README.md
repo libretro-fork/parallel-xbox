@@ -3827,6 +3827,21 @@ paths; real callback contexts add interrupts and stack errors. The synthetic
 `gp-startup-pp-calls` fixture exercises calls and native RTS across frames.
 Both X:qq call matrices remain enabled. Y:pp is not aliased to X callbacks.
 
+`test-gl-texture-recycle.py` runs production texture generation, final-reference
+release and bounded recycling against surfaceless EGL/OpenGL. It checks 256
+pitched fresh/reused sampled-pixel comparisons against independent channel
+expectations, hostile old swizzle/LOD state, exact-layout misses, reference
+ownership, 1048576 exact dimension keys, ineligible layouts, count/byte pressure and 32 teardown
+cycles. The fresh upload boundary is modeled; reused uploads and GL sampling
+use the actual driver. `GL_TEXTURE_RECYCLE_CFLAGS` enables sanitizer flags.
+Pending releases remain unavailable until an existing flip completion covers them;
+older-fence completion, label rollover and final release are tested separately.
+`test-gl-flip-retirement.py` also checks the sampled-texture completion watermark
+against the actual selected fence across 615 schedules and 5000 mixed frames,
+without adding GPU fence creations or readiness polls.
+Optional shader warmup tickets skip parked sampled textures so they cannot add
+a new GPU read after the retirement fence; take/release membership is checked.
+
 `test-eeprom-sha1.py CHECKOUT [CC]` compares 4,100 custom-state hashes and
 400 deterministic full EEPROM images with a reference fingerprint captured
 from the previous engine. It checks detection and tampered-hash rejection

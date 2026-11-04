@@ -302,6 +302,7 @@ python3 "$here/test-prepare-xiso.py"
 # Production GL transfers against Mesa's GL on a surfaceless EGL display
 case $core in
 *.so)
+    python3 "$here/test-gl-texture-recycle.py" "$here/../.."
     python3 "$here/test-gl-texture-reinterpret.py" "$here/../.." "$cc"
     python3 "$here/test-gl-upload-alignment.py" "$here/../.." "$cc"
     python3 "$here/test-rgb655-unswizzle.py" "$here/../.." "$cc"
