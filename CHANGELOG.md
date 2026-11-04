@@ -1,5 +1,6 @@
 # Changelog of the libretro core
 
+- Remove an unused temporary-index calculation from TCG handle conversion. It no longer performs a second Windows TLS lookup for a discarded result; all handle offsets and 32-bit split-global behavior are preserved.
 - Reuse the existing TCG owner when indexing temporaries in optimization and freeing. Avoid redundant Windows TLS lookups while preserving temporary indices and generic 32-bit handling.
 - Reuse existing TCG context pointers for pool allocations in translation, liveness and optimization. Avoid repeated TLS lookups on Windows and forward the same owner to pool refill; retain the existing TLS-based allocator API.
 - Stop assigning unused diagnostic IDs to TCG labels and resetting their counter for every translated block. Label identity, branch/relocation lists and generated guest code remain unchanged.

@@ -119,6 +119,13 @@ int main(void)
         assert(temp_idx_context(&context, &context.temps[i]) == i);
         assert(temp_idx_context(&other, &other.temps[i]) == i);
         assert(temp_idx(&context.temps[i]) == i);
+        /* Handles retain every slot's offset and their non-NULL encoding. */
+        TCGv_i32 h = temp_tcgv_i32(&context.temps[i]);
+        assert(h != NULL);
+        assert((uintptr_t)h == (uintptr_t)&context.temps[i] - (uintptr_t)&context);
+        assert(tcgv_i32_temp(h) == &context.temps[i]);
+        assert(tcgv_i64_temp(temp_tcgv_i64(&context.temps[i])) == &context.temps[i]);
+        assert(tcgv_ptr_temp(temp_tcgv_ptr(&context.temps[i])) == &context.temps[i]);
     }
     puts("TCG indices: explicit/TLS owners and every temporary slot PASS");
     static unsigned char other_arena[128] QEMU_ALIGNED(16);

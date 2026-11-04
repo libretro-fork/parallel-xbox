@@ -604,7 +604,6 @@ static inline TCGArg tcgv_vec_arg(TCGv_vec v)
 
 static inline TCGv_i32 temp_tcgv_i32(TCGTemp *t)
 {
-    (void)temp_idx(t); /* trigger embedded assert */
     return (TCGv_i32)((void *)t - (void *)tcg_ctx);
 }
 
