@@ -16,16 +16,4 @@
 #include "qapi/qapi-builtin-visit.h"
 #include "qapi-types-compat.h"
 
-
-bool visit_type_CompatPolicyInput(Visitor *v, const char *name,
-                 CompatPolicyInput *obj, Error **errp);
-
-bool visit_type_CompatPolicyOutput(Visitor *v, const char *name,
-                 CompatPolicyOutput *obj, Error **errp);
-
-bool visit_type_CompatPolicy_members(Visitor *v, CompatPolicy *obj, Error **errp);
-
-bool visit_type_CompatPolicy(Visitor *v, const char *name,
-                 CompatPolicy **obj, Error **errp);
-
 #endif /* QAPI_VISIT_COMPAT_H */

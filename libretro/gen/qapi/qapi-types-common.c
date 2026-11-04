@@ -83,18 +83,6 @@ const QEnumLookup NetFilterDirection_lookup = {
     .size = NET_FILTER_DIRECTION__MAX
 };
 
-const QEnumLookup GrabToggleKeys_lookup = {
-    .array = (const char *const[]) {
-        [GRAB_TOGGLE_KEYS_CTRL_CTRL] = "ctrl-ctrl",
-        [GRAB_TOGGLE_KEYS_ALT_ALT] = "alt-alt",
-        [GRAB_TOGGLE_KEYS_SHIFT_SHIFT] = "shift-shift",
-        [GRAB_TOGGLE_KEYS_META_META] = "meta-meta",
-        [GRAB_TOGGLE_KEYS_SCROLLLOCK] = "scrolllock",
-        [GRAB_TOGGLE_KEYS_CTRL_SCROLLLOCK] = "ctrl-scrolllock",
-    },
-    .size = GRAB_TOGGLE_KEYS__MAX
-};
-
 const QEnumLookup EndianMode_lookup = {
     .array = (const char *const[]) {
         [ENDIAN_MODE_UNSPECIFIED] = "unspecified",

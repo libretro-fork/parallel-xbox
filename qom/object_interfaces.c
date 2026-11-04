@@ -2,7 +2,6 @@
 
 #include "qemu/cutils.h"
 #include "qapi/error.h"
-#include "qapi/qapi-visit-qom.h"
 #include "qobject/qobject.h"
 #include "qobject/qbool.h"
 #include "qobject/qdict.h"
@@ -10,7 +9,6 @@
 #include "qobject/qjson.h"
 #include "qobject/qstring.h"
 #include "qapi/qobject-input-visitor.h"
-#include "qapi/qobject-output-visitor.h"
 #include "qom/object_interfaces.h"
 #include "qemu/help_option.h"
 #include "qemu/id.h"
@@ -60,93 +58,6 @@ void object_set_properties_from_keyval(Object *obj, const QDict *qdict,
         v = qobject_input_visitor_new_keyval(QOBJECT(qdict));
     }
     object_set_properties_from_qdict(obj, qdict, v, errp);
-    visit_free(v);
-}
-
-Object *user_creatable_add_type(const char *type, const char *id,
-                                const QDict *qdict,
-                                Visitor *v, Error **errp)
-{
-    ERRP_GUARD();
-    Object *obj;
-    ObjectClass *klass;
-    Error *local_err = NULL;
-
-    if (id != NULL && !id_wellformed(id)) {
-        error_setg(errp, QERR_INVALID_PARAMETER_VALUE, "id", "an identifier");
-        error_append_hint(errp, "Identifiers consist of letters, digits, "
-                          "'-', '.', '_', starting with a letter.\n");
-        return NULL;
-    }
-
-    klass = module_object_class_by_name(type);
-    if (!klass) {
-        error_setg(errp, "invalid object type: %s", type);
-        return NULL;
-    }
-
-    if (!object_class_dynamic_cast(klass, TYPE_USER_CREATABLE)) {
-        error_setg(errp, "object type '%s' isn't supported by object-add",
-                   type);
-        return NULL;
-    }
-
-    if (object_class_is_abstract(klass)) {
-        error_setg(errp, "object type '%s' is abstract", type);
-        return NULL;
-    }
-
-    assert(qdict);
-    obj = object_new_with_class(klass);
-    object_set_properties_from_qdict(obj, qdict, v, &local_err);
-    if (local_err) {
-        goto out;
-    }
-
-    if (id != NULL) {
-        object_property_try_add_child(object_get_objects_root(),
-                                      id, obj, &local_err);
-        if (local_err) {
-            goto out;
-        }
-    }
-
-    if (!user_creatable_complete(USER_CREATABLE(obj), &local_err)) {
-        if (id != NULL) {
-            object_property_del(object_get_objects_root(), id);
-        }
-        goto out;
-    }
-out:
-    if (local_err) {
-        error_propagate(errp, local_err);
-        object_unref(obj);
-        return NULL;
-    }
-    return obj;
-}
-
-void user_creatable_add_qapi(ObjectOptions *options, Error **errp)
-{
-    Visitor *v;
-    QObject *qobj;
-    QDict *props;
-    Object *obj;
-
-    v = qobject_output_visitor_new(&qobj);
-    visit_type_ObjectOptions(v, NULL, &options, &error_abort);
-    visit_complete(v, &qobj);
-    visit_free(v);
-
-    props = qobject_to(QDict, qobj);
-    qdict_del(props, "qom-type");
-    qdict_del(props, "id");
-
-    v = qobject_input_visitor_new(QOBJECT(props));
-    obj = user_creatable_add_type(ObjectType_str(options->qom_type),
-                                  options->id, props, v, errp);
-    object_unref(obj);
-    qobject_unref(qobj);
     visit_free(v);
 }
 

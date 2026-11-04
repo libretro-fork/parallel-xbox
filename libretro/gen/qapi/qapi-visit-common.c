@@ -24,32 +24,5 @@ bool visit_type_OnOffAuto(Visitor *v, const char *name,
     return ok;
 }
 
-bool visit_type_HostMemPolicy(Visitor *v, const char *name,
-                 HostMemPolicy *obj, Error **errp)
-{
-    int value = *obj;
-    bool ok = visit_type_enum(v, name, &value, &HostMemPolicy_lookup, errp);
-    *obj = value;
-    return ok;
-}
-
-bool visit_type_NetFilterDirection(Visitor *v, const char *name,
-                 NetFilterDirection *obj, Error **errp)
-{
-    int value = *obj;
-    bool ok = visit_type_enum(v, name, &value, &NetFilterDirection_lookup, errp);
-    *obj = value;
-    return ok;
-}
-
-bool visit_type_GrabToggleKeys(Visitor *v, const char *name,
-                 GrabToggleKeys *obj, Error **errp)
-{
-    int value = *obj;
-    bool ok = visit_type_enum(v, name, &value, &GrabToggleKeys_lookup, errp);
-    *obj = value;
-    return ok;
-}
-
 /* Dummy declaration to prevent empty .o file */
 char qapi_dummy_qapi_visit_common_c;

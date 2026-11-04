@@ -18,9 +18,6 @@
 
 bool visit_type_InetSocketAddressBase_members(Visitor *v, InetSocketAddressBase *obj, Error **errp);
 
-bool visit_type_InetSocketAddressBase(Visitor *v, const char *name,
-                 InetSocketAddressBase **obj, Error **errp);
-
 bool visit_type_InetSocketAddress_members(Visitor *v, InetSocketAddress *obj, Error **errp);
 
 bool visit_type_InetSocketAddress(Visitor *v, const char *name,
@@ -68,8 +65,5 @@ bool visit_type_SocketAddress(Visitor *v, const char *name,
 
 bool visit_type_SocketAddressList(Visitor *v, const char *name,
                  SocketAddressList **obj, Error **errp);
-
-bool visit_type_InetSocketAddressBaseList(Visitor *v, const char *name,
-                 InetSocketAddressBaseList **obj, Error **errp);
 
 #endif /* QAPI_VISIT_SOCKETS_H */

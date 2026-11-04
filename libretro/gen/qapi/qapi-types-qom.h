@@ -67,11 +67,6 @@ typedef enum NetfilterInsert {
     NETFILTER_INSERT__MAX,
 } NetfilterInsert;
 
-#define NetfilterInsert_str(val) \
-    qapi_enum_lookup(&NetfilterInsert_lookup, (val))
-
-extern const QEnumLookup NetfilterInsert_lookup;
-
 typedef struct NetfilterProperties NetfilterProperties;
 
 typedef struct FilterBufferProperties FilterBufferProperties;
@@ -221,11 +216,6 @@ typedef enum ObjectType {
     OBJECT_TYPE_X_VFIO_USER_SERVER,
     OBJECT_TYPE__MAX,
 } ObjectType;
-
-#define ObjectType_str(val) \
-    qapi_enum_lookup(&ObjectType_lookup, (val))
-
-extern const QEnumLookup ObjectType_lookup;
 
 typedef struct q_obj_ObjectOptions_base q_obj_ObjectOptions_base;
 
@@ -921,9 +911,6 @@ struct ObjectOptions {
         VfioUserServerProperties x_vfio_user_server;
     } u;
 };
-
-void qapi_free_ObjectOptions(ObjectOptions *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(ObjectOptions, qapi_free_ObjectOptions)
 
 struct q_obj_object_del_arg {
     char *id;

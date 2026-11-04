@@ -44,9 +44,6 @@ struct AcpiTableOptions {
     char *data;
 };
 
-void qapi_free_AcpiTableOptions(AcpiTableOptions *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(AcpiTableOptions, qapi_free_AcpiTableOptions)
-
 struct ACPIOSTInfo {
     char *device;
     char *slot;

@@ -72,9 +72,6 @@ struct InetSocketAddressBase {
     char *port;
 };
 
-void qapi_free_InetSocketAddressBase(InetSocketAddressBase *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(InetSocketAddressBase, qapi_free_InetSocketAddressBase)
-
 struct InetSocketAddress {
     /* Members inherited from InetSocketAddressBase: */
     char *host;
@@ -208,8 +205,5 @@ struct InetSocketAddressBaseList {
     InetSocketAddressBaseList *next;
     InetSocketAddressBase *value;
 };
-
-void qapi_free_InetSocketAddressBaseList(InetSocketAddressBaseList *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(InetSocketAddressBaseList, qapi_free_InetSocketAddressBaseList)
 
 #endif /* QAPI_TYPES_SOCKETS_H */

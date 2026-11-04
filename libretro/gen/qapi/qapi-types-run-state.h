@@ -79,32 +79,17 @@ typedef enum WatchdogAction {
     WATCHDOG_ACTION__MAX,
 } WatchdogAction;
 
-#define WatchdogAction_str(val) \
-    qapi_enum_lookup(&WatchdogAction_lookup, (val))
-
-extern const QEnumLookup WatchdogAction_lookup;
-
 typedef enum RebootAction {
     REBOOT_ACTION_RESET,
     REBOOT_ACTION_SHUTDOWN,
     REBOOT_ACTION__MAX,
 } RebootAction;
 
-#define RebootAction_str(val) \
-    qapi_enum_lookup(&RebootAction_lookup, (val))
-
-extern const QEnumLookup RebootAction_lookup;
-
 typedef enum ShutdownAction {
     SHUTDOWN_ACTION_POWEROFF,
     SHUTDOWN_ACTION_PAUSE,
     SHUTDOWN_ACTION__MAX,
 } ShutdownAction;
-
-#define ShutdownAction_str(val) \
-    qapi_enum_lookup(&ShutdownAction_lookup, (val))
-
-extern const QEnumLookup ShutdownAction_lookup;
 
 typedef enum PanicAction {
     PANIC_ACTION_PAUSE,
@@ -113,11 +98,6 @@ typedef enum PanicAction {
     PANIC_ACTION_NONE,
     PANIC_ACTION__MAX,
 } PanicAction;
-
-#define PanicAction_str(val) \
-    qapi_enum_lookup(&PanicAction_lookup, (val))
-
-extern const QEnumLookup PanicAction_lookup;
 
 typedef struct q_obj_watchdog_set_action_arg q_obj_watchdog_set_action_arg;
 

@@ -19,13 +19,4 @@
 bool visit_type_OnOffAuto(Visitor *v, const char *name,
                  OnOffAuto *obj, Error **errp);
 
-bool visit_type_HostMemPolicy(Visitor *v, const char *name,
-                 HostMemPolicy *obj, Error **errp);
-
-bool visit_type_NetFilterDirection(Visitor *v, const char *name,
-                 NetFilterDirection *obj, Error **errp);
-
-bool visit_type_GrabToggleKeys(Visitor *v, const char *name,
-                 GrabToggleKeys *obj, Error **errp);
-
 #endif /* QAPI_VISIT_COMMON_H */

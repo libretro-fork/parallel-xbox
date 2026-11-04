@@ -33,6 +33,8 @@
 
 ## Unreleased
 
+- Remove the unused standalone object-option queue and QAPI object factory, then prune 244 unreachable generated definitions and twelve C sources, including crypto visitors/tables. Keep built-in device/property initialization and schema type layouts unchanged.
+
 - Remove unsupported guest RDRAND/RDSEED helpers and their random seed/TLS infrastructure. Initialize OS entropy directly for EEPROM keys; retain networking RNG and illegal-instruction/fetch behavior.
 
 - Remove AES/PCLMUL execution helpers and crypto engines unused by the fixed Xbox Pentium III. Keep opcode decoding and feature checks, including illegal-instruction and instruction-fetch fault ordering.

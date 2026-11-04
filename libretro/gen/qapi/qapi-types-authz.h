@@ -21,21 +21,11 @@ typedef enum QAuthZListPolicy {
     QAUTHZ_LIST_POLICY__MAX,
 } QAuthZListPolicy;
 
-#define QAuthZListPolicy_str(val) \
-    qapi_enum_lookup(&QAuthZListPolicy_lookup, (val))
-
-extern const QEnumLookup QAuthZListPolicy_lookup;
-
 typedef enum QAuthZListFormat {
     QAUTHZ_LIST_FORMAT_EXACT,
     QAUTHZ_LIST_FORMAT_GLOB,
     QAUTHZ_LIST_FORMAT__MAX,
 } QAuthZListFormat;
-
-#define QAuthZListFormat_str(val) \
-    qapi_enum_lookup(&QAuthZListFormat_lookup, (val))
-
-extern const QEnumLookup QAuthZListFormat_lookup;
 
 typedef struct QAuthZListRule QAuthZListRule;
 
@@ -56,16 +46,10 @@ struct QAuthZListRule {
     QAuthZListFormat format;
 };
 
-void qapi_free_QAuthZListRule(QAuthZListRule *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(QAuthZListRule, qapi_free_QAuthZListRule)
-
 struct QAuthZListRuleList {
     QAuthZListRuleList *next;
     QAuthZListRule *value;
 };
-
-void qapi_free_QAuthZListRuleList(QAuthZListRuleList *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(QAuthZListRuleList, qapi_free_QAuthZListRuleList)
 
 struct AuthZListProperties {
     bool has_policy;

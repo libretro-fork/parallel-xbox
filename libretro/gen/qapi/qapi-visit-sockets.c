@@ -26,33 +26,6 @@ bool visit_type_InetSocketAddressBase_members(Visitor *v, InetSocketAddressBase 
     return true;
 }
 
-bool visit_type_InetSocketAddressBase(Visitor *v, const char *name,
-                 InetSocketAddressBase **obj, Error **errp)
-{
-    bool ok = false;
-
-    if (!visit_start_struct(v, name, (void **)obj, sizeof(InetSocketAddressBase), errp)) {
-        return false;
-    }
-    if (!*obj) {
-        /* incomplete */
-        assert(visit_is_dealloc(v));
-        ok = true;
-        goto out_obj;
-    }
-    if (!visit_type_InetSocketAddressBase_members(v, *obj, errp)) {
-        goto out_obj;
-    }
-    ok = visit_check_struct(v, errp);
-out_obj:
-    visit_end_struct(v, (void **)obj);
-    if (!ok && visit_is_input(v)) {
-        qapi_free_InetSocketAddressBase(*obj);
-        *obj = NULL;
-    }
-    return ok;
-}
-
 bool visit_type_InetSocketAddress_members(Visitor *v, InetSocketAddress *obj, Error **errp)
 {
     if (!visit_type_InetSocketAddressBase_members(v, (InetSocketAddressBase *)obj, errp)) {
@@ -437,34 +410,6 @@ out_obj:
     visit_end_list(v, (void **)obj);
     if (!ok && visit_is_input(v)) {
         qapi_free_SocketAddressList(*obj);
-        *obj = NULL;
-    }
-    return ok;
-}
-
-bool visit_type_InetSocketAddressBaseList(Visitor *v, const char *name,
-                 InetSocketAddressBaseList **obj, Error **errp)
-{
-    bool ok = false;
-    InetSocketAddressBaseList *tail;
-    size_t size = sizeof(**obj);
-
-    if (!visit_start_list(v, name, (GenericList **)obj, size, errp)) {
-        return false;
-    }
-
-    for (tail = *obj; tail;
-         tail = (InetSocketAddressBaseList *)visit_next_list(v, (GenericList *)tail, size)) {
-        if (!visit_type_InetSocketAddressBase(v, NULL, &tail->value, errp)) {
-            goto out_obj;
-        }
-    }
-
-    ok = visit_check_list(v, errp);
-out_obj:
-    visit_end_list(v, (void **)obj);
-    if (!ok && visit_is_input(v)) {
-        qapi_free_InetSocketAddressBaseList(*obj);
         *obj = NULL;
     }
     return ok;

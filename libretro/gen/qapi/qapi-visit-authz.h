@@ -16,26 +16,4 @@
 #include "qapi/qapi-builtin-visit.h"
 #include "qapi-types-authz.h"
 
-bool visit_type_QAuthZListPolicy(Visitor *v, const char *name,
-                 QAuthZListPolicy *obj, Error **errp);
-
-bool visit_type_QAuthZListFormat(Visitor *v, const char *name,
-                 QAuthZListFormat *obj, Error **errp);
-
-bool visit_type_QAuthZListRule_members(Visitor *v, QAuthZListRule *obj, Error **errp);
-
-bool visit_type_QAuthZListRule(Visitor *v, const char *name,
-                 QAuthZListRule **obj, Error **errp);
-
-bool visit_type_QAuthZListRuleList(Visitor *v, const char *name,
-                 QAuthZListRuleList **obj, Error **errp);
-
-bool visit_type_AuthZListProperties_members(Visitor *v, AuthZListProperties *obj, Error **errp);
-
-bool visit_type_AuthZListFileProperties_members(Visitor *v, AuthZListFileProperties *obj, Error **errp);
-
-bool visit_type_AuthZPAMProperties_members(Visitor *v, AuthZPAMProperties *obj, Error **errp);
-
-bool visit_type_AuthZSimpleProperties_members(Visitor *v, AuthZSimpleProperties *obj, Error **errp);
-
 #endif /* QAPI_VISIT_AUTHZ_H */

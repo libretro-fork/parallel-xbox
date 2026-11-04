@@ -226,11 +226,6 @@ typedef enum BlockPermission {
     BLOCK_PERMISSION__MAX,
 } BlockPermission;
 
-#define BlockPermission_str(val) \
-    qapi_enum_lookup(&BlockPermission_lookup, (val))
-
-extern const QEnumLookup BlockPermission_lookup;
-
 typedef struct BlockPermissionList BlockPermissionList;
 
 typedef struct XDbgBlockGraphEdge XDbgBlockGraphEdge;
@@ -291,22 +286,12 @@ typedef enum BlockdevDiscardOptions {
     BLOCKDEV_DISCARD_OPTIONS__MAX,
 } BlockdevDiscardOptions;
 
-#define BlockdevDiscardOptions_str(val) \
-    qapi_enum_lookup(&BlockdevDiscardOptions_lookup, (val))
-
-extern const QEnumLookup BlockdevDiscardOptions_lookup;
-
 typedef enum BlockdevDetectZeroesOptions {
     BLOCKDEV_DETECT_ZEROES_OPTIONS_OFF,
     BLOCKDEV_DETECT_ZEROES_OPTIONS_ON,
     BLOCKDEV_DETECT_ZEROES_OPTIONS_UNMAP,
     BLOCKDEV_DETECT_ZEROES_OPTIONS__MAX,
 } BlockdevDetectZeroesOptions;
-
-#define BlockdevDetectZeroesOptions_str(val) \
-    qapi_enum_lookup(&BlockdevDetectZeroesOptions_lookup, (val))
-
-extern const QEnumLookup BlockdevDetectZeroesOptions_lookup;
 
 typedef enum BlockdevAioOptions {
     BLOCKDEV_AIO_OPTIONS_THREADS,
@@ -316,11 +301,6 @@ typedef enum BlockdevAioOptions {
 #endif /* defined(CONFIG_LINUX_IO_URING) */
     BLOCKDEV_AIO_OPTIONS__MAX,
 } BlockdevAioOptions;
-
-#define BlockdevAioOptions_str(val) \
-    qapi_enum_lookup(&BlockdevAioOptions_lookup, (val))
-
-extern const QEnumLookup BlockdevAioOptions_lookup;
 
 typedef struct BlockdevCacheOptions BlockdevCacheOptions;
 
@@ -391,11 +371,6 @@ typedef enum BlockdevDriver {
     BLOCKDEV_DRIVER__MAX,
 } BlockdevDriver;
 
-#define BlockdevDriver_str(val) \
-    qapi_enum_lookup(&BlockdevDriver_lookup, (val))
-
-extern const QEnumLookup BlockdevDriver_lookup;
-
 typedef struct BlockdevOptionsFile BlockdevOptionsFile;
 
 typedef struct BlockdevOptionsNull BlockdevOptionsNull;
@@ -418,11 +393,6 @@ typedef enum Qcow2OverlapCheckMode {
     QCOW2_OVERLAP_CHECK_MODE__MAX,
 } Qcow2OverlapCheckMode;
 
-#define Qcow2OverlapCheckMode_str(val) \
-    qapi_enum_lookup(&Qcow2OverlapCheckMode_lookup, (val))
-
-extern const QEnumLookup Qcow2OverlapCheckMode_lookup;
-
 typedef struct Qcow2OverlapCheckFlags Qcow2OverlapCheckFlags;
 
 typedef struct Qcow2OverlapChecks Qcow2OverlapChecks;
@@ -431,11 +401,6 @@ typedef enum BlockdevQcowEncryptionFormat {
     BLOCKDEV_QCOW_ENCRYPTION_FORMAT_AES,
     BLOCKDEV_QCOW_ENCRYPTION_FORMAT__MAX,
 } BlockdevQcowEncryptionFormat;
-
-#define BlockdevQcowEncryptionFormat_str(val) \
-    qapi_enum_lookup(&BlockdevQcowEncryptionFormat_lookup, (val))
-
-extern const QEnumLookup BlockdevQcowEncryptionFormat_lookup;
 
 typedef struct q_obj_BlockdevQcowEncryption_base q_obj_BlockdevQcowEncryption_base;
 
@@ -448,11 +413,6 @@ typedef enum BlockdevQcow2EncryptionFormat {
     BLOCKDEV_QCOW2_ENCRYPTION_FORMAT_LUKS,
     BLOCKDEV_QCOW2_ENCRYPTION_FORMAT__MAX,
 } BlockdevQcow2EncryptionFormat;
-
-#define BlockdevQcow2EncryptionFormat_str(val) \
-    qapi_enum_lookup(&BlockdevQcow2EncryptionFormat_lookup, (val))
-
-extern const QEnumLookup BlockdevQcow2EncryptionFormat_lookup;
 
 typedef struct q_obj_BlockdevQcow2Encryption_base q_obj_BlockdevQcow2Encryption_base;
 
@@ -469,22 +429,12 @@ typedef enum SshHostKeyCheckMode {
     SSH_HOST_KEY_CHECK_MODE__MAX,
 } SshHostKeyCheckMode;
 
-#define SshHostKeyCheckMode_str(val) \
-    qapi_enum_lookup(&SshHostKeyCheckMode_lookup, (val))
-
-extern const QEnumLookup SshHostKeyCheckMode_lookup;
-
 typedef enum SshHostKeyCheckHashType {
     SSH_HOST_KEY_CHECK_HASH_TYPE_MD5,
     SSH_HOST_KEY_CHECK_HASH_TYPE_SHA1,
     SSH_HOST_KEY_CHECK_HASH_TYPE_SHA256,
     SSH_HOST_KEY_CHECK_HASH_TYPE__MAX,
 } SshHostKeyCheckHashType;
-
-#define SshHostKeyCheckHashType_str(val) \
-    qapi_enum_lookup(&SshHostKeyCheckHashType_lookup, (val))
-
-extern const QEnumLookup SshHostKeyCheckHashType_lookup;
 
 typedef struct SshHostKeyHash SshHostKeyHash;
 
@@ -546,11 +496,6 @@ typedef enum BlkdebugEvent {
     BLKDBG__MAX,
 } BlkdebugEvent;
 
-#define BlkdebugEvent_str(val) \
-    qapi_enum_lookup(&BlkdebugEvent_lookup, (val))
-
-extern const QEnumLookup BlkdebugEvent_lookup;
-
 typedef enum BlkdebugIOType {
     BLKDEBUG_IO_TYPE_READ,
     BLKDEBUG_IO_TYPE_WRITE,
@@ -560,11 +505,6 @@ typedef enum BlkdebugIOType {
     BLKDEBUG_IO_TYPE_BLOCK_STATUS,
     BLKDEBUG_IO_TYPE__MAX,
 } BlkdebugIOType;
-
-#define BlkdebugIOType_str(val) \
-    qapi_enum_lookup(&BlkdebugIOType_lookup, (val))
-
-extern const QEnumLookup BlkdebugIOType_lookup;
 
 typedef struct BlkdebugInjectErrorOptions BlkdebugInjectErrorOptions;
 
@@ -587,11 +527,6 @@ typedef enum QuorumReadPattern {
     QUORUM_READ_PATTERN_FIFO,
     QUORUM_READ_PATTERN__MAX,
 } QuorumReadPattern;
-
-#define QuorumReadPattern_str(val) \
-    qapi_enum_lookup(&QuorumReadPattern_lookup, (val))
-
-extern const QEnumLookup QuorumReadPattern_lookup;
 
 typedef struct BlockdevRefList BlockdevRefList;
 
@@ -625,11 +560,6 @@ typedef enum IscsiTransport {
     ISCSI_TRANSPORT__MAX,
 } IscsiTransport;
 
-#define IscsiTransport_str(val) \
-    qapi_enum_lookup(&IscsiTransport_lookup, (val))
-
-extern const QEnumLookup IscsiTransport_lookup;
-
 typedef enum IscsiHeaderDigest {
     QAPI_ISCSI_HEADER_DIGEST_CRC32C,
     QAPI_ISCSI_HEADER_DIGEST_NONE,
@@ -637,11 +567,6 @@ typedef enum IscsiHeaderDigest {
     QAPI_ISCSI_HEADER_DIGEST_NONE_CRC32C,
     QAPI_ISCSI_HEADER_DIGEST__MAX,
 } IscsiHeaderDigest;
-
-#define IscsiHeaderDigest_str(val) \
-    qapi_enum_lookup(&IscsiHeaderDigest_lookup, (val))
-
-extern const QEnumLookup IscsiHeaderDigest_lookup;
 
 typedef struct BlockdevOptionsIscsi BlockdevOptionsIscsi;
 
@@ -651,22 +576,12 @@ typedef enum RbdAuthMode {
     RBD_AUTH_MODE__MAX,
 } RbdAuthMode;
 
-#define RbdAuthMode_str(val) \
-    qapi_enum_lookup(&RbdAuthMode_lookup, (val))
-
-extern const QEnumLookup RbdAuthMode_lookup;
-
 typedef enum RbdImageEncryptionFormat {
     RBD_IMAGE_ENCRYPTION_FORMAT_LUKS,
     RBD_IMAGE_ENCRYPTION_FORMAT_LUKS2,
     RBD_IMAGE_ENCRYPTION_FORMAT_LUKS_ANY,
     RBD_IMAGE_ENCRYPTION_FORMAT__MAX,
 } RbdImageEncryptionFormat;
-
-#define RbdImageEncryptionFormat_str(val) \
-    qapi_enum_lookup(&RbdImageEncryptionFormat_lookup, (val))
-
-extern const QEnumLookup RbdImageEncryptionFormat_lookup;
 
 typedef struct RbdEncryptionOptionsLUKSBase RbdEncryptionOptionsLUKSBase;
 
@@ -701,10 +616,6 @@ typedef enum ReplicationMode {
     REPLICATION_MODE__MAX,
 } ReplicationMode;
 
-#define ReplicationMode_str(val) \
-    qapi_enum_lookup(&ReplicationMode_lookup, (val))
-
-extern const QEnumLookup ReplicationMode_lookup;
 #endif /* defined(CONFIG_REPLICATION) */
 
 #if defined(CONFIG_REPLICATION)
@@ -715,11 +626,6 @@ typedef enum NFSTransport {
     NFS_TRANSPORT_INET,
     NFS_TRANSPORT__MAX,
 } NFSTransport;
-
-#define NFSTransport_str(val) \
-    qapi_enum_lookup(&NFSTransport_lookup, (val))
-
-extern const QEnumLookup NFSTransport_lookup;
 
 typedef struct NFSServer NFSServer;
 
@@ -748,11 +654,6 @@ typedef enum OnCbwError {
     ON_CBW_ERROR_BREAK_SNAPSHOT,
     ON_CBW_ERROR__MAX,
 } OnCbwError;
-
-#define OnCbwError_str(val) \
-    qapi_enum_lookup(&OnCbwError_lookup, (val))
-
-extern const QEnumLookup OnCbwError_lookup;
 
 typedef struct BlockdevOptionsCbw BlockdevOptionsCbw;
 
@@ -1655,9 +1556,6 @@ struct BlockPermissionList {
     BlockPermission value;
 };
 
-void qapi_free_BlockPermissionList(BlockPermissionList *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(BlockPermissionList, qapi_free_BlockPermissionList)
-
 struct XDbgBlockGraphEdge {
     uint64_t parent;
     uint64_t child;
@@ -1715,9 +1613,6 @@ struct BlockDirtyBitmap {
     char *node;
     char *name;
 };
-
-void qapi_free_BlockDirtyBitmap(BlockDirtyBitmap *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(BlockDirtyBitmap, qapi_free_BlockDirtyBitmap)
 
 struct BlockDirtyBitmapAdd {
     char *node;
@@ -1859,9 +1754,6 @@ struct ThrottleLimits {
     int64_t iops_size;
 };
 
-void qapi_free_ThrottleLimits(ThrottleLimits *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(ThrottleLimits, qapi_free_ThrottleLimits)
-
 struct ThrottleGroupProperties {
     ThrottleLimits *limits;
     bool has_x_iops_total;
@@ -1979,9 +1871,6 @@ struct BlockdevCacheOptions {
     bool no_flush;
 };
 
-void qapi_free_BlockdevCacheOptions(BlockdevCacheOptions *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(BlockdevCacheOptions, qapi_free_BlockdevCacheOptions)
-
 struct BlockdevOptionsFile {
     char *filename;
     char *pr_manager;
@@ -2084,9 +1973,6 @@ struct Qcow2OverlapChecks {
     } u;
 };
 
-void qapi_free_Qcow2OverlapChecks(Qcow2OverlapChecks *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(Qcow2OverlapChecks, qapi_free_Qcow2OverlapChecks)
-
 struct q_obj_BlockdevQcowEncryption_base {
     BlockdevQcowEncryptionFormat format;
 };
@@ -2097,9 +1983,6 @@ struct BlockdevQcowEncryption {
         QCryptoBlockOptionsQCow aes;
     } u;
 };
-
-void qapi_free_BlockdevQcowEncryption(BlockdevQcowEncryption *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(BlockdevQcowEncryption, qapi_free_BlockdevQcowEncryption)
 
 struct BlockdevOptionsQcow {
     /* Members inherited from BlockdevOptionsGenericCOWFormat: */
@@ -2125,9 +2008,6 @@ struct BlockdevQcow2Encryption {
         QCryptoBlockOptionsLUKS luks;
     } u;
 };
-
-void qapi_free_BlockdevQcow2Encryption(BlockdevQcow2Encryption *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(BlockdevQcow2Encryption, qapi_free_BlockdevQcow2Encryption)
 
 struct BlockdevOptionsPreallocate {
     /* Members inherited from BlockdevOptionsGenericFormat: */
@@ -2195,9 +2075,6 @@ struct SshHostKeyCheck {
     } u;
 };
 
-void qapi_free_SshHostKeyCheck(SshHostKeyCheck *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(SshHostKeyCheck, qapi_free_SshHostKeyCheck)
-
 struct BlockdevOptionsSsh {
     InetSocketAddress *server;
     char *path;
@@ -2221,9 +2098,6 @@ struct BlkdebugInjectErrorOptions {
     bool immediately;
 };
 
-void qapi_free_BlkdebugInjectErrorOptions(BlkdebugInjectErrorOptions *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(BlkdebugInjectErrorOptions, qapi_free_BlkdebugInjectErrorOptions)
-
 struct BlkdebugSetStateOptions {
     BlkdebugEvent event;
     bool has_state;
@@ -2231,24 +2105,15 @@ struct BlkdebugSetStateOptions {
     int64_t new_state;
 };
 
-void qapi_free_BlkdebugSetStateOptions(BlkdebugSetStateOptions *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(BlkdebugSetStateOptions, qapi_free_BlkdebugSetStateOptions)
-
 struct BlkdebugInjectErrorOptionsList {
     BlkdebugInjectErrorOptionsList *next;
     BlkdebugInjectErrorOptions *value;
 };
 
-void qapi_free_BlkdebugInjectErrorOptionsList(BlkdebugInjectErrorOptionsList *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(BlkdebugInjectErrorOptionsList, qapi_free_BlkdebugInjectErrorOptionsList)
-
 struct BlkdebugSetStateOptionsList {
     BlkdebugSetStateOptionsList *next;
     BlkdebugSetStateOptions *value;
 };
-
-void qapi_free_BlkdebugSetStateOptionsList(BlkdebugSetStateOptionsList *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(BlkdebugSetStateOptionsList, qapi_free_BlkdebugSetStateOptionsList)
 
 struct BlockdevOptionsBlkdebug {
     BlockdevRef *image;
@@ -2299,9 +2164,6 @@ struct BlockdevRefList {
     BlockdevRefList *next;
     BlockdevRef *value;
 };
-
-void qapi_free_BlockdevRefList(BlockdevRefList *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(BlockdevRefList, qapi_free_BlockdevRefList)
 
 struct BlockdevOptionsQuorum {
     bool has_blkverify;
@@ -2459,9 +2321,6 @@ struct RbdEncryptionOptions {
     } u;
 };
 
-void qapi_free_RbdEncryptionOptions(RbdEncryptionOptions *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(RbdEncryptionOptions, qapi_free_RbdEncryptionOptions)
-
 struct q_obj_RbdEncryptionCreateOptions_base {
     RbdImageEncryptionFormat format;
 };
@@ -2478,9 +2337,6 @@ struct RbdAuthModeList {
     RbdAuthModeList *next;
     RbdAuthMode value;
 };
-
-void qapi_free_RbdAuthModeList(RbdAuthModeList *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(RbdAuthModeList, qapi_free_RbdAuthModeList)
 
 struct BlockdevOptionsRbd {
     char *pool;
@@ -2519,9 +2375,6 @@ struct NFSServer {
     NFSTransport type;
     char *host;
 };
-
-void qapi_free_NFSServer(NFSServer *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(NFSServer, qapi_free_NFSServer)
 
 struct BlockdevOptionsNfs {
     NFSServer *server;
@@ -2800,9 +2653,6 @@ struct BlockdevOptions {
     } u;
 };
 
-void qapi_free_BlockdevOptions(BlockdevOptions *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(BlockdevOptions, qapi_free_BlockdevOptions)
-
 struct BlockdevRef {
     QType type;
     union { /* union tag is @type */
@@ -2810,9 +2660,6 @@ struct BlockdevRef {
         char *reference;
     } u;
 };
-
-void qapi_free_BlockdevRef(BlockdevRef *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(BlockdevRef, qapi_free_BlockdevRef)
 
 struct BlockdevRefOrNull {
     QType type;
@@ -2822,9 +2669,6 @@ struct BlockdevRefOrNull {
         QNull *null;
     } u;
 };
-
-void qapi_free_BlockdevRefOrNull(BlockdevRefOrNull *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(BlockdevRefOrNull, qapi_free_BlockdevRefOrNull)
 
 struct BlockdevOptionsList {
     BlockdevOptionsList *next;

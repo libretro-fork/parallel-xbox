@@ -68,3 +68,10 @@ Then, by hand:
 When a change touches what these come from (a `qapi/*.json` schema, a
 `trace-events` file, `config_spec.yml`, the device configuration), make
 them again the same way and copy the changed ones here.
+
+After removing a handwritten QAPI root, build a fresh core before pruning:
+the linked-symbol input must reflect the new callers. The object-option
+cleanup removes 244 generated definitions and twelve source files. This
+pass keeps type declarations required by included block headers; it does
+not renumber enums or rewrite schema struct layouts. Rebuild both platforms
+and repeat the pruning pass to verify that it is idempotent.

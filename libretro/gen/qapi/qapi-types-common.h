@@ -125,11 +125,6 @@ typedef enum GrabToggleKeys {
     GRAB_TOGGLE_KEYS__MAX,
 } GrabToggleKeys;
 
-#define GrabToggleKeys_str(val) \
-    qapi_enum_lookup(&GrabToggleKeys_lookup, (val))
-
-extern const QEnumLookup GrabToggleKeys_lookup;
-
 typedef struct HumanReadableText HumanReadableText;
 
 typedef enum EndianMode {

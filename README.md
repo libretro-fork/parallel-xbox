@@ -381,3 +381,10 @@ path without guest random helpers, seed hooks or RNG TLS. EEPROM creation
 still initializes and uses OS entropy directly. Libslirp keeps its per-instance
 GRand for existing NAT behavior; this is separate from the removed guest RNG.
 The CPU seed field was private host state, not serialized guest state.
+
+Startup no longer walks an unpopulated standalone -object queue or converts
+ObjectOptions through output/input visitors. Built-in Xbox/Chihiro setup,
+QOM property application and UserCreatable completion remain. The existing
+QAPI pruner removes the newly unreachable functions and lookup tables;
+header-only schema types required by remaining block headers retain their
+values/layouts. This is infrastructure cleanup, with no FPS claim.

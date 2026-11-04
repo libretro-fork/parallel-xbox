@@ -81,7 +81,6 @@
 #include "hw/i386/x86.h"
 #include "hw/i386/pc.h"
 #include "migration/misc.h"
-#include "migration/snapshot.h"
 #include "system/tpm.h"
 #include "system/dma.h"
 #include "system/cpus.h"
@@ -116,7 +115,6 @@
 #include "semihosting/semihost.h"
 #include "crypto/random.h"
 #include "qapi/qapi-events-run-state.h"
-#include "qapi/qapi-visit-block-core.h"
 #include "qapi/qapi-visit-compat.h"
 #include "qapi/qapi-visit-machine.h"
 #include "qapi/qapi-visit-migration.h"
@@ -124,7 +122,6 @@
 #include "qapi/qapi-commands-block-core.h"
 #include "qapi/qapi-commands-migration.h"
 #include "qapi/qapi-commands-misc.h"
-#include "qapi/qapi-visit-qom.h"
 #include "qapi/qapi-commands-ui.h"
 #include "block/qdict.h"
 #include "qapi/qmp/qerror.h"
@@ -143,18 +140,7 @@
 
 #define MAX_VIRTIO_CONSOLES 1
 
-typedef struct BlockdevOptionsQueueEntry {
-    BlockdevOptions *bdo;
-    Location loc;
-    QSIMPLEQ_ENTRY(BlockdevOptionsQueueEntry) entry;
-} BlockdevOptionsQueueEntry;
 
-typedef QSIMPLEQ_HEAD(, BlockdevOptionsQueueEntry) BlockdevOptionsQueue;
-
-typedef struct ObjectOption {
-    ObjectOptions *opts;
-    QTAILQ_ENTRY(ObjectOption) next;
-} ObjectOption;
 
 typedef struct DeviceOption {
     QDict *opts;
@@ -166,11 +152,8 @@ static const char *accelerators;
 static bool have_custom_ram_size;
 static const char *ram_memdev_id;
 static QDict *machine_opts_dict;
-static QTAILQ_HEAD(, ObjectOption) object_opts = QTAILQ_HEAD_INITIALIZER(object_opts);
 static QTAILQ_HEAD(, DeviceOption) device_opts = QTAILQ_HEAD_INITIALIZER(device_opts);
-static int snapshot;
 static QemuPluginList plugin_list = QTAILQ_HEAD_INITIALIZER(plugin_list);
-static BlockdevOptionsQueue bdo_queue = QSIMPLEQ_HEAD_INITIALIZER(bdo_queue);
 static const char *vga_model = NULL;
 static DisplayOptions dpy;
 static int num_serial_hds;
@@ -314,8 +297,7 @@ static void default_driver_check_json(void)
 static int xemu_check_file(const char *path);
 static uint64_t xbox_game_partition_offset(const char *path, bool *xbox_disc);
 
-static void configure_blockdev(BlockdevOptionsQueue *bdo_queue,
-                               MachineClass *machine_class, int snapshot)
+static void configure_blockdev(void)
 {
     /* The core's own drives (block/libretro-disk.c), from the settings:
      * the hard disk (a raw image, ui/libretro.c) and the DVD drive, empty
@@ -916,69 +898,6 @@ static void qemu_apply_legacy_machine_options(QDict *qdict)
     }
 }
 
-static void object_option_foreach_add(bool (*type_opt_predicate)(const char *))
-{
-    ObjectOption *opt, *next;
-
-    QTAILQ_FOREACH_SAFE(opt, &object_opts, next, next) {
-        const char *type = ObjectType_str(opt->opts->qom_type);
-        if (type_opt_predicate(type)) {
-            user_creatable_add_qapi(opt->opts, &error_fatal);
-            qapi_free_ObjectOptions(opt->opts);
-            QTAILQ_REMOVE(&object_opts, opt, next);
-            g_free(opt);
-        }
-    }
-}
-
-/*
- * Initial object creation happens before all other
- * QEMU data types are created. The majority of objects
- * can be created at this point. The rng-egd object
- * cannot be created here, as it depends on the chardev
- * already existing.
- */
-static bool object_create_early(const char *type)
-{
-    /*
-     * Objects should not be made "delayed" without a reason.  If you
-     * add one, state the reason in a comment!
-     */
-
-    /* Reason: property "chardev" */
-    if (g_str_equal(type, "rng-egd")) {
-        return false;
-    }
-
-
-    /* Reason: vhost-user-blk-server property "node-name" */
-    if (g_str_equal(type, "vhost-user-blk-server")) {
-        return false;
-    }
-    /*
-     * Reason: filter-* property "netdev" etc.
-     */
-    if (g_str_equal(type, "filter-buffer") ||
-        g_str_equal(type, "filter-dump") ||
-        g_str_equal(type, "filter-mirror") ||
-        g_str_equal(type, "filter-redirector") ||
-        g_str_equal(type, "colo-compare") ||
-        g_str_equal(type, "filter-rewriter")) {
-        return false;
-    }
-
-    /*
-     * Allocation of large amounts of memory may delay
-     * chardev initialization for too long, and trigger timeouts
-     * on software that waits for a monitor socket to be created
-     */
-    if (g_str_has_prefix(type, "memory-backend-")) {
-        return false;
-    }
-
-    return true;
-}
-
 static void qemu_apply_machine_options(QDict *qdict)
 {
     object_set_properties_from_keyval(OBJECT(current_machine), qdict, false,
@@ -1008,7 +927,6 @@ static void chihiro_snapshot_store_setup(void)
 static void qemu_create_early_backends(void)
 {
     chihiro_snapshot_store_setup();
-    MachineClass *machine_class = MACHINE_GET_CLASS(current_machine);
     const bool use_sdl = false;
     const bool use_gtk = false;
 
@@ -1029,7 +947,6 @@ static void qemu_create_early_backends(void)
         exit(1);
     }
 
-    object_option_foreach_add(object_create_early);
 
     /* spice needs the timers to be initialized by this point */
     /* spice must initialize before chardevs (for spicevmc and spiceport) */
@@ -1042,24 +959,14 @@ static void qemu_create_early_backends(void)
      * Note: we need to create block backends before
      * setting machine properties, so they can be referred to.
      */
-    configure_blockdev(&bdo_queue, machine_class, snapshot);
+    configure_blockdev();
 }
 
-
-/*
- * The remainder of object creation happens after the
- * creation of chardev, fsdev, net clients and device data types.
- */
-static bool object_create_late(const char *type)
-{
-    return !object_create_early(type);
-}
 
 static void qemu_create_late_backends(void)
 {
     net_init_clients();
 
-    object_option_foreach_add(object_create_late);
 
     if (tpm_init() < 0) {
         exit(1);

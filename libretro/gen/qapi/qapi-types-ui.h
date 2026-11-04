@@ -442,11 +442,6 @@ typedef enum DisplayGLMode {
     DISPLAY_GL_MODE__MAX,
 } DisplayGLMode;
 
-#define DisplayGLMode_str(val) \
-    qapi_enum_lookup(&DisplayGLMode_lookup, (val))
-
-extern const QEnumLookup DisplayGLMode_lookup;
-
 typedef struct DisplayCurses DisplayCurses;
 
 typedef struct DisplayCocoa DisplayCocoa;
@@ -457,11 +452,6 @@ typedef enum HotKeyMod {
     HOT_KEY_MOD_RCTRL,
     HOT_KEY_MOD__MAX,
 } HotKeyMod;
-
-#define HotKeyMod_str(val) \
-    qapi_enum_lookup(&HotKeyMod_lookup, (val))
-
-extern const QEnumLookup HotKeyMod_lookup;
 
 typedef struct DisplaySDL DisplaySDL;
 
@@ -1019,9 +1009,6 @@ struct DisplayOptions {
 #endif /* defined(CONFIG_SDL) */
     } u;
 };
-
-void qapi_free_DisplayOptions(DisplayOptions *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(DisplayOptions, qapi_free_DisplayOptions)
 
 struct DisplayReloadOptionsVNC {
     bool has_tls_certs;

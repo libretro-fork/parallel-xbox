@@ -19,32 +19,4 @@
 #include "qapi-visit-common.h"
 #include "qapi-visit-sockets.h"
 
-bool visit_type_DisplayGTK_members(Visitor *v, DisplayGTK *obj, Error **errp);
-
-bool visit_type_DisplayEGLHeadless_members(Visitor *v, DisplayEGLHeadless *obj, Error **errp);
-
-bool visit_type_DisplayDBus_members(Visitor *v, DisplayDBus *obj, Error **errp);
-
-bool visit_type_DisplayGLMode(Visitor *v, const char *name,
-                 DisplayGLMode *obj, Error **errp);
-
-bool visit_type_DisplayCurses_members(Visitor *v, DisplayCurses *obj, Error **errp);
-
-bool visit_type_DisplayCocoa_members(Visitor *v, DisplayCocoa *obj, Error **errp);
-
-bool visit_type_HotKeyMod(Visitor *v, const char *name,
-                 HotKeyMod *obj, Error **errp);
-
-bool visit_type_DisplaySDL_members(Visitor *v, DisplaySDL *obj, Error **errp);
-
-bool visit_type_DisplayType(Visitor *v, const char *name,
-                 DisplayType *obj, Error **errp);
-
-bool visit_type_q_obj_DisplayOptions_base_members(Visitor *v, q_obj_DisplayOptions_base *obj, Error **errp);
-
-bool visit_type_DisplayOptions_members(Visitor *v, DisplayOptions *obj, Error **errp);
-
-bool visit_type_DisplayOptions(Visitor *v, const char *name,
-                 DisplayOptions **obj, Error **errp);
-
 #endif /* QAPI_VISIT_UI_H */

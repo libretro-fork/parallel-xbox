@@ -16,31 +16,4 @@
 #include "qapi/qapi-builtin-visit.h"
 #include "qapi-types-crypto.h"
 
-bool visit_type_QCryptoTLSCredsEndpoint(Visitor *v, const char *name,
-                 QCryptoTLSCredsEndpoint *obj, Error **errp);
-
-bool visit_type_QCryptoSecretFormat(Visitor *v, const char *name,
-                 QCryptoSecretFormat *obj, Error **errp);
-
-bool visit_type_QCryptoBlockOptionsQCow_members(Visitor *v, QCryptoBlockOptionsQCow *obj, Error **errp);
-
-bool visit_type_QCryptoBlockOptionsLUKS_members(Visitor *v, QCryptoBlockOptionsLUKS *obj, Error **errp);
-
-bool visit_type_SecretCommonProperties_members(Visitor *v, SecretCommonProperties *obj, Error **errp);
-
-bool visit_type_SecretProperties_members(Visitor *v, SecretProperties *obj, Error **errp);
-
-#if defined(CONFIG_SECRET_KEYRING)
-bool visit_type_SecretKeyringProperties_members(Visitor *v, SecretKeyringProperties *obj, Error **errp);
-
-#endif /* defined(CONFIG_SECRET_KEYRING) */
-
-bool visit_type_TlsCredsProperties_members(Visitor *v, TlsCredsProperties *obj, Error **errp);
-
-bool visit_type_TlsCredsAnonProperties_members(Visitor *v, TlsCredsAnonProperties *obj, Error **errp);
-
-bool visit_type_TlsCredsPskProperties_members(Visitor *v, TlsCredsPskProperties *obj, Error **errp);
-
-bool visit_type_TlsCredsX509Properties_members(Visitor *v, TlsCredsX509Properties *obj, Error **errp);
-
 #endif /* QAPI_VISIT_CRYPTO_H */

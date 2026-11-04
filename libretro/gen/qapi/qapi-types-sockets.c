@@ -16,19 +16,6 @@
 #include "qapi-visit-sockets.h"
 #include "qapi-features.h"
 
-void qapi_free_InetSocketAddressBase(InetSocketAddressBase *obj)
-{
-    Visitor *v;
-
-    if (!obj) {
-        return;
-    }
-
-    v = qapi_dealloc_visitor_new();
-    visit_type_InetSocketAddressBase(v, NULL, &obj, NULL);
-    visit_free(v);
-}
-
 void qapi_free_InetSocketAddress(InetSocketAddress *obj)
 {
     Visitor *v;
@@ -127,19 +114,6 @@ void qapi_free_SocketAddressList(SocketAddressList *obj)
 
     v = qapi_dealloc_visitor_new();
     visit_type_SocketAddressList(v, NULL, &obj, NULL);
-    visit_free(v);
-}
-
-void qapi_free_InetSocketAddressBaseList(InetSocketAddressBaseList *obj)
-{
-    Visitor *v;
-
-    if (!obj) {
-        return;
-    }
-
-    v = qapi_dealloc_visitor_new();
-    visit_type_InetSocketAddressBaseList(v, NULL, &obj, NULL);
     visit_free(v);
 }
 

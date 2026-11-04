@@ -26,7 +26,6 @@
 #include "block/block.h"
 #include "block/export.h"
 #include "chardev/char.h"
-#include "crypto/cipher.h"
 #include "exec/cpu-common.h"
 #include "hw/boards.h"
 #include "hw/resettable.h"

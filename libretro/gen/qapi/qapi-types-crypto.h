@@ -21,21 +21,11 @@ typedef enum QCryptoTLSCredsEndpoint {
     QCRYPTO_TLS_CREDS_ENDPOINT__MAX,
 } QCryptoTLSCredsEndpoint;
 
-#define QCryptoTLSCredsEndpoint_str(val) \
-    qapi_enum_lookup(&QCryptoTLSCredsEndpoint_lookup, (val))
-
-extern const QEnumLookup QCryptoTLSCredsEndpoint_lookup;
-
 typedef enum QCryptoSecretFormat {
     QCRYPTO_SECRET_FORMAT_RAW,
     QCRYPTO_SECRET_FORMAT_BASE64,
     QCRYPTO_SECRET_FORMAT__MAX,
 } QCryptoSecretFormat;
-
-#define QCryptoSecretFormat_str(val) \
-    qapi_enum_lookup(&QCryptoSecretFormat_lookup, (val))
-
-extern const QEnumLookup QCryptoSecretFormat_lookup;
 
 typedef enum QCryptoHashAlgo {
     QCRYPTO_HASH_ALGO_MD5,

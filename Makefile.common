@@ -95,39 +95,27 @@ SOURCES_UTIL := \
 	$(CORE_DIR)/libretro/gen/qapi/qapi-events-misc.c \
 	$(CORE_DIR)/libretro/gen/qapi/qapi-events-qdev.c \
 	$(CORE_DIR)/libretro/gen/qapi/qapi-events-run-state.c \
-	$(CORE_DIR)/libretro/gen/qapi/qapi-types-acpi.c \
-	$(CORE_DIR)/libretro/gen/qapi/qapi-types-authz.c \
 	$(CORE_DIR)/libretro/gen/qapi/qapi-types-block-core.c \
 	$(CORE_DIR)/libretro/gen/qapi/qapi-types-block.c \
 	$(CORE_DIR)/libretro/gen/qapi/qapi-types-char.c \
 	$(CORE_DIR)/libretro/gen/qapi/qapi-types-common.c \
-	$(CORE_DIR)/libretro/gen/qapi/qapi-types-compat.c \
-	$(CORE_DIR)/libretro/gen/qapi/qapi-types-crypto.c \
 	$(CORE_DIR)/libretro/gen/qapi/qapi-types-machine-common.c \
 	$(CORE_DIR)/libretro/gen/qapi/qapi-types-machine.c \
 	$(CORE_DIR)/libretro/gen/qapi/qapi-types-migration.c \
 	$(CORE_DIR)/libretro/gen/qapi/qapi-types-net.c \
-	$(CORE_DIR)/libretro/gen/qapi/qapi-types-qom.c \
 	$(CORE_DIR)/libretro/gen/qapi/qapi-types-run-state.c \
 	$(CORE_DIR)/libretro/gen/qapi/qapi-types-sockets.c \
 	$(CORE_DIR)/libretro/gen/qapi/qapi-types-ui.c \
 	$(CORE_DIR)/libretro/gen/qapi/qapi-types-virtio.c \
-	$(CORE_DIR)/libretro/gen/qapi/qapi-visit-acpi.c \
-	$(CORE_DIR)/libretro/gen/qapi/qapi-visit-authz.c \
-	$(CORE_DIR)/libretro/gen/qapi/qapi-visit-block-core.c \
 	$(CORE_DIR)/libretro/gen/qapi/qapi-visit-char.c \
 	$(CORE_DIR)/libretro/gen/qapi/qapi-visit-common.c \
-	$(CORE_DIR)/libretro/gen/qapi/qapi-visit-compat.c \
-	$(CORE_DIR)/libretro/gen/qapi/qapi-visit-crypto.c \
 	$(CORE_DIR)/libretro/gen/qapi/qapi-visit-machine-common.c \
 	$(CORE_DIR)/libretro/gen/qapi/qapi-visit-machine.c \
 	$(CORE_DIR)/libretro/gen/qapi/qapi-visit-misc.c \
 	$(CORE_DIR)/libretro/gen/qapi/qapi-visit-net.c \
 	$(CORE_DIR)/libretro/gen/qapi/qapi-visit-qdev.c \
-	$(CORE_DIR)/libretro/gen/qapi/qapi-visit-qom.c \
 	$(CORE_DIR)/libretro/gen/qapi/qapi-visit-run-state.c \
 	$(CORE_DIR)/libretro/gen/qapi/qapi-visit-sockets.c \
-	$(CORE_DIR)/libretro/gen/qapi/qapi-visit-ui.c \
 	$(CORE_DIR)/libretro/gen/qapi/qapi-visit-virtio.c \
 	$(CORE_DIR)/qapi/opts-visitor.c \
 	$(CORE_DIR)/qapi/qapi-clone-visitor.c \

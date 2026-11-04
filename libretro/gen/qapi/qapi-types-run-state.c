@@ -55,45 +55,6 @@ const QEnumLookup ShutdownCause_lookup = {
     .size = SHUTDOWN_CAUSE__MAX
 };
 
-const QEnumLookup WatchdogAction_lookup = {
-    .array = (const char *const[]) {
-        [WATCHDOG_ACTION_RESET] = "reset",
-        [WATCHDOG_ACTION_SHUTDOWN] = "shutdown",
-        [WATCHDOG_ACTION_POWEROFF] = "poweroff",
-        [WATCHDOG_ACTION_PAUSE] = "pause",
-        [WATCHDOG_ACTION_DEBUG] = "debug",
-        [WATCHDOG_ACTION_NONE] = "none",
-        [WATCHDOG_ACTION_INJECT_NMI] = "inject-nmi",
-    },
-    .size = WATCHDOG_ACTION__MAX
-};
-
-const QEnumLookup RebootAction_lookup = {
-    .array = (const char *const[]) {
-        [REBOOT_ACTION_RESET] = "reset",
-        [REBOOT_ACTION_SHUTDOWN] = "shutdown",
-    },
-    .size = REBOOT_ACTION__MAX
-};
-
-const QEnumLookup ShutdownAction_lookup = {
-    .array = (const char *const[]) {
-        [SHUTDOWN_ACTION_POWEROFF] = "poweroff",
-        [SHUTDOWN_ACTION_PAUSE] = "pause",
-    },
-    .size = SHUTDOWN_ACTION__MAX
-};
-
-const QEnumLookup PanicAction_lookup = {
-    .array = (const char *const[]) {
-        [PANIC_ACTION_PAUSE] = "pause",
-        [PANIC_ACTION_SHUTDOWN] = "shutdown",
-        [PANIC_ACTION_EXIT_FAILURE] = "exit-failure",
-        [PANIC_ACTION_NONE] = "none",
-    },
-    .size = PANIC_ACTION__MAX
-};
-
 const QEnumLookup GuestPanicInformationType_lookup = {
     .array = (const char *const[]) {
         [GUEST_PANIC_INFORMATION_TYPE_HYPER_V] = "hyper-v",

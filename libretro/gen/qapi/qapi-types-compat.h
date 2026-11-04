@@ -22,21 +22,11 @@ typedef enum CompatPolicyInput {
     COMPAT_POLICY_INPUT__MAX,
 } CompatPolicyInput;
 
-#define CompatPolicyInput_str(val) \
-    qapi_enum_lookup(&CompatPolicyInput_lookup, (val))
-
-extern const QEnumLookup CompatPolicyInput_lookup;
-
 typedef enum CompatPolicyOutput {
     COMPAT_POLICY_OUTPUT_ACCEPT,
     COMPAT_POLICY_OUTPUT_HIDE,
     COMPAT_POLICY_OUTPUT__MAX,
 } CompatPolicyOutput;
-
-#define CompatPolicyOutput_str(val) \
-    qapi_enum_lookup(&CompatPolicyOutput_lookup, (val))
-
-extern const QEnumLookup CompatPolicyOutput_lookup;
 
 typedef struct CompatPolicy CompatPolicy;
 
@@ -50,8 +40,5 @@ struct CompatPolicy {
     bool has_unstable_output;
     CompatPolicyOutput unstable_output;
 };
-
-void qapi_free_CompatPolicy(CompatPolicy *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(CompatPolicy, qapi_free_CompatPolicy)
 
 #endif /* QAPI_TYPES_COMPAT_H */

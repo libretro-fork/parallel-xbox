@@ -16,25 +16,6 @@
 #include "qapi-visit-ui.h"
 #include "qapi-features.h"
 
-const QEnumLookup DisplayGLMode_lookup = {
-    .array = (const char *const[]) {
-        [DISPLAY_GL_MODE_OFF] = "off",
-        [DISPLAY_GL_MODE_ON] = "on",
-        [DISPLAY_GL_MODE_CORE] = "core",
-        [DISPLAY_GL_MODE_ES] = "es",
-    },
-    .size = DISPLAY_GL_MODE__MAX
-};
-
-const QEnumLookup HotKeyMod_lookup = {
-    .array = (const char *const[]) {
-        [HOT_KEY_MOD_LCTRL_LALT] = "lctrl-lalt",
-        [HOT_KEY_MOD_LSHIFT_LCTRL_LALT] = "lshift-lctrl-lalt",
-        [HOT_KEY_MOD_RCTRL] = "rctrl",
-    },
-    .size = HOT_KEY_MOD__MAX
-};
-
 const QEnumLookup DisplayType_lookup = {
     .array = (const char *const[]) {
         [DISPLAY_TYPE_DEFAULT] = "default",
@@ -64,19 +45,6 @@ const QEnumLookup DisplayType_lookup = {
     },
     .size = DISPLAY_TYPE__MAX
 };
-
-void qapi_free_DisplayOptions(DisplayOptions *obj)
-{
-    Visitor *v;
-
-    if (!obj) {
-        return;
-    }
-
-    v = qapi_dealloc_visitor_new();
-    visit_type_DisplayOptions(v, NULL, &obj, NULL);
-    visit_free(v);
-}
 
 /* Dummy declaration to prevent empty .o file */
 char qapi_dummy_qapi_types_ui_c;

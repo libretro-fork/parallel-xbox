@@ -16,9 +16,4 @@
 #include "qapi/qapi-builtin-visit.h"
 #include "qapi-types-acpi.h"
 
-bool visit_type_AcpiTableOptions_members(Visitor *v, AcpiTableOptions *obj, Error **errp);
-
-bool visit_type_AcpiTableOptions(Visitor *v, const char *name,
-                 AcpiTableOptions **obj, Error **errp);
-
 #endif /* QAPI_VISIT_ACPI_H */
