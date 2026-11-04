@@ -1,5 +1,6 @@
 # Changelog of the libretro core
 
+- Patch block-end instruction-count operands directly from their TCG temporary. Avoid handle round trips and reuse one constant for budget and idle checks, preserving lazy allocation order and count values.
 - Retain the TCG owner throughout block translation and pass it to block-start/end bookkeeping. Avoid repeated Windows context lookups for instruction tails, budgets, idle checks and insertion anchors; generated guest operations and ordering stay unchanged.
 - Reuse one TCG context during guest-store idle-check rewrites. Remove repeated Windows TLS lookups, including within preamble removal, while preserving store resets and branch/helper/access guards.
 - Reuse the TCG owner already held by speculative operation rollback. Avoid a Windows TLS lookup on every tail check while preserving branch-use cleanup and operation reuse.

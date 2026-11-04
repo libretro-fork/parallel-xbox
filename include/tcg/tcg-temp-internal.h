@@ -29,6 +29,13 @@
  * Allocation and freeing of EBB temps is reserved to TCG internals
  */
 
+/*
+ * Locate or create a read-only temporary that is a constant.
+ * This kind of temporary need not be freed, but for convenience
+ * will be silently ignored by tcg_temp_free_*.
+ */
+TCGTemp *tcg_constant_internal(TCGType type, int64_t val);
+
 void tcg_temp_free_internal(TCGTemp *);
 
 void tcg_temp_free_i32(TCGv_i32 arg);

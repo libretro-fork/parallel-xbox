@@ -85,13 +85,6 @@ bool tcg_target_has_memory_bswap(MemOp memop);
 
 TCGTemp *tcg_temp_new_internal(TCGType type, TCGTempKind kind);
 
-/*
- * Locate or create a read-only temporary that is a constant.
- * This kind of temporary need not be freed, but for convenience
- * will be silently ignored by tcg_temp_free_*.
- */
-TCGTemp *tcg_constant_internal(TCGType type, int64_t val);
-
 TCGOp *tcg_gen_op1(TCGOpcode, TCGType, TCGArg);
 TCGOp *tcg_gen_op2(TCGOpcode, TCGType, TCGArg, TCGArg);
 TCGOp *tcg_gen_op3(TCGOpcode, TCGType, TCGArg, TCGArg, TCGArg);

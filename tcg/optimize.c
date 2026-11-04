@@ -27,6 +27,7 @@
 #include "qemu/int128.h"
 #include "qemu/interval-tree.h"
 #include "tcg/tcg-op-common.h"
+#include "tcg/tcg-temp-internal.h"
 #include "tcg-internal.h"
 #include "tcg-has.h"
 

@@ -344,13 +344,15 @@ void lr_quiet_store_emitted(void)
 static void gen_tb_end(TCGContext *s, const TranslationBlock *tb, uint32_t cflags,
                        TCGOp *icount_start_insn, int num_insns)
 {
+    TCGTemp *insn_count = NULL;
+
     if (icount_start_insn) {
         /*
          * Update the num_insn immediate parameter now that we know
          * the actual insn count.
          */
-        tcg_set_insn_param(icount_start_insn, 2,
-                           tcgv_i32_arg(tcg_constant_i32(num_insns)));
+        insn_count = tcg_constant_internal(TCG_TYPE_I32, num_insns);
+        tcg_set_insn_param(icount_start_insn, 2, temp_arg(insn_count));
     }
 
     if (s->exitreq_label) {
@@ -358,8 +360,10 @@ static void gen_tb_end(TCGContext *s, const TranslationBlock *tb, uint32_t cflag
         tcg_gen_exit_tb(tb, TB_EXIT_REQUESTED);
     }
     if (s->lr_quiet_label) {
-        tcg_set_insn_param(s->lr_quiet_insn, 2,
-                           tcgv_i32_arg(tcg_constant_i32(num_insns)));
+        if (!insn_count) {
+            insn_count = tcg_constant_internal(TCG_TYPE_I32, num_insns);
+        }
+        tcg_set_insn_param(s->lr_quiet_insn, 2, temp_arg(insn_count));
         gen_set_label(s->lr_quiet_label);
         tcg_gen_exit_tb(tb, TB_EXIT_REQUESTED);
         s->lr_quiet_label = NULL;

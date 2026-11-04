@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-or-later */
 #include "qemu/osdep.h"
 #include "tcg/tcg.h"
+#include "tcg/tcg-temp-internal.h"
 G_NORETURN void g_assertion_message_expr(const char *domain, const char *file,
                                        int line, const char *func, const char *expr)
 {
@@ -37,6 +38,34 @@ void gen_bb_epilogue(void)
     ++epilogue_calls;
     /* Real epilogues may emit operations; these must precede the terminator. */
     tcg_emit_op(INDEX_op_mov, 2);
+}
+static char count_events[16];
+static unsigned count_event_pos, count_lookups;
+static int expected_count;
+static TCGLabel exit_label, quiet_label;
+static const TranslationBlock *expected_tb;
+static void count_event(char event)
+{
+    assert(count_event_pos + 1 < sizeof(count_events));
+    count_events[count_event_pos++] = event;
+    count_events[count_event_pos] = 0;
+}
+TCGTemp *tcg_constant_internal(TCGType type, int64_t val)
+{
+    assert(type == TCG_TYPE_I32 && val == expected_count);
+    ++count_lookups;
+    count_event('C');
+    return &tcg_ctx->temps[0];
+}
+void gen_set_label(TCGLabel *label)
+{
+    assert(label == &exit_label || label == &quiet_label);
+    count_event(label == &exit_label ? 'X' : 'Q');
+}
+void tcg_gen_exit_tb(const TranslationBlock *tb, unsigned idx)
+{
+    assert(tb == expected_tb && idx == TB_EXIT_REQUESTED);
+    count_event('E');
 }
 /* PRODUCTION */
 
@@ -143,6 +172,53 @@ static void check_rollback(TCGContext *owner)
     uintptr_t cursor = owner->pool_cur;
     assert(tcg_op_alloc(owner, INDEX_op_mov, 1) == ops[4]);
     assert(owner->nb_ops == 1 && owner->pool_cur == cursor);
+}
+
+static void check_count_operands(TCGContext *owner)
+{
+    static const int counts[] = {0, 1, 255, 4000, INT_MAX};
+    static unsigned char arena[512] QEMU_ALIGNED(16), tb_identity;
+    owner->pool_cur = (uintptr_t)arena;
+    owner->pool_end = owner->pool_cur + sizeof(arena);
+    QTAILQ_INIT(&owner->free_ops);
+    TCGOp *budget = tcg_op_alloc(owner, INDEX_op_sub, 3);
+    TCGOp *quiet = tcg_op_alloc(owner, INDEX_op_sub, 3);
+    expected_tb = (const void *)&tb_identity; /* The hook forwards, never dereferences. */
+    unsigned cases = 0;
+    for (unsigned n = 0; n < ARRAY_SIZE(counts); ++n) {
+        for (unsigned mask = 0; mask < 8; ++mask) {
+            bool has_budget = mask & 1, has_exit = mask & 2, has_quiet = mask & 4;
+            for (unsigned i = 0; i < 4; ++i) {
+                budget->args[i] = quiet->args[i] = (TCGArg)0xa5a5;
+            }
+            owner->exitreq_label = has_exit ? &exit_label : NULL;
+            owner->lr_quiet_label = has_quiet ? &quiet_label : NULL;
+            owner->lr_quiet_insn = quiet;
+            expected_count = counts[n];
+            count_lookups = count_event_pos = 0;
+            count_events[0] = 0;
+            gen_tb_end(owner, expected_tb, 0, has_budget ? budget : NULL, counts[n]);
+            assert(count_lookups == (unsigned)(has_budget || has_quiet));
+            TCGArg operand = temp_arg(&owner->temps[0]);
+            assert(budget->args[2] == (has_budget ? operand : (TCGArg)0xa5a5));
+            assert(quiet->args[2] == (has_quiet ? operand : (TCGArg)0xa5a5));
+            for (unsigned i = 0; i < 4; ++i) {
+                if (i != 2) assert(budget->args[i] == 0xa5a5 && quiet->args[i] == 0xa5a5);
+            }
+            char expected[16] = "";
+            if (has_budget) strcat(expected, "C");
+            if (has_exit) strcat(expected, "XE");
+            if (has_quiet) {
+                if (!has_budget) strcat(expected, "C");
+                strcat(expected, "QE");
+            }
+            assert(!strcmp(count_events, expected));
+            assert(owner->exitreq_label == (has_exit ? &exit_label : NULL));
+            assert(owner->lr_quiet_label == NULL);
+            ++cases;
+        }
+    }
+    printf("TCG count operands: %u budget/exit/idle combinations, values and lazy allocation order PASS\n", cases);
 }
 
 static void check_global(TCGTemp *temp, TCGTemp *base, intptr_t offset,
@@ -285,6 +361,7 @@ int main(void)
     check_ops(&other, false); /* Explicit owner differs from TLS. */
     check_ops(&context, true);
     check_rollback(&context);
+    check_count_operands(&context);
     puts("TCG rollback: suffix/full/empty removal, branch uses and reuse PASS");
     puts("TCG ops: owners, allocation/reuse, insertion order and epilogues PASS");
     printf("TCG global layout: %d-bit direct/indirect globals, %shandles and frame PASS\n",

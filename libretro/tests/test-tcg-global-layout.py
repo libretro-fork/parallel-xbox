@@ -13,7 +13,7 @@ cc = shlex.split(sys.argv[2] if len(sys.argv) > 2 else 'cc')
 source = (r / 'tcg/tcg.c').read_text()
 
 
-def function(key):
+def function(key, source=source):
     start = source.rindex(key)
     end = source.index('{', start) + 1
     depth = 1
@@ -32,7 +32,9 @@ keys = ['static void remove_label_use(', 'void tcg_op_remove(',
         'static TCGTemp *tcg_global_mem_new_internal(',
         'TCGv_i32 tcg_global_mem_new_i32(', 'TCGv_i64 tcg_global_mem_new_i64(']
 code = Path(__file__).with_suffix('.c').read_text()
-code = code.replace('/* PRODUCTION */', '\n'.join(function(key) for key in keys))
+code = code.replace('/* PRODUCTION */', '\n'.join(function(key) for key in keys) + '\n' +
+                    function('static void gen_tb_end(',
+                             (r / 'accel/tcg/translator.c').read_text()))
 with tempfile.TemporaryDirectory(prefix='tcg-global-layout-') as temporary:
     folder = Path(temporary)
     (folder / 'test.c').write_text(code)
