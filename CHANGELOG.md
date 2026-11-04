@@ -57,6 +57,8 @@
 
 ## Unreleased
 
+- DSP: stop native Y-memory store sequences promptly when a peripheral callback halts the DSP or invalidates code, including repeated stores.
+
 - Reuse the TCG context when decoding vector bit-selection operands, avoiding repeated Windows TLS lookups while preserving native selection and logical-operation fallbacks.
 - DSP: decode Class II parallel moves correctly and execute them natively, with regression coverage for ALU ordering, both memory buses and MOVEP decoding.
 
