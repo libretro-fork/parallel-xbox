@@ -1,5 +1,6 @@
 # Changelog of the libretro core
 
+- Remove inert TCG vector diagnostic-list tracking and its save/restore scaffolding. Keep actual host-capability lists and vector fallbacks; make the ABS fallback support sanity query debug-only.
 - Keep expensive TCG diagnostic predicates out of release translation. Remove the per-ordinary-op support sanity query and redundant direct-chain TLS check while preserving debug/static-analysis validation, live capability decisions and optimizer assumptions.
 - Avoid release-build TLS lookups used only by TCG load/store address-type diagnostics. Keep those checks in debug/static-analysis builds, and preserve memory-operation constraints and real address-width handling.
 - Remove disabled QEMU assembly printers, dump-only symbol lookup and unused CPU/translator disassembly callbacks. Keep the Xbox instruction decoder, execution, frontend/error logging and private test capture unchanged.

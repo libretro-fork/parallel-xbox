@@ -1037,11 +1037,6 @@ uint64_t dup_const(unsigned vece, uint64_t c);
         : (qemu_build_not_reached_always(), 0))                    \
      : dup_const(VECE, C))
 
-static inline const TCGOpcode *tcg_swap_vecop_list(const TCGOpcode *n)
-{
-    return NULL;
-}
-
 bool tcg_can_emit_vecop_list(const TCGOpcode *, TCGType, unsigned);
 
 void gen_bb_epilogue(void); /* translate.c */

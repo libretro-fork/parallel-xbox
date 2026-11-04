@@ -25,28 +25,7 @@
 #include "tcg-internal.h"
 #include "tcg-has.h"
 
-/*
- * Vector optional opcode tracking.
- * Except for the basic logical operations (and, or, xor), and
- * data movement (mov, ld, st, dupi), many vector opcodes are
- * optional and may not be supported on the host.  Thank Intel
- * for the irregularity in their instruction set.
- *
- * The gvec expanders allow custom vector operations to be composed,
- * generally via the .fniv callback in the GVecGen* structures.  At
- * the same time, in deciding whether to use this hook we need to
- * know if the host supports the required operations.  This is
- * presented as an array of opcodes, terminated by 0.  Each opcode
- * is assumed to be expanded with the given VECE.
- *
- * For debugging, we want to validate this array.  Therefore, when
- * tcg_ctx->vec_opt_opc is non-NULL, the tcg_gen_*_vec expanders
- * will validate that their opcode is present in the list.
- */
-static void tcg_assert_listed_vecop(TCGOpcode op)
-{
-}
-
+/* Check real host support, including the available vector fallbacks. */
 bool tcg_can_emit_vecop_list(const TCGOpcode *list,
                              TCGType type, unsigned vece)
 {
@@ -303,14 +282,11 @@ static bool do_op2(unsigned vece, TCGv_vec r, TCGv_vec a, TCGOpcode opc)
     int can;
 
     tcg_debug_assert(at->base_type >= type);
-    tcg_assert_listed_vecop(opc);
     can = tcg_can_emit_vec_op(opc, type, vece);
     if (can > 0) {
         vec_gen_2(opc, type, vece, ri, ai);
     } else if (can < 0) {
-        const TCGOpcode *hold_list = tcg_swap_vecop_list(NULL);
         tcg_expand_vec_op(opc, type, vece, ri, ai);
-        tcg_swap_vecop_list(hold_list);
     } else {
         return false;
     }
@@ -328,29 +304,18 @@ void tcg_gen_not_vec(unsigned vece, TCGv_vec r, TCGv_vec a)
 
 void tcg_gen_neg_vec(unsigned vece, TCGv_vec r, TCGv_vec a)
 {
-    const TCGOpcode *hold_list;
-
-    tcg_assert_listed_vecop(INDEX_op_neg_vec);
-    hold_list = tcg_swap_vecop_list(NULL);
-
     if (!TCG_TARGET_HAS_neg_vec || !do_op2(vece, r, a, INDEX_op_neg_vec)) {
         tcg_gen_sub_vec(vece, r, tcg_constant_vec_matching(r, vece, 0), a);
     }
-    tcg_swap_vecop_list(hold_list);
 }
 
 void tcg_gen_abs_vec(unsigned vece, TCGv_vec r, TCGv_vec a)
 {
-    const TCGOpcode *hold_list;
-
-    tcg_assert_listed_vecop(INDEX_op_abs_vec);
-    hold_list = tcg_swap_vecop_list(NULL);
-
     if (!do_op2(vece, r, a, INDEX_op_abs_vec)) {
         TCGType type = tcgv_vec_temp(r)->base_type;
         TCGv_vec t = tcg_temp_new_vec(type);
 
-        tcg_debug_assert(tcg_can_emit_vec_op(INDEX_op_sub_vec, type, vece));
+        tcg_debug_check(tcg_can_emit_vec_op(INDEX_op_sub_vec, type, vece));
         if (tcg_can_emit_vec_op(INDEX_op_smax_vec, type, vece) > 0) {
             tcg_gen_neg_vec(vece, t, a);
             tcg_gen_smax_vec(vece, r, a, t);
@@ -367,7 +332,6 @@ void tcg_gen_abs_vec(unsigned vece, TCGv_vec r, TCGv_vec a)
 
         tcg_temp_free_vec(t);
     }
-    tcg_swap_vecop_list(hold_list);
 }
 
 static void do_shifti(TCGOpcode opc, unsigned vece,
@@ -382,7 +346,6 @@ static void do_shifti(TCGOpcode opc, unsigned vece,
 
     tcg_debug_assert(at->base_type == type);
     tcg_debug_assert(i >= 0 && i < (8 << vece));
-    tcg_assert_listed_vecop(opc);
 
     if (i == 0) {
         tcg_gen_mov_vec(r, a);
@@ -396,10 +359,8 @@ static void do_shifti(TCGOpcode opc, unsigned vece,
         /* We leave the choice of expansion via scalar or vector shift
            to the target.  Often, but not always, dupi can feed a vector
            shift easier than a scalar.  */
-        const TCGOpcode *hold_list = tcg_swap_vecop_list(NULL);
         tcg_debug_assert(can < 0);
         tcg_expand_vec_op(opc, type, vece, ri, ai, i);
-        tcg_swap_vecop_list(hold_list);
     }
 }
 
@@ -434,7 +395,6 @@ void tcg_gen_cmp_vec(TCGCond cond, unsigned vece,
 
     tcg_debug_assert(at->base_type >= type);
     tcg_debug_assert(bt->base_type >= type);
-    tcg_assert_listed_vecop(INDEX_op_cmp_vec);
     can = tcg_can_emit_vec_op(INDEX_op_cmp_vec, type, vece);
 
     if (!TCG_TARGET_HAS_tst_vec && is_tst_cond(cond)) {
@@ -451,10 +411,8 @@ void tcg_gen_cmp_vec(TCGCond cond, unsigned vece,
     if (can > 0) {
         vec_gen_4(INDEX_op_cmp_vec, type, vece, ri, ai, bi, cond);
     } else {
-        const TCGOpcode *hold_list = tcg_swap_vecop_list(NULL);
         tcg_debug_assert(can < 0);
         tcg_expand_vec_op(INDEX_op_cmp_vec, type, vece, ri, ai, bi, cond);
-        tcg_swap_vecop_list(hold_list);
     }
 
     if (tt) {
@@ -476,14 +434,11 @@ static bool do_op3(unsigned vece, TCGv_vec r, TCGv_vec a,
 
     tcg_debug_assert(at->base_type >= type);
     tcg_debug_assert(bt->base_type >= type);
-    tcg_assert_listed_vecop(opc);
     can = tcg_can_emit_vec_op(opc, type, vece);
     if (can > 0) {
         vec_gen_3(opc, type, vece, ri, ai, bi);
     } else if (can < 0) {
-        const TCGOpcode *hold_list = tcg_swap_vecop_list(NULL);
         tcg_expand_vec_op(opc, type, vece, ri, ai, bi);
-        tcg_swap_vecop_list(hold_list);
     } else {
         return false;
     }
@@ -520,7 +475,6 @@ void tcg_gen_ssadd_vec(unsigned vece, TCGv_vec r, TCGv_vec a, TCGv_vec b)
 void tcg_gen_usadd_vec(unsigned vece, TCGv_vec r, TCGv_vec a, TCGv_vec b)
 {
     if (!do_op3(vece, r, a, b, INDEX_op_usadd_vec)) {
-        const TCGOpcode *hold_list = tcg_swap_vecop_list(NULL);
         TCGv_vec t = tcg_temp_new_vec_matching(r);
 
         /* usadd(a, b) = min(a, ~b) + b */
@@ -529,7 +483,6 @@ void tcg_gen_usadd_vec(unsigned vece, TCGv_vec r, TCGv_vec a, TCGv_vec b)
         tcg_gen_add_vec(vece, r, t, b);
 
         tcg_temp_free_vec(t);
-        tcg_swap_vecop_list(hold_list);
     }
 }
 
@@ -541,7 +494,6 @@ void tcg_gen_sssub_vec(unsigned vece, TCGv_vec r, TCGv_vec a, TCGv_vec b)
 void tcg_gen_ussub_vec(unsigned vece, TCGv_vec r, TCGv_vec a, TCGv_vec b)
 {
     if (!do_op3(vece, r, a, b, INDEX_op_ussub_vec)) {
-        const TCGOpcode *hold_list = tcg_swap_vecop_list(NULL);
         TCGv_vec t = tcg_temp_new_vec_matching(r);
 
         /* ussub(a, b) = max(a, b) - b */
@@ -549,7 +501,6 @@ void tcg_gen_ussub_vec(unsigned vece, TCGv_vec r, TCGv_vec a, TCGv_vec b)
         tcg_gen_sub_vec(vece, r, t, b);
 
         tcg_temp_free_vec(t);
-        tcg_swap_vecop_list(hold_list);
     }
 }
 
@@ -557,9 +508,7 @@ static void do_minmax(unsigned vece, TCGv_vec r, TCGv_vec a,
                       TCGv_vec b, TCGOpcode opc, TCGCond cond)
 {
     if (!do_op3(vece, r, a, b, opc)) {
-        const TCGOpcode *hold_list = tcg_swap_vecop_list(NULL);
         tcg_gen_cmpsel_vec(cond, vece, r, a, b, a, b);
-        tcg_swap_vecop_list(hold_list);
     }
 }
 
@@ -611,14 +560,11 @@ static void do_shifts(unsigned vece, TCGv_vec r, TCGv_vec a,
     int can;
 
     tcg_debug_assert(at->base_type >= type);
-    tcg_assert_listed_vecop(opc);
     can = tcg_can_emit_vec_op(opc, type, vece);
     if (can > 0) {
         vec_gen_3(opc, type, vece, ri, ai, si);
     } else if (can < 0) {
-        const TCGOpcode *hold_list = tcg_swap_vecop_list(NULL);
         tcg_expand_vec_op(opc, type, vece, ri, ai, si);
-        tcg_swap_vecop_list(hold_list);
     } else {
         g_assert_not_reached();
     }
@@ -673,7 +619,6 @@ void tcg_gen_cmpsel_vec(TCGCond cond, unsigned vece, TCGv_vec r,
     TCGArg ci = temp_arg(ct);
     TCGArg di = temp_arg(dt);
     TCGType type = rt->base_type;
-    const TCGOpcode *hold_list;
     int can;
 
     tcg_debug_assert(at->base_type >= type);
@@ -681,8 +626,6 @@ void tcg_gen_cmpsel_vec(TCGCond cond, unsigned vece, TCGv_vec r,
     tcg_debug_assert(ct->base_type >= type);
     tcg_debug_assert(dt->base_type >= type);
 
-    tcg_assert_listed_vecop(INDEX_op_cmpsel_vec);
-    hold_list = tcg_swap_vecop_list(NULL);
     can = tcg_can_emit_vec_op(INDEX_op_cmpsel_vec, type, vece);
 
     if (can > 0) {
@@ -696,5 +639,4 @@ void tcg_gen_cmpsel_vec(TCGCond cond, unsigned vece, TCGv_vec r,
         tcg_gen_bitsel_vec(vece, r, t, c, d);
         tcg_temp_free_vec(t);
     }
-    tcg_swap_vecop_list(hold_list);
 }

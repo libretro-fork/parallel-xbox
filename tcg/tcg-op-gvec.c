@@ -27,7 +27,6 @@
 
 #define MAX_UNROLL  4
 
-#define vecop_list_empty NULL
 
 
 /* Verify vector size and alignment rules.  OFS should be the OR of all
@@ -765,8 +764,6 @@ void tcg_gen_gvec_2_var(TCGv_ptr dbase, uint32_t dofs,
                         TCGv_ptr abase, uint32_t aofs,
                         uint32_t oprsz, uint32_t maxsz, const GVecGen2 *g)
 {
-    const TCGOpcode *this_list = g->opt_opc ? : vecop_list_empty;
-    const TCGOpcode *hold_list = tcg_swap_vecop_list(this_list);
     TCGType type;
     uint32_t some;
 
@@ -821,7 +818,6 @@ void tcg_gen_gvec_2_var(TCGv_ptr dbase, uint32_t dofs,
     default:
         g_assert_not_reached();
     }
-    tcg_swap_vecop_list(hold_list);
 
     if (oprsz < maxsz) {
         expand_clr(dbase, dofs + oprsz, maxsz - oprsz);
@@ -838,8 +834,6 @@ void tcg_gen_gvec_2(uint32_t dofs, uint32_t aofs,
 void tcg_gen_gvec_2i(uint32_t dofs, uint32_t aofs, uint32_t oprsz,
                      uint32_t maxsz, int64_t c, const GVecGen2i *g)
 {
-    const TCGOpcode *this_list = g->opt_opc ? : vecop_list_empty;
-    const TCGOpcode *hold_list = tcg_swap_vecop_list(this_list);
     TCGType type;
     uint32_t some;
 
@@ -896,7 +890,6 @@ void tcg_gen_gvec_2i(uint32_t dofs, uint32_t aofs, uint32_t oprsz,
     default:
         g_assert_not_reached();
     }
-    tcg_swap_vecop_list(hold_list);
 
     if (oprsz < maxsz) {
         expand_clr(tcg_env, dofs + oprsz, maxsz - oprsz);
@@ -909,8 +902,6 @@ void tcg_gen_gvec_3_var(TCGv_ptr dbase, uint32_t dofs,
                         TCGv_ptr bbase, uint32_t bofs,
                         uint32_t oprsz, uint32_t maxsz, const GVecGen3 *g)
 {
-    const TCGOpcode *this_list = g->opt_opc ? : vecop_list_empty;
-    const TCGOpcode *hold_list = tcg_swap_vecop_list(this_list);
     TCGType type;
     uint32_t some;
 
@@ -966,7 +957,6 @@ void tcg_gen_gvec_3_var(TCGv_ptr dbase, uint32_t dofs,
     default:
         g_assert_not_reached();
     }
-    tcg_swap_vecop_list(hold_list);
 
     if (oprsz < maxsz) {
         expand_clr(dbase, dofs + oprsz, maxsz - oprsz);
@@ -2136,7 +2126,6 @@ void tcg_gen_gvec_cmp(TCGCond cond, unsigned vece, uint32_t dofs,
         [TCG_COND_LEU] = leu_fn,
     };
 
-    const TCGOpcode *hold_list;
     TCGType type;
     uint32_t some;
 
@@ -2153,7 +2142,6 @@ void tcg_gen_gvec_cmp(TCGCond cond, unsigned vece, uint32_t dofs,
      * Implement inline with a vector type, if possible.
      * Prefer integer when 64-bit host and 64-bit comparison.
      */
-    hold_list = tcg_swap_vecop_list(cmp_list);
     type = choose_vector_type(cmp_list, vece, oprsz,
                               TCG_TARGET_REG_BITS == 64 && vece == MO_64);
     switch (type) {
@@ -2203,7 +2191,6 @@ void tcg_gen_gvec_cmp(TCGCond cond, unsigned vece, uint32_t dofs,
     default:
         g_assert_not_reached();
     }
-    tcg_swap_vecop_list(hold_list);
 
     if (oprsz < maxsz) {
         expand_clr(tcg_env, dofs + oprsz, maxsz - oprsz);
