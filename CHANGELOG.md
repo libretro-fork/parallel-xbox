@@ -57,6 +57,8 @@
 
 ## Unreleased
 
+- DSP: complete DO-loop retirement when a peripheral store halts execution, preserving the next PC, loop count and saved loop frame.
+
 - Reuse the matching-vector constant lookup for immediate vector duplication, avoiding a separate destination-context lookup while preserving constant caching and redundant-move elision.
 
 - Reuse the TCG context for vector duplication and memory operand decoding, avoiding repeated Windows TLS lookups while retaining offsets, partial stores and 32-bit split-i64 behavior.

@@ -4277,3 +4277,17 @@ code invalidation; Class I/II no longer need family-local bookkeeping.
 The halt regression fails against the pre-fix emitter. These are synthetic
 callback tests and do not establish game performance or hardware behavior
 for unimplemented Y peripheral devices.
+
+`dspnative --store-halt-loops` checks 768 halted-store DO endpoints with
+zero interpreter calls. X/Y stores, all scaling modes, NOP/CLR/arithmetic
+ALUs and indirect/extension operands cover counts zero, one, two and 65535,
+with counted and forever loops. Independent oracles check exact PC, LC, LA,
+SP, LF, cycles and one-bus callback counts; full differential state includes
+the restored stack. A callback halt now retires through the common post
+helper before returning, just like code invalidation. Previously the halted
+exit skipped DO completion entirely. The selector also runs with larger
+compiled blocks because every case halts on its first instruction.
+The production fixture `gp-startup-halted-store-loops.inc` uses the real
+X-peripheral HALT register at DO endpoints, then resumes across frames.
+It checks counts one/two/three, all scale modes and snapshots accumulator,
+LC and SP after completion; full machine state is compared after every halt.
