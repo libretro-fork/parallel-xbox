@@ -57,6 +57,8 @@
 
 ## Unreleased
 
+- DSP: prevent accumulated cycle budgets from overflowing and stalling execution after long sequences of early-halting frames.
+
 - Reuse the optimizer's TCG context for environment-base checks in load/store forwarding, avoiding TLS lookups while retaining forwarding eligibility and memory-copy invalidation.
 
 - Reuse the optimizer's TCG context for folded constants and scratch temporaries, avoiding TLS lookups while preserving constant caching, temporary reuse and optimizer metadata initialization.

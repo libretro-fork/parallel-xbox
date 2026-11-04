@@ -4306,3 +4306,16 @@ This is an exhaustive eligibility check, not execution of every encoding or
 a hardware-validity claim for reserved operands. Existing differential,
 independent-state, callback and production fixtures verify execution behavior.
 Other nonparallel operand/context fallback guards remain separate.
+
+`dspnative --budget-overflow` checks 216 budget checkpoints over repeated
+frame restarts in both interpreter and native engines, including 160 executed
+instruction boundaries with zero JIT interpreter calls. Independent wide-sum
+oracles cover near/exact signed limits, positive carry, negative debt, zero
+requests, chunked runs and run-until-halt. They require exact remaining credit,
+HALT state, PC and six-cycle MOVEP retirement. Budget addition now saturates
+only outside the signed 32-bit range; all representable carry is unchanged.
+The previous addition wrapped accumulated positive frame credit into negative
+debt and could prevent cheap frames from executing. A five-million-frame
+synthetic MPYI run reproduced a stall before the fix and completed afterward.
+This is host scheduling credit, not a change to guest arithmetic or cycle
+counts. The test runs in the default native suite as well as its selector.
