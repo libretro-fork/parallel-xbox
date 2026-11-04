@@ -72,6 +72,12 @@ for original, replacement in [('tcg_can_emit_vec_op', 'fixture_vec_capability'),
                               ('tcg_temp_free_internal', 'fixture_cmp_temp_free')]:
     comparison = comparison.replace(original, replacement)
 code = code.replace('/* COMPARISON */', comparison)
+selection = '\n'.join(function(key, (r / 'tcg/tcg-op-vec.c').read_text())
+                       for key in ['void tcg_gen_and_vec(', 'void tcg_gen_or_vec(',
+                                   'void tcg_gen_andc_vec(', 'void tcg_gen_bitsel_vec('])
+selection = selection.replace('TCG_TARGET_HAS_andc_vec', '1').replace(
+    'TCG_TARGET_HAS_bitsel_vec', 'fixture_has_bitsel')
+code = code.replace('/* SELECTION */', selection)
 with tempfile.TemporaryDirectory(prefix='tcg-global-layout-') as temporary:
     folder = Path(temporary)
     (folder / 'test.c').write_text(code)

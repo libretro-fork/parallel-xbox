@@ -2,6 +2,7 @@
 #include "qemu/osdep.h"
 #include "tcg/tcg.h"
 #include "tcg/tcg-temp-internal.h"
+#include "tcg/tcg-op-common.h"
 G_NORETURN void g_assertion_message_expr(const char *domain, const char *file,
                                        int line, const char *func, const char *expr)
 {
@@ -133,6 +134,8 @@ static void fixture_cmp_temp_free(TCGTemp *temp)
 }
 /* PRODUCTION */
 /* COMPARISON */
+static bool fixture_has_bitsel;
+/* SELECTION */
 
 static void check_ops(TCGContext *owner, bool current)
 {
@@ -795,6 +798,62 @@ static void check_global(TCGTemp *temp, TCGTemp *base, intptr_t offset,
     }
 }
 
+static void check_vector_bitsel(TCGContext *owner)
+{
+    static unsigned char arena[4096] QEMU_ALIGNED(16);
+    unsigned cases = 0;
+    for (TCGType type = TCG_TYPE_V64; type <= TCG_TYPE_V256; ++type)
+    for (unsigned host = 0; host < 2; ++host)
+    for (unsigned alias = 0; alias < 4; ++alias)
+    for (unsigned wider = 0; wider < 2; ++wider)
+    for (unsigned vece = 0; vece < 4; ++vece) {
+        reset_new_temps(owner);
+        TCGv_vec r = tcg_temp_new_vec(type);
+        TCGv_vec handles[3];
+        for (unsigned j = 0; j < 3; ++j) {
+            handles[j] = alias == j + 1 ? r :
+                tcg_temp_new_vec(wider ? TCG_TYPE_V256 : type);
+        }
+        TCGArg ri = tcgv_vec_arg(r), ai = tcgv_vec_arg(handles[0]);
+        TCGArg bi = tcgv_vec_arg(handles[1]), ci = tcgv_vec_arg(handles[2]);
+        owner->pool_cur = (uintptr_t)arena;
+        owner->pool_end = owner->pool_cur + sizeof(arena);
+        owner->nb_ops = 0;
+        owner->emit_before_op = NULL;
+        QTAILQ_INIT(&owner->ops);
+        QTAILQ_INIT(&owner->free_ops);
+        fixture_has_bitsel = host;
+        int used = owner->nb_temps;
+        tcg_gen_bitsel_vec(vece, r, handles[0], handles[1], handles[2]);
+        TCGOp *op = QTAILQ_FIRST(&owner->ops);
+        assert(op && TCGOP_TYPE(op) == type && TCGOP_VECE(op) == 0);
+        if (host) {
+            assert(owner->nb_ops == 1 && !QTAILQ_NEXT(op, link));
+            assert(op->opc == INDEX_op_bitsel_vec);
+            assert(op->args[0] == ri && op->args[1] == ai);
+            assert(op->args[2] == bi && op->args[3] == ci);
+            assert(owner->nb_temps == used);
+        } else {
+            assert(owner->nb_ops == 3 && owner->nb_temps == used + 1);
+            TCGArg ti = temp_arg(&owner->temps[used]);
+            assert(op->opc == INDEX_op_and_vec);
+            assert(op->args[0] == ti && op->args[1] == ai && op->args[2] == bi);
+            op = QTAILQ_NEXT(op, link);
+            assert(op && op->opc == INDEX_op_andc_vec);
+            assert(TCGOP_TYPE(op) == type && TCGOP_VECE(op) == 0);
+            assert(op->args[0] == ri && op->args[1] == ci && op->args[2] == ai);
+            op = QTAILQ_NEXT(op, link);
+            assert(op && op->opc == INDEX_op_or_vec && !QTAILQ_NEXT(op, link));
+            assert(TCGOP_TYPE(op) == type && TCGOP_VECE(op) == 0);
+            assert(op->args[0] == ri && op->args[1] == ri && op->args[2] == ti);
+            assert(!owner->temps[used].temp_allocated);
+            assert(test_bit(used, owner->free_temps[type].l));
+        }
+        ++cases;
+    }
+    printf("TCG vector bit-selection: %u native/fallback, width and alias cases PASS\n", cases);
+}
+
 int main(void)
 {
     static TCGContext context;
@@ -927,6 +986,7 @@ int main(void)
     check_vector_operands(&context, &other);
     check_vector_shifts(&context);
     check_vector_comparison(&context);
+    check_vector_bitsel(&context);
     puts("TCG rollback: suffix/full/empty removal, branch uses and reuse PASS");
     puts("TCG ops: owners, allocation/reuse, insertion order and epilogues PASS");
     printf("TCG global layout: %d-bit direct/indirect globals, %shandles and frame PASS\n",

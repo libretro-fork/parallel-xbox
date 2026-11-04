@@ -590,10 +590,11 @@ void tcg_gen_shrs_vec(unsigned vece, TCGv_vec r, TCGv_vec a, TCGv_i32 b)
 void tcg_gen_bitsel_vec(unsigned vece, TCGv_vec r, TCGv_vec a,
                         TCGv_vec b, TCGv_vec c)
 {
-    TCGTemp *rt = tcgv_vec_temp(r);
-    TCGTemp *at = tcgv_vec_temp(a);
-    TCGTemp *bt = tcgv_vec_temp(b);
-    TCGTemp *ct = tcgv_vec_temp(c);
+    TCGContext *s = tcg_ctx;
+    TCGTemp *rt = tcgv_vec_temp_context(s, r);
+    TCGTemp *at = tcgv_vec_temp_context(s, a);
+    TCGTemp *bt = tcgv_vec_temp_context(s, b);
+    TCGTemp *ct = tcgv_vec_temp_context(s, c);
     TCGType type = rt->base_type;
 
     tcg_debug_assert(at->base_type >= type);
