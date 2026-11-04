@@ -954,7 +954,10 @@ static void vk_spec_compile_state(const ShaderState *st)
         uint64_t key_hash = fast_hash((const uint8_t *)&keys[i], sizeof(keys[i]));
         ShaderSource *spv = vk_spec_compile_module(&keys[i], key_hash);
         VkSpecDone d;
-        memset(&d, 0, sizeof(d));
+        /* Preserve zero padding around the key, which is overwritten below. */
+        memset(&d, 0, offsetof(VkSpecDone, key));
+        const size_t after_key = offsetof(VkSpecDone, key) + sizeof(d.key);
+        memset((char *)&d + after_key, 0, sizeof(d) - after_key);
         d.key = keys[i];
         d.key_hash = key_hash;
         d.spirv = spv;
