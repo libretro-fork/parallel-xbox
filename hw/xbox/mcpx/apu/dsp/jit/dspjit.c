@@ -2229,23 +2229,33 @@ static void emit_pm_4x(Tr *t, const Insn *in, const AluOp *a)
         case 5: {
             /* limited: the low part is all ones or all zeros */
             int n = numreg - 4;
-            size_t j;
+            size_t j, fits_zero = 0;
             acc_load(t, n);
             emit_acc_limit(t, n, V1);
-            /* limited iff the value does not fit 48 bits */
+            /* Use the same scaled fit test as emit_acc_limit: the low
+             * word is replaced only when the high-word read limited. */
             h_mov_rr(e, 1, V2, acc_reg(n));
             h_and_ri(e, 0, V2, 0xFFFFFF);
             h_mov_rr(e, 1, T2, acc_reg(n));
-            h_sar_ri(e, 1, T2, 47);
-            h_add_ri(e, 1, T2, 1);
-            h_cmp_ri(e, 1, T2, 1);
-            j = h_jcc(e, HC_BE);
+            if (t->mode == 2) {
+                h_shr_ri(e, 1, T2, 46);
+                h_and_ri(e, 0, T2, 0x3FD);
+                fits_zero = h_jcc(e, HC_EQ);
+                h_cmp_ri(e, 0, T2, 0x3FD);
+                j = h_jcc(e, HC_EQ);
+            } else {
+                h_sar_ri(e, 1, T2, t->mode == 1 ? 48 : 47);
+                h_add_ri(e, 1, T2, 1);
+                h_cmp_ri(e, 1, T2, 1);
+                j = h_jcc(e, HC_BE);
+            }
             h_mov_rr(e, 0, V2, V1);
             h_shr_ri(e, 0, V2, 23);
             h_and_ri(e, 0, V2, 1);
             h_sub_ri(e, 0, V2, 1);
             h_and_ri(e, 0, V2, 0xFFFFFF);
             h_patch(e, j, e->len);
+            if (t->mode == 2) h_patch(e, fits_zero, e->len);
             break;
         }
         case 6: /* AB */
