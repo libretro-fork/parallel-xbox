@@ -829,10 +829,11 @@ static inline bool access_callback_address_matches(MemAccessCallback *cb,
 
 int mem_access_callback_address_matches(CPUState *cpu, hwaddr addr, hwaddr len)
 {
+    RCU_READ_LOCK_GUARD();
     int ret = 0;
 
     MemAccessCallback *cb;
-    QTAILQ_FOREACH(cb, &cpu->mem_access_callbacks, entry) {
+    QTAILQ_FOREACH_RCU(cb, &cpu->mem_access_callbacks, entry) {
         if (access_callback_address_matches(cb, addr, len, NULL, NULL)) {
             ret |= retro_atomic_load_relaxed_int(&cb->watch_flags);
         }
@@ -845,7 +846,7 @@ static void do_mem_access_callback_insert(CPUState *cpu, run_on_cpu_data data)
 
 {
     MemAccessCallback *cb = (MemAccessCallback *)data.host_ptr;
-    QTAILQ_INSERT_TAIL(&cpu->mem_access_callbacks, cb, entry);
+    QTAILQ_INSERT_TAIL_RCU(&cpu->mem_access_callbacks, cb, entry);
 }
 
 MemAccessCallback *mem_access_callback_insert(CPUState *cpu, MemoryRegion *mr,
@@ -876,8 +877,9 @@ static void do_mem_access_callback_remove_by_ref(CPUState *cpu,
                                                  run_on_cpu_data data)
 {
     MemAccessCallback *cb = (MemAccessCallback *)data.host_ptr;
-    QTAILQ_REMOVE(&cpu->mem_access_callbacks, cb, entry);
-    g_free(cb);
+    QTAILQ_REMOVE_RCU(&cpu->mem_access_callbacks, cb, entry);
+    /* Unlink without waiting: an external reader may still use cb or next. */
+    g_free_rcu(cb, rcu);
 }
 
 void mem_access_callback_remove_by_ref(CPUState *cpu, MemAccessCallback *cb)
@@ -920,8 +922,9 @@ void mem_check_access_callback_ramaddr(CPUState *cpu,
                                        hwaddr ram_addr, vaddr len, int flags)
 {
     LR_DSP_EXTERNAL_GUARD;
+    RCU_READ_LOCK_GUARD();
     MemAccessCallback *cb;
-    QTAILQ_FOREACH(cb, &cpu->mem_access_callbacks, entry) {
+    QTAILQ_FOREACH_RCU(cb, &cpu->mem_access_callbacks, entry) {
         hwaddr hit_addr, hit_len;
         if (access_callback_address_matches(cb, ram_addr, len,
                                              &hit_addr, &hit_len)) {

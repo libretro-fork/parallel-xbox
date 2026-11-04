@@ -4452,3 +4452,12 @@ Immediate loads remain values; store tags retain their address interpretation.
 Computed, alias and peripheral operands keep mapped/guarded paths. A new
 production fixture combines both classes with ADD, REP, counted DO and RAM
 limit addresses across frames, and supports optional synthetic timing.
+
+`test-memory-callback-rcu.py` extracts production callback types, matching,
+dispatch and insert/remove functions and uses the actual lock-free RCU queue
+macros with libretro-common threads. A controlled grace-period provider keeps
+a held callback alive after unlink; four concurrent readers race30000
+replacements and atomic flag changes. Immediate-free and missing-guard
+negative controls must fail. The grace provider is modeled here;
+`test-rcu-owner.py` and `test-rcu-callbacks.py` exercise the production RCU
+registry/grace-period owner and deferred callback worker independently.

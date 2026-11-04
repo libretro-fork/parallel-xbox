@@ -1,5 +1,6 @@
 # Changelog of the libretro core
 
+- Memory ownership callback lists now use lock-free RCU publication and deferred node reclamation. DMA readers can finish using an unlinked callback without racing an immediate free; removals do not wait for a grace period or force direct mappings through bounce buffers.
 - CPU/DMA memory callbacks now receive only the bytes that overlap their watched range. Accesses starting before a watch no longer extend the callback past the real access, and empty or final-address spans are matched without end-address wraparound.
 - Remove inert TCG vector diagnostic-list tracking and its save/restore scaffolding. Keep actual host-capability lists and vector fallbacks; make the ABS fallback support sanity query debug-only.
 - Keep expensive TCG diagnostic predicates out of release translation. Remove the per-ordinary-op support sanity query and redundant direct-chain TLS check while preserving debug/static-analysis validation, live capability decisions and optimizer assumptions.

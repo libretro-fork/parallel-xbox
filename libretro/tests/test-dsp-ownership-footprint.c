@@ -14,6 +14,8 @@
 typedef uint64_t ram_addr_t;
 static uint64_t ownership_pages[512],ownership_tables[512];
 static retro_eventcount_t gpu_ownership_changed;
+#define WITH_RCU_READ_LOCK_GUARD() for(int rcu_once=1;rcu_once;rcu_once=0)
+#define QTAILQ_FOREACH_RCU QTAILQ_FOREACH
 /* PRODUCTION GPU */
 static uint8_t ram[1024*1024];static unsigned reads;
 typedef struct {uint8_t *ram_ptr;void *ram;uint32_t regs[0x20000];} MCPXAPUState;

@@ -492,3 +492,10 @@ CPU and mapped-DMA ownership callbacks receive the exact intersection with
 their watched RAM range. Matching uses offset arithmetic for empty and
 final-address spans; it adds no bounce buffer, payload copy, lock or GPU query.
 Existing GPU-owned-memory coherence waits remain where required.
+
+Memory ownership callback links use the existing libretro-common-backed RCU
+queues. Read-side scopes protect matching, dispatch and DSP footprint scans;
+the CPU owner unlinks callbacks and queues deferred node reclamation without
+a synchronous grace-period wait. Existing device/MemoryRegion ownership and
+direct DMA leases remain in effect. Callback removal adds no payload copy,
+bounce buffer, mutex/spinlock or GPU query.
