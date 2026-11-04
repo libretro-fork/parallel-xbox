@@ -40,6 +40,8 @@
 
 ## Unreleased
 
+- DSP: implement low X peripheral transfers to/from program memory in the C interpreter and JIT, preserving address updates and code-cache invalidation; add exhaustive native regressions.
+
 - DSP: execute X:qq register MOVEP transfers natively, including split peripheral ports, register masks, accumulator limiting and SSH stack effects.
 
 - DSP: branch natively on control-register bits, preserving current status, stack-pointer flags and raw SSH reads without popping.

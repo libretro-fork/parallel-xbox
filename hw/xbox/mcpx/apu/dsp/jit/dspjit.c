@@ -2581,7 +2581,7 @@ static int np_kind(const Insn *in)
         !strcmp(name, "movep [X or Y]:ea <-> X:qq")) {
         return NP_MOVEP_EA;
     }
-    if (!strcmp(name, "movep [X or Y]:pp <-> P:ea")) {
+    if (!strcmp(name, "movep [X or Y]:pp <-> P:ea") || !strcmp(name, "movep [X or Y]:qq <-> P:ea")) {
         return NP_MOVEP_P;
     }
     if (!strcmp(name, "movep [X or Y]:pp <-> R") || !strcmp(name, "movep X:qq <-> R")) {
@@ -3046,6 +3046,10 @@ static void emit_nonparallel(Tr *t, const Insn *in, int kind)
     }
 
     case NP_MOVEP_P: {
+        bool low = !strcmp(in->d.name, "movep [X or Y]:qq <-> P:ea");
+        int space = low ? DSP_SPACE_X : (inst >> 16) & 1;
+        uint32_t peraddr = (low ? 0xffff80 : 0xffffc0) + (inst & 63);
+        bool out = (inst & (1u << (low ? 14 : 15))) != 0;
         Ea ea;
         acc_spill_all(t, false);
         emit_calc_ea(t, (inst >> 8) & 63, in->ext, EA1, &ea);
@@ -3054,7 +3058,7 @@ static void emit_nonparallel(Tr *t, const Insn *in, int kind)
             ea.abs = ea.imm;
         }
         int addr = ea_addr_reg(t, &ea);
-        if (inst & (1 << 15)) {
+        if (out) {
             h_cmp_ri(e, 0, addr, DSP_PRAM_SIZE);
             size_t j = h_jcc(e, HC_AE);
             h_ld32_idx4(e, V1, REG_CORE, addr, OFF(pram));
@@ -3062,12 +3066,12 @@ static void emit_nonparallel(Tr *t, const Insn *in, int kind)
             s->reg = addr;
             s->reg2 = V1;
             s->back = e->len;
-            h_mov_ri(e, EA2, 0xFFFFC0 + (inst & 63));
-            emit_write_mem(t, (inst >> 16) & 1, EA2, V1);
+            h_mov_ri(e, EA2, peraddr);
+            emit_write_mem(t, space, EA2, V1);
         } else {
             /* The peripheral callback must preserve the computed P address. */
-            h_mov_ri(e, EA2, 0xFFFFC0 + (inst & 63));
-            emit_read_mem(t, (inst >> 16) & 1, EA2, V1);
+            h_mov_ri(e, EA2, peraddr);
+            emit_read_mem(t, space, EA2, V1);
             h_mov_rr(e, 0, H_ARG2, V1);
             h_mov_rr(e, 0, H_ARG1, addr);
             h_mov_rr(e, 1, H_ARG0, REG_CORE);
