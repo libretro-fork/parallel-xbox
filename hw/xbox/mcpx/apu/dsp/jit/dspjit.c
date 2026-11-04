@@ -2308,6 +2308,9 @@ static void emit_pm_5(Tr *t, const Insn *in, const AluOp *a)
     int memspace = (inst >> 19) & 1;
     int numreg = ((inst >> 16) & 7) | ((inst >> 17) & 0x18);
     bool write = inst & (1 << 15);
+    /* Short aa operands cannot address a peripheral on either bus. */
+    bool short_ram = !(inst & (1 << 14));
+    int ramoff = (memspace ? OFF(yram) : OFF(xram)) + value * 4;
     Ea ea;
 
     if (inst & (1 << 14)) {
@@ -2319,7 +2322,9 @@ static void emit_pm_5(Tr *t, const Insn *in, const AluOp *a)
     }
 
     if (write) {
-        if (ea.kind == EA_IMM) {
+        if (short_ram) {
+            h_ld32(e, V1, REG_CORE, ramoff);
+        } else if (ea.kind == EA_IMM) {
             h_mov_ri(e, V1, ea.imm);
         } else {
             emit_read_mem(t, memspace, ea_addr_reg(t, &ea), V1);
@@ -2330,7 +2335,7 @@ static void emit_pm_5(Tr *t, const Insn *in, const AluOp *a)
             ea.kind = EA_ABS;
             ea.abs = ea.imm;
         }
-        ea_addr_reg(t, &ea);
+        if (!short_ram) ea_addr_reg(t, &ea);
         emit_read_reg(t, numreg, V1);
     }
 
@@ -2339,7 +2344,8 @@ static void emit_pm_5(Tr *t, const Insn *in, const AluOp *a)
     if (write) {
         emit_write_reg(t, numreg, V1);
     } else {
-        emit_write_mem(t, memspace, ea.reg, V1);
+        if (short_ram) h_st32(e, REG_CORE, ramoff, V1);
+        else emit_write_mem(t, memspace, ea.reg, V1);
     }
 }
 

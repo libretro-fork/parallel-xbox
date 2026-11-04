@@ -4334,3 +4334,19 @@ and negative controls catch wrong RAM offsets and overly broad fast paths.
 inside REP and counted DO loops across frames, and serves as an optional
 synthetic timing workload. This optimization does not change bit-operation
 semantics or the handling of peripheral side effects.
+
+`dspnative --short-parallel-ram` checks 283,136 boundaries with zero
+interpreter calls. The differential matrix combines all 252 supported ALU
+bytes, 28 encodable register selectors, X/Y loads/stores, four scale modes,
+rotating short addresses and ordinary/DO/long-interrupt contexts. Independent
+NOP oracles cover every short address and register, checking raw register
+widths, accumulator loads, store-source reads, status, PC and cycles, with
+peripheral callbacks poisoned. Memory sources and register store sources
+remain sampled before the ALU; fixed-address loads/stores remove address
+setup, bounds stubs and callback exit checks only for the 0..63 RAM range.
+The Y callback/DO halt regressions retain coverage of effective-address paths;
+negative controls reject wrong offsets and broadening the fast path to them.
+`gp-startup-short-parallel-ram.inc` runs RAM loads/stores with ADD inside REP
+and counted DO loops across frames and supports synthetic timing comparisons.
+This does not alter immediate operands, peripheral behavior or legacy limiter
+semantics, and does not establish a game-wide performance improvement.

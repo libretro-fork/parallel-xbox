@@ -57,6 +57,8 @@
 
 ## Unreleased
 
+- DSP: emit direct RAM accesses for parallel short-address loads and stores while preserving pre-ALU source snapshots and accumulator limiting.
+
 - DSP: emit direct RAM accesses for short-address memory bit operations, avoiding unnecessary peripheral bounds and callback-exit checks.
 
 - Avoid moving the completed SPIR-V function stream when a reserved 256-word prefix fits; retain the allocation owner through Vulkan shader lifetimes and compact larger prefixes safely.
