@@ -833,6 +833,18 @@ static void dis_bset_reg(dsp_core_t* dsp)
     sprintf(dsp->disasm_str_instr,"bset #%d,%s", numbit, registers_name[value]);
 }
 
+static void dis_relative_register_bitcall(dsp_core_t* dsp, const char *name)
+{
+    uint32_t displacement = read_memory_p(dsp, dsp->pc + 1);
+    dsp->disasm_cur_inst_len++;
+    sprintf(dsp->disasm_str_instr, "%s #%u,%s,p:$%06x", name,
+            dsp->disasm_cur_inst & 31, registers_name[(dsp->disasm_cur_inst >> 8) & 63],
+            (dsp->pc + displacement) & BITMASK(24));
+}
+
+static void dis_bsclr_reg(dsp_core_t* dsp) { dis_relative_register_bitcall(dsp, "bsclr"); }
+static void dis_bsset_reg(dsp_core_t* dsp) { dis_relative_register_bitcall(dsp, "bsset"); }
+
 static void dis_bscc_long(dsp_core_t* dsp)
 {
     char condition[16];
