@@ -2337,6 +2337,19 @@ static void emit_pm_4x(Tr *t, const Insn *in, const AluOp *a)
     }
 }
 
+/* X aliases start before the end of xram[]; they must use mapped access. */
+static bool single_ram_address(int space, uint32_t address)
+{
+    return (space == DSP_SPACE_X && address < DSP_XRAM_FAST) ||
+           (space == DSP_SPACE_Y && address < DSP_YRAM_SIZE);
+}
+#ifdef DSPJIT_TEST
+int dspjit_test_single_ram_address(int space, uint32_t address)
+{
+    return single_ram_address(space, address);
+}
+#endif
+
 static void emit_pm_5(Tr *t, const Insn *in, const AluOp *a)
 {
     Emitter *e = &t->e;
@@ -2345,9 +2358,6 @@ static void emit_pm_5(Tr *t, const Insn *in, const AluOp *a)
     int memspace = (inst >> 19) & 1;
     int numreg = ((inst >> 16) & 7) | ((inst >> 17) & 0x18);
     bool write = inst & (1 << 15);
-    /* Short aa operands cannot address a peripheral on either bus. */
-    bool short_ram = !(inst & (1 << 14));
-    int ramoff = (memspace ? OFF(yram) : OFF(xram)) + value * 4;
     Ea ea;
 
     if (inst & (1 << 14)) {
@@ -2358,8 +2368,16 @@ static void emit_pm_5(Tr *t, const Insn *in, const AluOp *a)
         ea.abs = value;
     }
 
+    if (!write && ea.kind == EA_IMM) {
+        /* Store-direction immediate tags remain addresses, not values. */
+        ea.kind = EA_ABS;
+        ea.abs = ea.imm;
+    }
+    bool fixed_ram = ea.kind == EA_ABS && single_ram_address(memspace, ea.abs);
+    int ramoff = fixed_ram ? (memspace ? OFF(yram) : OFF(xram)) + ea.abs * 4 : 0;
+
     if (write) {
-        if (short_ram) {
+        if (fixed_ram) {
             h_ld32(e, V1, REG_CORE, ramoff);
         } else if (ea.kind == EA_IMM) {
             h_mov_ri(e, V1, ea.imm);
@@ -2367,12 +2385,7 @@ static void emit_pm_5(Tr *t, const Insn *in, const AluOp *a)
             emit_read_mem(t, memspace, ea_addr_reg(t, &ea), V1);
         }
     } else {
-        if (ea.kind == EA_IMM) {
-            /* the interpreter writes to the immediate as an address */
-            ea.kind = EA_ABS;
-            ea.abs = ea.imm;
-        }
-        if (!short_ram) ea_addr_reg(t, &ea);
+        if (!fixed_ram) ea_addr_reg(t, &ea);
         emit_read_reg(t, numreg, V1);
     }
 
@@ -2381,7 +2394,7 @@ static void emit_pm_5(Tr *t, const Insn *in, const AluOp *a)
     if (write) {
         emit_write_reg(t, numreg, V1);
     } else {
-        if (short_ram) h_st32(e, REG_CORE, ramoff, V1);
+        if (fixed_ram) h_st32(e, REG_CORE, ramoff, V1);
         else emit_write_mem(t, memspace, ea.reg, V1);
     }
 }

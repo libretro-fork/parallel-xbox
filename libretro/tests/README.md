@@ -4350,8 +4350,9 @@ The Y callback/DO halt regressions retain coverage of effective-address paths;
 negative controls reject wrong offsets and broadening the fast path to them.
 `gp-startup-short-parallel-ram.inc` runs RAM loads/stores with ADD inside REP
 and counted DO loops across frames and supports synthetic timing comparisons.
-This does not alter immediate operands, peripheral behavior or legacy limiter
-semantics, and does not establish a game-wide performance improvement.
+Immediate operands, peripheral behavior and legacy limiter semantics are
+preserved; constant-address specialization is described below. This does not
+establish a game-wide performance improvement.
 
 `dspnative --long-move-limiter` checks 3,840 paired X/Y whole-accumulator
 store boundaries with zero interpreter calls. Independent high/low word
@@ -4419,3 +4420,18 @@ aggregation and dispatch. An independent 128-bit interval oracle covers400056
 read/write/DSP-acceptance cases, including accesses starting before a watch,
 empty spans, near-final-address ranges and offsets relative to the memory
 region. The pre-change source fails the exact callback-span oracle.
+
+`dspnative --constant-single-ram` checks 21,600 constant-address single-bus
+move boundaries, including register width/accumulator aliases, absolute and
+immediate-tag operands, representative ALUs, four scaling modes, ordinary
+and long-interrupt contexts. Cases cover both RAM limits and X mixbuffer
+aliases, with peripheral callbacks poisoned. Nonexecuting queries check every
+24-bit address on each bus plus invalid space/32-bit inputs: X ordinary RAM
+ends before 0xc00, Y before 0x800; X aliases retain mapped accesses. Immediate
+loads remain values, while store-direction immediate tags retain the existing
+address interpretation. The prior short-move and callback/DO halt matrices
+also run, for 306,272 focused boundaries with zero interpreter calls.
+Constant RAM accesses avoid address setup, bounds stubs and callback exits;
+computed addresses and peripheral targets keep their existing paths. The
+production fixture uses RAM limits and both immediate directions with ADD,
+REP and counted DO across frames. Synthetic timing is not a game-wide claim.
