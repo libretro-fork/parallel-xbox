@@ -2076,8 +2076,9 @@ static bool pm_supported(const Insn *in)
     }
     switch (type) {
     case 0:
-    case 1:
         return false;
+    case 1:
+        return true;
     case 2:
         if ((inst & 0xffff00) == 0x200000 || (inst & 0xffe000) == 0x204000) {
             return true;
@@ -2106,6 +2107,47 @@ static bool pm_supported(const Insn *in)
     default:
         return true;
     }
+}
+
+/* Memory move plus accumulator-to-opposite-bus register transfer. Both
+ * sources (including limiter effects) are sampled before the parallel ALU. */
+static void emit_pm_1(Tr *t, const Insn *in, const AluOp *a)
+{
+    Emitter *e = &t->e;
+    uint32_t inst = in->inst;
+    unsigned space = (inst >> 14) & 1;
+    static const int regs[2][4] = {
+        {DSP_REG_X0, DSP_REG_X1, DSP_REG_A, DSP_REG_B},
+        {DSP_REG_Y0, DSP_REG_Y1, DSP_REG_A, DSP_REG_B}
+    };
+    int primary = regs[space][(inst >> (space ? 16 : 18)) & 3];
+    int source = DSP_REG_A + ((inst >> (space ? 19 : 17)) & 1);
+    int destination = (space ? DSP_REG_X0 : DSP_REG_Y0) + ((inst >> (space ? 18 : 16)) & 1);
+    bool load = (inst & (1 << 15)) != 0;
+    Ea ea;
+    emit_calc_ea(t, (inst >> 8) & 63, in->ext, EA1, &ea);
+    if (load) {
+        if (ea.kind == EA_IMM) h_mov_ri(e, V1, ea.imm);
+        else emit_read_mem(t, space, ea_addr_reg(t, &ea), V1);
+    } else {
+        if (ea.kind == EA_IMM) { ea.kind = EA_ABS; ea.abs = ea.imm; }
+        ea_addr_reg(t, &ea);
+        emit_read_reg(t, primary, V1);
+    }
+    emit_read_reg(t, source, V2);
+    emit_alu(t, a);
+    if (load) {
+        emit_write_reg(t, primary, V1);
+        /* pm_1 also publishes the accumulator's pseudo-register slot.
+         * Preserve that interpreter-visible state in addition to A0/A1/A2. */
+        if (primary == DSP_REG_A || primary == DSP_REG_B)
+            h_st32(e, REG_CORE, REGOFF(primary), V1);
+    } else {
+        emit_write_mem(t, space, ea.reg, V1);
+        /* Either peripheral bus can halt or invalidate program code. */
+        t->wrote_x = true;
+    }
+    emit_write_reg(t, destination, V2);
 }
 
 static void emit_pm_2(Tr *t, const Insn *in, const AluOp *a)
@@ -2376,6 +2418,9 @@ static void emit_parallel(Tr *t, const Insn *in)
 
     decode_alu(inst & 0xFF, &a);
     switch (type) {
+    case 1:
+        emit_pm_1(t, in, &a);
+        break;
     case 2:
     case 3:
         emit_pm_2(t, in, &a);
