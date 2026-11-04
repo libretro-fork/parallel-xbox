@@ -171,8 +171,7 @@ void tcg_gen_mov_vec(TCGv_vec r, TCGv_vec a)
 
 void tcg_gen_dupi_vec(unsigned vece, TCGv_vec r, uint64_t a)
 {
-    TCGTemp *rt = tcgv_vec_temp(r);
-    tcg_gen_mov_vec(r, tcg_constant_vec(rt->base_type, vece, a));
+    tcg_gen_mov_vec(r, tcg_constant_vec_matching(r, vece, a));
 }
 
 void tcg_gen_dup_i64_vec(unsigned vece, TCGv_vec r, TCGv_i64 a)

@@ -1028,6 +1028,56 @@ static void check_vector_data(TCGContext *owner)
     printf("TCG vector data: %u duplication, offset, partial-store and split-i64 cases PASS\n", cases);
 }
 
+static void check_vector_immediate(TCGContext *owner)
+{
+    static unsigned char arena[4096] QEMU_ALIGNED(16);
+    static const uint64_t values[] = { 0, 1, UINT64_MAX, INT32_MIN, INT32_MAX,
+        UINT64_C(0x8000000000000000), INT64_MAX, UINT64_C(0x0123456789abcdef) };
+    unsigned cases = 0;
+    for (TCGType type = TCG_TYPE_V64; type <= TCG_TYPE_V256; ++type)
+    for (unsigned vece = 0; vece < 4; ++vece)
+    for (unsigned vi = 0; vi < ARRAY_SIZE(values); ++vi) {
+        reset_new_temps(owner);
+        ++owner->const_gen;
+        TCGv_vec r = tcg_temp_new_vec(type);
+        TCGArg ri = tcgv_vec_arg(r);
+        owner->pool_cur = (uintptr_t)arena;
+        owner->pool_end = owner->pool_cur + sizeof(arena);
+        owner->nb_ops = 0;
+        owner->emit_before_op = NULL;
+        QTAILQ_INIT(&owner->ops);
+        QTAILQ_INIT(&owner->free_ops);
+        unsigned bits = 8u << vece;
+        uint64_t mask = UINT64_MAX >> (64 - bits);
+        uint64_t expected = 0;
+        for (unsigned shift = 0; shift < 64; shift += bits) {
+            expected |= (values[vi] & mask) << shift;
+        }
+        tcg_gen_dupi_vec(vece, r, values[vi]);
+        TCGOp *first = QTAILQ_FIRST(&owner->ops);
+        assert(first && first->opc == INDEX_op_mov_vec && owner->nb_ops == 1);
+        assert(TCGOP_TYPE(first) == type && TCGOP_VECE(first) == 0);
+        assert(first->args[0] == ri);
+        TCGTemp *constant = arg_temp(first->args[1]);
+        check_constant_value(constant, type, (int64_t)expected);
+        int used = owner->nb_temps;
+        tcg_gen_dupi_vec(vece, r, values[vi]);
+        TCGOp *second = QTAILQ_NEXT(first, link);
+        assert(owner->nb_temps == used && owner->nb_ops == 2);
+        assert(second && second->opc == INDEX_op_mov_vec && !QTAILQ_NEXT(second, link));
+        assert(TCGOP_TYPE(second) == type && TCGOP_VECE(second) == 0);
+        assert(second->args[0] == ri && second->args[1] == first->args[1]);
+        /* An already matching constant keeps the existing self-move elision. */
+        tcg_gen_dupi_vec(vece, (TCGv_vec)temp_tcgv_i32_context(owner, constant), values[vi]);
+        assert(owner->nb_temps == used && owner->nb_ops == 2);
+        assert(!QTAILQ_NEXT(second, link));
+        cases += 3;
+    }
+    free(owner->const_slots);
+    owner->const_slots = NULL;
+    printf("TCG vector immediates: %u replication, cache and self-move cases PASS\n", cases);
+}
+
 int main(void)
 {
     static TCGContext context;
@@ -1163,6 +1213,7 @@ int main(void)
     check_vector_bitsel(&context);
     check_vector_cmpsel(&context);
     check_vector_data(&context);
+    check_vector_immediate(&context);
     puts("TCG rollback: suffix/full/empty removal, branch uses and reuse PASS");
     puts("TCG ops: owners, allocation/reuse, insertion order and epilogues PASS");
     printf("TCG global layout: %d-bit direct/indirect globals, %shandles and frame PASS\n",
