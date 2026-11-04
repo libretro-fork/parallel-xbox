@@ -133,7 +133,10 @@ python3 "$here/test-vk-depth-reuse.py" "$here/../.." "$cc"
 python3 "$here/test-lru-visit.py" "$here/../.." "$cc"
 python3 "$here/test-lru-promote.py" "$here/../.." "$cc"
 python3 "$here/test-spsc-pair.py" "$here/../.." "$cc"
+python3 "$here/test-sibling-queue.py" "$here/../.." "$cc"
+python3 "$here/test-binding-state-hash.py" "$here/../.." "$cc" --copy-baseline --real-canonical --check-only
 python3 "$here/test-block-memory.py" "$here/../.." "$cc"
+python3 "$here/test-xbox-disc-profile.py" "$here/../.." "$cc"
 case $core in
 *.dll)
     case $h in
@@ -293,6 +296,8 @@ python3 "$here/test-vertex-snapshot-cache.py" "$here/../.." "$cc"
 python3 "$here/test-vk-vertex-copies.py" "$here/../.." "$cc"
 python3 "$here/test-vk-vertex-formats.py" "$here/../.." "$cc"
 python3 "$here/test-vk-worker-modules.py" "$here/../.." "$cc"
+python3 "$here/test-worker-key-hash.py" "$here/../.." "$cc" --clear-baseline --check-only
+python3 "$here/test-pre-module-keys.py" "$here/../.." "$cc" --fragment-clear-baseline --check-only
 python3 "$here/test-prepare-xiso.py"
 # Production GL transfers against Mesa's GL on a surfaceless EGL display
 case $core in
@@ -369,6 +374,7 @@ python3 "$here/test-gpl-lookup-cache.py" "$here/../.." "$cc"
 python3 "$here/test-wgl-context-versions.py" "$here/../.." "$cc"
 
 python3 "$here/test-gl-module-export.py" "$here/../.." "$cc"
+python3 "$here/test-gl-module-load.py" "$here/../.." "$cc"
 python3 "$here/test-gl-disk-writer.py" "$here/../.." "$cc"
 case $h in
 wine*)
@@ -575,6 +581,9 @@ nasm -f bin -I"$here/rom/" -o "$work/sysmmx/xemu/Complex_4627v1.03.bin" "$here/r
 mkdir -p "$work/sysfsw/xemu"
 cp "$work/sys/xemu/mcpx_1.0.bin" "$work/sysfsw/xemu/"
 nasm -f bin -I"$here/rom/" -o "$work/sysfsw/xemu/Complex_4627v1.03.bin" "$here/rom/x87-status.asm"
+mkdir -p "$work/sysdvdprofile/xemu"
+cp "$work/sys/xemu/mcpx_1.0.bin" "$work/sysdvdprofile/xemu/"
+nasm -f bin -I"$here/rom/" -o "$work/sysdvdprofile/xemu/Complex_4627v1.03.bin" "$here/rom/dvd-profile.asm"
 mkdir -p "$work/sysfpload/xemu"
 cp "$work/sys/xemu/mcpx_1.0.bin" "$work/sysfpload/xemu/"
 nasm -f bin -I"$here/rom/" -o "$work/sysfpload/xemu/Complex_4627v1.03.bin" "$here/rom/x87-load-precision.asm"
@@ -1641,6 +1650,16 @@ done
 # checked: status 0, none wrong. The reads go from the image straight into
 # the guest's memory; this is what says no byte got lost on the way.
 for dvd_prefix in '' 'content://' 'saf://'; do
+HARNESS_VFS_READ_LIMIT=7 t "small Xbox disc DVD profile: ${dvd_prefix:-native}" $h "$(path "$core")" "$(path "$work/sysdvdprofile")" "${dvd_prefix}$(path "$work/disc.iso")" $vp \
+  --frames 60 --strict --peek 0x300000 --peek 0x300004 --peek 0x300008 >"$work/dvd-profile.txt" || {
+    cat "$work/dvd-profile.txt"; exit 1;
+  }
+for want in "peek_0x300000=0x4b4f5044" "peek_0x300004=0x00000000" "peek_0x300008=0x00000010"; do
+  grep -q "^$want$" "$work/dvd-profile.txt" || {
+    cat "$work/dvd-profile.txt"; echo "FAIL: small Xbox disc profile"; exit 1;
+  }
+done
+
 echo "== DVD reads by DMA: ${dvd_prefix:-native}"
 HARNESS_VFS_READ_LIMIT=7 timeout 300 $h "$(path "$core")" "$(path "$work/sysv")" "${dvd_prefix}$(path "$work/disc.iso")" $vp \
   --frames 120 --strict --peek 0x300008 --peek 0x30000c --peek 0x300010 >"$work/dvd.txt"

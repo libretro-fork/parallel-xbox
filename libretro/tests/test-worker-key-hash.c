@@ -23,7 +23,7 @@ static unsigned emitted_n,lookup_n,module_count,queue_limit;
 static bool vk_spec_push_constants;
 static int vk_spec_out;
 #ifdef CHECKED
-static size_t hashed_bytes,hash_calls;
+static size_t hashed_bytes,hash_calls,zeroed_bytes;
 #endif
 static uint64_t counted_hash(const uint8_t *p,size_t n){
 #ifdef CHECKED
@@ -40,15 +40,25 @@ static ShaderSource *vk_spec_compile_module(const ShaderModuleCacheKey *key,uint
 #endif
  assert(lookup_n<3);lookup_hashes[lookup_n]=hash;sources[lookup_n].refs++;return &sources[lookup_n++];
 }
+#ifndef REFERENCE_REUSES_HASH
 static ShaderSource *reference_module(const ShaderModuleCacheKey *key){return vk_spec_compile_module(key,counted_hash((const uint8_t*)key,sizeof(*key)));}
+#endif
 static void pgraph_vk_shader_source_unref(ShaderSource *s){assert(s->refs>1);s->refs--;}
 static size_t retro_spsc_write(void *ring,const void *data,size_t size){assert(ring==&vk_spec_out&&size==sizeof(VkSpecDone));if(emitted_n==queue_limit)return 0;memcpy(&emitted[emitted_n++],data,size);return size;}
+static void *counted_memset(void *p,int value,size_t n){
+#ifdef CHECKED
+ zeroed_bytes+=n;
+#endif
+ return memset(p,value,n);
+}
+#define memset counted_memset
 #define fast_hash counted_hash
 /* FUNCTIONS */
 #undef fast_hash
+#undef memset
 static void reset(void){emitted_n=lookup_n=0;memset(emitted,0,sizeof(emitted));memset(lookup_hashes,0,sizeof(lookup_hashes));for(unsigned i=0;i<3;i++)sources[i].refs=1;
 #ifdef CHECKED
- hash_calls=hashed_bytes=0;
+ hash_calls=hashed_bytes=zeroed_bytes=0;
 #endif
 }
 static uint32_t seed=0x79abc632;
@@ -62,7 +72,12 @@ static void correctness(void){
   module_count=2+(trial&1);queue_limit=(trial>>1)%4;vk_spec_push_constants=(trial&8)!=0;
   reset();reference_state(&state);VkSpecDone expected[3];memcpy(expected,emitted,sizeof(expected));uint64_t expected_hashes[3];memcpy(expected_hashes,lookup_hashes,sizeof(expected_hashes));unsigned refs[3];for(unsigned i=0;i<3;i++)refs[i]=sources[i].refs;unsigned count=emitted_n;
 #ifdef CHECKED
+  assert(zeroed_bytes==module_count*sizeof(VkSpecDone));
+#ifdef REFERENCE_REUSES_HASH
+  assert(hash_calls==1+module_count&&hashed_bytes==sizeof(state)+module_count*sizeof(ShaderModuleCacheKey));
+#else
   assert(hash_calls==1+2*module_count&&hashed_bytes==sizeof(state)+2*module_count*sizeof(ShaderModuleCacheKey));
+#endif
 #endif
   reset();vk_spec_compile_state(&state);
   assert(count==emitted_n&&lookup_n==module_count&&!memcmp(expected,emitted,sizeof(expected))&&!memcmp(expected_hashes,lookup_hashes,sizeof(expected_hashes)));
@@ -73,9 +88,10 @@ static void correctness(void){
   }
 #ifdef CHECKED
   assert(hash_calls==1+module_count&&hashed_bytes==sizeof(state)+module_count*sizeof(ShaderModuleCacheKey));
+  assert(zeroed_bytes==module_count*(sizeof(VkSpecDone)-sizeof(ShaderModuleCacheKey)));
 #endif
  }
- puts("100000 states: complete records/hash values, lookup hashes, drops, state markers and reference counts match; counted build verifies one key hash/module");
+ puts("100000 states: complete record bytes, hashes, drops, markers and references match; counted build checks key hashes and skipped key clearing");
 }
 #ifndef CHECKED
 static volatile uint64_t sink;

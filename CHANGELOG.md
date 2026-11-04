@@ -1,5 +1,7 @@
 # Changelog of the libretro core
 
+- Small recognized Xbox disc images now report the DVD-ROM profile instead of CD-ROM. Identity is retained from the existing media-open probe, with no new command-time reads; frontend detection also recognizes the partition offsets already supported by the block loader.
+- OpenGL rejects module cache binaries that the driver cannot link, releases the failed program, and regenerates the shader instead of publishing an unusable cached stage.
 - OpenGL shader cache writes use a bounded background writer. Stage-module saves no longer perform filesystem I/O on the render thread, and shader eviction no longer joins a disk-save thread. Busy slots defer optional persistence without waiting or recopying module binaries.
 - GPIO boot probes at fixed LPC ports now work before the PM BAR is enabled, allowing firmware to identify the emulated Conexant encoder correctly. GPIO no longer follows PM BAR relocation.
 - OpenGL avoids redundant line-width driver updates when the effective width is unchanged, including widths clamped to the same host limit.
@@ -31,7 +33,30 @@
 
 - Generate and identify Xbox EEPROMs with libretro-common streaming SHA-1, preserving all custom keyed states and exact EEPROM bytes while removing the duplicate QEMU SHA-1 engine.
 
+- Skip clearing the 264-byte fragment shader state immediately before copying it into a Vulkan module key. Keep unused union bytes, options and padding initialized so complete key bytes and cache identity stay the same; prewarm construction is unchanged.
+
+- DSP: run X:pp conditional bit-test calls natively, preserving return-address saves, peripheral read counts and loop-end behavior.
+
+- Skip clearing the 2336-byte vertex shader state immediately before copying it into a Vulkan module key. Preserve all option, padding and unused-union bytes so shader hashes and cache identity stay the same, reducing CPU writes during prewarm and module lookup.
+
+- Skip clearing the 2348-byte module key immediately before copying it into each Vulkan worker completion record. Keep the surrounding padding initialized and preserve record bytes, hashes, queue-drop cleanup and shader ownership, reducing worker CPU memory writes.
+
+- DSP: execute X:qq relative bit-test calls natively, with wrapped PC-relative targets, correct stack saves and single peripheral reads.
+
+- Replace the Vulkan dynamic-sibling ShaderState clone with a borrowed 2304-byte prefix and a 316-byte canonical fragment tail. Hash spans directly, compare views against owned cache entries and publish complete queue records once; preserve exact state bytes, worker decisions and module ownership. Align the generated state and keep uncommon sibling work outside the resident binding path.
+
+- DSP: execute X:qq conditional bit-test calls natively with correct return-address saves and single peripheral reads.
+
+- DSP: execute X:qq absolute bit-test jumps natively, retaining single peripheral reads and correct loop-end handling.
+
+
+- DSP: execute X:qq bit-test relative branches natively, preserving flags and reading peripherals once on taken, untaken and loop-end paths.
+
+- DSP: execute X:qq peripheral bit operations natively, with exact read/modify/write side effects, carry and status regression coverage.
+
 - Keep frontend VFS reads coalesced across empty descriptors, avoiding extra provider calls for contiguous destinations while preserving short reads, EOF zero-fill and cursor recovery.
+
+- DSP: execute register-count logical shifts natively, preserving EXP/LSP and prior flags while handling aliased counts and normal/sixteen-bit words.
 
 - Fill consecutive sparse/zero QCOW2 clusters as a single destination run where possible, avoiding repeated cursor setup and per-cluster fills while preserving data/compressed boundaries and 32-bit size limits.
 
@@ -153,6 +178,7 @@
 - DSP: complete native register MOVEC coverage and fix read-direction copies into SR, which could read the wrong source and apply write-direction semantics. Preserve raw width-masked copies and SSH pops, with 98,304 new regression boundaries and a production program.
 
 - DSP: compile effective-address X/Y MOVEC control stores without interpreter fallback. Preserve address updates and SSH stack pops, including the destination across helper calls. Add 89,088 regression boundaries and a repeated-store program.
+
 
 - Add an all-or-nothing two-span SPSC write as the queue prerequisite for borrowed shader states. Copy spans directly into plain or mirrored rings and publish once after both are complete; reject oversized or non-fitting records without a partial write. Existing queue callers and renderer behavior are unchanged.
 

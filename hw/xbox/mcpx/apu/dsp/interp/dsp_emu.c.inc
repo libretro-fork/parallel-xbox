@@ -1705,6 +1705,31 @@ static void emu_logical_shift_imm(dsp_core_t* dsp, bool right)
         ((value == 0) << DSP_SR_Z);
 }
 
+static void emu_logical_shift_reg(dsp_core_t* dsp, bool right)
+{
+    static const unsigned controls[] = {DSP_REG_A1, DSP_REG_B1, DSP_REG_X0,
+                                        DSP_REG_X1, DSP_REG_Y0, DSP_REG_Y1};
+    unsigned dst = DSP_REG_A1 + (dsp->cur_inst & 1);
+    uint32_t count = dsp->registers[controls[((dsp->cur_inst >> 1) & 7) - 2]];
+    bool short_words = (dsp->registers[DSP_REG_SR] & (1u << DSP_SR_SA)) != 0;
+    unsigned bits = short_words ? 16 : 24;
+    uint32_t value = dsp->registers[dst] >> (short_words ? 8 : 0), carry = 0;
+    if (short_words) count >>= 8;
+    if (count) {
+        if (count <= bits) carry = (value >> (right ? count - 1 : bits - count)) & 1;
+        /* Oversized counts are a deterministic zero-result/zero-carry
+         * policy, not a hardware claim for undefined operands. */
+        value = count >= bits ? 0 : right ? value >> count : (value << count) & ((1u << bits) - 1);
+    }
+    dsp->registers[dst] = value << (short_words ? 8 : 0);
+    dsp->registers[DSP_REG_SR] &= ~((1u << DSP_SR_C) | (1u << DSP_SR_V) | (1u << DSP_SR_N) | (1u << DSP_SR_Z));
+    dsp->registers[DSP_REG_SR] |= carry | (((value >> (bits - 1)) & 1) << DSP_SR_N) |
+                               (value == 0 ? 1u << DSP_SR_Z : 0);
+}
+
+static void emu_lsl_reg(dsp_core_t* dsp) { emu_logical_shift_reg(dsp, false); }
+static void emu_lsr_reg(dsp_core_t* dsp) { emu_logical_shift_reg(dsp, true); }
+
 static void emu_lsl_imm(dsp_core_t* dsp)
 {
     emu_logical_shift_imm(dsp, false);
@@ -6315,6 +6340,25 @@ static void emu_bchg_ea(dsp_core_t* dsp)
     dsp->instr_cycle += 2;
 }
 
+static void emu_bit_qq(dsp_core_t* dsp, unsigned operation)
+{
+    uint32_t address = 0xffff80 + ((dsp->cur_inst >> 8) & 63);
+    unsigned bit = dsp->cur_inst & 31;
+    uint32_t value = dsp56k_read_memory(dsp, DSP_SPACE_X, address);
+    uint32_t carry = (value >> bit) & 1, mask = 1u << bit;
+    if (operation == 0) value &= ~mask;
+    else if (operation == 1) value |= mask;
+    else if (operation == 2) value ^= mask;
+    if (operation != 3) dsp56k_write_memory(dsp, DSP_SPACE_X, address, value);
+    dsp->registers[DSP_REG_SR] = (dsp->registers[DSP_REG_SR] & ~1u) | carry;
+    dsp->instr_cycle += 2;
+}
+
+static void emu_bclr_qq(dsp_core_t* dsp) { emu_bit_qq(dsp, 0); }
+static void emu_bset_qq(dsp_core_t* dsp) { emu_bit_qq(dsp, 1); }
+static void emu_bchg_qq(dsp_core_t* dsp) { emu_bit_qq(dsp, 2); }
+static void emu_btst_qq(dsp_core_t* dsp) { emu_bit_qq(dsp, 3); }
+
 static void emu_bchg_pp(dsp_core_t* dsp)
 {
     uint32_t memspace, addr, value, newcarry, numbit;
@@ -6475,6 +6519,23 @@ static void emu_bra_imm(dsp_core_t* dsp)
     dsp->pc &= BITMASK(24);
     dsp->cur_inst_len = 0;
 }
+
+static void emu_branch_qq(dsp_core_t* dsp, bool set)
+{
+    uint32_t displacement = read_memory_p(dsp, dsp->pc + 1);
+    dsp->cur_inst_len++;
+    uint32_t address = 0xffff80 + ((dsp->cur_inst >> 8) & 63);
+    uint32_t value = dsp56k_read_memory(dsp, DSP_SPACE_X, address);
+    bool tested = (value >> (dsp->cur_inst & 31)) & 1;
+    if (tested == set) {
+        dsp->pc = (dsp->pc + displacement) & BITMASK(24);
+        dsp->cur_inst_len = 0;
+    }
+    dsp->instr_cycle += 4;
+}
+
+static void emu_brclr_qq(dsp_core_t* dsp) { emu_branch_qq(dsp, false); }
+static void emu_brset_qq(dsp_core_t* dsp) { emu_branch_qq(dsp, true); }
 
 static void emu_brclr_pp(dsp_core_t* dsp)
 {
@@ -7314,6 +7375,24 @@ static void emu_jclr_ea(dsp_core_t* dsp)
     ++dsp->cur_inst_len;
 }
 
+static void emu_jump_qq(dsp_core_t* dsp, bool set)
+{
+    uint32_t address = 0xffff80 + ((dsp->cur_inst >> 8) & 63);
+    uint32_t value = dsp56k_read_memory(dsp, DSP_SPACE_X, address);
+    uint32_t target = read_memory_p(dsp, dsp->pc + 1);
+    bool tested = (value >> (dsp->cur_inst & 15)) & 1;
+    dsp->instr_cycle += 4;
+    if (tested == set) {
+        dsp->pc = target;
+        dsp->cur_inst_len = 0;
+    } else {
+        dsp->cur_inst_len++;
+    }
+}
+
+static void emu_jclr_qq(dsp_core_t* dsp) { emu_jump_qq(dsp, false); }
+static void emu_jset_qq(dsp_core_t* dsp) { emu_jump_qq(dsp, true); }
+
 static void emu_jclr_pp(dsp_core_t* dsp)
 {
     uint32_t memspace, addr, value, numbit, newaddr;
@@ -7411,6 +7490,29 @@ static void emu_jscc_imm(dsp_core_t* dsp)
 
     dsp->instr_cycle += 2;
 }
+
+static void emu_bitcall_qq(dsp_core_t* dsp, bool set, bool relative)
+{
+    uint32_t address = 0xffff80 + ((dsp->cur_inst >> 8) & 63);
+    uint32_t value = dsp56k_read_memory(dsp, DSP_SPACE_X, address);
+    uint32_t target = read_memory_p(dsp, dsp->pc + 1);
+    if (relative) target = (dsp->pc + target) & BITMASK(24);
+    bool tested = (value >> (dsp->cur_inst & 31)) & 1;
+    dsp->instr_cycle += 4;
+    if (tested == set) {
+        dsp_stack_push(dsp, dsp->pc + 2, dsp->registers[DSP_REG_SR], 0);
+        dsp->pc = target;
+        dsp->cur_inst_len = 0;
+    } else {
+        dsp->cur_inst_len++;
+    }
+}
+
+static void emu_jsclr_qq(dsp_core_t* dsp) { emu_bitcall_qq(dsp, false, false); }
+static void emu_jsset_qq(dsp_core_t* dsp) { emu_bitcall_qq(dsp, true, false); }
+
+static void emu_bsclr_qq(dsp_core_t* dsp) { emu_bitcall_qq(dsp, false, true); }
+static void emu_bsset_qq(dsp_core_t* dsp) { emu_bitcall_qq(dsp, true, true); }
 
 static void emu_jsclr_aa(dsp_core_t* dsp)
 {

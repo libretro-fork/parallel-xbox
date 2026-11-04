@@ -26,6 +26,11 @@ bool lr_disk_poll(void);
  * blk_pread. The loan ends on eject/change, and never exposes a writable HDD. */
 const uint8_t *lr_disk_view(BlockBackend *blk, int64_t offset, size_t size);
 
+/* Cached media identity from the existing load-time partition probe. No I/O
+ * occurs when querying it; failed media replacement leaves the old identity. */
+void lr_disk_set_xbox_disc(BlockBackend *blk, bool xbox_disc);
+bool lr_disk_is_xbox_disc(BlockBackend *blk);
+
 /* A drive, empty: bus and unit as -drive gives them (ide0-hd0, ide0-cd1).
  * locked: the hard disk's ATA lock (hw/block's blkconf_locked). */
 BlockBackend *lr_disk_new(const char *name, BlockInterfaceType type,

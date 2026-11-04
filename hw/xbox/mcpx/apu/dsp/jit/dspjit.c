@@ -902,7 +902,7 @@ static void emit_write_reg(Tr *t, int r, int val)
 /* --- the data ALU --- */
 
 enum {
-    OP_MERGE, OP_INSERT, OP_EXTRACT, OP_EXTRACTU,
+    OP_LSL_R, OP_LSR_R, OP_MERGE, OP_INSERT, OP_EXTRACT, OP_EXTRACTU,
     OP_CLB,
     OP_ASL_R, OP_ASR_R, /* register-controlled arithmetic shifts */
     OP_ASL_N, OP_ASR_N, /* by a count (shift), of accumulator s into d */
@@ -1865,6 +1865,65 @@ static void emit_alu(Tr *t, const AluOp *a)
         emit_a1_result(t, a->d, SR_N | SR_Z | SR_V, -1);
         break;
 
+    case OP_LSL_R:
+    case OP_LSR_R: {
+        emit_flags_flush(t);
+        acc_load(t, a->d);
+        if (a->src == DSP_REG_A1 || a->src == DSP_REG_B1) {
+            unsigned n = a->src - DSP_REG_A1;
+            acc_load(t, n);
+            h_mov_rr(e, 1, T3, acc_reg(n));
+            h_shr_ri(e, 1, T3, 24);
+            h_and_ri(e, 0, T3, 0xffffff);
+        } else h_ld32(e, T3, REG_CORE, REGOFF(a->src));
+        h_mov_rr(e, 1, T0, acc);
+        h_shr_ri(e, 1, T0, 24);
+        h_and_ri(e, 0, T0, 0xffffff);
+        h_mov_ri(e, T2, 24);
+        h_ld32(e, T1, REG_CORE, REGOFF(DSP_REG_SR));
+        h_test_ri(e, 0, T1, 1u << DSP_SR_SA);
+        size_t ordinary = h_jcc(e, HC_EQ);
+        h_shr_ri(e, 0, T3, 8);
+        h_shr_ri(e, 0, T0, 8);
+        h_mov_ri(e, T2, 16);
+        h_patch(e, ordinary, e->len);
+        h_mov_ri(e, T4, 0);
+        h_test_rr(e, 0, T3, T3);
+        size_t zero = h_jcc(e, HC_EQ);
+        h_cmp_rr(e, 0, T3, T2);
+        size_t oversized = h_jcc(e, HC_A);
+        h_mov_rr(e, 1, T4, T0);
+        if (a->op == OP_LSL_R) {
+            h_mov_rr(e, 0, T1, T2);
+            h_sub_rr(e, 0, T1, T3);
+        } else {
+            h_mov_rr(e, 0, T1, T3);
+            h_sub_ri(e, 0, T1, 1);
+        }
+        h_shr_r1(e, 0, T4);
+        h_and_ri(e, 0, T4, 1);
+        h_mov_rr(e, 0, T1, T3);
+        if (a->op == OP_LSL_R) h_shl_r1(e, 0, T0);
+        else h_shr_r1(e, 0, T0);
+        h_mov_rr(e, 0, T1, T2);
+        h_mov_ri(e, T2, 1);
+        h_shl_r1(e, 0, T2);
+        h_sub_ri(e, 0, T2, 1);
+        h_and_rr(e, 0, T0, T2);
+        size_t shifted = h_jmp(e);
+        h_patch(e, oversized, e->len);
+        h_mov_ri(e, T0, 0);
+        h_patch(e, shifted, e->len);
+        h_patch(e, zero, e->len);
+        h_ld32(e, T1, REG_CORE, REGOFF(DSP_REG_SR));
+        h_test_ri(e, 0, T1, 1u << DSP_SR_SA);
+        size_t packed = h_jcc(e, HC_EQ);
+        h_shl_ri(e, 0, T0, 8);
+        h_patch(e, packed, e->len);
+        emit_a1_result(t, a->d, SR_C | SR_N | SR_Z | SR_V, T4);
+        break;
+    }
+
     case OP_LSL:
     case OP_LSR:
     case OP_ROL:
@@ -2366,6 +2425,14 @@ static bool np_alu(const Insn *in, AluOp *a)
         a->imm = strstr(name, "#xx,") ? (inst >> 8) & 0x3F : in->ext;
         return true;
     }
+    if (!strcmp(name, "lsl S, D") || !strcmp(name, "lsr S, D")) {
+        static const int controls[] = {DSP_REG_A1, DSP_REG_B1, DSP_REG_X0,
+                                       DSP_REG_X1, DSP_REG_Y0, DSP_REG_Y1};
+        a->op = name[2] == 'r' ? OP_LSR_R : OP_LSL_R;
+        a->d = inst & 1;
+        a->src = controls[((inst >> 1) & 7) - 2];
+        return true;
+    }
     if (!strcmp(name, "lsl #ii, D") || !strcmp(name, "lsr #ii, D")) {
         a->op = name[2] == 'r' ? OP_LSR : OP_LSL;
         a->d = inst & 1;
@@ -2447,7 +2514,7 @@ static int np_kind(const Insn *in)
     if ((!strncmp(name, "bclr #n,", 8) || !strncmp(name, "bset #n,", 8) ||
          !strncmp(name, "bchg #n,", 8) || !strncmp(name, "btst #n,", 8)) &&
         (!strcmp(name + 8, " [X or Y]:aa") || !strcmp(name + 8, " [X or Y]:ea") ||
-         !strcmp(name + 8, " [X or Y]:pp"))) {
+         !strcmp(name + 8, " [X or Y]:pp") || !strcmp(name + 8, " [X or Y]:qq"))) {
         return NP_BIT_MEM;
     }
     if (!strcmp(name, "bclr #n, D") || !strcmp(name, "bset, #n, D") ||
@@ -2746,12 +2813,18 @@ static void emit_nonparallel(Tr *t, const Insn *in, int kind)
     }
     case NP_BIT_MEM: {
         unsigned form = (inst >> 14) & 3;
-        unsigned operation = ((inst >> 15) & 2) | ((inst >> 5) & 1);
+        bool low_peripheral = strstr(in->d.name, ":qq") != NULL;
+        unsigned operation = low_peripheral ? ((inst >> 13) & 2) | ((inst >> 5) & 1) :
+                                             ((inst >> 15) & 2) | ((inst >> 5) & 1);
         unsigned bit = inst & 31;
         unsigned space = (inst >> 6) & 1;
         Ea ea;
         emit_flags_flush(t);
-        if (form == 1) {
+        if (low_peripheral) {
+            ea.kind = EA_ABS;
+            ea.reg = EA1;
+            ea.abs = 0xffff80 + ((inst >> 8) & 63);
+        } else if (form == 1) {
             emit_calc_ea(t, (inst >> 8) & 63, in->ext, EA1, &ea);
             if (ea.kind == EA_IMM) {
                 ea.kind = EA_ABS;
@@ -2777,7 +2850,7 @@ static void emit_nonparallel(Tr *t, const Insn *in, int kind)
         /* Unchanged modifying writes still have peripheral side effects. */
         if (operation != 3) emit_write_mem(t, space, addr, V1);
         h_ld32(e, T0, REG_CORE, REGOFF(DSP_REG_SR));
-        h_and_ri(e, 0, T0, 0xFFFE);
+        h_and_ri(e, 0, T0, low_peripheral ? ~1u : 0xFFFE);
         h_or_rr(e, 0, T0, V2);
         h_st32(e, REG_CORE, REGOFF(DSP_REG_SR), T0);
         t->cyc += 2;
@@ -3450,6 +3523,30 @@ static bool emit_control(Tr *t, const Insn *in)
         return true;
     }
 
+    if (!strcmp(name, "jsclr #n, [X or Y]:qq, xxxx") ||
+        !strcmp(name, "jsset #n, [X or Y]:qq, xxxx") ||
+        !strcmp(name, "bsclr #n, [X or Y]:qq, xxxx") ||
+        !strcmp(name, "bsset #n, [X or Y]:qq, xxxx") ||
+        ((!strcmp(name, "jsclr #n, [X or Y]:pp, xxxx") ||
+          !strcmp(name, "jsset #n, [X or Y]:pp, xxxx")) && !(inst & (1u << 6)))) {
+        /* Only X has MCPX peripheral callbacks; Y must not alias them. */
+        uint32_t target = name[0] == 'b' ? (at + in->ext) & 0xffffff : in->ext;
+        acc_spill_all(t, false);
+        h_mov_ri(e, EA1, (strstr(name, ":pp") ? 0xffffc0 : 0xffff80) + ((inst >> 8) & 63));
+        emit_read_mem(t, DSP_SPACE_X, EA1, V1);
+        h_test_ri(e, 0, V1, 1u << (inst & 31));
+        size_t taken = h_jcc(e, name[2] == 'c' ? HC_EQ : HC_NE);
+        emit_exit_to(t, in, in->next, 6);
+        h_patch(e, taken, e->len);
+        h_mov_rr(e, 1, H_ARG0, REG_CORE);
+        h_mov_ri(e, H_ARG1, in->next);
+        h_ld32(e, H_ARG2, REG_CORE, REGOFF(DSP_REG_SR));
+        h_call(e, (const void *)dsp56k_stack_push);
+        emit_stack_check(t, in, target, 6);
+        emit_exit_to(t, in, target, 6);
+        return true;
+    }
+
     if (!strncmp(name, "jclr #n, ", 9) || !strncmp(name, "jset #n, ", 9)) {
         bool clear = name[1] == 'c';
         int space = (inst >> 6) & 1;
@@ -3464,7 +3561,9 @@ static bool emit_control(Tr *t, const Insn *in)
             acc_spill_all(t, false);
         } else {
             acc_spill_all(t, false);
-            if (strstr(name, ":pp")) {
+            if (strstr(name, ":qq")) {
+                h_mov_ri(e, EA1, 0xffff80 + reg);
+            } else if (strstr(name, ":pp")) {
                 h_mov_ri(e, EA1, 0xFFFFC0 + reg);
             } else if (strstr(name, ":aa")) {
                 h_mov_ri(e, EA1, reg);
@@ -3552,9 +3651,11 @@ static bool emit_control(Tr *t, const Insn *in)
         return true;
     }
 
-    if (!strcmp(name, "brclr #n, [X or Y]:pp, xxxx") || !strcmp(name, "brset #n, [X or Y]:pp, xxxx")) {
+    if (!strcmp(name, "brclr #n, [X or Y]:pp, xxxx") || !strcmp(name, "brset #n, [X or Y]:pp, xxxx") ||
+        !strcmp(name, "brclr #n, [X or Y]:qq, xxxx") || !strcmp(name, "brset #n, [X or Y]:qq, xxxx")) {
         int memspace = (inst >> 6) & 1;
-        uint32_t addr = 0xFFFFC0 + ((inst >> 8) & 0x3F);
+        bool low_peripheral = strstr(name, ":qq") != NULL;
+        uint32_t addr = (low_peripheral ? 0xffff80 : 0xffffc0) + ((inst >> 8) & 63);
         int numbit = inst & 0x1F;
         uint32_t target = (at + in->ext) & 0xFFFFFF;
         size_t j;

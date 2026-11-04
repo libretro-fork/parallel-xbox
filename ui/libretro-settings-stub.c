@@ -100,7 +100,9 @@ void xemu_settings_reset_keyboard_mapping(void)
 bool xemu_media_is_xbox_disc(const char *path)
 {
     static const char magic[] = "MICROSOFT*XBOX*MEDIA";
-    static const long partitions[] = { 0, 0x18300000 };
+    static const long partitions[] = {
+        0, 0x18300000, 0xFD90000, 0x2080000,
+    };
     if (!path || !path[0] || g_file_test(path, G_FILE_TEST_IS_DIR)) {
         return false;
     }
@@ -121,7 +123,7 @@ bool xemu_media_is_xbox_disc(const char *path)
     }
     bool disc = false;
     int64_t cursor = -1;
-    for (int i = 0; i < 2 && !disc; i++) {
+    for (size_t i = 0; i < sizeof(partitions) / sizeof(partitions[0]) && !disc; i++) {
         char buf[sizeof(magic) - 1];
         int64_t offset = partitions[i] + 0x10000;
         const uint8_t *view = f ? lr_file_view(f, offset, sizeof(buf)) : NULL;

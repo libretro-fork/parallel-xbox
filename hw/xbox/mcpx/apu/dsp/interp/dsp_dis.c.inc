@@ -403,6 +403,18 @@ static void dis_lra_long(dsp_core_t* dsp)
             registers_name[dsp->disasm_cur_inst & 31]);
 }
 
+static void dis_logical_shift_reg(dsp_core_t* dsp, const char *name)
+{
+    static const unsigned controls[] = {DSP_REG_A1, DSP_REG_B1, DSP_REG_X0,
+                                        DSP_REG_X1, DSP_REG_Y0, DSP_REG_Y1};
+    sprintf(dsp->disasm_str_instr, "%s %s,%s", name,
+        registers_name[controls[((dsp->disasm_cur_inst >> 1) & 7) - 2]],
+        registers_name[dsp->disasm_cur_inst & 1 ? DSP_REG_B : DSP_REG_A]);
+}
+
+static void dis_lsl_reg(dsp_core_t* dsp) { dis_logical_shift_reg(dsp, "lsl"); }
+static void dis_lsr_reg(dsp_core_t* dsp) { dis_logical_shift_reg(dsp, "lsr"); }
+
 static void dis_lsl_imm(dsp_core_t* dsp)
 {
     uint32_t D = dsp->disasm_cur_inst & 1;
@@ -512,6 +524,17 @@ static void dis_bchg_ea(dsp_core_t* dsp)
 
     sprintf(dsp->disasm_str_instr,"bchg #%d,%s", numbit, name);
 }
+
+static void dis_bit_qq(dsp_core_t* dsp, const char *name)
+{
+    sprintf(dsp->disasm_str_instr, "%s #%u,x:$%06x", name,
+            dsp->disasm_cur_inst & 31, 0xffff80 + ((dsp->disasm_cur_inst >> 8) & 63));
+}
+
+static void dis_bclr_qq(dsp_core_t* dsp) { dis_bit_qq(dsp, "bclr"); }
+static void dis_bset_qq(dsp_core_t* dsp) { dis_bit_qq(dsp, "bset"); }
+static void dis_bchg_qq(dsp_core_t* dsp) { dis_bit_qq(dsp, "bchg"); }
+static void dis_btst_qq(dsp_core_t* dsp) { dis_bit_qq(dsp, "btst"); }
 
 static void dis_bchg_pp(dsp_core_t* dsp)
 {
@@ -631,6 +654,21 @@ static void dis_bra_imm(dsp_core_t* dsp)
     sprintf(dsp->disasm_str_instr, "bra p:$%04x",
         (dsp->pc + dsp_signextend(9, xxx)) & BITMASK(24) );
 }
+
+static void dis_branch_qq(dsp_core_t* dsp, const char *name)
+{
+    uint32_t displacement = read_memory_p(dsp, dsp->pc + 1);
+    dsp->disasm_cur_inst_len++;
+    sprintf(dsp->disasm_str_instr, "%s #%u,x:$%06x,p:$%06x", name,
+        dsp->disasm_cur_inst & 31, 0xffff80 + ((dsp->disasm_cur_inst >> 8) & 63),
+        (dsp->pc + displacement) & BITMASK(24));
+}
+
+static void dis_bsclr_qq(dsp_core_t* dsp) { dis_branch_qq(dsp, "bsclr"); }
+static void dis_bsset_qq(dsp_core_t* dsp) { dis_branch_qq(dsp, "bsset"); }
+
+static void dis_brclr_qq(dsp_core_t* dsp) { dis_branch_qq(dsp, "brclr"); }
+static void dis_brset_qq(dsp_core_t* dsp) { dis_branch_qq(dsp, "brset"); }
 
 static void dis_brclr_pp(dsp_core_t* dsp)
 {
@@ -1135,6 +1173,21 @@ static void dis_jclr_ea(dsp_core_t* dsp)
         read_memory_p(dsp, dsp->pc+1)
     );
 }
+
+static void dis_jump_qq(dsp_core_t* dsp, const char *name)
+{
+    dsp->disasm_cur_inst_len++;
+    sprintf(dsp->disasm_str_instr, "%s #%u,x:$%06x,p:$%06x", name,
+            dsp->disasm_cur_inst & 31,
+            0xffff80 + ((dsp->disasm_cur_inst >> 8) & 63),
+            read_memory_p(dsp, dsp->pc + 1));
+}
+
+static void dis_jsclr_qq(dsp_core_t* dsp) { dis_jump_qq(dsp, "jsclr"); }
+static void dis_jsset_qq(dsp_core_t* dsp) { dis_jump_qq(dsp, "jsset"); }
+
+static void dis_jclr_qq(dsp_core_t* dsp) { dis_jump_qq(dsp, "jclr"); }
+static void dis_jset_qq(dsp_core_t* dsp) { dis_jump_qq(dsp, "jset"); }
 
 static void dis_jclr_pp(dsp_core_t* dsp)
 {

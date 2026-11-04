@@ -336,6 +336,20 @@ entries needs one provider read instead of three when it completes fully.
 Short-read, EOF, cursor recovery and descriptor immutability remain covered;
 no staging buffer, allocation or throughput/FPS claim is added.
 
+GL module-cache admission checks driver link status before publishing the
+stage. Rejected binaries are discarded and regenerated through the normal
+compiler path; driver input still borrows the mapped payload directly. The
+check is at the existing uniform-location resolution completion boundary,
+which can already wait for driver linking. It adds no GPU resource readback,
+shader/PSO variants or binary staging copy.
+
+Optical media retains Xbox-disc identity from its existing load-time game
+partition probe. Small XISOs therefore report DVD-ROM independently of file
+size. Ordinary images retain the capacity heuristic. Identity belongs to the
+mounted medium, clears on replacement/eject, survives device reset, and is
+unchanged after a failed open. ATAPI profile queries add no file I/O, locks,
+sector copies, shader/PSO state or media sidecar dependency.
+
 Xbox EEPROM hashing uses libretro-common streaming SHA-1 with the original
 custom initial states and 512-bit prefix count. The duplicate util/sha1
 engine is removed. Deterministic reference checks cover 4,100 hashes and

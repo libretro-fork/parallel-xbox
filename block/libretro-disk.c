@@ -90,6 +90,7 @@ typedef struct LRMedium {
     uint64_t base;      /* where the drive's data starts in the image */
     int64_t length;     /* from there */
     bool writable;
+    bool xbox_disc; /* immutable classification of this mounted medium */
     int64_t vfs_position;
 } LRMedium;
 
@@ -127,6 +128,21 @@ static QTAILQ_HEAD(, BlockBackend) lr_disks =
     QTAILQ_HEAD_INITIALIZER(lr_disks);
 
 int lr_disk_pending;
+
+/* Set by the media-open owner from its existing partition probe, before
+ * guest commands resume. Closing/replacing LRMedium clears this with it. */
+void lr_disk_set_xbox_disc(BlockBackend *blk, bool xbox_disc)
+{
+    if (blk) {
+        blk->m.xbox_disc = xbox_disc && !blk->m.writable &&
+            (blk->m.kind == LR_MEDIUM_FILE || blk->m.kind == LR_MEDIUM_VFS);
+    }
+}
+
+bool lr_disk_is_xbox_disc(BlockBackend *blk)
+{
+    return blk && blk->m.xbox_disc;
+}
 
 const uint8_t *lr_disk_view(BlockBackend *blk, int64_t offset, size_t size)
 {

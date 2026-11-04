@@ -26,9 +26,29 @@
 #include "hw/xbox/nv2a/pgraph/seed.h"
 #include "hw/xbox/nv2a/pgraph/spv/geom.h"
 #include "hw/xbox/nv2a/pgraph/glsl/uniform-cache.h"
+#include <encodings/xxh3.h>
 #include <retro_spsc.h>
 #include <retro_atomic.h>
 #include <rthreads/retro_eventcount.h>
+
+/* Borrow the immutable vertex/geometry prefix; own only the canonical
+ * fragment tail. The split is on an XXH3 stripe boundary. */
+enum {
+    VK_SHADER_HEAD_BYTES = offsetof(ShaderState, psh) & ~63u,
+    VK_SHADER_TAIL_PREFIX = offsetof(ShaderState, psh) - VK_SHADER_HEAD_BYTES,
+};
+typedef struct ShaderStateTail {
+    uint8_t prefix[VK_SHADER_TAIL_PREFIX];
+    PshState psh;
+} ShaderStateTail;
+typedef struct ShaderStateView {
+    const ShaderState *head;
+    ShaderStateTail tail;
+} ShaderStateView;
+_Static_assert(offsetof(ShaderStateTail, psh) == VK_SHADER_TAIL_PREFIX,
+               "fragment tail must preserve state byte offsets");
+_Static_assert(VK_SHADER_HEAD_BYTES + sizeof(ShaderStateTail) == sizeof(ShaderState),
+               "fragment tail must cover the complete remaining state");
 
 static inline int vk_pre_state_module_keys(const ShaderState *st,
                                             bool push_constants,
@@ -380,12 +400,11 @@ void pgraph_vk_ref_state_modules(PGRAPHVkState *r, const ShaderState *st,
     }
 }
 
-static void shader_cache_entry_init(Lru *lru, LruNode *node, const void *state)
+static inline QEMU_ALWAYS_INLINE void shader_cache_entry_init_modules(
+    Lru *lru, LruNode *node)
 {
     PGRAPHVkState *r = container_of(lru, PGRAPHVkState, shader_cache);
     ShaderBinding *binding = container_of(node, ShaderBinding, node);
-    memcpy(&binding->state, state, sizeof(ShaderState));
-
     NV2A_VK_DPRINTF("cache miss");
     nv2a_profile_inc_counter(NV2A_PROF_SHADER_GEN);
 
@@ -394,6 +413,32 @@ static void shader_cache_entry_init(Lru *lru, LruNode *node, const void *state)
                                 &binding->psh.module_info);
 
     update_shader_uniform_locs(binding);
+}
+
+static void shader_cache_entry_init(Lru *lru, LruNode *node, const void *state)
+{
+    ShaderBinding *binding = container_of(node, ShaderBinding, node);
+    memcpy(&binding->state, state, sizeof(ShaderState));
+    shader_cache_entry_init_modules(lru, node);
+}
+
+static void shader_cache_entry_init_view(Lru *lru, LruNode *node, const void *key)
+{
+    const ShaderStateView *view = key;
+    ShaderBinding *binding = container_of(node, ShaderBinding, node);
+    memcpy(&binding->state, view->head, VK_SHADER_HEAD_BYTES);
+    memcpy((uint8_t *)&binding->state + VK_SHADER_HEAD_BYTES,
+           &view->tail, sizeof(view->tail));
+    shader_cache_entry_init_modules(lru, node);
+}
+
+static bool shader_cache_entry_compare_view(Lru *lru, LruNode *node, const void *key)
+{
+    const ShaderStateView *view = key;
+    ShaderBinding *binding = container_of(node, ShaderBinding, node);
+    return memcmp(&binding->state, view->head, VK_SHADER_HEAD_BYTES) ||
+           memcmp((const uint8_t *)&binding->state + VK_SHADER_HEAD_BYTES,
+                  &view->tail, sizeof(view->tail));
 }
 
 static void shader_cache_entry_post_evict(Lru *lru, LruNode *node)
@@ -506,6 +551,20 @@ static ShaderBinding *get_shader_binding_for_state(PGRAPHVkState *r,
                                                    uint64_t hash)
 {
     LruNode *node = lru_lookup(&r->shader_cache, hash, state);
+    ShaderBinding *binding = container_of(node, ShaderBinding, node);
+    NV2A_VK_DPRINTF("shader state hash: %016" PRIx64 " %p", hash, binding);
+    return binding;
+}
+
+static ShaderBinding *get_shader_binding_for_view(PGRAPHVkState *r,
+                                                 const ShaderStateView *view,
+                                                 uint64_t hash)
+{
+    static const LruKeyOps ops = {
+        .init_node = shader_cache_entry_init_view,
+        .compare_nodes = shader_cache_entry_compare_view,
+    };
+    LruNode *node = lru_lookup_with_ops(&r->shader_cache, hash, view, &ops);
     ShaderBinding *binding = container_of(node, ShaderBinding, node);
     NV2A_VK_DPRINTF("shader state hash: %016" PRIx64 " %p", hash, binding);
     return binding;
@@ -656,7 +715,11 @@ static inline int vk_pre_state_module_keys(const ShaderState *st,
         keys[n].geom.glsl_opts.ui_clamp_stage = pgraph_glsl_ui_clamp_stage(&st->psh);
         n++;
     }
-    memset(&keys[n], 0, sizeof(keys[n]));
+    /* The vertex state is copied next; clear only its surrounding bytes. */
+    memset(&keys[n], 0, offsetof(ShaderModuleCacheKey, vsh.state));
+    const size_t after_vsh = offsetof(ShaderModuleCacheKey, vsh.state) +
+                             sizeof(keys[n].vsh.state);
+    memset((char *)&keys[n] + after_vsh, 0, sizeof(keys[n]) - after_vsh);
     keys[n].kind = VK_SHADER_STAGE_VERTEX_BIT;
     keys[n].vsh.state = st->vsh;
     keys[n].vsh.glsl_opts.vulkan = true;
@@ -671,7 +734,11 @@ static int vk_state_module_keys(const ShaderState *st, bool push_constants,
                                 ShaderModuleCacheKey *keys)
 {
     int n = vk_pre_state_module_keys(st, push_constants, keys);
-    memset(&keys[n], 0, sizeof(keys[n]));
+    /* The fragment state is copied next; retain zeros in the unused union. */
+    memset(&keys[n], 0, offsetof(ShaderModuleCacheKey, psh.state));
+    const size_t after_psh = offsetof(ShaderModuleCacheKey, psh.state) +
+                             sizeof(keys[n].psh.state);
+    memset((char *)&keys[n] + after_psh, 0, sizeof(keys[n]) - after_psh);
     keys[n].kind = VK_SHADER_STAGE_FRAGMENT_BIT;
     keys[n].psh.state = st->psh;
     keys[n].psh.glsl_opts.vulkan = true;
@@ -895,7 +962,10 @@ static void vk_spec_compile_state(const ShaderState *st)
         uint64_t key_hash = fast_hash((const uint8_t *)&keys[i], sizeof(keys[i]));
         ShaderSource *spv = vk_spec_compile_module(&keys[i], key_hash);
         VkSpecDone d;
-        memset(&d, 0, sizeof(d));
+        /* Preserve zero padding around the key, which is overwritten below. */
+        memset(&d, 0, offsetof(VkSpecDone, key));
+        const size_t after_key = offsetof(VkSpecDone, key) + sizeof(d.key);
+        memset((char *)&d + after_key, 0, sizeof(d) - after_key);
         d.key = keys[i];
         d.key_hash = key_hash;
         d.spirv = spv;
@@ -1072,7 +1142,8 @@ static void vk_spec_quiesce(void)
     }
 }
 
-static void vk_spec_queue(uint64_t h, const ShaderState *st)
+static inline QEMU_ALWAYS_INLINE void vk_spec_queue_impl(
+    uint64_t h, const ShaderState *st, const ShaderStateView *view)
 {
     if (!vk_spec_started) {
         if (!retro_spsc_init(&vk_spec_in, VK_SPEC_RING * sizeof(ShaderState)) ||
@@ -1101,7 +1172,11 @@ static void vk_spec_queue(uint64_t h, const ShaderState *st)
     }
     for (unsigned i = 0; i < ARRAY_SIZE(vk_spec_track); i++) {
         if (!vk_spec_track[i].phase) {
-            if (retro_spsc_write(&vk_spec_in, st, sizeof(*st)) != sizeof(*st)) {
+            size_t written = view ?
+                retro_spsc_write_pair(&vk_spec_in, view->head, VK_SHADER_HEAD_BYTES,
+                                      &view->tail, sizeof(view->tail)) :
+                retro_spsc_write(&vk_spec_in, st, sizeof(*st));
+            if (written != sizeof(ShaderState)) {
                 return; /* full: the next meeting queues it */
             }
             vk_spec_track[i].hash = h;
@@ -1112,6 +1187,16 @@ static void vk_spec_queue(uint64_t h, const ShaderState *st)
             break;
         }
     }
+}
+
+static void vk_spec_queue(uint64_t h, const ShaderState *st)
+{
+    vk_spec_queue_impl(h, st, NULL);
+}
+
+static void vk_spec_queue_view(uint64_t h, const ShaderStateView *view)
+{
+    vk_spec_queue_impl(h, NULL, view);
 }
 
 static GArray *vk_pump_states; /* covers then states, for the library pump */
@@ -1400,6 +1485,60 @@ static void update_shader_uniforms(PGRAPHState *pg)
     NV2A_VK_DGROUP_END();
 }
 
+static __attribute__((noinline)) ShaderBinding *vk_try_sibling_binding(
+    PGRAPHVkState *r, const ShaderState *state, uint64_t h, int phase)
+{
+    ShaderStateView fb;
+    fb.head = state;
+    memcpy(&fb.tail.psh, &state->psh, sizeof(fb.tail.psh));
+    if (pgraph_glsl_psh_canonicalize_dynamic(&fb.tail.psh)) {
+        memcpy(fb.tail.prefix,
+               (const uint8_t *)state + VK_SHADER_HEAD_BYTES,
+               sizeof(fb.tail.prefix));
+        uint64_t fh = xxh3_64_pair(fb.head, VK_SHADER_HEAD_BYTES,
+                                   &fb.tail, sizeof(fb.tail), 0);
+        int sphase = fh != h ? vk_spec_phase(fh) : 0;
+        bool sib_ready =
+            fh != h &&
+            (vk_seen_contains(fh) ||
+             sphase == VK_SPEC_ADOPTED ||
+             sphase == VK_SPEC_PIPE_LANDED);
+        if (sib_ready) {
+            if (sphase == VK_SPEC_ADOPTED ||
+                sphase == VK_SPEC_PIPE_LANDED) {
+                vk_spec_release_adopted(fh);
+            }
+            if (!phase) {
+                vk_spec_queue(h, state);
+            } else if (phase == VK_SPEC_ADOPTED) {
+                /* Its words landed: the draw path
+                 * hands its pipeline to the worker
+                 * under this draw's key. */
+                r->ahead_state = *state;
+                r->ahead_hash = h;
+                r->ahead_valid = true;
+            }
+            nv2a_profile_inc_counter(
+                NV2A_PROF_SHADER_FALLBACK);
+            /* Keep the hashed sibling alive through lookup;
+             * the cache owns its copy before this scope ends. */
+            return get_shader_binding_for_view(r, &fb, fh);
+        } else if (fh != h && !sphase) {
+            /* The sibling, interpreter code, compiles
+             * slower than the state: queue it; the
+             * normal path serves until it lands. */
+            vk_spec_queue_view(fh, &fb);
+        } else if (phase == VK_SPEC_ADOPTED) {
+            /* no sibling to draw with: the modules are
+             * made from the words, the pipeline here */
+            vk_spec_release_adopted(h);
+        }
+    } else if (phase == VK_SPEC_ADOPTED) {
+        vk_spec_release_adopted(h);
+    }
+    return NULL;
+}
+
 void pgraph_vk_bind_shaders(PGRAPHState *pg)
 {
     NV2A_VK_DGROUP_BEGIN("%s", __func__);
@@ -1410,15 +1549,14 @@ void pgraph_vk_bind_shaders(PGRAPHState *pg)
 
     if (!r->shader_binding ||
         pgraph_glsl_check_shader_state_dirty(pg, &r->shader_binding->state)) {
-        ShaderState new_state = pgraph_glsl_get_shader_state(pg);
+        /* Keep hash stripes aligned without constructing a sibling clone. */
+        ShaderState new_state QEMU_ALIGNED(64) = pgraph_glsl_get_shader_state(pg);
         if (!r->shader_binding || memcmp(&r->shader_binding->state, &new_state,
                                          sizeof(ShaderState))) {
-            ShaderState fb;
-            const ShaderState *bound_state = &new_state;
             uint64_t h =
                 fast_hash((const uint8_t *)&new_state, sizeof(new_state));
             uint64_t bound_h = h; /* of the state drawn with, below */
-            if (!vk_seen_contains(h)) {
+            if (unlikely(!vk_seen_contains(h))) {
                 int phase = vk_spec_phase(h);
                 if (phase == VK_SPEC_PIPE_LANDED) {
                     /* Its pipeline is in the cache, its modules made
@@ -1426,53 +1564,17 @@ void pgraph_vk_bind_shaders(PGRAPHState *pg)
                      * compiles nothing. */
                     vk_spec_release_adopted(h);
                 } else {
-                    fb = new_state;
-                    if (pgraph_glsl_psh_canonicalize_dynamic(&fb.psh)) {
-                        uint64_t fh = fast_hash((const uint8_t *)&fb,
-                                                sizeof(fb));
-                        int sphase = fh != h ? vk_spec_phase(fh) : 0;
-                        bool sib_ready =
-                            fh != h &&
-                            (vk_seen_contains(fh) ||
-                             sphase == VK_SPEC_ADOPTED ||
-                             sphase == VK_SPEC_PIPE_LANDED);
-                        if (sib_ready) {
-                            if (sphase == VK_SPEC_ADOPTED ||
-                                sphase == VK_SPEC_PIPE_LANDED) {
-                                vk_spec_release_adopted(fh);
-                            }
-                            if (!phase) {
-                                vk_spec_queue(h, &new_state);
-                            } else if (phase == VK_SPEC_ADOPTED) {
-                                /* Its words landed: the draw path
-                                 * hands its pipeline to the worker
-                                 * under this draw's key. */
-                                r->ahead_state = new_state;
-                                r->ahead_hash = h;
-                                r->ahead_valid = true;
-                            }
-                            nv2a_profile_inc_counter(
-                                NV2A_PROF_SHADER_FALLBACK);
-                            /* Keep the hashed sibling alive through lookup;
-                             * the cache owns its copy before this scope ends. */
-                            bound_state = &fb;
-                            bound_h = fh;
-                        } else if (fh != h && !sphase) {
-                            /* The sibling, interpreter code, compiles
-                             * slower than the state: queue it; the
-                             * normal path serves until it lands. */
-                            vk_spec_queue(fh, &fb);
-                        } else if (phase == VK_SPEC_ADOPTED) {
-                            /* no sibling to draw with: the modules are
-                             * made from the words, the pipeline here */
-                            vk_spec_release_adopted(h);
-                        }
-                    } else if (phase == VK_SPEC_ADOPTED) {
-                        vk_spec_release_adopted(h);
+                    ShaderBinding *sibling = vk_try_sibling_binding(
+                        r, &new_state, h, phase);
+                    if (sibling) {
+                        r->shader_binding = sibling;
+                        bound_h = sibling->node.hash;
+                        goto binding_selected;
                     }
                 }
             }
-            r->shader_binding = get_shader_binding_for_state(r, bound_state, bound_h);
+            r->shader_binding = get_shader_binding_for_state(r, &new_state, bound_h);
+        binding_selected:
             vk_seen_add(bound_h);
             r->shader_bindings_changed = true;
         }
