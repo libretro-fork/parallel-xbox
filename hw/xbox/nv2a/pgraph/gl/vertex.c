@@ -415,7 +415,7 @@ void pgraph_gl_bind_vertex_attributes(NV2AState *d, unsigned int min_element,
         const uint8_t *last_entry;
 
         if (inline_data) {
-            last_entry = (uint8_t*)pg->inline_array + attr->inline_array_offset;
+            last_entry = (uint8_t*)pgraph_inline_array_data(pg) + attr->inline_array_offset;
         } else {
             last_entry = d->vram_ptr + start;
         }
@@ -468,7 +468,7 @@ unsigned int pgraph_gl_bind_inline_array(NV2AState *d)
     glBindBuffer(GL_ARRAY_BUFFER, r->gl_inline_array_buffer);
     GLsizeiptr buffer_size = index_count * vertex_size;
     glBufferData(GL_ARRAY_BUFFER, buffer_size, NULL, GL_STREAM_DRAW);
-    glBufferSubData(GL_ARRAY_BUFFER, 0, buffer_size, pg->inline_array);
+    glBufferSubData(GL_ARRAY_BUFFER, 0, buffer_size, pgraph_inline_array_data(pg));
     pgraph_gl_bind_vertex_attributes(d, 0, index_count-1, true, vertex_size,
                                   index_count-1, false);
 

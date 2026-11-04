@@ -4307,6 +4307,8 @@ a hardware-validity claim for reserved operands. Existing differential,
 independent-state, callback and production fixtures verify execution behavior.
 Other nonparallel operand/context fallback guards remain separate.
 
+`test-inline-upload-writer.py CHECKOUT [CC]` runs production inline packet handlers, mapped-slot eligibility and commit helpers, CPU materialization, reset and pre-load handling with a small guarded ring. It checks 1000 chunked batches, conversion-device/CPU fallback, commit without another copy, repeated binds, append-after-bind, snapshot/restore, conflicting uploads and cancellation. `INLINE_WRITER_CFLAGS`, `INLINE_WRITER_BINARY` and `INLINE_WRITER_SKIP_RUN` support sanitizer and native cross-compiled runs. Submission/save hook placement is also checked; no timing measurements are used.
+
 `test-spv-prefix-view.py CHECKOUT [CC]` checks module-prefix ownership against the compact compiler path, recording function-stream moves rather than timings. It covers all stages, SPIR-V versions, layouts, large function growth, fitting and overflowing prefixes, and parse-error cleanup. `SPV_PREFIX_BASELINE_SOURCE` optionally links the previous compiler for a byte/layout oracle. `SPV_PREFIX_CFLAGS`, `SPV_PREFIX_BINARY`, `SPV_PREFIX_SKIP_RUN` and `SPV_PREFIX_OUTPUT_DIR` support sanitized/cross-compiled fixtures and validator inputs. The layout fixture also compares 256-word views against compact modules. Fixed-shader borrowing and worker refcount fixtures exercise release ordering and interior-pointer allocation ownership.
 `dspnative --budget-overflow` checks 216 budget checkpoints over repeated
 frame restarts in both interpreter and native engines, including 160 executed

@@ -418,6 +418,8 @@ void pgraph_vk_finalize_buffers(NV2AState *d)
     PGRAPHState *pg = &d->pgraph;
     PGRAPHVkState *r = pg->vk_renderer_state;
 
+    pgraph_materialize_inline_array(pg);
+
     for (int i = 0; i < BUFFER_COUNT; i++) {
         destroy_buffer(pg, &r->storage_buffers[i]);
     }
@@ -524,6 +526,10 @@ VkDeviceSize pgraph_vk_append_to_buffer(PGRAPHState *pg, int index, void **data,
                                         VkDeviceAddress alignment)
 {
     PGRAPHVkState *r = pg->vk_renderer_state;
+
+    if (index == BUFFER_VERTEX_INLINE_STAGING) {
+        pgraph_materialize_inline_array(pg);
+    }
 
     VkDeviceSize total_size = 0;
     for (int i = 0; i < count; i++) {

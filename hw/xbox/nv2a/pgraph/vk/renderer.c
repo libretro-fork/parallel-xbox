@@ -157,6 +157,7 @@ static void pgraph_vk_process_pending(NV2AState *d)
     ) {
         qemu_mutex_unlock(&d->pfifo.lock);
         if (retro_atomic_load_relaxed_int(&r->download_dirty_surfaces_pending)) {
+            pgraph_materialize_inline_array(&d->pgraph);
             pgraph_vk_settle_reports(&d->pgraph);
             pgraph_vk_download_dirty_surfaces(d);
         }
@@ -444,6 +445,7 @@ static PGRAPHRenderer pgraph_vk_renderer = {
         .clear_report_value = pgraph_vk_clear_report_value,
         .clear_surface = pgraph_vk_clear_surface,
         .draw_begin = pgraph_vk_draw_begin,
+        .inline_array_begin = pgraph_vk_inline_array_begin,
         .draw_end = pgraph_vk_draw_end,
         .flip_stall = pgraph_vk_flip_stall,
         .flip_stall_ready = pgraph_vk_flip_stall_ready,

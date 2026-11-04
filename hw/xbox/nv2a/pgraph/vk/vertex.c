@@ -26,6 +26,47 @@
 
 #include "renderer.h"
 
+uint32_t *pgraph_vk_inline_array_begin(NV2AState *d)
+{
+    PGRAPHState *pg = &d->pgraph;
+    PGRAPHVkState *r = pg->vk_renderer_state;
+    StorageBuffer *b = &r->storage_buffers[BUFFER_VERTEX_INLINE_STAGING];
+
+    /* Opportunistic: no new recording, submission, growth or wait. */
+    if (!r->in_command_buffer || r->in_draw || r->vertex_conversion_required ||
+        !b->mapped ||
+        ((uintptr_t)(b->mapped + b->buffer_offset) & 3) ||
+        !pgraph_vk_buffer_has_space_for(pg, BUFFER_VERTEX_INLINE_STAGING,
+                                       sizeof(pg->inline_array), 1)) {
+        return NULL;
+    }
+    /* Leave the offset unchanged until flush: pending data is not submitted. */
+    return (uint32_t *)(b->mapped + b->buffer_offset);
+}
+
+bool pgraph_vk_commit_inline_array(PGRAPHState *pg, VkDeviceSize size,
+                                  VkDeviceSize *offset)
+{
+    if (!pg->inline_array_external) {
+        return false;
+    }
+    PGRAPHVkState *r = pg->vk_renderer_state;
+    StorageBuffer *b = &r->storage_buffers[BUFFER_VERTEX_INLINE_STAGING];
+    assert(r->in_command_buffer && b->mapped);
+    assert((uintptr_t)pg->inline_array_external >= (uintptr_t)b->mapped);
+    *offset = (uintptr_t)pg->inline_array_external - (uintptr_t)b->mapped;
+    assert(*offset <= b->buffer_size && size <= b->buffer_size - *offset);
+    if (pg->inline_array_external_committed) {
+        assert(*offset <= b->buffer_offset && size <= b->buffer_offset - *offset);
+    } else {
+        assert(*offset == b->buffer_offset);
+        b->buffer_offset += size;
+        pg->inline_array_external_committed = true;
+        nv2a_profile_inc_counter(NV2A_PROF_GEOM_BUFFER_UPDATE_3);
+    }
+    return true;
+}
+
 VkDeviceSize pgraph_vk_update_index_buffer(PGRAPHState *pg, void *data,
                                            VkDeviceSize size)
 {
@@ -310,7 +351,7 @@ void pgraph_vk_bind_vertex_attributes(NV2AState *d, unsigned int min_element,
 
         if (inline_data) {
             last_entry =
-                (uint8_t *)pg->inline_array + attr->inline_array_offset;
+                (uint8_t *)pgraph_inline_array_data(pg) + attr->inline_array_offset;
         } else {
             last_entry = d->vram_ptr + start;
         }

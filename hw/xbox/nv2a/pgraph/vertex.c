@@ -173,12 +173,47 @@ void pgraph_rebuild_inline_elements_bounds(PGRAPHState *pg)
     pg->inline_elements_max = high;
 }
 
+void pgraph_materialize_inline_array(PGRAPHState *pg)
+{
+    if (pg->inline_array_external) {
+        assert(pg->inline_array_length <= NV2A_MAX_BATCH_LENGTH);
+        memcpy(pg->inline_array, pg->inline_array_external,
+               (size_t)pg->inline_array_length * sizeof(uint32_t));
+        pg->inline_array_external = NULL;
+        pg->inline_array_external_committed = false;
+    }
+}
+
+void pgraph_append_inline_array(PGRAPHState *pg, const uint32_t *words, size_t count)
+{
+    assert(count <= NV2A_MAX_BATCH_LENGTH - pg->inline_array_length);
+    if (!count) {
+        return;
+    }
+    /* A prior flush may have bound this view. Preserve it before appending. */
+    if (pg->inline_array_external_committed) {
+        pgraph_materialize_inline_array(pg);
+    }
+    if (!pg->inline_array_length && !pg->inline_array_external) {
+        const PGRAPHRenderer *renderer = pgraph_renderer(pg);
+        if (renderer->ops.inline_array_begin) {
+            pg->inline_array_external = renderer->ops.inline_array_begin(
+                container_of(pg, NV2AState, pgraph));
+        }
+    }
+    memcpy(pgraph_inline_array_data(pg) + pg->inline_array_length, words,
+           count * sizeof(uint32_t));
+    pg->inline_array_length += count;
+}
+
 void pgraph_reset_inline_buffers(PGRAPHState *pg)
 {
     pg->inline_elements_length = 0;
     pg->inline_elements_min = UINT32_MAX;
     pg->inline_elements_max = 0;
     pg->inline_array_length = 0;
+    pg->inline_array_external = NULL;
+    pg->inline_array_external_committed = false;
     pg->inline_buffer_length = 0;
     pgraph_reset_draw_arrays(pg);
 }

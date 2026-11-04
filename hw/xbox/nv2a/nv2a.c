@@ -567,6 +567,9 @@ static int nv2a_pre_load(void *opaque)
 {
     NV2AState *d = opaque;
     nv2a_lock_fifo(d);
+    /* The incoming snapshot owns the canonical array; never retain a host view. */
+    d->pgraph.inline_array_external = NULL;
+    d->pgraph.inline_array_external_committed = false;
     /* Off unless the snapshot says otherwise (vmstate_nv2a_two_side). */
     d->pgraph.two_side_light_en = false;
     return 0;

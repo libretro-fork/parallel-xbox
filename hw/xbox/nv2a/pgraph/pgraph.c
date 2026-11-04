@@ -3327,16 +3327,14 @@ DEF_METHOD(NV097, INLINE_ARRAY)
     assert(pg->inline_array_length < NV2A_MAX_BATCH_LENGTH);
 
     if (inc) {
-        pg->inline_array[pg->inline_array_length++] = parameter;
+        pgraph_append_inline_array(pg, &parameter, 1);
         return;
     }
 
     size_t count = MIN(num_words_available,
                        (size_t)NV2A_MAX_BATCH_LENGTH -
                            (size_t)pg->inline_array_length);
-    memcpy(&pg->inline_array[pg->inline_array_length], parameters,
-           count * sizeof(uint32_t));
-    pg->inline_array_length += count;
+    pgraph_append_inline_array(pg, parameters, count);
     *num_words_consumed = count;
 }
 

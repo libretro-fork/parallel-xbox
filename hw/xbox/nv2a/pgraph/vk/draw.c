@@ -2721,6 +2721,8 @@ void pgraph_vk_finish(PGRAPHState *pg, FinishReason finish_reason)
 {
     PGRAPHVkState *r = pg->vk_renderer_state;
 
+    pgraph_materialize_inline_array(pg);
+
     assert(!r->in_draw);
     assert(r->debug_depth == 0);
 
@@ -4663,7 +4665,7 @@ static __attribute__((noinline)) VkDeviceSize upload_converted_inline_array(PGRA
     }
     begin_pre_draw(pg);
     if (!any_convert) {
-        void *source = pg->inline_array;
+        void *source = pgraph_inline_array_data(pg);
         return pgraph_vk_update_vertex_inline_buffer(pg, &source, &size, 1);
     }
     StorageBuffer *buffer = &r->storage_buffers[BUFFER_VERTEX_INLINE_STAGING];
@@ -4675,7 +4677,7 @@ static __attribute__((noinline)) VkDeviceSize upload_converted_inline_array(PGRA
     for (int j = 0; j < r->num_active_vertex_attribute_descriptions; j++) {
         pgraph_vk_convert_vertex_attribute(
             buffer->mapped + offset + plan[j].destination_offset,
-            (const uint8_t *)pg->inline_array + plan[j].source_offset,
+            (const uint8_t *)pgraph_inline_array_data(pg) + plan[j].source_offset,
             count, source_stride, destination_stride, plan[j].source_width,
             plan[j].convert);
     }
@@ -4846,15 +4848,18 @@ void pgraph_vk_flush_draw(NV2AState *d)
 
         VkDeviceSize buffer_offset;
         if (r->vertex_conversion_required) {
+            pgraph_materialize_inline_array(pg);
             buffer_offset = upload_converted_inline_array(
                 pg, inline_array_data_size, vertex_size, index_count);
         } else {
             ensure_buffer_space(pg, BUFFER_VERTEX_INLINE_STAGING,
                                 inline_array_data_size);
             begin_pre_draw(pg);
-            void *inline_array_data = pg->inline_array;
-            buffer_offset = pgraph_vk_update_vertex_inline_buffer(
-                pg, &inline_array_data, &inline_array_data_size, 1);
+            if (!pgraph_vk_commit_inline_array(pg, inline_array_data_size, &buffer_offset)) {
+                void *inline_array_data = pgraph_inline_array_data(pg);
+                buffer_offset = pgraph_vk_update_vertex_inline_buffer(
+                    pg, &inline_array_data, &inline_array_data_size, 1);
+            }
         }
         pgraph_vk_begin_debug_marker(r, r->command_buffer, RGBA_BLUE,
                                      "Inline Array");

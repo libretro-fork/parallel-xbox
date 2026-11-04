@@ -147,6 +147,7 @@ typedef struct PGRAPHRenderer {
         void (*clear_report_value)(NV2AState *d);
         void (*clear_surface)(NV2AState *d, uint32_t parameter);
         void (*draw_begin)(NV2AState *d);
+        uint32_t *(*inline_array_begin)(NV2AState *d);
         void (*draw_end)(NV2AState *d);
         void (*flip_stall)(NV2AState *d);
         /* Optional, owner dispatch only: poll a deferred host flip once. */
@@ -340,6 +341,9 @@ typedef struct PGRAPHState {
 
     unsigned int inline_array_length;
     uint32_t inline_array[NV2A_MAX_BATCH_LENGTH];
+    /* Owner-thread upload view, never serialized. Materialize before save. */
+    uint32_t *inline_array_external;
+    bool inline_array_external_committed;
 
     unsigned int inline_elements_length;
     uint32_t inline_elements_min, inline_elements_max;
@@ -694,6 +698,12 @@ void pgraph_append_inline_elements_range(PGRAPHState *pg, uint32_t start,
 void pgraph_rebuild_inline_elements_bounds(PGRAPHState *pg);
 void pgraph_allocate_inline_buffer_vertices(PGRAPHState *pg, unsigned int attr);
 void pgraph_finish_inline_buffer_vertex(PGRAPHState *pg);
+static inline uint32_t *pgraph_inline_array_data(PGRAPHState *pg)
+{
+    return pg->inline_array_external ? pg->inline_array_external : pg->inline_array;
+}
+void pgraph_materialize_inline_array(PGRAPHState *pg);
+void pgraph_append_inline_array(PGRAPHState *pg, const uint32_t *words, size_t count);
 void pgraph_reset_inline_buffers(PGRAPHState *pg);
 void pgraph_reset_draw_arrays(PGRAPHState *pg);
 void pgraph_update_inline_value(VertexAttribute *attr, const uint8_t *data);

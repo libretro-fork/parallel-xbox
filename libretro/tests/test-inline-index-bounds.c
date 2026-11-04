@@ -18,6 +18,7 @@
 #define retro_atomic_store_release_int(p,v) (*(p)=(v))
 typedef struct {
  unsigned inline_elements_length,inline_array_length,inline_buffer_length;
+ uint32_t *inline_array_external;bool inline_array_external_committed;
  uint32_t inline_elements_min,inline_elements_max,inline_elements[NV2A_MAX_BATCH_LENGTH+2];
  unsigned draw_arrays_length,draw_arrays_min_start,draw_arrays_max_count;
  int32_t draw_arrays_start[1250],draw_arrays_count[1250];bool draw_arrays_prevent_connect;
