@@ -2068,47 +2068,14 @@ static bool alu_supported(uint32_t code)
     return a.op != OP_UNSUPPORTED;
 }
 
-/* whether the parallel-move instruction is one the translator does */
+/* All parallel move formats are native. In the immediate format, register
+ * slots 0..3 select the register/register and address-update encodings;
+ * in the single-memory format they select long X/Y moves instead. Thus
+ * no reachable move operand requires fallback; only reserved ALU bytes do.
+ * The exhaustive test checks this against every 24-bit encoding. */
 static bool pm_supported(const Insn *in)
 {
-    uint32_t inst = in->inst;
-    int type = (inst >> 20) & 0xF;
-
-    if (!alu_supported(inst & 0xFF)) {
-        return false;
-    }
-    switch (type) {
-    case 0:
-    case 1:
-        return true;
-    case 2:
-        if ((inst & 0xffff00) == 0x200000 || (inst & 0xffe000) == 0x204000) {
-            return true;
-        }
-        if ((inst & 0xfc0000) == 0x200000) {
-            int src = (inst >> 13) & 0x1F, dst = (inst >> 8) & 0x1F;
-            /* Reserved 0..3 slots are raw reads and zero-masked writes
-             * in the interpreter. SDK code uses these move decorations. */
-            return (src < 4 || reg_supported(src)) &&
-                   (dst < 4 || reg_supported(dst));
-        }
-        return reg_supported((inst >> 16) & 0x1F);
-    case 3:
-        return reg_supported((inst >> 16) & 0x1F);
-    case 4:
-        if ((inst & 0xf40000) == 0x400000) {
-            return true;
-        }
-        /* fallthrough: pm_5 */
-    case 5:
-    case 6:
-    case 7: {
-        int numreg = ((inst >> 16) & 7) | ((inst >> 17) & 0x18);
-        return reg_supported(numreg);
-    }
-    default:
-        return true;
-    }
+    return alu_supported(in->inst & 0xFF);
 }
 
 /* Class II: snapshot the limited accumulator and bus input register,
@@ -4524,6 +4491,15 @@ static bool insn_native(const Insn *in)
     }
     return in->np != NP_NONE;
 }
+
+#ifdef DSPJIT_TEST
+/* Query the production eligibility gate without executing reserved words. */
+int dspjit_test_parallel_native(uint32_t instruction)
+{
+    Insn in = { .inst = instruction };
+    return dsp56k_is_parallel(instruction) && insn_native(&in);
+}
+#endif
 
 /* the native code for an instruction insn_native says yes to, without
  * the checks after it; its cycles added to t->cyc */
