@@ -51,6 +51,8 @@
 
 ## Unreleased
 
+- DSP REP first-pass state markers now use native instruction retirement, preserving count initialization, loop boundaries and deferred interrupts before entering the native repeat body.
+
 - DSP ILL, WAIT, STOP and RESET now execute natively with regression coverage for exception delivery, loop boundaries and cycles, preserving the existing MCPX sleep/reset behavior.
 
 - DSP repeats that write SR with MOVEC now execute natively, preserving scaling-mode changes, loop retirement and interrupt deferral between iterations.

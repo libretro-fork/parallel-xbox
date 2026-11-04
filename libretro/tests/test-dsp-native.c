@@ -5319,6 +5319,129 @@ static void check_native_ill_sequence(Machine *a, Machine *b, unsigned mode)
     }
 }
 
+static void check_native_rep_first_pass(Machine *a, Machine *b, unsigned mode)
+{
+    static const uint32_t ops[] = {0, 0x200040, 0x200080, 0x0141c1, 0x04c4b9,
+        0x0602a0, 0x060020, 0x064020 | (0x30 << 8), 0x0c0020, 0x0d0020,
+        0x000004, 0x00000c, 0x000084, 0x000086, 0x000087, 0x000200};
+    static const unsigned counts[] = {0, 1, 2, 0x10000, 0x10001, 0xffffff};
+    for (unsigned op = 0; op < ARRAY_SIZE(ops); op++)
+    for (unsigned count = 0; count < ARRAY_SIZE(counts); count++)
+    for (unsigned endpoint = 0; endpoint < 3; endpoint++)
+    for (unsigned irq = 0; irq < 3; irq++) for (unsigned active = 0; active < 2; active++) {
+        Machine *machines[] = {a, b}; dspjit_test_reset_fallback_count();
+        for (unsigned engine = 0; engine < 2; engine++) {
+            Machine *m = machines[engine]; prepare(m, 0, 0, 1, mode, false);
+            dsp_core_t *c = m->dsp->backend;
+            c->pc = 0x40; c->loop_rep = active; c->pc_on_rep = 1;
+            c->registers[DSP_REG_LC] = counts[count]; c->registers[DSP_REG_LCSAVE] = 9;
+            c->registers[DSP_REG_SR] = (mode << DSP_SR_S0) | 0xa5 | (endpoint ? 1u << DSP_SR_LF : 0);
+            c->registers[DSP_REG_X0] = (mode << DSP_SR_S0) | 0x80;
+            c->interrupt_state = irq == 1 ? DSP_INTERRUPT_DISABLED : DSP_INTERRUPT_NONE;
+            c->interrupt_pipeline_count = irq == 1 ? 5 : 0;
+            c->interrupt_is_pending[DSP_INTER_TRAP] = irq == 2;
+            c->interrupt_counter = irq == 2 ? 1 : 0;
+            c->interrupt_ipl[DSP_INTER_TRAP] = 3;
+            m->dsp->ops->write_memory(m->dsp, 'X', 0, 2);
+            m->dsp->ops->write_memory(m->dsp, 'X', 0x90, 2);
+            m->dsp->ops->write_memory(m->dsp, 'P', 0x40, ops[op]);
+            m->dsp->ops->write_memory(m->dsp, 'P', 0x41, op == 7 ? 0x90 : 3);
+            DspDecoded decoded; dsp56k_decode(c, 0x40, &decoded);
+            c->registers[DSP_REG_LA] = endpoint ? 0x40 + decoded.len - 1 : 0x200;
+            if (!engine) {m->dsp->ops->step(m->dsp); c->cycle_count += c->instr_cycle;}
+            else {m->dsp->save_cycles = 0; m->dsp->ops->run(m->dsp, 1);}
+            if (op == 0 && !endpoint && active && (c->pc != 0x41 || c->pc_on_rep ||
+                !c->loop_rep || c->registers[DSP_REG_LC] != (counts[count] ? counts[count] : 0x10000) ||
+                c->cycle_count != 2 || c->interrupt_counter != (irq == 2 ? 1 : 0) ||
+                c->interrupt_pipeline_count != (irq == 1 ? 5 : 0))) {
+                fputs("REP first-pass independent oracle failed\n", stderr); exit(1);
+            }
+        }
+        if (dspjit_test_fallback_count() || compare_machines(a, b)) {
+            fprintf(stderr, "REP first pass mode=%u op=%x LC=%x endpoint=%u irq=%u active=%u fallback=%llu\n",
+                    mode, ops[op], counts[count], endpoint, irq, active,
+                    (unsigned long long)dspjit_test_fallback_count()); exit(1);
+        }
+        cases++;
+    }
+}
+
+static void check_native_rep_first_cache(Machine *a, Machine *b, unsigned mode)
+{
+    static const uint32_t ops[] = {0, 0x0141c1, 0x04c4b9, 0x0602a0, 0x86};
+    static const unsigned counts[] = {0, 1, 2, 0x10001};
+    for (unsigned op = 0; op < ARRAY_SIZE(ops); op++)
+    for (unsigned old_lf = 0; old_lf < 2; old_lf++)
+    for (unsigned new_lf = 0; new_lf < 2; new_lf++)
+    for (unsigned count = 0; count < ARRAY_SIZE(counts); count++) {
+        Machine *machines[] = {a, b};
+        for (unsigned engine = 0; engine < 2; engine++) {
+            Machine *m = machines[engine]; prepare(m, 0, 0, 1, mode, false);
+            dsp_core_t *c = m->dsp->backend;
+            m->dsp->ops->write_memory(m->dsp, 'P', 0x40, ops[op]);
+            m->dsp->ops->write_memory(m->dsp, 'P', 0x41, 3);
+            c->pc = 0x40; c->registers[DSP_REG_SR] = (mode << DSP_SR_S0) | (old_lf << DSP_SR_LF);
+            c->registers[DSP_REG_X0] = c->registers[DSP_REG_SR]; c->registers[DSP_REG_LA] = 0x200;
+            c->interrupt_state = DSP_INTERRUPT_DISABLED; c->interrupt_pipeline_count = 5;
+            if (!engine) m->dsp->ops->step(m->dsp);
+            else {m->dsp->save_cycles = 0; m->dsp->ops->run(m->dsp, 1);}
+        }
+        dspjit_test_reset_fallback_count();
+        for (unsigned engine = 0; engine < 2; engine++) {
+            Machine *m = machines[engine]; dsp_core_t *c = m->dsp->backend;
+            c->pc = 0x40; c->loop_rep = 1; c->pc_on_rep = 1;
+            c->registers[DSP_REG_LC] = counts[count]; c->registers[DSP_REG_LCSAVE] = 9;
+            c->registers[DSP_REG_SR] = (mode << DSP_SR_S0) | (new_lf << DSP_SR_LF);
+            c->registers[DSP_REG_X0] = c->registers[DSP_REG_SR];
+            c->interrupt_state = DSP_INTERRUPT_DISABLED; c->interrupt_pipeline_count = 5;
+            DspDecoded decoded; dsp56k_decode(c, 0x40, &decoded);
+            c->registers[DSP_REG_LA] = 0x40 + decoded.len - 1;
+            c->cycle_count = 0; c->num_inst = 0;
+            if (!engine) {m->dsp->ops->step(m->dsp); c->cycle_count += c->instr_cycle;}
+            else {m->dsp->save_cycles = 0; m->dsp->ops->run(m->dsp, 1);}
+        }
+        if (dspjit_test_fallback_count() || compare_machines(a, b)) {
+            fprintf(stderr, "cached REP first pass mode=%u op=%x oldLF=%u newLF=%u count=%x\n",
+                    mode, ops[op], old_lf, new_lf, counts[count]); exit(1);
+        }
+        cases++;
+    }
+}
+
+static void check_native_rep_first_resume(Machine *a, Machine *b, unsigned mode)
+{
+    static const unsigned counts[] = {1, 2, 0x10001};
+    for (unsigned n = 0; n < ARRAY_SIZE(counts); n++) {
+        unsigned iterations = ((counts[n] - 1) & 0xffff) + 1;
+        Machine *machines[] = {a, b}; dspjit_test_reset_fallback_count();
+        for (unsigned engine = 0; engine < 2; engine++) {
+            Machine *m = machines[engine]; prepare(m, 0, 0, 1, mode, false);
+            dsp_core_t *c = m->dsp->backend;
+            m->dsp->ops->write_memory(m->dsp, 'P', 0x40, 0);
+            m->dsp->ops->write_memory(m->dsp, 'P', 0x41, 0x200040);
+            c->pc = 0x40; c->loop_rep = 1; c->pc_on_rep = 1;
+            c->registers[DSP_REG_LC] = counts[n]; c->registers[DSP_REG_LCSAVE] = 9;
+            c->registers[DSP_REG_SR] = mode << DSP_SR_S0; c->registers[DSP_REG_LA] = 0x200;
+            c->interrupt_state = DSP_INTERRUPT_DISABLED; c->interrupt_pipeline_count = 5;
+            if (!engine) {m->dsp->ops->step(m->dsp); c->cycle_count += c->instr_cycle;}
+            else {m->dsp->save_cycles = 0; m->dsp->ops->run(m->dsp, 1);}
+            if (c->pc != 0x41 || c->pc_on_rep || !c->loop_rep || c->registers[DSP_REG_LC] != counts[n] ||
+                c->cycle_count != 2 || c->interrupt_pipeline_count != 5) exit(1);
+        }
+        if (dspjit_test_fallback_count() || compare_machines(a, b)) exit(1);
+        dspjit_test_reset_entry_count();
+        for (unsigned engine = 0; engine < 2; engine++) {
+            Machine *m = machines[engine]; dsp_core_t *c = m->dsp->backend;
+            if (!engine) {for (unsigned i = 0; i < iterations; i++) {m->dsp->ops->step(m->dsp); c->cycle_count += c->instr_cycle;}}
+            else {m->dsp->save_cycles = 0; m->dsp->ops->run(m->dsp, 2 * iterations - 1);}
+            if (c->pc != 0x42 || c->loop_rep || c->pc_on_rep || c->registers[DSP_REG_LC] != 9 ||
+                c->cycle_count != 2 + 2 * iterations || c->interrupt_pipeline_count != 4) exit(1);
+        }
+        if (dspjit_test_fallback_count() || compare_machines(a, b) || dspjit_test_entry_count() != 1) exit(1);
+        cases += 2;
+    }
+}
+
 static void check_native_rti(Machine *a, Machine *b, unsigned mode)
 {
     static const uint32_t targets[] = {0, 1, 0x40, 0xfff, 0xffff};
@@ -5438,6 +5561,7 @@ int main(int argc, char **argv)
         puts("native DSP: 32768 bit-call decode probes agree");
         return 0;
     }
+    bool rep_first_only = argc == 2 && !strcmp(argv[1], "--rep-first-pass");
     bool cold_control_only = argc == 2 && !strcmp(argv[1], "--cold-control");
     bool repeat_status_only = argc == 2 && !strcmp(argv[1], "--repeat-status");
     bool memory_rep_only = argc == 2 && !strcmp(argv[1], "--memory-rep");
@@ -5502,8 +5626,8 @@ int main(int argc, char **argv)
     bool effective_only = argc == 2 && !strcmp(argv[1], "--effective-control");
     bool startup_only = argc == 2 && !strcmp(argv[1], "--startup");
     bool program_only = argc == 2 && !strcmp(argv[1], "--program");
-    if (argc != 1 && !cold_control_only && !repeat_status_only && !memory_rep_only && !interrupt_only && !rti_only && !remaining_smoke && !remaining_control_only && !remaining_data_only && !remaining_only && !immediate_mac_only && !qq_program_moves_only && !qq_register_moves_only && !control_bitbranches_only && !register_relative_calls_only && !indirect_relative_calls_only && !short_relative_calls_only && !pp_relative_calls_only && !indirect_bitbranches_only && !short_bitbranches_only && !indirect_bitcalls_only && !short_bitcalls_only && !register_bitcalls_only && !pp_calls_only && !qq_relative_calls_only && !qq_calls_only && !qq_jumps_only && !qq_branches_only && !qq_bits_only && !register_logical_only && !merge_only && !insert_only && !extract_only && !extractu_only && !leading_bits_only && !register_shifts_only && !indirect_memory_loops_only && !short_memory_loops_only && !relative_calls_only && !register_branches_only && !pc_relative_only && !rounded_multiply_only && !y_long_only && !logical_shifts_only && !immediate_logic_only && !relative_only && !loops_only && !program_only && !compare_only && !startup_only && !effective_only && !register_only && !program_control_only && !peripheral_only && !program_peripheral_only && !multiply_only && !normalize_only && !divide_only && !byte_logic_only && !memory_bits_only && !control_bits_only && !offset_control_only && !shifts_only && !signed_right_only && !left_flags_only) {
-        fputs("usage: dspnative [--cold-control|--repeat-status|--memory-rep|--interrupt-retirement|--rti|--remaining-smoke|--remaining-control|--remaining-data|--remaining-opcodes|--immediate-mac|--qq-program-movep|--qq-register-movep|--control-bitbranches|--register-relative-calls|--indirect-relative-calls|--short-relative-calls|--pp-relative-calls|--indirect-memory-bitbranches|--short-memory-bitbranches|--bitcall-decode|--indirect-memory-bitcalls|--short-memory-bitcalls|--register-bitcalls|--pp-calls|--qq-relative-calls|--qq-calls|--qq-jumps|--qq-branches|--qq-bits|--register-logical-shifts|--merge|--insert|--extract|--extractu|--leading-bits|--register-shifts|--indirect-memory-loops|--short-memory-loops|--relative-calls|--register-branches|--pc-relative-loads|--rounded-multiply|--y-long-offset|--logical-shifts|--immediate-logic|--relative|--loops|--program|--compare|--startup|--effective-control|--register-control|--program-control|--peripheral-control|--program-peripheral|--multiply|--normalize|--divide|--status-byte|--memory-bits|--control-bits|--offset-control|--shift-boundaries|--signed-right|--left-flags]\n", stderr);
+    if (argc != 1 && !rep_first_only && !cold_control_only && !repeat_status_only && !memory_rep_only && !interrupt_only && !rti_only && !remaining_smoke && !remaining_control_only && !remaining_data_only && !remaining_only && !immediate_mac_only && !qq_program_moves_only && !qq_register_moves_only && !control_bitbranches_only && !register_relative_calls_only && !indirect_relative_calls_only && !short_relative_calls_only && !pp_relative_calls_only && !indirect_bitbranches_only && !short_bitbranches_only && !indirect_bitcalls_only && !short_bitcalls_only && !register_bitcalls_only && !pp_calls_only && !qq_relative_calls_only && !qq_calls_only && !qq_jumps_only && !qq_branches_only && !qq_bits_only && !register_logical_only && !merge_only && !insert_only && !extract_only && !extractu_only && !leading_bits_only && !register_shifts_only && !indirect_memory_loops_only && !short_memory_loops_only && !relative_calls_only && !register_branches_only && !pc_relative_only && !rounded_multiply_only && !y_long_only && !logical_shifts_only && !immediate_logic_only && !relative_only && !loops_only && !program_only && !compare_only && !startup_only && !effective_only && !register_only && !program_control_only && !peripheral_only && !program_peripheral_only && !multiply_only && !normalize_only && !divide_only && !byte_logic_only && !memory_bits_only && !control_bits_only && !offset_control_only && !shifts_only && !signed_right_only && !left_flags_only) {
+        fputs("usage: dspnative [--rep-first-pass|--cold-control|--repeat-status|--memory-rep|--interrupt-retirement|--rti|--remaining-smoke|--remaining-control|--remaining-data|--remaining-opcodes|--immediate-mac|--qq-program-movep|--qq-register-movep|--control-bitbranches|--register-relative-calls|--indirect-relative-calls|--short-relative-calls|--pp-relative-calls|--indirect-memory-bitbranches|--short-memory-bitbranches|--bitcall-decode|--indirect-memory-bitcalls|--short-memory-bitcalls|--register-bitcalls|--pp-calls|--qq-relative-calls|--qq-calls|--qq-jumps|--qq-branches|--qq-bits|--register-logical-shifts|--merge|--insert|--extract|--extractu|--leading-bits|--register-shifts|--indirect-memory-loops|--short-memory-loops|--relative-calls|--register-branches|--pc-relative-loads|--rounded-multiply|--y-long-offset|--logical-shifts|--immediate-logic|--relative|--loops|--program|--compare|--startup|--effective-control|--register-control|--program-control|--peripheral-control|--program-peripheral|--multiply|--normalize|--divide|--status-byte|--memory-bits|--control-bits|--offset-control|--shift-boundaries|--signed-right|--left-flags]\n", stderr);
         return 2;
     }
     Machine *a = machine_new(false), *b = machine_new(true);
@@ -5519,8 +5643,9 @@ int main(int argc, char **argv)
 #endif
     check_speculative_decode();
     check_bitcall_decode();
-    if (cold_control_only || repeat_status_only || memory_rep_only || interrupt_only || rti_only || remaining_smoke || remaining_control_only || remaining_data_only || remaining_only || immediate_mac_only || qq_program_moves_only || qq_register_moves_only || control_bitbranches_only || register_relative_calls_only || indirect_relative_calls_only || short_relative_calls_only || pp_relative_calls_only || indirect_bitbranches_only || short_bitbranches_only || indirect_bitcalls_only || short_bitcalls_only || register_bitcalls_only || pp_calls_only || qq_relative_calls_only || qq_calls_only || qq_jumps_only || qq_branches_only || qq_bits_only || register_logical_only || merge_only || insert_only || extract_only || extractu_only || leading_bits_only || register_shifts_only || indirect_memory_loops_only || short_memory_loops_only || relative_calls_only || register_branches_only || pc_relative_only || rounded_multiply_only || y_long_only || logical_shifts_only || immediate_logic_only || relative_only || loops_only || program_only || compare_only || startup_only || effective_only || register_only || program_control_only || peripheral_only || program_peripheral_only || multiply_only || normalize_only || divide_only || byte_logic_only || memory_bits_only || control_bits_only || offset_control_only || shifts_only || signed_right_only || left_flags_only) {
+    if (rep_first_only || cold_control_only || repeat_status_only || memory_rep_only || interrupt_only || rti_only || remaining_smoke || remaining_control_only || remaining_data_only || remaining_only || immediate_mac_only || qq_program_moves_only || qq_register_moves_only || control_bitbranches_only || register_relative_calls_only || indirect_relative_calls_only || short_relative_calls_only || pp_relative_calls_only || indirect_bitbranches_only || short_bitbranches_only || indirect_bitcalls_only || short_bitcalls_only || register_bitcalls_only || pp_calls_only || qq_relative_calls_only || qq_calls_only || qq_jumps_only || qq_branches_only || qq_bits_only || register_logical_only || merge_only || insert_only || extract_only || extractu_only || leading_bits_only || register_shifts_only || indirect_memory_loops_only || short_memory_loops_only || relative_calls_only || register_branches_only || pc_relative_only || rounded_multiply_only || y_long_only || logical_shifts_only || immediate_logic_only || relative_only || loops_only || program_only || compare_only || startup_only || effective_only || register_only || program_control_only || peripheral_only || program_peripheral_only || multiply_only || normalize_only || divide_only || byte_logic_only || memory_bits_only || control_bits_only || offset_control_only || shifts_only || signed_right_only || left_flags_only) {
         for (unsigned mode = 0; mode < 4; mode++) {
+            if (rep_first_only) { check_native_rep_first_pass(a, b, mode); check_native_rep_first_cache(a, b, mode); check_native_rep_first_resume(a, b, mode); }
             if (cold_control_only) { check_native_cold_control(a, b, mode); check_native_ill_sequence(a, b, mode); }
             if (repeat_status_only) { check_native_rep_status(a, b, mode); check_native_rep_status_cache(a, b, mode); }
             if (memory_rep_only) { check_native_memory_rep(a, b, mode); check_native_memory_rep_completion(a, b, mode); check_native_memory_rep_peripheral(a, b, mode); }
@@ -5634,6 +5759,7 @@ int main(int argc, char **argv)
         check_remaining_y_program(a, b, mode);
         check_remaining_y_ea(a, b, mode);
     }
+    for (unsigned mode = 0; mode < 4; mode++) { check_native_rep_first_pass(a, b, mode); check_native_rep_first_cache(a, b, mode); check_native_rep_first_resume(a, b, mode); }
     for (unsigned mode = 0; mode < 4; mode++) { check_native_cold_control(a, b, mode); check_native_ill_sequence(a, b, mode); }
     for (unsigned mode = 0; mode < 4; mode++) { check_native_rep_status(a, b, mode); check_native_rep_status_cache(a, b, mode); }
     for (unsigned mode = 0; mode < 4; mode++) { check_native_memory_rep(a, b, mode); check_native_memory_rep_completion(a, b, mode); check_native_memory_rep_peripheral(a, b, mode); }
