@@ -3226,3 +3226,8 @@ block/accounting.c
 include/block/accounting.h
 util/timed-average.c
 include/qemu/timed-average.h
+
+# Removed standalone TCG profiling integration.
+tcg/perf.c
+include/tcg/perf.h
+include/tcg/debuginfo.h

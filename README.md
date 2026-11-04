@@ -431,3 +431,11 @@ avoiding a redundant zero-source store. ADC immediate zero keeps its carry
 handling; memory and LOCK forms are excluded. The `add-zero.asm` synthetic
 ROM checks AL/AH/AX/EAX, varying input flags, preserved registers, ADC carry,
 CMP controls and invalid LOCK / zero-immediate memory fault behavior.
+
+Regular core builds omit the standalone TCG perf/jitdump and GDB JIT ELF
+registration infrastructure. This removes the Linux per-block empty profiling
+call and startup debug-image allocation/string-table scans. GDB automatic JIT
+symbol/unwind registration is no longer provided. Guest execution, generated
+TCG instructions and the normal host ABI prologue/epilogue are unchanged.
+The private capture builder still works through a force-included test macro;
+regular builds contain neither that macro nor its environment lookup.

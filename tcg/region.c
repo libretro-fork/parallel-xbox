@@ -739,10 +739,5 @@ void tcg_region_prologue_set(TCGContext *s)
 
     /* Recompute boundaries of the first region. */
     tcg_region_assign(s, 0);
-
-    /* Register the balance of the buffer with gdb. */
-    tcg_register_jit(tcg_splitwx_to_rx(region.after_prologue),
-                     region.start_aligned + region.total_size -
-                     region.after_prologue);
 }
 

@@ -424,7 +424,6 @@ SOURCES_SYSTEM_POSIX := \
 
 SOURCES_SYSTEM_LINUX := \
 	$(CORE_DIR)/system/async-teardown.c \
-	$(CORE_DIR)/tcg/perf.c \
 
 SOURCES_SYSTEM_DARWIN := \
 

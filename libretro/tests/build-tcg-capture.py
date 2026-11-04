@@ -7,6 +7,10 @@ from pathlib import Path
 import os,shlex,shutil,subprocess,sys
 r=Path(sys.argv[1]).resolve();out=Path(sys.argv[2]).resolve();out.mkdir(parents=True,exist_ok=True)
 make=['make']+sys.argv[3:]
+# Refresh the normal object and its dependencies before saving/restoring it.
+# Otherwise a source/header change can restore an obsolete object, or make
+# can replace the private object while linking because its .d file is stale.
+subprocess.run([*make,'-j8'],cwd=r,check=True)
 relative='accel/tcg/translate-all.o';obj=r/relative
 command=subprocess.check_output([*make,'-Bn',relative],cwd=r,text=True)
 lines=[line for line in command.splitlines() if ' -c ' in line and line.rstrip().endswith('accel/tcg/translate-all.c')]

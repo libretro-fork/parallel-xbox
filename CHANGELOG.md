@@ -1,5 +1,6 @@
 # Changelog of the libretro core
 
+- Remove unused TCG perf/jitdump and GDB JIT registration infrastructure. Linux no longer calls an empty profiler on each translated block or allocates startup debug ELF metadata; private generated-code capture remains available for tests.
 - Generate smaller host code for ADD register,0 by recording its simpler arithmetic flags. Carry-dependent ADC and memory/LOCK accesses retain their existing behavior; no host CPU requirement changes.
 - Generate smaller host code for SUB/CMP register,0 by using their simpler arithmetic flags. Carry-dependent SBB and memory/LOCK accesses retain their existing paths; no host CPU requirement changes.
 - Generate smaller host code for same-register SUB/CMP by recording their known zero result and flags directly. Partial-register writes and memory/LOCK exception behavior remain intact; no new host CPU requirement.

@@ -95,7 +95,6 @@
 #include "qemu/main-loop.h"
 #include "system/qtest.h"
 #ifdef CONFIG_TCG
-#include "tcg/perf.h"
 #endif
 
 #include "disas/disas.h"

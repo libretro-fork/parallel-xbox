@@ -64,7 +64,6 @@
 #include "hw/boards.h"
 #include "qemu/cutils.h"
 #include "system/runstate.h"
-#include "tcg/debuginfo.h"
 
 #include <encodings/deflate.h>
 

@@ -1001,8 +1001,6 @@ static inline size_t tcg_current_code_size(TCGContext *s)
 typedef uintptr_t tcg_prologue_fn(CPUArchState *env, const void *tb_ptr);
 extern tcg_prologue_fn *tcg_qemu_tb_exec;
 
-void tcg_register_jit(const void *buf, size_t buf_size);
-
 /* Return zero if the tuple (opc, type, vece) is unsupportable;
    return > 0 if it is directly supportable;
    return < 0 if we must call tcg_expand_vec_op.  */

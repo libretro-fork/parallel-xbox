@@ -3,7 +3,6 @@
  * Release sources and objects never include this header. */
 #include "qemu/osdep.h"
 #include "exec/translation-block.h"
-#include "tcg/perf.h"
 static void lr_test_capture_code(uint64_t pc, uint64_t guest_size,
                                 uint64_t insns, uint64_t cflags,
                                 uint64_t flags, uint64_t code_size,
@@ -26,6 +25,6 @@ static void lr_test_capture_code(uint64_t pc, uint64_t guest_size,
     if (write(fd, header, sizeof(header)) != sizeof(header) ||
         write(fd, code, code_size) != code_size) { abort(); }
 }
-#define perf_report_code(pc, tb, start) \
+#define LIBRETRO_TCG_CAPTURE(pc, tb, start) \
     lr_test_capture_code((pc), (tb)->size, (tb)->icount, tb_cflags(tb), \
                          (tb)->flags, (tb)->tc.size, (start))

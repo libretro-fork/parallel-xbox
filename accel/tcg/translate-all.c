@@ -36,7 +36,6 @@
 #include "tb-context.h"
 #include "tb-internal.h"
 #include "internal-common.h"
-#include "tcg/perf.h"
 #include "tcg/insn-start-words.h"
 
 
@@ -415,11 +414,10 @@ TranslationBlock *tb_gen_code(CPUState *cpu, TCGTBCPUState s)
     }
     tb->tc.size = gen_code_size;
 
-    /*
-     * For CF_PCREL, attribute all executions of the generated code
-     * to its first mapping.
-     */
-    perf_report_code(s.pc, tb, tcg_splitwx_to_rx(gen_code_buf));
+#ifdef LIBRETRO_TCG_CAPTURE
+    /* Private test builds capture emitted bytes; release builds omit this. */
+    LIBRETRO_TCG_CAPTURE(s.pc, tb, tcg_splitwx_to_rx(gen_code_buf));
+#endif
 
     if (qemu_loglevel_mask(CPU_LOG_TB_OUT_ASM) &&
         qemu_log_in_addr_range(s.pc)) {
