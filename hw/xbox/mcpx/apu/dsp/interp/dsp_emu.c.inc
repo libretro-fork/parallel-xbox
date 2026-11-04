@@ -7511,10 +7511,10 @@ static void emu_jscc_imm(dsp_core_t* dsp)
     dsp->instr_cycle += 2;
 }
 
-static void emu_peripheral_bitcall(dsp_core_t* dsp, bool set, bool relative, uint32_t base)
+static void emu_memory_bitcall(dsp_core_t* dsp, bool set, bool relative, uint32_t base)
 {
     uint32_t address = base + ((dsp->cur_inst >> 8) & 63);
-    uint32_t value = dsp56k_read_memory(dsp, DSP_SPACE_X, address);
+    uint32_t value = dsp56k_read_memory(dsp, base ? DSP_SPACE_X : (dsp->cur_inst >> 6) & 1, address);
     uint32_t target = read_memory_p(dsp, dsp->pc + 1);
     if (relative) target = (dsp->pc + target) & BITMASK(24);
     bool tested = (value >> (dsp->cur_inst & 31)) & 1;
@@ -7528,14 +7528,17 @@ static void emu_peripheral_bitcall(dsp_core_t* dsp, bool set, bool relative, uin
     }
 }
 
-static void emu_jsclr_qq(dsp_core_t* dsp) { emu_peripheral_bitcall(dsp, false, false, 0xffff80); }
-static void emu_jsset_qq(dsp_core_t* dsp) { emu_peripheral_bitcall(dsp, true, false, 0xffff80); }
+static void emu_jsclr_qq(dsp_core_t* dsp) { emu_memory_bitcall(dsp, false, false, 0xffff80); }
+static void emu_jsset_qq(dsp_core_t* dsp) { emu_memory_bitcall(dsp, true, false, 0xffff80); }
 
-static void emu_bsclr_qq(dsp_core_t* dsp) { emu_peripheral_bitcall(dsp, false, true, 0xffff80); }
-static void emu_bsset_qq(dsp_core_t* dsp) { emu_peripheral_bitcall(dsp, true, true, 0xffff80); }
+static void emu_bsclr_qq(dsp_core_t* dsp) { emu_memory_bitcall(dsp, false, true, 0xffff80); }
+static void emu_bsset_qq(dsp_core_t* dsp) { emu_memory_bitcall(dsp, true, true, 0xffff80); }
 
-static void emu_bsclr_pp(dsp_core_t* dsp) { emu_peripheral_bitcall(dsp, false, true, 0xffffc0); }
-static void emu_bsset_pp(dsp_core_t* dsp) { emu_peripheral_bitcall(dsp, true, true, 0xffffc0); }
+static void emu_bsclr_pp(dsp_core_t* dsp) { emu_memory_bitcall(dsp, false, true, 0xffffc0); }
+static void emu_bsset_pp(dsp_core_t* dsp) { emu_memory_bitcall(dsp, true, true, 0xffffc0); }
+
+static void emu_bsclr_aa(dsp_core_t* dsp) { emu_memory_bitcall(dsp, false, true, 0); }
+static void emu_bsset_aa(dsp_core_t* dsp) { emu_memory_bitcall(dsp, true, true, 0); }
 
 static void emu_jsclr_aa(dsp_core_t* dsp)
 {

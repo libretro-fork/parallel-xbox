@@ -677,6 +677,9 @@ static void dis_brset_aa(dsp_core_t* dsp) { dis_bitbranch_memory(dsp, "brset", 0
 static void dis_bsclr_pp(dsp_core_t* dsp) { dis_bitbranch_memory(dsp, "bsclr", 0xffffc0); }
 static void dis_bsset_pp(dsp_core_t* dsp) { dis_bitbranch_memory(dsp, "bsset", 0xffffc0); }
 
+static void dis_bsclr_aa(dsp_core_t* dsp) { dis_bitbranch_memory(dsp, "bsclr", 0); }
+static void dis_bsset_aa(dsp_core_t* dsp) { dis_bitbranch_memory(dsp, "bsset", 0); }
+
 static void dis_bitbranch_indirect(dsp_core_t* dsp, const char *name)
 {
     char address[32];
