@@ -33,9 +33,10 @@ int64_t lr_qcow2_size(LRQcow2 *q);
 int lr_qcow2_preadv(LRQcow2 *q, int64_t off, const LRFileIOV *iov, int n);
 int lr_qcow2_pwritev(LRQcow2 *q, int64_t off, const LRFileIOV *iov, int n);
 
-/* Owner-serialized immutable snapshot of one compressed-cluster span.
+/* Owner-serialized immutable snapshot of one compressed or read-only mapped cluster span.
  * 1: retained view, 0: ordinary preadv required, negative: read error.
- * Only one view per image is retained at a time. It remains valid through
+ * Only one decoded view per image is retained at a time; mapped views may
+ * coexist. Each remains valid through
  * later reads/writes and image close; release once on the same I/O owner. */
 typedef struct LRQcow2ReadView {
     const uint8_t *data;

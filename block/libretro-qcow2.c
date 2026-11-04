@@ -98,13 +98,20 @@ static void decoded_owner_release(DecodedViewOwner *owner)
     }
 }
 
-void lr_qcow2_release_read_view(void *opaque)
+static void decoded_view_release(void *opaque)
 {
     DecodedViewOwner *owner = opaque;
     if (owner) {
         decoded_release(owner->held);
         owner->held = NULL;
         decoded_owner_release(owner);
+    }
+}
+
+void lr_qcow2_release_read_view(void *owner)
+{
+    if (owner) {
+        ((LRReadViewOwner *)owner)->release(owner);
     }
 }
 
@@ -552,13 +559,26 @@ static int read_compressed(LRQcow2 *q, uint64_t gc, uint64_t e)
     return 0;
 }
 
+/* whether entry e names a cluster written in place: its own, data */
+static bool in_place(LRQcow2 *q, uint64_t e)
+{
+    return (e & F_COPIED) && !(e & F_COMPRESSED) && (e & OFFSET_MASK) &&
+           !(q->version == 3 && (e & F_ZERO));
+}
+
+static bool reads_zero(LRQcow2 *q, uint64_t e)
+{
+    return !(e & F_COMPRESSED) &&
+           (!(e & OFFSET_MASK) || (q->version == 3 && (e & F_ZERO)));
+}
+
 int lr_qcow2_read_view(LRQcow2 *q, int64_t off, size_t size, LRQcow2ReadView *view)
 {
     *view = (LRQcow2ReadView){0};
     if (off < 0 || (uint64_t)off > q->size || size > q->size - (uint64_t)off) {
         return -EIO;
     }
-    if (!size || q->view_owner->held) {
+    if (!size) {
         return 0;
     }
     uint64_t in = (uint64_t)off & (q->cs - 1);
@@ -568,6 +588,19 @@ int lr_qcow2_read_view(LRQcow2 *q, int64_t off, size_t size, LRQcow2ReadView *vi
     uint64_t gc = (uint64_t)off >> q->cluster_bits;
     uint64_t entry = *l2_entry(q, gc);
     if (!(entry & F_COMPRESSED)) {
+        /* Read-only mapped image data needs no decode/cache workspace. */
+        if (q->writable || reads_zero(q, entry)) {
+            return 0;
+        }
+        uint64_t host = (entry & OFFSET_MASK) + in;
+        if (host > INT64_MAX) {
+            return 0;
+        }
+        view->data = lr_file_retain_read_view(q->f, (int64_t)host, size,
+                                              &view->owner);
+        return view->data ? 1 : 0;
+    }
+    if (q->view_owner->held) {
         return 0;
     }
     int ret = read_compressed(q, gc, entry);
@@ -580,19 +613,6 @@ int lr_qcow2_read_view(LRQcow2 *q, int64_t off, size_t size, LRQcow2ReadView *vi
     view->data = q->dcache + in;
     view->owner = q->view_owner;
     return 1;
-}
-
-/* whether entry e names a cluster written in place: its own, data */
-static bool in_place(LRQcow2 *q, uint64_t e)
-{
-    return (e & F_COPIED) && !(e & F_COMPRESSED) && (e & OFFSET_MASK) &&
-           !(q->version == 3 && (e & F_ZERO));
-}
-
-static bool reads_zero(LRQcow2 *q, uint64_t e)
-{
-    return !(e & F_COMPRESSED) &&
-           (!(e & OFFSET_MASK) || (q->version == 3 && (e & F_ZERO)));
 }
 
 /* ---- open and close ----------------------------------------------------- */
@@ -693,7 +713,7 @@ LRQcow2 *lr_qcow2_open(LRFile *f, bool writable, char *err, size_t errlen)
     q->dcache = q->decoded ? q->decoded->data : NULL;
     q->view_owner = calloc(1, sizeof(*q->view_owner));
     if (q->view_owner) {
-        q->view_owner->common.release = lr_qcow2_release_read_view;
+        q->view_owner->common.release = decoded_view_release;
         q->view_owner->refs = 1;
     }
     q->cbuf = malloc((size_t)q->cs * 2 + 512);

@@ -58,6 +58,8 @@
 
 ## Unreleased
 
+- Read-only mapped QCOW2 data clusters can supply retained IDE read spans directly, avoiding the intermediate scratch copy for uncompressed image data too.
+
 - Mapped read-only raw image reads retain their source through IDE completion, removing intermediate scratch copies while keeping pending reads valid across media close.
 - DSP: specialize constant-address parallel single-bus RAM moves while retaining X mixbuffer aliases, immediate operands and peripheral retirement behavior.
 

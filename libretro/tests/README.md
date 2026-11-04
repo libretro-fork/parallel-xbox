@@ -4438,3 +4438,5 @@ Constant RAM accesses avoid address setup, bounds stubs and callback exits;
 computed addresses and peripheral targets keep their existing paths. The
 production fixture uses RAM limits and both immediate directions with ADD,
 REP and counted DO across frames. Synthetic timing is not a game-wide claim.
+
+The QCOW2 retained-view fixture also verifies mapped uncompressed cluster pointer identity, zero/short-map/cross-cluster fallbacks, and simultaneous mapped/decoded IDE views completed after image close.

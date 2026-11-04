@@ -139,6 +139,41 @@ static void mapped_cases(const char *path)
  assert(!req_live&&!scratch_live);free(mapping);
  puts("Mapped raw IDE views: partition offset, concurrent/scattered reads, delayed publication, close, cancellation and fallback PASS");
 }
+static void mapped_qcow_cases(const char *path)
+{
+ LRFile *file=lr_file_open(path,false,false);assert(file);int64_t size=lr_file_size(file);
+ uint8_t *mapping=malloc(size);assert(mapping);assert(!lr_file_pread(file,0,mapping,size));
+ file->mapped=mapping;file->mapped_size=size;char error[256];
+ LRQcow2 *q=lr_qcow2_open(file,false,error,sizeof(error));assert(q);
+ size_t cs=q->cs;uint8_t *out=malloc(cs*2),*expected=malloc(cs*2);assert(out&&expected);
+ pattern(expected,cs,0);memset(expected+117,0x7a,13);pattern(expected+cs,cs,1);
+ assert(!(*l2_entry(q,0)&F_COMPRESSED));
+ LRQcow2ReadView direct;assert(lr_qcow2_read_view(q,17,73,&direct)==1);
+ assert(direct.owner==file&&direct.data==mapping+(*l2_entry(q,0)&OFFSET_MASK)+17);
+ assert(!memcmp(direct.data,expected+17,73));lr_qcow2_release_read_view(direct.owner);
+ uint64_t entry=*l2_entry(q,0);*l2_entry(q,0)=0;
+ assert(!lr_qcow2_read_view(q,0,512,&direct));
+ if(q->version==3){*l2_entry(q,0)=entry|F_ZERO;assert(!lr_qcow2_read_view(q,0,512,&direct));}
+ *l2_entry(q,0)=entry;
+ /* Incomplete mappings fall back, including short physical spans. */
+ int64_t mapped_size=file->mapped_size;file->mapped_size=(entry&OFFSET_MASK)+511;
+ assert(!lr_qcow2_read_view(q,0,512,&direct));file->mapped_size=mapped_size;
+ assert(!lr_qcow2_read_view(q,cs-1,2,&direct));
+ BlockBackend blk={.m={.kind=LR_MEDIUM_QCOW2,.qcow2=q}};
+ DMA dma={0};IDEBus bus={&dma};IDEState state={.blk=&blk,.bus=&bus};QLIST_INIT(&state.buffered_requests);
+ QEMUIOVector a,b;qemu_iovec_init_buf(&a,out,cs);qemu_iovec_init_buf(&b,out+cs,cs);
+ memset(out,0xcc,cs*2);int ok=0;unsigned reads=legacy_reads;
+ /* Mapped data and a decoded cache view coexist without scratch storage. */
+ BlockAIOCB *compressed=ide_buffered_readv(&state,cs/512,&b,cs/512,completed,&ok);
+ BlockAIOCB *mapped=ide_buffered_readv(&state,0,&a,cs/512,completed,&ok);
+ assert(q->view_owner->held&&file->views==1&&!scratch_live&&legacy_reads==reads);
+ for(size_t i=0;i<cs*2;i++)assert(out[i]==0xcc);
+ lr_qcow2_close(q);lr_file_close(file);
+ finish(compressed);finish(mapped);assert(!memcmp(out,expected,cs*2));
+ ide_buffered_read_cache_clear();assert(!req_live&&!scratch_live);
+ free(out);free(expected);free(mapping);
+ puts("Mapped QCOW2 views: pointer identity, zero/short/cross-cluster fallbacks, mixed decoded/mapped completion after close PASS");
+}
 static int patch_case(int argc,char **argv)
 {
  assert(argc==6);size_t in=strtoull(argv[2],NULL,0),len=strtoull(argv[3],NULL,0);
@@ -247,7 +282,7 @@ int main(int argc,char **argv)
  ide_buffered_read_cache_clear();assert(!req_live&&!scratch_live);
  for(unsigned i=0;i<64;i++)assert(!pending[i].live);
  assert(queued==releases);free(out);free(want);free(original);
- mapped_cases(argv[1]);assert(queued==releases);
+ mapped_cases(argv[1]);mapped_qcow_cases(argv[1]);assert(queued==releases);
  puts("QCOW2 retained IDE views: copies, overlap, writes, errors, allocation failure and canceled-close lifetime passed");
  return 0;
 }
