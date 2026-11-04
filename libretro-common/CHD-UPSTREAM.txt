@@ -1,0 +1,31 @@
+CHD codec sources imported from libretro/RetroArch
+Commit: 86d9bbc6c0f872397a07e5950e4ef6d58db12195
+
+formats/chd/rchd.c
+formats/chd/FORMAT.md
+include/formats/rchd.h
+encodings/encoding_rzstd.c
+include/encodings/rzstd.h
+encodings/encoding_xxh64.c
+include/encodings/xxh64.h
+formats/flac/rflac.c
+include/formats/rflac.h
+formats/flac/rflac_internal.h
+formats/7z/r7z_lzma.c
+include/7z/r7z_lzma.h
+encodings/encoding_huffman.c
+include/encodings/huffman.h
+
+Existing file I/O/thread/atomic facilities remain owned by this core.
+
+This is codec groundwork, not a mounted CHD backend. These sources are
+compiled by libretro/tests/test-chd-codecs.py, not the core Makefile yet.
+Enable all four HAVE_RCHD_{DEFLATE,LZMA,FLAC,ZSTD} when integrating them.
+The existing deflate, CRC32, CPU-feature and compatibility headers are reused.
+
+The pinned API accepts pipeline depth one only. Borrowed input must remain
+valid until the read step has consumed it. A step bounds decoding by hunk,
+not host wall-clock time: run file access and decoding on their owned worker,
+not on retro_run. Do not add a guest-visible wait for a worker completion.
+ATAPI PIO's mid-phase synchronous refill must be replaced before enabling
+compressed media, while preserving the announced byte count and DRQ burst.

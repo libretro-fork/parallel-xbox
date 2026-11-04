@@ -4487,3 +4487,17 @@ previous state publication and mapped/device accesses. Extension cycles and
 raw-word shift/mask semantics are unchanged. A production fixture places
 multiple ADD/VSL pairs in native blocks, consumes flags between groups, and
 covers all modes/accumulators/insert bits, RAM limits, DO and REP across frames.
+
+### CHD codec groundwork
+
+`python3 libretro/tests/test-chd-codecs.py . [cc]` compiles the pinned
+libretro-common decoder stack independently of the core. It requires the
+reference `zstd` CLI and Python's standard `lzma` module to generate fixtures.
+No game files are needed. It checks 16,000 raw-byte oracle reads across v3
+DEFLATE and v5 raw/Zstandard/LZMA layouts, seven-byte and borrowed supplies,
+output guards, and reference Zstandard checksum/truncation error recovery.
+Linux defaults to ASan/UBSan. `CHD_CODEC_CFLAGS`, `CHD_CODEC_WORK`,
+`CHD_CODEC_BINARY` and `CHD_CODEC_SKIP_RUN` support cross-compiled native tests.
+FLAC and Huffman dependencies are linked; FLAC audio/CD layouts are not covered
+by this fixture. The core cannot mount CHD content yet. See
+`libretro-common/CHD-UPSTREAM.txt` for the pin and remaining integration rules.
