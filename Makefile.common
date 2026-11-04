@@ -219,7 +219,6 @@ SOURCES_UTIL := \
 	$(CORE_DIR)/util/rc4.c \
 	$(CORE_DIR)/util/rcu.c \
 	$(CORE_DIR)/util/process-barrier.c \
-	$(CORE_DIR)/util/sha1.c \
 	$(CORE_DIR)/util/unicode.c \
 	$(CORE_DIR)/util/uuid.c \
 

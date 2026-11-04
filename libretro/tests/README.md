@@ -3742,3 +3742,10 @@ The VFS fixture includes 1,280 empty-separated contiguous request cases
 across short-read caps, in-file/EOF offsets and errors/invalid replies after
 a transferred prefix. It verifies exact provider call counts, byte guards,
 unchanged descriptors and cursor invalidation/reseek recovery.
+
+`test-eeprom-sha1.py CHECKOUT [CC]` compares 4,100 custom-state hashes and
+400 deterministic full EEPROM images with a reference fingerprint captured
+from the previous engine. It checks detection and tampered-hash rejection
+for all four versions. Only test entropy is deterministic. The optional
+EEPROM_SHA1_BASELINE=REV builds the original source from history; CFLAGS,
+BINARY and SKIP_RUN use the EEPROM_SHA1_ prefix for native fixtures.

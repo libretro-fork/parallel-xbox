@@ -29,6 +29,8 @@
 
 ## Unreleased
 
+- Generate and identify Xbox EEPROMs with libretro-common streaming SHA-1, preserving all custom keyed states and exact EEPROM bytes while removing the duplicate QEMU SHA-1 engine.
+
 - Keep frontend VFS reads coalesced across empty descriptors, avoiding extra provider calls for contiguous destinations while preserving short reads, EOF zero-fill and cursor recovery.
 
 - Fill consecutive sparse/zero QCOW2 clusters as a single destination run where possible, avoiding repeated cursor setup and per-cluster fills while preserving data/compressed boundaries and 32-bit size limits.

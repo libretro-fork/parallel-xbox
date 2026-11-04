@@ -19,7 +19,7 @@
  */
 
 #include "eeprom_generation.h"
-#include "util/sha1.h"
+#include <lrc_hash.h>
 #include "util/rc4.h"
 
 static uint32_t xbox_eeprom_crc(uint8_t *data, size_t len) {
@@ -35,65 +35,76 @@ static uint32_t xbox_eeprom_crc(uint8_t *data, size_t len) {
 	return ~(high + low);
 }
 
-static void xbox_sha1_reset(SHA1Context *ctx, XboxEEPROMVersion ver, bool first) {
-    ctx->msg_blk_index = 0;
-    ctx->computed = false;
-    ctx->length = 512;
+/* The Xbox states already include a 64-byte keyed prefix. */
+static void xbox_sha1_state(struct sha1_state *ctx, uint32_t a, uint32_t b,
+                            uint32_t c, uint32_t d, uint32_t e)
+{
+    ctx->digest[0] = a;
+    ctx->digest[1] = b;
+    ctx->digest[2] = c;
+    ctx->digest[3] = d;
+    ctx->digest[4] = e;
+}
+
+static void xbox_sha1_reset(struct sha1_state *ctx, XboxEEPROMVersion ver, bool first) {
+    sha1_stream_init(ctx);
+    ctx->length_low = 512;
 
     // https://web.archive.org/web/20040618164907/http://www.xbox-linux.org/down/The%20Middle%20Message-1a.pdf
     switch (ver) {
     case XBOX_EEPROM_VERSION_D:
         if (first) {
-            sha1_fill(ctx, 0x85F9E51A, 0xE04613D2,
+            xbox_sha1_state(ctx, 0x85F9E51A, 0xE04613D2,
                 0x6D86A50C, 0x77C32E3C, 0x4BD717A4);
         } else {
-            sha1_fill(ctx, 0x5D7A9C6B, 0xE1922BEB,
+            xbox_sha1_state(ctx, 0x5D7A9C6B, 0xE1922BEB,
                 0xB82CCDBC, 0x3137AB34, 0x486B52B3);
         }   
         break;
     case XBOX_EEPROM_VERSION_R2:
         if (first) {
-            sha1_fill(ctx, 0x39B06E79, 0xC9BD25E8,
+            xbox_sha1_state(ctx, 0x39B06E79, 0xC9BD25E8,
                 0xDBC6B498, 0x40B4389D, 0x86BBD7ED);
         } else {
-            sha1_fill(ctx, 0x9B49BED3, 0x84B430FC,
+            xbox_sha1_state(ctx, 0x9B49BED3, 0x84B430FC,
                 0x6B8749CD, 0xEBFE5FE5, 0xD96E7393);
         }   
         break;
     case XBOX_EEPROM_VERSION_R3:
         if (first) {
-            sha1_fill(ctx, 0x8058763A, 0xF97D4E0E,
+            xbox_sha1_state(ctx, 0x8058763A, 0xF97D4E0E,
                 0x865A9762, 0x8A3D920D, 0x08995B2C);
         } else {
-            sha1_fill(ctx, 0x01075307, 0xA2f1E037,
+            xbox_sha1_state(ctx, 0x01075307, 0xA2f1E037,
                 0x1186EEEA, 0x88DA9992, 0x168A5609);
         }   
         break;
     default: // default to 1.0 version
         if (first) {
-            sha1_fill(ctx, 0x72127625, 0x336472B9,
+            xbox_sha1_state(ctx, 0x72127625, 0x336472B9,
                 0xBE609BEA, 0xF55E226B, 0x99958DAC);
         } else {
-            sha1_fill(ctx, 0x76441D41, 0x4DE82659,
+            xbox_sha1_state(ctx, 0x76441D41, 0x4DE82659,
                 0x2E8EF85E, 0xB256FACA, 0xC4FE2DE8);
         }    
     }
 }
 
-static void xbox_sha1_compute(SHA1Context *ctx, XboxEEPROMVersion ver,
+static void xbox_sha1_compute(struct sha1_state *ctx, XboxEEPROMVersion ver,
     uint8_t *data, size_t len, uint8_t *hash) {
+    uint8_t inner[20];
     xbox_sha1_reset(ctx, ver, true);
-    sha1_input(ctx, data, len);
-    sha1_result(ctx, ctx->msg_blk);
+    sha1_stream_update(ctx, data, len);
+    sha1_stream_final(ctx, inner);
     xbox_sha1_reset(ctx, ver, false);
-    sha1_input(ctx, ctx->msg_blk, 20);
-    sha1_result(ctx, hash);
+    sha1_stream_update(ctx, inner, sizeof(inner));
+    sha1_stream_final(ctx, hash);
 }
 
 XboxEEPROMVersion xbox_eeprom_detect_version(const uint8_t *data) {
     for (int ver = XBOX_EEPROM_VERSION_D; ver <= XBOX_EEPROM_VERSION_R3; ver++) {
         RC4Context rctx;
-        SHA1Context sctx;
+        struct sha1_state sctx;
         uint8_t seed[20];
         uint8_t decrypted[28];
         uint8_t computed_hash[20];
@@ -147,7 +158,7 @@ bool xbox_eeprom_generate(const char *file, XboxEEPROMVersion ver) {
 
     // encrypt security section
     RC4Context rctx;
-    SHA1Context sctx;
+    struct sha1_state sctx;
     uint8_t seed[20];
     xbox_sha1_compute(&sctx, ver, e.confounder, 0x1C, e.hash);
     xbox_sha1_compute(&sctx, ver, e.hash, sizeof(e.hash), seed);

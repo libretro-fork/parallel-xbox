@@ -335,3 +335,9 @@ adjacent destinations. A three-span contiguous request separated by empty
 entries needs one provider read instead of three when it completes fully.
 Short-read, EOF, cursor recovery and descriptor immutability remain covered;
 no staging buffer, allocation or throughput/FPS claim is added.
+
+Xbox EEPROM hashing uses libretro-common streaming SHA-1 with the original
+custom initial states and 512-bit prefix count. The duplicate util/sha1
+engine is removed. Deterministic reference checks cover 4,100 hashes and
+400 full EEPROM images across all four versions; OS entropy remains in
+production. No new CPU requirement or measured speedup is claimed.
