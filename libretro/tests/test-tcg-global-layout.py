@@ -35,7 +35,7 @@ keys = ['static void tcg_temp_free_context(', 'void tcg_temp_free_internal(',
         'static TCGTemp *tcg_global_reg_new_internal(', 'void tcg_set_frame(',
         'static TCGTemp *tcg_global_mem_new_internal(',
         'TCGv_i32 tcg_global_mem_new_i32(', 'TCGv_i64 tcg_global_mem_new_i64(']
-keys += ['static TCGTemp *tcg_temp_new_context(', 'TCGTemp *tcg_temp_new_internal(',
+keys += ['TCGTemp *tcg_temp_new_context(', 'TCGTemp *tcg_temp_new_internal(',
          'static uintptr_t tcg_temp_new_handle(', 'TCGv_i32 tcg_temp_new_i32(',
          'TCGv_i32 tcg_temp_ebb_new_i32(', 'TCGv_i64 tcg_temp_new_i64(',
          'TCGv_i64 tcg_temp_ebb_new_i64(', 'TCGv_f32 tcg_temp_new_f32(',
@@ -43,7 +43,7 @@ keys += ['static TCGTemp *tcg_temp_new_context(', 'TCGTemp *tcg_temp_new_interna
          'TCGv_ptr tcg_temp_ebb_new_ptr(', 'TCGv_i128 tcg_temp_new_i128(',
          'TCGv_i128 tcg_temp_ebb_new_i128(', 'TCGv_vec tcg_temp_new_vec(',
          'TCGv_vec tcg_temp_new_vec_matching(']
-keys += ['static TCGTemp *tcg_constant_context(', 'TCGTemp *tcg_constant_internal(',
+keys += ['TCGTemp *tcg_constant_context(', 'TCGTemp *tcg_constant_internal(',
          'static uintptr_t tcg_constant_handle(', 'TCGv_i32 tcg_constant_i32(',
          'TCGv_i64 tcg_constant_i64(', 'TCGv_ptr tcg_constant_ptr_int(',
          'TCGv_vec tcg_constant_vec(', 'TCGv_vec tcg_constant_vec_matching(']
@@ -85,6 +85,11 @@ cmpsel = function('void tcg_gen_cmpsel_vec(', (r / 'tcg/tcg-op-vec.c').read_text
 cmpsel = cmpsel.replace('tcg_can_emit_vec_op(', 'fixture_vec_capability(').replace(
     'tcg_expand_vec_op(', 'fixture_vec_expand(')
 code = code.replace('/* COMPARE-SELECTION */', cmpsel)
+optimizer = (r / 'tcg/optimize.c').read_text()
+opt_types = optimizer[optimizer.index('typedef struct MemCopyInfo'):optimizer.index('static inline TempOptInfo *ts_info')]
+opt_helpers = '\n'.join(function(key, optimizer) for key in [
+    'static void init_ts_info(', 'static TCGArg arg_new_constant(', 'static TCGArg arg_new_temp('])
+code = code.replace('/* OPTIMIZER */', opt_types + opt_helpers)
 with tempfile.TemporaryDirectory(prefix='tcg-global-layout-') as temporary:
     folder = Path(temporary)
     (folder / 'test.c').write_text(code)

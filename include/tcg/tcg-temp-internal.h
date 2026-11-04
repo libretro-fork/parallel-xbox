@@ -36,6 +36,10 @@
  */
 TCGTemp *tcg_constant_internal(TCGType type, int64_t val);
 
+/* Internal callers that already own a context need not fetch it from TLS. */
+TCGTemp *tcg_constant_context(TCGContext *s, TCGType type, int64_t val);
+TCGTemp *tcg_temp_new_context(TCGContext *s, TCGType type, TCGTempKind kind);
+
 void tcg_temp_free_internal(TCGTemp *);
 
 void tcg_temp_free_i32(TCGv_i32 arg);

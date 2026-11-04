@@ -1958,7 +1958,7 @@ TCGv_i64 tcg_global_mem_new_i64(TCGv_ptr reg, intptr_t off)
     return temp_tcgv_i64(ts);
 }
 
-static TCGTemp *tcg_temp_new_context(TCGContext *s, TCGType type, TCGTempKind kind)
+TCGTemp *tcg_temp_new_context(TCGContext *s, TCGType type, TCGTempKind kind)
 {
     TCGTemp *ts;
     int n;
@@ -2157,7 +2157,7 @@ void tcg_temp_free_vec(TCGv_vec arg)
     tcg_temp_free_handle((uintptr_t)arg);
 }
 
-static TCGTemp *tcg_constant_context(TCGContext *s, TCGType type, int64_t val)
+TCGTemp *tcg_constant_context(TCGContext *s, TCGType type, int64_t val)
 {
     TCGConstSlot *slots, *e;
     unsigned i;

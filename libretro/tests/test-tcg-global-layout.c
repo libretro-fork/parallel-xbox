@@ -4,6 +4,7 @@
 #include "tcg/tcg-temp-internal.h"
 #include "tcg/tcg-op-common.h"
 #include "tcg/tcg-internal.h"
+#include "qemu/interval-tree.h"
 G_NORETURN void g_assertion_message_expr(const char *domain, const char *file,
                                        int line, const char *func, const char *expr)
 {
@@ -143,6 +144,7 @@ static void fixture_cmp_temp_free(TCGTemp *temp)
 static bool fixture_has_bitsel;
 /* SELECTION */
 /* COMPARE-SELECTION */
+/* OPTIMIZER */
 
 static void check_ops(TCGContext *owner, bool current)
 {
@@ -1078,6 +1080,64 @@ static void check_vector_immediate(TCGContext *owner)
     printf("TCG vector immediates: %u replication, cache and self-move cases PASS\n", cases);
 }
 
+static void check_optimizer_temps(TCGContext *current, TCGContext *other)
+{
+    static unsigned char arena[4096] QEMU_ALIGNED(16);
+    static const TCGType types[] = { TCG_TYPE_I32, TCG_TYPE_I64,
+        TCG_TYPE_V64, TCG_TYPE_V128, TCG_TYPE_V256 };
+    static const uint64_t values[] = { 0, 1, UINT64_MAX, INT32_MIN, INT32_MAX,
+        UINT64_C(0x8000000000000000), INT64_MAX, UINT64_C(0x0123456789abcdef) };
+    unsigned cases = 0;
+    for (unsigned api = 0; api < 2; ++api)
+    for (unsigned ti = 0; ti < ARRAY_SIZE(types); ++ti)
+    for (unsigned vi = 0; vi < ARRAY_SIZE(values); ++vi) {
+        TCGContext *owner = api ? other : current;
+        TCGContext *untouched = api ? current : other;
+        int other_temps = untouched->nb_temps;
+        uintptr_t other_pool = untouched->pool_cur;
+        reset_new_temps(owner);
+        ++owner->const_gen;
+        owner->pool_cur = (uintptr_t)arena;
+        owner->pool_end = owner->pool_cur + sizeof(arena);
+        OptContext opt = { .tcg = owner, .type = types[ti] };
+        int64_t expected = opt.type == TCG_TYPE_I32 ? (int32_t)values[vi] : (int64_t)values[vi];
+        TCGArg constant = arg_new_constant(&opt, values[vi]);
+        TCGTemp *ct = arg_temp(constant);
+        assert(ct >= owner->temps && ct < owner->temps + owner->nb_temps);
+        check_constant_value(ct, opt.type, expected);
+        TempOptInfo *info = ct->state_ptr;
+        assert(info && info->z_mask == (uint64_t)expected && info->o_mask == (uint64_t)expected);
+        assert(info->s_mask == (uint64_t)(INT64_MIN >> clrsb64(expected)));
+        assert(info->next_copy == ct && info->prev_copy == ct && QSIMPLEQ_EMPTY(&info->mem_copy));
+        assert(test_bit(temp_idx_context(owner, ct), opt.temps_used.l));
+        int used = owner->nb_temps;
+        uintptr_t cursor = owner->pool_cur;
+        assert(arg_new_constant(&opt, values[vi]) == constant);
+        assert(owner->nb_temps == used && owner->pool_cur == cursor);
+        TCGTemp *temp = arg_temp(arg_new_temp(&opt));
+        assert(temp >= owner->temps && temp < owner->temps + owner->nb_temps);
+        assert(temp->base_type == opt.type && temp->kind == TEMP_EBB && temp->temp_allocated);
+        info = temp->state_ptr;
+        assert(info && info->z_mask == UINT64_MAX && !info->o_mask && !info->s_mask);
+        assert(info->next_copy == temp && info->prev_copy == temp && QSIMPLEQ_EMPTY(&info->mem_copy));
+        assert(test_bit(temp_idx_context(owner, temp), opt.temps_used.l));
+        tcg_temp_free_context(owner, temp);
+        used = owner->nb_temps;
+        cursor = owner->pool_cur;
+        memset(&opt.temps_used, 0, sizeof(opt.temps_used));
+        info->z_mask = 0; info->o_mask = 42; info->s_mask = 42;
+        assert(arg_temp(arg_new_temp(&opt)) == temp);
+        assert(owner->nb_temps == used && owner->pool_cur == cursor && temp->state_ptr == info);
+        assert(info->z_mask == UINT64_MAX && !info->o_mask && !info->s_mask);
+        assert(temp->temp_allocated && test_bit(temp_idx_context(owner, temp), opt.temps_used.l));
+        assert(untouched->nb_temps == other_temps && untouched->pool_cur == other_pool);
+        ++cases;
+    }
+    free(current->const_slots); current->const_slots = NULL;
+    free(other->const_slots); other->const_slots = NULL;
+    printf("TCG optimizer temporaries: %u owner, constant, cache, reuse and metadata cases PASS\n", cases);
+}
+
 int main(void)
 {
     static TCGContext context;
@@ -1214,6 +1274,7 @@ int main(void)
     check_vector_cmpsel(&context);
     check_vector_data(&context);
     check_vector_immediate(&context);
+    check_optimizer_temps(&context, &other);
     puts("TCG rollback: suffix/full/empty removal, branch uses and reuse PASS");
     puts("TCG ops: owners, allocation/reuse, insertion order and epilogues PASS");
     printf("TCG global layout: %d-bit direct/indirect globals, %shandles and frame PASS\n",

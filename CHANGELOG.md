@@ -57,6 +57,8 @@
 
 ## Unreleased
 
+- Reuse the optimizer's TCG context for folded constants and scratch temporaries, avoiding TLS lookups while preserving constant caching, temporary reuse and optimizer metadata initialization.
+
 - Reuse the matching-vector constant lookup for immediate vector duplication, avoiding a separate destination-context lookup while preserving constant caching and redundant-move elision.
 
 - Reuse the TCG context for vector duplication and memory operand decoding, avoiding repeated Windows TLS lookups while retaining offsets, partial stores and 32-bit split-i64 behavior.

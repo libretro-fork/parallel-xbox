@@ -330,7 +330,7 @@ static TCGArg arg_new_constant(OptContext *ctx, uint64_t val)
         val = (int32_t)val;
     }
 
-    ts = tcg_constant_internal(type, val);
+    ts = tcg_constant_context(ctx->tcg, type, val);
     init_ts_info(ctx, ts);
 
     return temp_arg(ts);
@@ -338,7 +338,7 @@ static TCGArg arg_new_constant(OptContext *ctx, uint64_t val)
 
 static TCGArg arg_new_temp(OptContext *ctx)
 {
-    TCGTemp *ts = tcg_temp_new_internal(ctx->type, TEMP_EBB);
+    TCGTemp *ts = tcg_temp_new_context(ctx->tcg, ctx->type, TEMP_EBB);
     init_ts_info(ctx, ts);
     return temp_arg(ts);
 }
