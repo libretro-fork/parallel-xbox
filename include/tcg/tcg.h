@@ -517,9 +517,14 @@ static inline TCGTemp *arg_temp(TCGArg a)
     return (TCGTemp *)(uintptr_t)a;
 }
 
+static inline size_t temp_idx_context(TCGContext *s, TCGTemp *ts)
+{
+    return ts - s->temps;
+}
+
 static inline size_t temp_idx(TCGTemp *ts)
 {
-    return ts - tcg_ctx->temps;
+    return temp_idx_context(tcg_ctx, ts);
 }
 
 /*

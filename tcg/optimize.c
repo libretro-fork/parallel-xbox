@@ -125,7 +125,7 @@ static TCGTemp *cmp_better_copy(TCGTemp *a, TCGTemp *b)
 /* Initialize and activate a temporary.  */
 static void init_ts_info(OptContext *ctx, TCGTemp *ts)
 {
-    size_t idx = temp_idx(ts);
+    size_t idx = temp_idx_context(ctx->tcg, ts);
     TempOptInfo *ti;
 
     if (test_bit(idx, ctx->temps_used.l)) {

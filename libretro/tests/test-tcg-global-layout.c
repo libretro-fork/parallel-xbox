@@ -114,6 +114,13 @@ int main(void)
     }
     /* An explicit owner can differ from TLS; both paths must retain it. */
     static TCGContext other;
+    /* Every slot must use its supplied owner even when TLS points elsewhere. */
+    for (unsigned i = 0; i < ARRAY_SIZE(context.temps); ++i) {
+        assert(temp_idx_context(&context, &context.temps[i]) == i);
+        assert(temp_idx_context(&other, &other.temps[i]) == i);
+        assert(temp_idx(&context.temps[i]) == i);
+    }
+    puts("TCG indices: explicit/TLS owners and every temporary slot PASS");
     static unsigned char other_arena[128] QEMU_ALIGNED(16);
     static const struct { int requested, aligned; } requests[] = {
         {0, 0}, {1, 8}, {7, 8}, {8, 8}, {9, 16}, {63, 64}, {64, 64}

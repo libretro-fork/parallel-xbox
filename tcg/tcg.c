@@ -2138,7 +2138,7 @@ void tcg_temp_free_internal(TCGTemp *ts)
     case TEMP_EBB:
         tcg_debug_assert(ts->temp_allocated != 0);
         ts->temp_allocated = 0;
-        set_bit(temp_idx(ts), s->free_temps[ts->base_type].l);
+        set_bit(temp_idx_context(s, ts), s->free_temps[ts->base_type].l);
         break;
     default:
         /* It never made sense to free TEMP_FIXED or TEMP_GLOBAL. */
@@ -3644,7 +3644,7 @@ liveness_pass_1(TCGContext *s)
             if (ts->kind == TEMP_CONST) {
                 ts = tcg_constant_internal(ts->type, -ts->val);
                 if (ts->state_ptr == NULL) {
-                    tcg_debug_assert(temp_idx(ts) == nb_temps);
+                    tcg_debug_assert(temp_idx_context(s, ts) == nb_temps);
                     nb_temps++;
                     ts->state_ptr = tcg_malloc_context(s, sizeof(TCGRegSet));
                     ts->state = TS_DEAD;
