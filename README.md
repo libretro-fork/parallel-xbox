@@ -447,3 +447,12 @@ argument counts and flags are unchanged. `libretro/tests/compare-tcg-opdefs.py`
 compares the linked old/new tables in Linux x86-64 binaries and reports table
 sizes and dynamic relocations, independently of the source initializer macros.
 The code generator also omits the PC parameter used only by those IR dumps.
+
+TCG helper descriptors and their published call layouts omit diagnostic names
+previously used only by the removed IR dumper. Function targets, type masks,
+flags and argument layouts are unchanged; publication retains its existing
+libretro-common atomic protocol. `compare-tcg-helpers.py` compares every linked
+helper in unstripped Linux x86-64 old/new cores, normalizing function targets
+by symbol name and checking all functional metadata bytes. The publication
+stress fixture checks non-null function identity, every argument-location
+field, canonical layouts, stalled-initializer independence and reclamation.

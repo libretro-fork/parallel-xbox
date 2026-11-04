@@ -1673,7 +1673,6 @@ static TCGHelperInfo *tcg_resolve_call_layout(TCGHelperInfo *info)
     if (!layout) {
         TCGHelperInfo *candidate = g_new0(TCGHelperInfo, 1);
         candidate->func = info->func;
-        candidate->name = info->name;
         candidate->typemask = info->typemask;
         candidate->flags = info->flags;
         init_call_layout(candidate);

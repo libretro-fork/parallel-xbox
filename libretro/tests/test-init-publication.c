@@ -38,11 +38,14 @@ static TCGHelperInfo helpers[128], stalled_helper;
 static void check(TCGHelperInfo *source,TCGHelperInfo *layout)
 {
     assert(layout==retro_atomic_load_acquire_ptr(&source->layout));
-    assert(layout->func==source->func&&layout->name==source->name);
+    assert(layout->func==source->func);
     assert(layout->typemask==source->typemask&&layout->flags==source->flags);
     assert(layout->nr_in==source->typemask%8&&layout->nr_out==source->flags%3);
+    assert(layout->out_kind==TCG_CALL_RET_NORMAL);
     assert(tcg_resolve_call_layout(layout)==layout);
     for(unsigned i=0;i<sizeof(layout->in)/sizeof(layout->in[0]);i++) {
+        assert(layout->in[i].kind==TCG_CALL_ARG_NORMAL);
+        assert(layout->in[i].arg_idx==i%8&&layout->in[i].tmp_subindex==i%4);
         assert(layout->in[i].arg_slot==(source->typemask+i)%200);
         assert(layout->in[i].ref_slot==(source->flags+i)%200);
     }
@@ -90,12 +93,12 @@ static void api_worker(void *arg)
 int main(void)
 {
     sthread_t *threads[16];
-    stalled_helper.typemask=0x3344;stalled_helper.flags=7;
+    stalled_helper.func=&stalled_helper;stalled_helper.typemask=0x3344;stalled_helper.flags=7;
     threads[0]=sthread_create(stall_layout,NULL);assert(threads[0]);await(&blocked);
     /* Completion here proves independence from the paused initializer. */
     check(&stalled_helper,tcg_resolve_call_layout(&stalled_helper));
     retro_atomic_store_release_int(&release_stalled,1);sthread_join(threads[0]);
-    for(unsigned i=0;i<128;i++){helpers[i].typemask=i;helpers[i].flags=i%200;helpers[i].name="helper";}
+    for(unsigned i=0;i<128;i++){helpers[i].typemask=i;helpers[i].flags=i%200;helpers[i].func=&helpers[i];}
     for(unsigned i=0;i<16;i++){threads[i]=sthread_create(layout_worker,(void *)(uintptr_t)i);assert(threads[i]);}
     for(unsigned i=0;i<16;i++)sthread_join(threads[i]);
     assert(retro_atomic_load_acquire_int(&allocations)-retro_atomic_load_acquire_int(&frees)==129);

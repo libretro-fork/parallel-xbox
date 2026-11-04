@@ -43,7 +43,6 @@ typedef struct TCGCallArgumentLoc {
 
 struct TCGHelperInfo {
     void *func;
-    const char *name;
 
     /* Immutable computed layout, published without an initializer lock. */
     retro_atomic_ptr_t layout;
