@@ -305,14 +305,16 @@ static TCGOp *gen_tb_start(DisasContextBase *db, uint32_t cflags)
  * one resets the quiet count, so the wait starts over */
 void lr_quiet_store_emitted(void)
 {
-    if (tcg_ctx->lr_quiet_enabled && !tcg_ctx->lr_quiet_store) {
-        tcg_ctx->lr_quiet_store = true;
-        if (tcg_ctx->lr_quiet_label) {
+    TCGContext *s = tcg_ctx;
+
+    if (s->lr_quiet_enabled && !s->lr_quiet_store) {
+        s->lr_quiet_store = true;
+        if (s->lr_quiet_label) {
             /* A straight-line, side-effect-free prefix cannot bypass this
              * reset. Its quiet decrement/check would immediately be overwritten.
              * Keep the preamble if any branch, helper or guest access precedes
              * the reset: that path may leave without ever reaching this store. */
-            TCGOp *op = QTAILQ_NEXT(tcg_ctx->lr_quiet_last, link);
+            TCGOp *op = QTAILQ_NEXT(s->lr_quiet_last, link);
             bool dominates = true;
             for (; op; op = QTAILQ_NEXT(op, link)) {
                 if (tcg_op_defs[op->opc].flags &
@@ -323,14 +325,14 @@ void lr_quiet_store_emitted(void)
                 }
             }
             if (dominates) {
-                TCGOp *stop = QTAILQ_NEXT(tcg_ctx->lr_quiet_last, link);
-                op = tcg_ctx->lr_quiet_first;
+                TCGOp *stop = QTAILQ_NEXT(s->lr_quiet_last, link);
+                op = s->lr_quiet_first;
                 while (op != stop) {
                     TCGOp *next = QTAILQ_NEXT(op, link);
-                    tcg_op_remove(tcg_ctx, op);
+                    tcg_op_remove(s, op);
                     op = next;
                 }
-                tcg_ctx->lr_quiet_label = NULL;
+                s->lr_quiet_label = NULL;
             }
         }
         /* Stores retain their reset even when no quiet check was emitted. */

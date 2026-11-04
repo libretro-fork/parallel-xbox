@@ -1,5 +1,6 @@
 # Changelog of the libretro core
 
+- Reuse one TCG context during guest-store idle-check rewrites. Remove repeated Windows TLS lookups, including within preamble removal, while preserving store resets and branch/helper/access guards.
 - Reuse the TCG owner already held by speculative operation rollback. Avoid a Windows TLS lookup on every tail check while preserving branch-use cleanup and operation reuse.
 - Reuse one TCG owner for operation allocation and insertion, including helper calls. Avoid repeated Windows context lookups while preserving free-operation reuse, list order and block epilogues.
 - Remove an unused temporary-index calculation from TCG handle conversion. It no longer performs a second Windows TLS lookup for a discarded result; all handle offsets and 32-bit split-global behavior are preserved.
