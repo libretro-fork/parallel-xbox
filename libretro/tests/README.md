@@ -4382,3 +4382,16 @@ accumulator writes already do. A production fixture saves TST flags after
 paired loads across frames, including flags deferred from a preceding TST.
 This is a flag-ordering correction; it does not
 add the planned direct-RAM optimization for paired moves.
+
+Paired short-address X/Y moves now emit fixed-offset accesses to both RAM
+banks. Both load words are captured before the ALU; store sources, limiter
+results and pre-load flag publication retain their existing order. Only
+short addresses 0..63 use this path, so no device callback or callback-exit
+check is required. Effective-address and immediate-tag forms retain their
+existing guarded accesses. The `--long-load-flags` and `--long-move-limiter`
+matrices check 44,544 boundaries, including independent register/memory/flag
+oracles, every pair selector and supported ALU byte, scaling and REP.
+The new `gp-startup-paired-short-ram.inc` fixture combines all selectors and
+load/store directions with ADD, REP and counted DO across frames; it can
+also serve as an optional synthetic timing workload. This does not imply
+a game-wide or universal C-versus-Rust performance improvement.

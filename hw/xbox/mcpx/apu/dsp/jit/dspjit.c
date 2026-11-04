@@ -2194,6 +2194,7 @@ static void emit_pm_4x(Tr *t, const Insn *in, const AluOp *a)
     uint32_t value = (inst >> 8) & 0x3F;
     int numreg = ((inst >> 16) & 3) | ((inst >> 17) & 4);
     bool write = inst & (1 << 15);
+    bool short_ram = !(inst & (1 << 14));
     Ea ea;
 
     if (inst & (1 << 14)) {
@@ -2208,11 +2209,17 @@ static void emit_pm_4x(Tr *t, const Insn *in, const AluOp *a)
         ea.kind = EA_ABS;
         ea.abs = ea.imm;
     }
-    int addr = ea_addr_reg(t, &ea);
+    int addr = short_ram ? 0 : ea_addr_reg(t, &ea);
 
     if (write) {
-        emit_read_x(t, addr, V1);
-        emit_read_y(t, addr, V2);
+        /* Both short addresses are in RAM; sample both words before ALU. */
+        if (short_ram) {
+            h_ld32(e, V1, REG_CORE, OFF(xram) + value * 4);
+            h_ld32(e, V2, REG_CORE, OFF(yram) + value * 4);
+        } else {
+            emit_read_x(t, addr, V1);
+            emit_read_y(t, addr, V2);
+        }
     } else {
         switch (numreg) {
         case 0: /* A10 */
@@ -2308,8 +2315,13 @@ static void emit_pm_4x(Tr *t, const Insn *in, const AluOp *a)
             break;
         }
     } else {
-        emit_write_x(t, addr, V1);
-        emit_write_y(t, addr, V2);
+        if (short_ram) {
+            h_st32(e, REG_CORE, OFF(xram) + value * 4, V1);
+            h_st32(e, REG_CORE, OFF(yram) + value * 4, V2);
+        } else {
+            emit_write_x(t, addr, V1);
+            emit_write_y(t, addr, V2);
+        }
     }
 }
 
