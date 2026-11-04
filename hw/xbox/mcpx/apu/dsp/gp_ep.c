@@ -1014,14 +1014,16 @@ static bool ownership_candidate(MCPXAPUState *d)
     }
     /* GPU-owned surfaces must be settled on the CPU before a worker may
      * bypass their callback. Until that path is supported, decline overlap. */
-    MemAccessCallback *cb;
-    QTAILQ_FOREACH(cb,&qemu_get_cpu(0)->mem_access_callbacks,entry) {
-        if(cb==own_callback || !retro_atomic_load_relaxed_int(&cb->watch_flags)) continue;
-        if(cb->addr>=ram_base+size || cb->addr+cb->len<=ram_base) continue;
-        uint64_t first=(MAX(cb->addr,ram_base)-ram_base)/TARGET_PAGE_SIZE;
-        uint64_t last=(MIN(cb->addr+cb->len,ram_base+size)-ram_base-1)/TARGET_PAGE_SIZE;
-        for(uint64_t page=first;page<=last;page++)
-            if(ownership_pages[page/64]&(UINT64_C(1)<<(page%64))) return false;
+    WITH_RCU_READ_LOCK_GUARD() {
+        MemAccessCallback *cb;
+        QTAILQ_FOREACH_RCU(cb,&qemu_get_cpu(0)->mem_access_callbacks,entry) {
+            if(cb==own_callback || !retro_atomic_load_relaxed_int(&cb->watch_flags)) continue;
+            if(cb->addr>=ram_base+size || cb->addr+cb->len<=ram_base) continue;
+            uint64_t first=(MAX(cb->addr,ram_base)-ram_base)/TARGET_PAGE_SIZE;
+            uint64_t last=(MIN(cb->addr+cb->len,ram_base+size)-ram_base-1)/TARGET_PAGE_SIZE;
+            for(uint64_t page=first;page<=last;page++)
+                if(ownership_pages[page/64]&(UINT64_C(1)<<(page%64))) return false;
+        }
     }
     return true;
 }

@@ -2078,20 +2078,37 @@ static bool pm_supported(const Insn *in)
     return alu_supported(in->inst & 0xFF);
 }
 
+/* X aliases start before the end of xram[]; they must use mapped access. */
+static bool single_ram_address(int space, uint32_t address)
+{
+    return (space == DSP_SPACE_X && address < DSP_XRAM_FAST) ||
+           (space == DSP_SPACE_Y && address < DSP_YRAM_SIZE);
+}
+#ifdef DSPJIT_TEST
+int dspjit_test_single_ram_address(int space, uint32_t address)
+{
+    return single_ram_address(space, address);
+}
+#endif
+
 /* Class II: snapshot the limited accumulator and bus input register,
  * run the ALU, then store the accumulator word and replace it with input. */
 static void emit_pm_0(Tr *t, const Insn *in, const AluOp *a)
 {
+    Emitter *e = &t->e;
     uint32_t inst = in->inst;
     unsigned space = (inst >> 15) & 1, d = (inst >> 16) & 1;
     Ea ea;
     emit_calc_ea(t, (inst >> 8) & 63, in->ext, EA1, &ea);
     if (ea.kind == EA_IMM) { ea.kind = EA_ABS; ea.abs = ea.imm; }
-    ea_addr_reg(t, &ea);
+    bool fixed_ram = ea.kind == EA_ABS && single_ram_address(space, ea.abs);
+    int ramoff = fixed_ram ? (space ? OFF(yram) : OFF(xram)) + ea.abs * 4 : 0;
+    if (!fixed_ram) ea_addr_reg(t, &ea);
     emit_read_reg(t, DSP_REG_A + d, V1);
     emit_read_reg(t, DSP_REG_X0 + space * 2, V2);
     emit_alu(t, a);
-    emit_write_mem(t, space, ea.reg, V1);
+    if (fixed_ram) h_st32(e, REG_CORE, ramoff, V1);
+    else emit_write_mem(t, space, ea.reg, V1);
     emit_write_reg(t, DSP_REG_A + d, V2);
 }
 
@@ -2112,12 +2129,15 @@ static void emit_pm_1(Tr *t, const Insn *in, const AluOp *a)
     bool load = (inst & (1 << 15)) != 0;
     Ea ea;
     emit_calc_ea(t, (inst >> 8) & 63, in->ext, EA1, &ea);
+    if (!load && ea.kind == EA_IMM) { ea.kind = EA_ABS; ea.abs = ea.imm; }
+    bool fixed_ram = ea.kind == EA_ABS && single_ram_address(space, ea.abs);
+    int ramoff = fixed_ram ? (space ? OFF(yram) : OFF(xram)) + ea.abs * 4 : 0;
     if (load) {
         if (ea.kind == EA_IMM) h_mov_ri(e, V1, ea.imm);
+        else if (fixed_ram) h_ld32(e, V1, REG_CORE, ramoff);
         else emit_read_mem(t, space, ea_addr_reg(t, &ea), V1);
     } else {
-        if (ea.kind == EA_IMM) { ea.kind = EA_ABS; ea.abs = ea.imm; }
-        ea_addr_reg(t, &ea);
+        if (!fixed_ram) ea_addr_reg(t, &ea);
         emit_read_reg(t, primary, V1);
     }
     emit_read_reg(t, source, V2);
@@ -2129,7 +2149,8 @@ static void emit_pm_1(Tr *t, const Insn *in, const AluOp *a)
         if (primary == DSP_REG_A || primary == DSP_REG_B)
             h_st32(e, REG_CORE, REGOFF(primary), V1);
     } else {
-        emit_write_mem(t, space, ea.reg, V1);
+        if (fixed_ram) h_st32(e, REG_CORE, ramoff, V1);
+        else emit_write_mem(t, space, ea.reg, V1);
     }
     emit_write_reg(t, destination, V2);
 }
@@ -2336,19 +2357,6 @@ static void emit_pm_4x(Tr *t, const Insn *in, const AluOp *a)
         }
     }
 }
-
-/* X aliases start before the end of xram[]; they must use mapped access. */
-static bool single_ram_address(int space, uint32_t address)
-{
-    return (space == DSP_SPACE_X && address < DSP_XRAM_FAST) ||
-           (space == DSP_SPACE_Y && address < DSP_YRAM_SIZE);
-}
-#ifdef DSPJIT_TEST
-int dspjit_test_single_ram_address(int space, uint32_t address)
-{
-    return single_ram_address(space, address);
-}
-#endif
 
 static void emit_pm_5(Tr *t, const Insn *in, const AluOp *a)
 {

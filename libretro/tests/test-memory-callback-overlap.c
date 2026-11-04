@@ -34,6 +34,8 @@ static bool lr_dsp_ownership_match(MemoryRegion *mr,hwaddr a,hwaddr n) {
 static void lr_dsp_ownership_callback(void *arg,MemoryRegion *mr,hwaddr a,hwaddr n,bool write) {
  record(arg,mr,a,n,write);
 }
+#define RCU_READ_LOCK_GUARD() ((void)0)
+#define QTAILQ_FOREACH_RCU QTAILQ_FOREACH
 /* PRODUCTION */
 static bool overlap(uint64_t a,uint64_t n,uint64_t b,uint64_t m,uint64_t *start,uint64_t *bytes) {
  __uint128_t ae=(__uint128_t)a+n,be=(__uint128_t)b+m;

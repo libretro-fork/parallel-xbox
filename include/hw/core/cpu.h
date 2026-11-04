@@ -31,6 +31,7 @@
 #include "qapi/qapi-types-run-state.h"
 #include "qemu/bitmap.h"
 #include "qemu/rcu_queue.h"
+#include "qemu/rcu.h"
 #include <retro_atomic.h>
 #include <retro_mpsc.h>
 #include "qemu/queue.h"
@@ -348,15 +349,18 @@ typedef union IcountDecr {
 typedef void (*MemAccessCallbackFunc)(void *opaque, MemoryRegion *mr, hwaddr addr, hwaddr len, bool write);
 
 typedef struct MemAccessCallback {
-    MemoryRegion *mr;
+    /* First: deferred reclamation retains nodes held by DMA readers. */
+    struct rcu_head rcu;
+    /* Keep forward traversal and miss-path geometry in the first 64 bytes. */
+    QTAILQ_RCU_ENTRY(MemAccessCallback) entry;
     hwaddr addr;
     hwaddr len;
     MemAccessCallbackFunc func;
+    MemoryRegion *mr;
     void *opaque;
     /* Accesses caught, BP_MEM_READ|BP_MEM_WRITE at insertion; the owner may
      * drop READ, or both, through mem_access_callback_set_flags(). */
     retro_atomic_int_t watch_flags;
-    QTAILQ_ENTRY(MemAccessCallback) entry;
 } MemAccessCallback;
 
 /**
@@ -548,7 +552,7 @@ struct CPUState {
     QTAILQ_HEAD(, CPUWatchpoint) watchpoints;
     CPUWatchpoint *watchpoint_hit;
 
-    QTAILQ_HEAD(, MemAccessCallback) mem_access_callbacks;
+    QTAILQ_RCU_HEAD(, MemAccessCallback) mem_access_callbacks;
 
     void *opaque;
 

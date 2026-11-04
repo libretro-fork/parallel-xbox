@@ -236,7 +236,7 @@ static void cpu_common_initfn(Object *obj)
     retro_atomic_int_init(&cpu->work_count, 0);
     QTAILQ_INIT(&cpu->breakpoints);
     QTAILQ_INIT(&cpu->watchpoints);
-    QTAILQ_INIT(&cpu->mem_access_callbacks);
+    QTAILQ_INIT_RCU(&cpu->mem_access_callbacks);
 
     cpu_exec_initfn(cpu);
 
