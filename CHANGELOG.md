@@ -57,6 +57,8 @@
 
 ## Unreleased
 
+- Reuse the optimizer's TCG context for environment-base checks in load/store forwarding, avoiding TLS lookups while retaining forwarding eligibility and memory-copy invalidation.
+
 - Reuse the optimizer's TCG context for folded constants and scratch temporaries, avoiding TLS lookups while preserving constant caching, temporary reuse and optimizer metadata initialization.
 - DSP: audit all parallel move encodings and remove redundant operand fallback gates; all supported parallel ALU operations remain native across every move format.
 

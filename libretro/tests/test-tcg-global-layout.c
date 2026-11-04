@@ -145,6 +145,41 @@ static bool fixture_has_bitsel;
 /* SELECTION */
 /* COMPARE-SELECTION */
 /* OPTIMIZER */
+TCGv_env tcg_env;
+static TCGContext *memory_owner;
+static TCGOp *memory_op;
+static TCGTemp *memory_value, *memory_copy;
+static TCGType memory_type;
+static intptr_t memory_start, memory_last;
+static bool memory_constant;
+static char memory_events[16];
+static unsigned memory_event_count;
+static void memory_event(char c)
+{
+    assert(memory_event_count + 1 < sizeof(memory_events));
+    memory_events[memory_event_count++] = c;
+    memory_events[memory_event_count] = 0;
+}
+static void memory_context(OptContext *ctx) { assert(ctx->tcg == memory_owner); }
+static bool fixture_memory_finish_folding(OptContext *ctx, TCGOp *op)
+{ memory_context(ctx); assert(op == memory_op); memory_event('Z'); return false; }
+static TCGTemp *fixture_memory_find_mem_copy_for(OptContext *ctx, TCGType type, intptr_t ofs)
+{ memory_context(ctx); assert(type == memory_type && ofs == memory_start); memory_event('F'); return memory_copy; }
+static bool fixture_memory_tcg_opt_gen_mov(OptContext *ctx, TCGOp *op, TCGArg dst, TCGArg src)
+{ memory_context(ctx); assert(op == memory_op && dst == temp_arg(memory_value) && src == temp_arg(memory_copy)); memory_event('M'); return false; }
+static void fixture_memory_reset_ts(OptContext *ctx, TCGTemp *ts)
+{ memory_context(ctx); assert(ts == memory_value); memory_event('R'); }
+static void fixture_memory_record_mem_copy(OptContext *ctx, TCGType type, TCGTemp *ts, intptr_t start, intptr_t last)
+{ memory_context(ctx); assert(type == memory_type && ts == memory_value && start == memory_start && last == memory_last); memory_event('C'); }
+static void fixture_memory_remove_mem_copy_all(OptContext *ctx)
+{ memory_context(ctx); memory_event('A'); }
+static void fixture_memory_remove_mem_copy_in(OptContext *ctx, intptr_t start, intptr_t last)
+{ memory_context(ctx); assert(start == memory_start && last == memory_last); memory_event('I'); }
+static bool fixture_memory_ts_is_const(TCGTemp *ts)
+{ assert(ts == memory_value); return memory_constant; }
+static void fixture_memory_tcg_op_remove(TCGContext *ctx, TCGOp *op)
+{ assert(ctx == memory_owner && op == memory_op); memory_event('D'); }
+/* OPTIMIZER-MEMORY */
 
 static void check_ops(TCGContext *owner, bool current)
 {
@@ -1138,6 +1173,69 @@ static void check_optimizer_temps(TCGContext *current, TCGContext *other)
     printf("TCG optimizer temporaries: %u owner, constant, cache, reuse and metadata cases PASS\n", cases);
 }
 
+static void check_optimizer_memory(TCGContext *current, TCGContext *other)
+{
+    static const TCGType types[] = { TCG_TYPE_I32, TCG_TYPE_I64,
+        TCG_TYPE_V64, TCG_TYPE_V128, TCG_TYPE_V256 };
+    static const unsigned sizes[] = { 4, 8, 8, 16, 32 };
+    static const intptr_t offsets[] = { -128, 0, 4096 };
+    static const TCGOpcode stores[] = { INDEX_op_st8, INDEX_op_st16,
+        INDEX_op_st32, INDEX_op_st, INDEX_op_st_vec };
+    unsigned char storage[sizeof(TCGOp) + 8 * sizeof(TCGArg)] QEMU_ALIGNED(16);
+    memory_op = (TCGOp *)storage;
+    tcg_env = (TCGv_env)((uintptr_t)&current->temps[7] - (uintptr_t)current);
+    unsigned cases = 0;
+    for (unsigned api = 0; api < 2; ++api)
+    for (unsigned ti = 0; ti < ARRAY_SIZE(types); ++ti)
+    for (unsigned oi = 0; oi < ARRAY_SIZE(offsets); ++oi)
+    for (unsigned base = 0; base < 3; ++base) {
+        memory_owner = api ? other : current;
+        memory_type = types[ti];
+        memory_start = offsets[oi];
+        memory_last = memory_start + sizes[ti] - 1;
+        OptContext ctx = { .tcg = memory_owner, .type = memory_type };
+        memset(storage, 0, sizeof(storage));
+        memory_value = &memory_owner->temps[19];
+        memory_value->base_type = memory_type;
+        memory_op->args[0] = temp_arg(memory_value);
+        memory_op->args[1] = temp_arg(base == 0 ? &memory_owner->temps[7] :
+            base == 1 ? &memory_owner->temps[11] : &current->temps[7]);
+        memory_op->args[2] = (TCGArg)memory_start;
+        bool env = base == 0 || (base == 2 && !api);
+        assert(is_env_base(&ctx, memory_op->args[1]) == env);
+        for (unsigned hit = 0; hit < 3; ++hit) {
+            memory_copy = hit ? &memory_owner->temps[23] : NULL;
+            if (memory_copy) memory_copy->base_type = hit == 1 ? memory_type : TCG_TYPE_F32;
+            memory_event_count = 0;
+            bool result = fold_tcg_ld_memcopy(&ctx, memory_op);
+            assert(result == (env && hit != 1));
+            assert(!strcmp(memory_events, !env ? "Z" : hit == 1 ? "FM" : "FRC"));
+            ++cases;
+        }
+        for (unsigned si = 0; si < ARRAY_SIZE(stores); ++si) {
+            memory_op->opc = stores[si];
+            memory_last = memory_start + (si < 3 ? (1u << si) : sizes[ti]) - 1;
+            memory_event_count = 0;
+            assert(fold_tcg_st(&ctx, memory_op));
+            assert(!strcmp(memory_events, env ? "I" : "A"));
+            ++cases;
+        }
+        memory_op->opc = INDEX_op_st;
+        memory_last = memory_start + sizes[ti] - 1;
+        for (unsigned constant = 0; constant < 2; ++constant)
+        for (unsigned hit = 0; hit < 3; ++hit) {
+            memory_constant = constant;
+            memory_copy = hit == 0 ? NULL : hit == 1 ? memory_value : &memory_owner->temps[23];
+            memory_event_count = 0;
+            assert(fold_tcg_st_memcopy(&ctx, memory_op));
+            const char *expected = !env ? "A" : !constant ? "IC" : hit == 1 ? "FD" : "FIC";
+            assert(!strcmp(memory_events, expected));
+            ++cases;
+        }
+    }
+    printf("TCG optimizer memory: %u owner, base, forwarding and invalidation cases PASS\n", cases);
+}
+
 int main(void)
 {
     static TCGContext context;
@@ -1275,6 +1373,7 @@ int main(void)
     check_vector_data(&context);
     check_vector_immediate(&context);
     check_optimizer_temps(&context, &other);
+    check_optimizer_memory(&context, &other);
     puts("TCG rollback: suffix/full/empty removal, branch uses and reuse PASS");
     puts("TCG ops: owners, allocation/reuse, insertion order and epilogues PASS");
     printf("TCG global layout: %d-bit direct/indirect globals, %shandles and frame PASS\n",

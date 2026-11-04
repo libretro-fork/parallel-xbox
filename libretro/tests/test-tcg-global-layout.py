@@ -90,6 +90,14 @@ opt_types = optimizer[optimizer.index('typedef struct MemCopyInfo'):optimizer.in
 opt_helpers = '\n'.join(function(key, optimizer) for key in [
     'static void init_ts_info(', 'static TCGArg arg_new_constant(', 'static TCGArg arg_new_temp('])
 code = code.replace('/* OPTIMIZER */', opt_types + opt_helpers)
+memory = '\n'.join(function(key, optimizer) for key in [
+    'static bool is_env_base(', 'static bool fold_tcg_ld_memcopy(',
+    'static bool fold_tcg_st(', 'static bool fold_tcg_st_memcopy('])
+for name in ['finish_folding', 'find_mem_copy_for', 'tcg_opt_gen_mov', 'reset_ts',
+             'record_mem_copy', 'remove_mem_copy_all', 'remove_mem_copy_in',
+             'ts_is_const', 'tcg_op_remove']:
+    memory = memory.replace(name + '(', 'fixture_memory_' + name + '(')
+code = code.replace('/* OPTIMIZER-MEMORY */', memory)
 with tempfile.TemporaryDirectory(prefix='tcg-global-layout-') as temporary:
     folder = Path(temporary)
     (folder / 'test.c').write_text(code)

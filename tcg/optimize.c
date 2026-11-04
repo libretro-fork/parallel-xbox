@@ -2987,13 +2987,19 @@ static bool fold_tcg_ld(OptContext *ctx, TCGOp *op)
     return fold_masks_zs(ctx, op, z_mask, s_mask);
 }
 
+static bool is_env_base(OptContext *ctx, TCGArg base)
+{
+    TCGTemp *env = tcgv_i32_temp_context(ctx->tcg, (TCGv_i32)tcg_env);
+    return base == temp_arg(env);
+}
+
 static bool fold_tcg_ld_memcopy(OptContext *ctx, TCGOp *op)
 {
     TCGTemp *dst, *src;
     intptr_t ofs;
     TCGType type;
 
-    if (op->args[1] != tcgv_ptr_arg(tcg_env)) {
+    if (!is_env_base(ctx, op->args[1])) {
         return finish_folding(ctx, op);
     }
 
@@ -3015,7 +3021,7 @@ static bool fold_tcg_st(OptContext *ctx, TCGOp *op)
     intptr_t ofs = op->args[2];
     intptr_t lm1;
 
-    if (op->args[1] != tcgv_ptr_arg(tcg_env)) {
+    if (!is_env_base(ctx, op->args[1])) {
         remove_mem_copy_all(ctx);
         return true;
     }
@@ -3047,7 +3053,7 @@ static bool fold_tcg_st_memcopy(OptContext *ctx, TCGOp *op)
     intptr_t ofs, last;
     TCGType type;
 
-    if (op->args[1] != tcgv_ptr_arg(tcg_env)) {
+    if (!is_env_base(ctx, op->args[1])) {
         return fold_tcg_st(ctx, op);
     }
 
