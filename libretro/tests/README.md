@@ -4474,3 +4474,16 @@ matrices also run, totaling 260,496 focused boundaries with zero interpreter
 calls. Negative controls catch an EA-code/address mix-up and direct access to
 X alias storage. A production fixture combines RAM limits, both buses, tagged
 addresses, REP and counted DO across frames and supports synthetic timing.
+
+`dspnative --vsl-ram` checks 11,424 VSL boundaries: the existing 9,120-case
+all-effective-address matrix plus 2,304 independent constant-RAM cases for
+both accumulators, inserted bits, signed/raw source words, all modes and
+partial REP at RAM boundaries. Oracles require exact register/status and
+X/Y words, PC and cycles; constant cases poison peripheral callbacks.
+Absolute VSL destinations inside both ordinary RAM banks now read cached
+accumulator parts and emit direct stores, retaining deferred flags and dirty
+accumulators until a normal consumer/boundary. Other addresses retain the
+previous state publication and mapped/device accesses. Extension cycles and
+raw-word shift/mask semantics are unchanged. A production fixture places
+multiple ADD/VSL pairs in native blocks, consumes flags between groups, and
+covers all modes/accumulators/insert bits, RAM limits, DO and REP across frames.

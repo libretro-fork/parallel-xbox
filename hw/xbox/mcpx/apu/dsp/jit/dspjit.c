@@ -2875,16 +2875,28 @@ static void emit_nonparallel(Tr *t, const Insn *in, int kind)
     case NP_VSL: {
         unsigned d = (inst >> 16) & 1;
         Ea ea;
-        acc_spill_all(t, false);
+        bool fixed_ram = ((inst >> 8) & 63) == 0x30 && paired_ram_address(in->ext);
+        if (!fixed_ram) acc_spill_all(t, false);
         emit_calc_ea(t, (inst >> 8) & 63, in->ext, EA1, &ea);
-        int addr = ea_addr_reg(t, &ea);
-        h_ld32(e, V1, REG_CORE, REGOFF(DSP_REG_A1 + d));
-        h_ld32(e, V2, REG_CORE, REGOFF(DSP_REG_A0 + d));
+        int addr = fixed_ram ? 0 : ea_addr_reg(t, &ea);
+        if (fixed_ram) {
+            /* RAM cannot observe cached accumulators or deferred flags. */
+            emit_read_reg(t, DSP_REG_A1 + d, V1);
+            emit_read_reg(t, DSP_REG_A0 + d, V2);
+        } else {
+            h_ld32(e, V1, REG_CORE, REGOFF(DSP_REG_A1 + d));
+            h_ld32(e, V2, REG_CORE, REGOFF(DSP_REG_A0 + d));
+        }
         h_shl_ri(e, 0, V2, 1);
         h_or_ri(e, 0, V2, (inst >> 4) & 1);
         h_and_ri(e, 0, V2, 0xffffff);
-        emit_write_mem(t, DSP_SPACE_X, addr, V1);
-        emit_write_mem(t, DSP_SPACE_Y, addr, V2);
+        if (fixed_ram) {
+            h_st32(e, REG_CORE, OFF(xram) + ea.abs * 4, V1);
+            h_st32(e, REG_CORE, OFF(yram) + ea.abs * 4, V2);
+        } else {
+            emit_write_mem(t, DSP_SPACE_X, addr, V1);
+            emit_write_mem(t, DSP_SPACE_Y, addr, V2);
+        }
         break;
     }
     case NP_NORM: {

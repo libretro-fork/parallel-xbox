@@ -59,6 +59,8 @@
 
 ## Unreleased
 
+- DSP: keep VSL sources in the native accumulator cache for constant paired-RAM stores, avoiding unnecessary state spills and device checks.
+
 - DSP: specialize constant RAM addresses in memory bit operations while preserving mapped aliases, peripheral side effects and extension timing.
 
 - Read-only mapped QCOW2 data clusters can supply retained IDE read spans directly, avoiding the intermediate scratch copy for uncompressed image data too.
