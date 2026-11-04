@@ -4046,6 +4046,41 @@ static bool emit_control(Tr *t, const Insn *in)
         return true;
     }
 
+    if (!strcmp(name, "rep [X or Y]:aa") || !strcmp(name, "rep [X or Y]:ea")) {
+        bool indirect = !strcmp(name, "rep [X or Y]:ea");
+        uint32_t before = t->cyc;
+        acc_spill_all(t, false);
+        h_ld32(e, T0, REG_CORE, REGOFF(DSP_REG_LC));
+        h_st32(e, REG_CORE, REGOFF(DSP_REG_LCSAVE), T0);
+        /* The peripheral read observes setup before LC receives its value. */
+        h_st32_imm(e, REG_CORE, OFF(loop_rep), 1);
+        h_st32_imm(e, REG_CORE, OFF(pc_on_rep), 1);
+        h_st32_imm(e, REG_CORE, OFF(pc), in->at);
+        h_st32_imm(e, REG_CORE, OFF(cur_inst), in->inst);
+        h_st32_imm(e, REG_CORE, OFF(cur_inst_len), in->len);
+        if (indirect) {
+            Ea ea;
+            emit_calc_ea(t, (inst >> 8) & 63, in->ext, EA1, &ea);
+            /* The interpreter ignores calc_ea's immediate tag here: the
+             * extension supplies a data-memory address in both long forms. */
+            if (ea.kind == EA_IMM) { ea.kind = EA_ABS; ea.abs = ea.imm; }
+            ea_addr_reg(t, &ea);
+        } else {
+            h_mov_ri(e, EA1, (inst >> 8) & 63);
+        }
+        h_st16_imm(e, REG_CORE, OFF(instr_cycle), 2 + t->cyc - before);
+        emit_read_mem(t, (inst >> 6) & 1, EA1, V1);
+        /* Unlike register counts, memory counts retain all returned bits
+         * until the first body decrement. Post expands an exact zero. */
+        h_st32(e, REG_CORE, REGOFF(DSP_REG_LC), V1);
+        h_st16_imm(e, REG_CORE, OFF(instr_cycle), 4 + t->cyc - before);
+        h_mov_rr(e, 1, H_ARG0, REG_CORE);
+        h_call(e, (const void *)dsp56k_post);
+        emit_charge(e, before);
+        emit_jump_to_epilogue(t);
+        return true;
+    }
+
     if (!strcmp(name, "rep #xxx") || !strcmp(name, "rep S")) {
         bool from_reg = !strcmp(name, "rep S");
         unsigned reg = (inst >> 8) & 63;
@@ -4653,6 +4688,11 @@ retry:
     acc_load(t, 0);
     acc_load(t, 1);
     h_ld32(e, REG_LC, REG_CORE, REGOFF(DSP_REG_LC));
+    /* Memory REP retains a 24-bit setup value. The first body decrement
+     * masks LC to 16 bits; normalize only this private cycle-count base. */
+    h_sub_ri(e, 0, REG_LC, 1);
+    h_and_ri(e, 0, REG_LC, 0xFFFF);
+    h_add_ri(e, 0, REG_LC, 1);
     h_frame_st32(e, SLOT_REP_START, REG_LC);
 
     top = e->len;
