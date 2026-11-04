@@ -53,6 +53,8 @@
 
 ## Unreleased
 
+- DSP JSCLR/JSSET calls on Y:pp peripheral operands now execute natively, preserving independent X/Y bus reads, stack behavior and the existing no-device Y read policy.
+
 - DSP REP first-pass state markers now use native instruction retirement, preserving count initialization, loop boundaries and deferred interrupts before entering the native repeat body.
 
 - DSP ILL, WAIT, STOP and RESET now execute natively with regression coverage for exception delivery, loop boundaries and cycles, preserving the existing MCPX sleep/reset behavior.

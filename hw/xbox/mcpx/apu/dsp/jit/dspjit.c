@@ -3752,10 +3752,10 @@ static bool emit_control(Tr *t, const Insn *in)
         !strcmp(name, "jsset #n, [X or Y]:qq, xxxx") ||
         !strcmp(name, "bsclr #n, [X or Y]:qq, xxxx") ||
         !strcmp(name, "bsset #n, [X or Y]:qq, xxxx") ||
-        ((!strcmp(name, "jsclr #n, [X or Y]:pp, xxxx") ||
-          !strcmp(name, "jsset #n, [X or Y]:pp, xxxx") ||
-          !strcmp(name, "bsclr #n, [X or Y]:pp, xxxx") ||
-          !strcmp(name, "bsset #n, [X or Y]:pp, xxxx")) && !(inst & (1u << 6))) ||
+        !strcmp(name, "jsclr #n, [X or Y]:pp, xxxx") ||
+        !strcmp(name, "jsset #n, [X or Y]:pp, xxxx") ||
+        !strcmp(name, "bsclr #n, [X or Y]:pp, xxxx") ||
+        !strcmp(name, "bsset #n, [X or Y]:pp, xxxx") ||
         !strcmp(name, "jsclr #n, S, xxxx") || !strcmp(name, "jsset #n, S, xxxx") ||
         !strcmp(name, "bsclr #n, S, xxxx") || !strcmp(name, "bsset #n, S, xxxx") ||
         !strcmp(name, "jsclr #n, [X or Y]:aa, xxxx") ||
@@ -3769,7 +3769,7 @@ static bool emit_control(Tr *t, const Insn *in)
         bool indirect = strstr(name, ":ea") != NULL;
         if (indirect && ((inst >> 11) & 7) == 6) return false;
         uint32_t before = t->cyc;
-        /* Only X has MCPX peripheral callbacks; Y must not alias them. */
+        /* X and Y peripheral buses use independent callbacks. */
         uint32_t target = name[0] == 'b' ? (at + in->ext) & 0xffffff : in->ext;
         if (strstr(name, ", S, xxxx")) {
             int reg = (inst >> 8) & 63;
@@ -3788,7 +3788,7 @@ static bool emit_control(Tr *t, const Insn *in)
             bool short_memory = strstr(name, ":aa") != NULL;
             uint32_t base = short_memory ? 0 : strstr(name, ":pp") ? 0xffffc0 : 0xffff80;
             h_mov_ri(e, EA1, base + ((inst >> 8) & 63));
-            emit_read_mem(t, short_memory ? (inst >> 6) & 1 : DSP_SPACE_X, EA1, V1);
+            emit_read_mem(t, (inst >> 6) & 1, EA1, V1);
         }
         uint32_t cycles = 6 + t->cyc - before;
         t->cyc = before;
