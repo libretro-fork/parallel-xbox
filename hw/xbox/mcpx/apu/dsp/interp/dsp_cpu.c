@@ -203,6 +203,12 @@ static bool match_x_peripheral_bit(uint32_t op)
     return !(op & (1u << 6)) && (op & 31) < 24;
 }
 
+/* P references require memory-alterable EA; MCPX peripherals are X-only. */
+static bool match_qq_program_movep(uint32_t op)
+{
+    return !(op & 64) && match_MMMRRR(op) && ((op >> 8) & 63) != 52;
+}
+
 static const OpcodeEntry nonparallel_opcodes[] = {
     { "0000000101iiiiii1000d000", "add #xx, D", dis_add_imm, emu_add_imm },
     { "00000001010000001100d000", "add #xxxx, D", dis_add_long, emu_add_long },
@@ -352,7 +358,7 @@ static const OpcodeEntry nonparallel_opcodes[] = {
     { "00000111W1MMMRRR0Sqqqqqq", "movep [X or Y]:ea <-> X:qq", dis_movep_x_qq, emu_movep_x_qq, match_MMMRRR },
     { "00000111W0MMMRRR1Sqqqqqq", "movep [X or Y]:ea <-> Y:qq", NULL, NULL, match_MMMRRR },
     { "0000100sW1MMMRRR01pppppp", "movep [X or Y]:pp <-> P:ea", dis_movep_1, emu_movep_1, match_MMMRRR },
-    { "000000001WMMMRRR0sqqqqqq", "movep [X or Y]:qq <-> P:ea", NULL, NULL, match_MMMRRR },
+    { "000000001WMMMRRR0sqqqqqq", "movep [X or Y]:qq <-> P:ea", dis_movep_qq_program, emu_movep_qq_program, match_qq_program_movep },
     { "0000100sW1dddddd00pppppp", "movep [X or Y]:pp <-> R", dis_movep_0, emu_movep_0 },
     { "00000100W1dddddd1q0qqqqq", "movep X:qq <-> R", dis_movep_x_qq_reg, emu_movep_x_qq_reg },
     { "00000100W1dddddd0q1qqqqq", "movep Y:qq <-> R", NULL, NULL },

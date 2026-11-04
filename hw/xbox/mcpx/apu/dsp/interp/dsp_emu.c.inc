@@ -8165,24 +8165,22 @@ static void emu_movep_x_qq_reg(dsp_core_t* dsp)
     emu_movep_register(dsp, 0xffff80 + port, DSP_SPACE_X);
 }
 
-static void emu_movep_1(dsp_core_t* dsp)
+static void emu_movep_program(dsp_core_t* dsp, uint32_t xyaddr, uint32_t memspace, bool out)
 {
     /* p:ea,x:pp */
     /* x:pp,p:ea */
     /* p:ea,y:pp */
     /* y:pp,p:ea */
 
-    uint32_t xyaddr, memspace, paddr;
+    uint32_t paddr;
 
-    xyaddr = 0xffffc0 + (dsp->cur_inst & BITMASK(6));
     emu_calc_ea(dsp, (dsp->cur_inst>>8) & BITMASK(6), &paddr);
-    memspace = (dsp->cur_inst>>16) & 1;
 
-    if (dsp->cur_inst & (1<<15)) {
-        /* Write pp */
+    if (out) {
+        /* Write peripheral */
         dsp56k_write_memory(dsp, memspace, xyaddr, read_memory_p(dsp, paddr));
     } else {
-        /* Read pp */
+        /* Read peripheral */
         dsp56k_write_memory(dsp, DSP_SPACE_P, paddr, dsp56k_read_memory(dsp, memspace, xyaddr));
     }
 
@@ -8190,6 +8188,18 @@ static void emu_movep_1(dsp_core_t* dsp)
     /* movep from p memory to x or y peripheral memory takes */
     /* 2 more cycles, so +4 cycles at total */
     dsp->instr_cycle += 4;
+}
+
+static void emu_movep_1(dsp_core_t* dsp)
+{
+    emu_movep_program(dsp, 0xffffc0 + (dsp->cur_inst & 63), (dsp->cur_inst >> 16) & 1,
+                      (dsp->cur_inst & (1u << 15)) != 0);
+}
+
+static void emu_movep_qq_program(dsp_core_t* dsp)
+{
+    emu_movep_program(dsp, 0xffff80 + (dsp->cur_inst & 63), DSP_SPACE_X,
+                      (dsp->cur_inst & (1u << 14)) != 0);
 }
 
 static void emu_movep_23(dsp_core_t* dsp)
