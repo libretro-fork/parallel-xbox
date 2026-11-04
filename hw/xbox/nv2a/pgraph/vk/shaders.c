@@ -715,7 +715,11 @@ static inline int vk_pre_state_module_keys(const ShaderState *st,
         keys[n].geom.glsl_opts.ui_clamp_stage = pgraph_glsl_ui_clamp_stage(&st->psh);
         n++;
     }
-    memset(&keys[n], 0, sizeof(keys[n]));
+    /* The vertex state is copied next; clear only its surrounding bytes. */
+    memset(&keys[n], 0, offsetof(ShaderModuleCacheKey, vsh.state));
+    const size_t after_vsh = offsetof(ShaderModuleCacheKey, vsh.state) +
+                             sizeof(keys[n].vsh.state);
+    memset((char *)&keys[n] + after_vsh, 0, sizeof(keys[n]) - after_vsh);
     keys[n].kind = VK_SHADER_STAGE_VERTEX_BIT;
     keys[n].vsh.state = st->vsh;
     keys[n].vsh.glsl_opts.vulkan = true;

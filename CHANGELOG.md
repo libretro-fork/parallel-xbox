@@ -31,6 +31,8 @@
 
 ## Unreleased
 
+- Skip clearing the 2336-byte vertex shader state immediately before copying it into a Vulkan module key. Preserve all option, padding and unused-union bytes so shader hashes and cache identity stay the same, reducing CPU writes during prewarm and module lookup.
+
 - Skip clearing the 2348-byte module key immediately before copying it into each Vulkan worker completion record. Keep the surrounding padding initialized and preserve record bytes, hashes, queue-drop cleanup and shader ownership, reducing worker CPU memory writes.
 
 - Replace the Vulkan dynamic-sibling ShaderState clone with a borrowed 2304-byte prefix and a 316-byte canonical fragment tail. Hash spans directly, compare views against owned cache entries and publish complete queue records once; preserve exact state bytes, worker decisions and module ownership. Align the generated state and keep uncommon sibling work outside the resident binding path.
