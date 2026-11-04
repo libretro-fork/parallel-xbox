@@ -288,7 +288,7 @@ enum {
     STUB_RN_UPDATE,     /* an Rn update with Mn not linear */
     STUB_EA_RN_PLUS_N,  /* an (Rn+Nn) address with Mn not linear */
     STUB_LIMIT,         /* an accumulator read that limits */
-    STUB_WRITE_EXIT,          /* halt or P changed in an X-write callback */
+    STUB_WRITE_EXIT,          /* halt or P changed in a memory-write callback */
     STUB_REP_POST,      /* a REP's repeat ended through dsp56k_post */
     STUB_REP_SETUP_POST, /* REP setup coincides with a DO boundary */
     STUB_CTRL_POST,     /* the instruction's work done, the PC to be imm
@@ -4377,20 +4377,14 @@ static void emit_stubs(Tr *t)
                     emit_acc_store(e, n);
                 }
             }
-            /* Preserve the existing halted exit. A callback that changed P
-             * instead retires this instruction fully, then redispatches. */
-            h_cmp_mem8_imm(e, REG_CORE, OFF(is_idle), 0);
-            size_t halted = h_jcc(e, HC_NE);
+            /* The callback stops execution after this instruction retires:
+             * DO endpoints and interrupt bookkeeping still take effect. */
             h_st32_imm(e, REG_CORE, OFF(pc), s->at);
             h_st32_imm(e, REG_CORE, OFF(cur_inst_len), s->len);
             h_st16_imm(e, REG_CORE, OFF(instr_cycle), s->cycles);
             h_mov_rr(e, 1, H_ARG0, REG_CORE);
             h_call(e, (const void *)dsp56k_post);
             emit_charge(e, s->cyc_before);
-            emit_jump_to_epilogue(t);
-            h_patch(e, halted, e->len);
-            h_st32_imm(e, REG_CORE, OFF(pc), s->next);
-            emit_charge(e, s->cyc_before + s->cycles);
             emit_jump_to_epilogue(t);
             continue;
         }

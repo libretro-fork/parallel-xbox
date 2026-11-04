@@ -58,6 +58,7 @@
 ## Unreleased
 
 - Reuse the optimizer's TCG context for folded constants and scratch temporaries, avoiding TLS lookups while preserving constant caching, temporary reuse and optimizer metadata initialization.
+- DSP: complete DO-loop retirement when a peripheral store halts execution, preserving the next PC, loop count and saved loop frame.
 
 - Reuse the matching-vector constant lookup for immediate vector duplication, avoiding a separate destination-context lookup while preserving constant caching and redundant-move elision.
 
