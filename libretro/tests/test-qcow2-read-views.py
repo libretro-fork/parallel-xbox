@@ -28,5 +28,13 @@ with tempfile.TemporaryDirectory(prefix='qcow-read-views-') as tmp:
   import shutil
   shutil.copyfile(p/'input.qcow2',os.environ['QCOW_READ_VIEW_FIXTURE'])
  if not os.environ.get('QCOW_READ_VIEW_SKIP_RUN'):
+  import shutil
+  cases=[(0,cs//2),(cs//2,cs//2),(cs//4,cs//2),(1,cs-2),(117,13)]
+  for off,length in cases:
+   for zero in (0,1):
+    for failure in (0,1):
+     image=p/'patch.qcow2';shutil.copyfile(p/'input.qcow2',image)
+     subprocess.run([exe,str(image),str(off),str(length),str(zero),str(failure)],check=True,timeout=60)
+     if not failure:subprocess.run(['qemu-img','check',str(image)],check=True,stdout=subprocess.DEVNULL)
   subprocess.run([exe,str(p/'input.qcow2')],check=True,timeout=60)
   subprocess.run(['qemu-img','check',str(p/'input.qcow2')],check=True)

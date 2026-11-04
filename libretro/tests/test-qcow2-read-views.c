@@ -7,19 +7,32 @@
 #include "qemu/queue.h"
 static void *scratch[64];static size_t capacities[64];
 static bool watching,fail_decode_alloc;
+static const uint8_t *patch_source;
+static uint8_t *patch_destination;
+static size_t patch_preserved_bytes,patch_cluster_size;
+static bool fail_patch_write;
+static int observed_write(LRFile *,int64_t,const void *,size_t);
 static size_t scratch_copy_bytes;static unsigned decode_allocations;
 static void *observed_copy(void *dst,const void *src,size_t n)
 {
  if(watching)for(unsigned i=0;i<64;i++)if(scratch[i] && (uintptr_t)dst>=(uintptr_t)scratch[i] && (uintptr_t)dst-(uintptr_t)scratch[i]<capacities[i])scratch_copy_bytes+=n;
+ if(patch_source && (uintptr_t)src >= (uintptr_t)patch_source &&
+    (uintptr_t)src-(uintptr_t)patch_source < patch_cluster_size &&
+    (uintptr_t)dst >= (uintptr_t)patch_destination &&
+    (uintptr_t)dst-(uintptr_t)patch_destination < patch_cluster_size)patch_preserved_bytes+=n;
  return memcpy(dst,src,n);
 }
 static void *observed_malloc(size_t n)
 {if(watching){decode_allocations++;if(fail_decode_alloc)return NULL;}return malloc(n);}
 #define memcpy observed_copy
 #define malloc observed_malloc
+#define lr_file_pwrite observed_write
 #include "block/libretro-qcow2.c"
 #undef memcpy
 #undef malloc
+#undef lr_file_pwrite
+static int observed_write(LRFile *f,int64_t off,const void *buf,size_t n)
+{if(fail_patch_write && buf==patch_destination)return -EIO;return lr_file_pwrite(f,off,buf,n);}
 #define BDRV_SECTOR_BITS 9
 #define ARRAY_SIZE(a) (sizeof(a)/sizeof((a)[0]))
 #define QEMU_BUILD_BUG_ON(x) _Static_assert(!(x), #x)
@@ -77,8 +90,33 @@ static void blk_drain(BlockBackend *blk){for(unsigned i=0;i<64;i++)if(pending[i]
 /* IDE */
 static void completed(void *opaque,int ret){assert(ret==*(int*)opaque);calls++;}
 static void pattern(uint8_t *out,size_t n,unsigned gc){for(size_t i=0;i<n;i++)out[i]=(uint8_t)(i/17+i%13+gc*37);}
+static int patch_case(int argc,char **argv)
+{
+ assert(argc==6);size_t in=strtoull(argv[2],NULL,0),len=strtoull(argv[3],NULL,0);
+ bool zero=atoi(argv[4]),failure=atoi(argv[5]);char error[256];
+ LRFile *file=lr_file_open(argv[1],true,false);assert(file);
+ LRQcow2 *q=lr_qcow2_open(file,true,error,sizeof(error));assert(q);
+ size_t cs=q->cs;assert(in+len<=cs);
+ uint8_t *expected=malloc(cs),*out=malloc(cs),*patch=malloc(len);assert(expected&&out&&patch);
+ pattern(expected,cs,1);memset(patch,0x6d,len);
+ LRQcow2ReadView view;assert(lr_qcow2_read_view(q,cs,cs,&view)==1);
+ patch_source=q->dcache;patch_destination=q->cluster;patch_cluster_size=cs;
+ memset(q->cluster,0xa5,cs);fail_patch_write=failure;
+ int ret=zero?lr_qcow2_zero(q,cs+in,len):lr_qcow2_pwritev(q,cs+in,&(LRFileIOV){patch,len},1);
+ fail_patch_write=false;
+ assert(ret==(failure?-EIO:0));assert(!memcmp(view.data,expected,cs));
+ size_t preserved=(cs>=4096&&len>=cs/2)?cs-len:cs;
+ assert(patch_preserved_bytes==preserved);
+ if(!failure)memset(expected+in,zero?0:0x6d,len);
+ assert(!lr_qcow2_preadv(q,cs,&(LRFileIOV){out,cs},1));assert(!memcmp(out,expected,cs));
+ lr_qcow2_release_read_view(view.owner);lr_qcow2_close(q);lr_file_close(file);
+ free(expected);free(out);free(patch);
+ printf("retained patch in=%zu len=%zu zero=%d failure=%d preserved=%zu PASS\n",in,len,zero,failure,preserved);
+ return 0;
+}
 int main(int argc,char **argv)
 {
+ if(argc>2)return patch_case(argc,argv);
  assert(argc==2);char error[256];LRFile *file=lr_file_open(argv[1],true,false);assert(file);
  LRQcow2 *q=lr_qcow2_open(file,true,error,sizeof(error));if(!q){fprintf(stderr,"%s\n",error);abort();}
  BlockBackend blk={.m={LR_MEDIUM_QCOW2,q}};DMA dma={0};IDEBus bus={&dma};IDEState state={.blk=&blk,.bus=&bus};QLIST_INIT(&state.buffered_requests);

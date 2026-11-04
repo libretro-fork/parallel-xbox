@@ -945,7 +945,19 @@ static int write_new(LRQcow2 *q, uint64_t gc, uint64_t in, uint64_t len,
              * modified bytes through the old compressed mapping. */
             if (q->decoded->refs > 1) {
                 /* Patch workspace cannot alter a retained read snapshot. */
-                memcpy(q->cluster, q->dcache, (size_t)q->cs);
+                if (len >= q->cs / 2 && q->cs >= 4096) {
+                    /* The patch supplies the middle; preserve only its edges. */
+                    if (in) {
+                        memcpy(q->cluster, q->dcache, (size_t)in);
+                    }
+                    uint64_t tail = in + len;
+                    if (tail < q->cs) {
+                        memcpy(q->cluster + tail, q->dcache + tail,
+                               (size_t)(q->cs - tail));
+                    }
+                } else {
+                    memcpy(q->cluster, q->dcache, (size_t)q->cs);
+                }
                 data = q->cluster;
             } else {
                 data = q->dcache;
