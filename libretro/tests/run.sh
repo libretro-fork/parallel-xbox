@@ -443,6 +443,7 @@ if command -v qemu-img >/dev/null 2>&1; then
     python3 "$here/test-qcow2-workspace.py" "$here/../.." "$cc"
     python3 "$here/test-qcow2-input-view.py" "$here/../.." "$cc"
     python3 "$here/test-qcow2-read-views.py" "$here/../.." "$cc"
+    python3 "$here/test-file-retained-view.py" "$here/../.." "$cc"
     python3 "$here/test-qcow2-zero-init.py" "$here/../.." "$cc"
 fi
 

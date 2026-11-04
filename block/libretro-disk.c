@@ -54,6 +54,7 @@
 #include "block/snapshot.h"
 #include "block/libretro-disk.h"
 #include "block/libretro-file.h"
+#include "block/libretro-read-view.h"
 #include "block/libretro-vfs-read.h"
 #include "block/libretro-qcow2.h"
 #include "system/block-backend.h"
@@ -561,7 +562,9 @@ static bool lr_disk_progress(void)
 
 void lr_disk_release_read_view(void *owner)
 {
-    lr_qcow2_release_read_view(owner);
+    if (owner) {
+        ((LRReadViewOwner *)owner)->release(owner);
+    }
 }
 
 BlockAIOCB *lr_disk_aio_read_view(BlockBackend *blk, int64_t offset, size_t size,
@@ -570,6 +573,17 @@ BlockAIOCB *lr_disk_aio_read_view(BlockBackend *blk, int64_t offset, size_t size
 {
     *data = NULL;
     *owner = NULL;
+    if (blk && blk->m.kind == LR_MEDIUM_FILE && !blk->m.writable &&
+        offset >= 0 && offset <= blk->m.length &&
+        size <= (uint64_t)(blk->m.length - offset) &&
+        blk->m.base <= INT64_MAX &&
+        (uint64_t)offset <= (uint64_t)INT64_MAX - blk->m.base) {
+        *data = lr_file_retain_read_view(blk->m.file, blk->m.base + offset,
+                                        size, owner);
+        if (*data) {
+            return lr_disk_submit(blk, 0, cb, opaque);
+        }
+    }
     if (!blk || blk->m.kind != LR_MEDIUM_QCOW2) {
         return NULL;
     }

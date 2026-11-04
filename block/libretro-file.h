@@ -41,6 +41,11 @@ int64_t lr_file_size(LRFile *f);
 /* Borrow immutable file bytes without a read/copy. NULL is a normal fallback
  * (writable file, unsupported mapping, or out of range). Valid until close. */
 const uint8_t *lr_file_view(LRFile *f, int64_t off, size_t len);
+/* Retain a mapped read-only span through close. Release its owner once on
+ * the serialized I/O owner, through LRReadViewOwner.release. NULL: fallback. */
+const uint8_t *lr_file_retain_read_view(LRFile *f, int64_t off, size_t len,
+                                       void **owner);
+
 /* the size, the end grown as a hole; 0 or -errno */
 int lr_file_set_size(LRFile *f, int64_t size);
 

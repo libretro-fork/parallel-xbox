@@ -64,7 +64,7 @@ void lr_disk_sync_all(void);
 /* the space the image takes on the host's disk, -1 when not known */
 int64_t lr_disk_allocated(BlockBackend *blk);
 
-/* Optional retained compressed read. NULL means use ordinary preadv. A
+/* Optional retained compressed or mapped read-only read. NULL means use ordinary preadv. A
  * non-NULL request completes through the existing deferred owner queue. */
 BlockAIOCB *lr_disk_aio_read_view(BlockBackend *blk, int64_t offset, size_t size,
                                  const void **data, void **owner,

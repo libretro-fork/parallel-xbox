@@ -43,14 +43,19 @@ struct iovec { void *iov_base; size_t iov_len; };
 typedef void BlockCompletionFunc(void *,int);
 typedef struct {BlockCompletionFunc *cb;void *opaque;int ret;bool live;} BlockAIOCB;
 /* REQUEST */
-typedef struct {struct {int kind;LRQcow2 *qcow2;} m;} BlockBackend;
+typedef struct {struct {int kind;LRQcow2 *qcow2;LRFile *file;uint64_t base;int64_t length;bool writable;} m;} BlockBackend;
 #define LR_MEDIUM_QCOW2 2
+#define LR_MEDIUM_FILE 1
 static BlockAIOCB pending[64];static unsigned queued,legacy_reads,releases,calls,req_live,scratch_live;
 static BlockAIOCB *lr_disk_submit(BlockBackend *blk,int ret,BlockCompletionFunc *cb,void *opaque)
 {for(unsigned i=0;i<64;i++)if(!pending[i].live){pending[i]=(BlockAIOCB){cb,opaque,ret,true};queued++;return &pending[i];}abort();}
 /* BLOCK */
 static BlockAIOCB *blk_aio_preadv(BlockBackend *blk,int64_t off,QEMUIOVector *v,int flags,BlockCompletionFunc *cb,void *opaque)
-{legacy_reads++;return lr_disk_submit(blk,lr_qcow2_preadv(blk->m.qcow2,off,(LRFileIOV*)v->iov,v->niov),cb,opaque);}
+{legacy_reads++;
+ int ret=blk->m.kind==LR_MEDIUM_QCOW2?
+ lr_qcow2_preadv(blk->m.qcow2,off,(LRFileIOV*)v->iov,v->niov):
+ lr_file_preadv(blk->m.file,blk->m.base+off,(LRFileIOV*)v->iov,v->niov);
+ return lr_disk_submit(blk,ret,cb,opaque);}
 static BlockAIOCB *blk_abort_aio_request(BlockBackend *blk,BlockCompletionFunc *cb,void *opaque,int ret)
 {return lr_disk_submit(blk,ret,cb,opaque);}
 static void finish(BlockAIOCB *a){assert(a->live);a->live=false;releases++;a->cb(a->opaque,a->ret);}
@@ -90,6 +95,50 @@ static void blk_drain(BlockBackend *blk){for(unsigned i=0;i<64;i++)if(pending[i]
 /* IDE */
 static void completed(void *opaque,int ret){assert(ret==*(int*)opaque);calls++;}
 static void pattern(uint8_t *out,size_t n,unsigned gc){for(size_t i=0;i<n;i++)out[i]=(uint8_t)(i/17+i%13+gc*37);}
+static void mapped_cases(const char *path)
+{
+ LRFile *file=lr_file_open(path,false,false);assert(file);
+ int64_t size=lr_file_size(file);assert(size>2048);
+ uint8_t *mapping=malloc(size);assert(mapping);
+ assert(!lr_file_pread(file,0,mapping,size));file->mapped=mapping;file->mapped_size=size;
+ BlockBackend blk={.m={.kind=LR_MEDIUM_FILE,.file=file,.base=37,.length=size-37}};
+ DMA dma={0};IDEBus bus={&dma};IDEState state={.blk=&blk,.bus=&bus};QLIST_INIT(&state.buffered_requests);
+ uint8_t out[1100];memset(out,0xcc,sizeof(out));int ok=0,canceled=-ECANCELED;
+ struct iovec pieces[3]={{out,173},{out+173,0},{out+200,339}};
+ QEMUIOVector a={.iov=pieces,.niov=3,.size=512},b;
+ qemu_iovec_init_buf(&b,out+550,512);
+ const void *data=(void*)1;void *owner=(void*)1;
+ assert(!lr_disk_aio_read_view(&blk,-1,512,&data,&owner,completed,&ok)&&!data&&!owner);
+ assert(!lr_disk_aio_read_view(&blk,blk.m.length,1,&data,&owner,completed,&ok));
+ assert(!lr_disk_aio_read_view(&blk,0,0,&data,&owner,completed,&ok));
+ blk.m.writable=true;assert(!lr_disk_aio_read_view(&blk,0,512,&data,&owner,completed,&ok));blk.m.writable=false;
+ uint64_t base=blk.m.base;blk.m.base=UINT64_MAX;
+ assert(!lr_disk_aio_read_view(&blk,0,512,&data,&owner,completed,&ok));blk.m.base=base;
+ unsigned reads=legacy_reads;BlockAIOCB *first=ide_buffered_readv(&state,0,&a,1,completed,&ok);
+ BlockAIOCB *second=ide_buffered_readv(&state,1,&b,1,completed,&ok);
+ assert(file->views==2&&legacy_reads==reads&&!scratch_live);
+ IDEBufferedRequest *req=first->opaque;assert(req->read_view==mapping+37);
+ for(unsigned i=0;i<sizeof(out);i++)assert(out[i]==0xcc);
+ lr_file_close(file);assert(file->closed&&file->views==2);
+ finish(second);assert(file->views==1);finish(first);
+ assert(!memcmp(out,mapping+37,173)&&!memcmp(out+200,mapping+37+173,339));
+ assert(!memcmp(out+550,mapping+37+512,512));
+ for(unsigned i=173;i<200;i++)assert(out[i]==0xcc);
+ ide_buffered_read_cache_clear();assert(!req_live&&!scratch_live);
+ /* Close followed by cancellation must release the mapping without publication. */
+ file=lr_file_open(path,false,false);assert(file);file->mapped=mapping;file->mapped_size=size;blk.m.file=file;
+ memset(out,0xcc,sizeof(out));first=ide_buffered_readv(&state,0,&a,1,completed,&canceled);
+ lr_file_close(file);unsigned before=calls;ide_cancel_dma_sync(&state);assert(calls==before+1);
+ finish(first);assert(calls==before+1);
+ for(unsigned i=0;i<sizeof(out);i++)assert(out[i]==0xcc);
+ ide_buffered_read_cache_clear();assert(!req_live&&!scratch_live);
+ /* Unmapped native media retains scratch completion. */
+ file=lr_file_open(path,false,false);assert(file);blk.m.file=file;
+ first=ide_buffered_readv(&state,0,&a,1,completed,&ok);assert(legacy_reads==reads+1&&scratch_live==1);
+ finish(first);lr_file_close(file);ide_buffered_read_cache_clear();
+ assert(!req_live&&!scratch_live);free(mapping);
+ puts("Mapped raw IDE views: partition offset, concurrent/scattered reads, delayed publication, close, cancellation and fallback PASS");
+}
 static int patch_case(int argc,char **argv)
 {
  assert(argc==6);size_t in=strtoull(argv[2],NULL,0),len=strtoull(argv[3],NULL,0);
@@ -119,7 +168,7 @@ int main(int argc,char **argv)
  if(argc>2)return patch_case(argc,argv);
  assert(argc==2);char error[256];LRFile *file=lr_file_open(argv[1],true,false);assert(file);
  LRQcow2 *q=lr_qcow2_open(file,true,error,sizeof(error));if(!q){fprintf(stderr,"%s\n",error);abort();}
- BlockBackend blk={.m={LR_MEDIUM_QCOW2,q}};DMA dma={0};IDEBus bus={&dma};IDEState state={.blk=&blk,.bus=&bus};QLIST_INIT(&state.buffered_requests);
+ BlockBackend blk={.m={.kind=LR_MEDIUM_QCOW2,.qcow2=q}};DMA dma={0};IDEBus bus={&dma};IDEState state={.blk=&blk,.bus=&bus};QLIST_INIT(&state.buffered_requests);
  size_t cs=q->cs;uint8_t *out=malloc(cs*2+32),*want=malloc(cs*2),*original=malloc(cs);assert(out&&want&&original);
  pattern(want,cs,0);pattern(want+cs,cs,1);pattern(original,cs,0);
  int ok=0;QEMUIOVector a,b;watching=true;
@@ -198,6 +247,7 @@ int main(int argc,char **argv)
  ide_buffered_read_cache_clear();assert(!req_live&&!scratch_live);
  for(unsigned i=0;i<64;i++)assert(!pending[i].live);
  assert(queued==releases);free(out);free(want);free(original);
+ mapped_cases(argv[1]);assert(queued==releases);
  puts("QCOW2 retained IDE views: copies, overlap, writes, errors, allocation failure and canceled-close lifetime passed");
  return 0;
 }

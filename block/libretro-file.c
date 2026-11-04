@@ -17,6 +17,7 @@
 #endif
 
 #include "libretro-file.h"
+#include "libretro-read-view.h"
 
 #include <errno.h>
 #include <stdlib.h>
@@ -48,6 +49,9 @@
 static const uint8_t lr_file_zeroes[64 * 1024];
 
 struct LRFile {
+    LRReadViewOwner view_owner;
+    unsigned views;
+    bool closed;
 #if LR_FILE_FILESTREAM
     RFILE *stream;
 #endif
@@ -130,6 +134,10 @@ static LRFile *lr_file_open_native(const char *path, bool writable, bool create)
 void lr_file_close(LRFile *f)
 {
     if (!f) {
+        return;
+    }
+    if (f->views) {
+        f->closed = true;
         return;
     }
 #if LR_FILE_FILESTREAM
@@ -314,6 +322,10 @@ static LRFile *lr_file_open_native(const char *path, bool writable, bool create)
 void lr_file_close(LRFile *f)
 {
     if (!f) {
+        return;
+    }
+    if (f->views) {
+        f->closed = true;
         return;
     }
 #if LR_FILE_FILESTREAM
@@ -531,6 +543,28 @@ const uint8_t *lr_file_view(LRFile *f, int64_t off, size_t len)
         return NULL;
     }
     return f->mapped + off;
+}
+
+static void lr_file_release_read_view(void *opaque)
+{
+    LRFile *f = opaque;
+    if (!--f->views && f->closed) {
+        lr_file_close(f);
+    }
+}
+
+const uint8_t *lr_file_retain_read_view(LRFile *f, int64_t off, size_t len,
+                                       void **owner)
+{
+    *owner = NULL;
+    const uint8_t *data = lr_file_view(f, off, len);
+    if (!data || !len || f->writable || f->closed) {
+        return NULL;
+    }
+    f->view_owner.release = lr_file_release_read_view;
+    f->views++;
+    *owner = f;
+    return data;
 }
 
 /* The caller has validated the range before touching any destination. */

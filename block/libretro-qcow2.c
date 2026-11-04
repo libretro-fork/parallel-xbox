@@ -36,6 +36,7 @@
  */
 
 #include "libretro-qcow2.h"
+#include "libretro-read-view.h"
 
 #include <errno.h>
 #include <stdio.h>
@@ -66,6 +67,7 @@ typedef struct DecodedBuffer {
 } DecodedBuffer;
 
 typedef struct DecodedViewOwner {
+    LRReadViewOwner common;
     unsigned refs; /* image plus its one optional retained view */
     DecodedBuffer *held;
 } DecodedViewOwner;
@@ -691,6 +693,7 @@ LRQcow2 *lr_qcow2_open(LRFile *f, bool writable, char *err, size_t errlen)
     q->dcache = q->decoded ? q->decoded->data : NULL;
     q->view_owner = calloc(1, sizeof(*q->view_owner));
     if (q->view_owner) {
+        q->view_owner->common.release = lr_qcow2_release_read_view;
         q->view_owner->refs = 1;
     }
     q->cbuf = malloc((size_t)q->cs * 2 + 512);

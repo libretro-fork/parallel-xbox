@@ -58,6 +58,8 @@
 
 ## Unreleased
 
+- Mapped read-only raw image reads retain their source through IDE completion, removing intermediate scratch copies while keeping pending reads valid across media close.
+
 - Large partial writes to compressed HDD clusters with a pending read preserve only unchanged edges, avoiding copies of bytes the write replaces.
 
 - Let IDE reads retain immutable decoded QCOW2 cluster spans through completion, removing the decoded-cache-to-scratch copy. Bound retention to one view per image and preserve cancellation, cache reuse, overlapping reads/writes and image-close lifetimes.

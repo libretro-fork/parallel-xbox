@@ -4419,3 +4419,7 @@ aggregation and dispatch. An independent 128-bit interval oracle covers400056
 read/write/DSP-acceptance cases, including accesses starting before a watch,
 empty spans, near-final-address ranges and offsets relative to the memory
 region. The pre-change source fails the exact callback-span oracle.
+
+The retained IDE fixture also exercises raw-file mapped views: nonzero partition bases, multiple outstanding reads, destination gaps, no early publication, completion/cancellation after media close, invalid/empty/writable view fallbacks and ordinary unmapped reads. File and decoded-cache owners share a small release callback header; references remain on the existing serialized I/O owner.
+
+`test-file-retained-view.py CHECKOUT [CC]` links the production libretro-common stream/VFS mapping implementation and checks independent retained spans through file close. ASan/UBSan are the default; `FILE_RETAINED_BINARY`, `FILE_RETAINED_FIXTURE`, `FILE_RETAINED_CFLAGS` and `FILE_RETAINED_SKIP_RUN` support native cross-built checks.
