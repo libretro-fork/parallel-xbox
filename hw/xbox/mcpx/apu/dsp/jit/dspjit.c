@@ -904,7 +904,7 @@ static void emit_write_reg(Tr *t, int r, int val)
 enum {
     OP_LSL_R, OP_LSR_R, OP_MERGE, OP_INSERT, OP_EXTRACT, OP_EXTRACTU,
     OP_CLB,
-    OP_ASL_R, OP_ASR_R, /* register-controlled arithmetic shifts */
+    OP_ASL_R, OP_ASR_R, OP_NORMF, /* register-controlled arithmetic shifts */
     OP_ASL_N, OP_ASR_N, /* by a count (shift), of accumulator s into d */
     OP_MOVE, OP_ADD, OP_SUB, OP_CMP, OP_TFR, OP_CLR, OP_TST, OP_RND,
     OP_MPY, OP_MPYR, OP_MAC, OP_MACR, OP_ASL, OP_ASR, OP_LSL, OP_LSR,
@@ -926,6 +926,7 @@ typedef struct AluOp {
     int src;            /* SRC_*; for the multiplies, the first factor */
     int src2;           /* second multiply factor, or INSERT control register/SRC_IMM */
     bool minus;         /* the multiplies' sign */
+    bool mul_unsigned1, mul_unsigned2, mac_shift24, mul_extended;
     bool mul_imm;       /* first multiply factor is the immediate word */
     int d;              /* 0: A, 1: B */
     uint32_t imm;       /* SRC_IMM or the immediate multiply factor */
@@ -1154,7 +1155,7 @@ static void emit_addsub56(Emitter *e, int dst, int src, bool sub)
 }
 
 /* dsp_rnd56 in the block's scaling mode, on res; uses rax */
-static void emit_rnd56(Tr *t, int res)
+static void emit_rnd56_value(Tr *t, int res, bool wide)
 {
     Emitter *e = &t->e;
     size_t j;
@@ -1162,7 +1163,7 @@ static void emit_rnd56(Tr *t, int res)
     if (t->mode & 1) {
         /* S0: rounding at bit 24 */
         h_add_ri(e, 1, res, 1 << 24);
-        emit_sext56(e, res);
+        if (!wide) emit_sext56(e, res);
         h_mov_rr(e, 1, T0, res);
         h_and_ri(e, 1, T0, 0x1FFFFFF);
         j = h_jcc(e, HC_NE);
@@ -1173,7 +1174,7 @@ static void emit_rnd56(Tr *t, int res)
     } else if (t->mode == 2) {
         /* S1: rounding at bit 22 */
         h_add_ri(e, 1, res, 1 << 22);
-        emit_sext56(e, res);
+        if (!wide) emit_sext56(e, res);
         h_mov_rr(e, 1, T0, res);
         h_and_ri(e, 0, T0, 0x7FFFFF);
         j = h_jcc(e, HC_NE);
@@ -1183,7 +1184,7 @@ static void emit_rnd56(Tr *t, int res)
         h_shl_ri(e, 1, res, 23);
     } else {
         h_add_ri(e, 1, res, 1 << 23);
-        emit_sext56(e, res);
+        if (!wide) emit_sext56(e, res);
         h_mov_rr(e, 1, T0, res);
         h_and_ri(e, 0, T0, 0xFFFFFF);
         j = h_jcc(e, HC_NE);
@@ -1193,6 +1194,8 @@ static void emit_rnd56(Tr *t, int res)
         h_shl_ri(e, 1, res, 24);
     }
 }
+
+static void emit_rnd56(Tr *t, int res) { emit_rnd56_value(t, res, false); }
 
 /* The product of two signed 24-bit factors, times two, into T0. The
  * first factor can be immediate (dsp_mul56, exact in 64 bits). */
@@ -1204,10 +1207,12 @@ static void emit_mul56(Emitter *e, const AluOp *a)
         h_ld32(e, T0, REG_CORE, REGOFF(a->src));
     }
     h_shl_ri(e, 1, T0, 40);
-    h_sar_ri(e, 1, T0, 40);
+    if (a->mul_unsigned1) h_shr_ri(e, 1, T0, 40);
+    else h_sar_ri(e, 1, T0, 40);
     h_ld32(e, T1, REG_CORE, REGOFF(a->src2));
     h_shl_ri(e, 1, T1, 40);
-    h_sar_ri(e, 1, T1, 40);
+    if (a->mul_unsigned2) h_shr_ri(e, 1, T1, 40);
+    else h_sar_ri(e, 1, T1, 40);
     h_mul_rr(e, 1, T0, T1);
     h_add_rr(e, 1, T0, T0);
     if (a->minus) {
@@ -1246,6 +1251,58 @@ static void emit_a1_result(Tr *t, int n, uint32_t clear, int carry_reg)
 }
 
 /* the operation, on the accumulators in their registers */
+/* T0 is a signed 56-bit value, T3 a six-bit count. Return T0/T4 result/flags. */
+static void emit_acc_shift(Tr *t, bool left)
+{
+    Emitter *e = &t->e;
+    if (!left) {
+        h_mov_ri(e, T4, 0);
+        h_test_rr(e, 0, T3, T3);
+        size_t zero = h_jcc(e, HC_EQ);
+        h_mov_rr(e, 0, T1, T3);
+        h_sub_ri(e, 0, T1, 1);
+        h_mov_rr(e, 1, T4, T0);
+        h_shr_r1(e, 1, T4);
+        h_and_ri(e, 0, T4, 1);
+        h_patch(e, zero, e->len);
+        h_mov_rr(e, 0, T1, T3);
+        h_sar_r1(e, 1, T0);
+    } else {
+        h_mov_rr(e, 1, T2, T0);
+        h_cmp_ri(e, 0, T3, 56);
+        size_t wide = h_jcc(e, HC_AE);
+        h_mov_ri(e, T1, 55);
+        h_sub_rr(e, 0, T1, T3);
+        h_sar_r1(e, 1, T2);
+        h_add_ri(e, 1, T2, 1);
+        h_cmp_ri(e, 1, T2, 1);
+        h_setcc(e, HC_A, T2);
+        size_t overflow_done = h_jmp(e);
+        h_patch(e, wide, e->len);
+        h_test_rr(e, 1, T2, T2);
+        h_setcc(e, HC_NE, T2);
+        h_patch(e, overflow_done, e->len);
+        h_mov_rr(e, 0, T4, T2);
+        h_shl_ri(e, 0, T4, DSP_SR_V);
+        h_shl_ri(e, 0, T2, DSP_SR_L);
+        h_or_rr(e, 0, T4, T2);
+        h_shl_ri(e, 1, T0, 8);
+        h_shr_ri(e, 1, T0, 8);
+        h_cmp_ri(e, 0, T3, 56);
+        size_t no_carry = h_jcc(e, HC_A);
+        h_mov_ri(e, T1, 56);
+        h_sub_rr(e, 0, T1, T3);
+        h_mov_rr(e, 1, T2, T0);
+        h_shr_r1(e, 1, T2);
+        h_and_ri(e, 0, T2, 1);
+        h_or_rr(e, 0, T4, T2);
+        h_patch(e, no_carry, e->len);
+        h_mov_rr(e, 0, T1, T3);
+        h_shl_r1(e, 1, T0);
+        emit_sext56(e, T0);
+    }
+}
+
 static void emit_alu(Tr *t, const AluOp *a)
 {
     Emitter *e = &t->e;
@@ -1268,8 +1325,8 @@ static void emit_alu(Tr *t, const AluOp *a)
             emit_src56(t, a, T1);
         }
         emit_addsub56(e, acc, T1, a->op == OP_SUB || a->op == OP_CMP || a->op == OP_DEC);
-        /* Arithmetic CCR updates clear the interpreter's virtual upper bits. */
-        uint32_t clear = SR_EUNZ | SR_V | SR_C | 0xFFFF0000u;
+        /* Arithmetic CCR updates preserve the architectural forever-loop flag. */
+        uint32_t clear = SR_EUNZ | SR_V | SR_C | 0xFFFE0000u;
         emit_sr_result(t, clear, T4, T3, a->op == OP_CMP ? -1 : a->d);
         if (a->op != OP_CMP) {
             h_mov_rr(e, 1, acc, T3);
@@ -1374,7 +1431,7 @@ static void emit_alu(Tr *t, const AluOp *a)
         }
         emit_addsub56(e, T3, acc_reg(a->d ^ 1), sub);
         h_or_rr(e, 0, T4, T1);
-        emit_sr_result(t, SR_EUNZ | SR_V | SR_C | 0xFFFF0000u, T4, T3, a->d);
+        emit_sr_result(t, SR_EUNZ | SR_V | SR_C | 0xFFFE0000u, T4, T3, a->d);
         h_mov_rr(e, 1, acc, T3);
         acc_written(t, a->d);
         break;
@@ -1414,21 +1471,34 @@ static void emit_alu(Tr *t, const AluOp *a)
             emit_rnd56(t, acc);
         }
         acc_written(t, a->d);
-        emit_sr_result(t, SR_EUNZ | SR_V | (a->mul_imm ? 0xFFFF0000u : 0),
+        emit_sr_result(t, SR_EUNZ | SR_V | ((a->mul_imm || a->mul_extended) ? 0xFFFE0000u : 0),
                        -1, acc, a->d);
         break;
 
     case OP_MAC:
     case OP_MACR:
         acc_load(t, a->d);
+        if (a->mac_shift24) h_sar_ri(e, 1, acc, 24);
         emit_mul56(e, a);
-        emit_addsub56(e, acc, T0, false);
         if (a->op == OP_MACR) {
-            emit_rnd56(t, T3);
+            h_mov_rr(e, 1, T3, acc);
+            h_add_rr(e, 1, T3, T0);
+            emit_rnd56_value(t, T3, true);
+            h_mov_rr(e, 1, T0, T3);
+            emit_sext56(e, T0);
+            h_cmp_rr(e, 1, T0, T3);
+            h_setcc(e, HC_NE, T4);
+            h_mov_rr(e, 0, T0, T4);
+            h_shl_ri(e, 0, T4, DSP_SR_V);
+            h_shl_ri(e, 0, T0, DSP_SR_L);
+            h_or_rr(e, 0, T4, T0);
+            emit_sext56(e, T3);
+        } else {
+            emit_addsub56(e, acc, T0, false);
+            h_and_ri(e, 0, T4, ~(int32_t)SR_C);
         }
-        /* V and L from the add, C untouched */
-        h_and_ri(e, 0, T4, ~(int32_t)SR_C);
-        emit_sr_result(t, SR_EUNZ | SR_V | (a->mul_imm ? 0xFFFF0000u : 0), T4, T3, a->d);
+        /* V/L include rounding overflow; carry remains untouched. */
+        emit_sr_result(t, SR_EUNZ | SR_V | ((a->mul_imm || a->mul_extended) ? 0xFFFE0000u : 0), T4, T3, a->d);
         h_mov_rr(e, 1, acc, T3);
         acc_written(t, a->d);
         break;
@@ -1452,7 +1522,7 @@ static void emit_alu(Tr *t, const AluOp *a)
         h_shl_ri(e, 1, acc, 9);
         h_sar_ri(e, 1, acc, 8);
         acc_written(t, a->d);
-        emit_sr_result(t, SR_EUNZ | SR_V | SR_C | 0xFFFF0000u, T4, acc, a->d);
+        emit_sr_result(t, SR_EUNZ | SR_V | SR_C | 0xFFFE0000u, T4, acc, a->d);
         break;
 
     case OP_MERGE: {
@@ -1667,6 +1737,32 @@ static void emit_alu(Tr *t, const AluOp *a)
         break;
     }
 
+    case OP_NORMF: {
+        acc_load(t, a->d);
+        if (a->shift == DSP_REG_A1 || a->shift == DSP_REG_B1) {
+            unsigned n = a->shift - DSP_REG_A1;
+            acc_load(t, n);
+            h_mov_rr(e, 1, T3, acc_reg(n));
+            h_shr_ri(e, 1, T3, 24);
+        } else h_ld32(e, T3, REG_CORE, REGOFF(a->shift));
+        h_mov_rr(e, 1, T0, acc);
+        h_test_ri(e, 0, T3, 0x800000);
+        size_t negative = h_jcc(e, HC_NE);
+        h_and_ri(e, 0, T3, 63);
+        emit_acc_shift(t, false);
+        size_t done = h_jmp(e);
+        h_patch(e, negative, e->len);
+        h_neg(e, 0, T3);
+        h_and_ri(e, 0, T3, 63);
+        emit_acc_shift(t, true);
+        h_patch(e, done, e->len);
+        h_and_ri(e, 0, T4, ~(int32_t)SR_C);
+        h_mov_rr(e, 1, acc, T0);
+        acc_written(t, a->d);
+        emit_sr_result(t, SR_EUNZ | SR_V | 0xFFFE0000u, T4, acc, a->d);
+        break;
+    }
+
     case OP_ASL_R:
     case OP_ASR_R: {
         /* Snapshot the raw control MSP before overwriting either accumulator.
@@ -1680,55 +1776,10 @@ static void emit_alu(Tr *t, const AluOp *a)
         } else h_ld32(e, T3, REG_CORE, REGOFF(a->shift));
         h_and_ri(e, 0, T3, 63);
         h_mov_rr(e, 1, T0, acc_reg(a->s));
-        if (a->op == OP_ASR_R) {
-            h_mov_ri(e, T4, 0);
-            h_test_rr(e, 0, T3, T3);
-            size_t zero = h_jcc(e, HC_EQ);
-            h_mov_rr(e, 0, T1, T3);
-            h_sub_ri(e, 0, T1, 1);
-            h_mov_rr(e, 1, T4, T0);
-            h_shr_r1(e, 1, T4);
-            h_and_ri(e, 0, T4, 1);
-            h_patch(e, zero, e->len);
-            h_mov_rr(e, 0, T1, T3);
-            h_sar_r1(e, 1, T0);
-        } else {
-            h_mov_rr(e, 1, T2, T0);
-            h_cmp_ri(e, 0, T3, 56);
-            size_t wide = h_jcc(e, HC_AE);
-            h_mov_ri(e, T1, 55);
-            h_sub_rr(e, 0, T1, T3);
-            h_sar_r1(e, 1, T2);
-            h_add_ri(e, 1, T2, 1);
-            h_cmp_ri(e, 1, T2, 1);
-            h_setcc(e, HC_A, T2);
-            size_t overflow_done = h_jmp(e);
-            h_patch(e, wide, e->len);
-            h_test_rr(e, 1, T2, T2);
-            h_setcc(e, HC_NE, T2);
-            h_patch(e, overflow_done, e->len);
-            h_mov_rr(e, 0, T4, T2);
-            h_shl_ri(e, 0, T4, DSP_SR_V);
-            h_shl_ri(e, 0, T2, DSP_SR_L);
-            h_or_rr(e, 0, T4, T2);
-            h_shl_ri(e, 1, T0, 8);
-            h_shr_ri(e, 1, T0, 8);
-            h_cmp_ri(e, 0, T3, 56);
-            size_t no_carry = h_jcc(e, HC_A);
-            h_mov_ri(e, T1, 56);
-            h_sub_rr(e, 0, T1, T3);
-            h_mov_rr(e, 1, T2, T0);
-            h_shr_r1(e, 1, T2);
-            h_and_ri(e, 0, T2, 1);
-            h_or_rr(e, 0, T4, T2);
-            h_patch(e, no_carry, e->len);
-            h_mov_rr(e, 0, T1, T3);
-            h_shl_r1(e, 1, T0);
-            emit_sext56(e, T0);
-        }
+        emit_acc_shift(t, a->op == OP_ASL_R);
         h_mov_rr(e, 1, acc, T0);
         acc_written(t, a->d);
-        emit_sr_result(t, SR_EUNZ | SR_V | SR_C | 0xFFFF0000u, T4, acc, a->d);
+        emit_sr_result(t, SR_EUNZ | SR_V | SR_C | 0xFFFE0000u, T4, acc, a->d);
         break;
     }
 
@@ -1767,7 +1818,7 @@ static void emit_alu(Tr *t, const AluOp *a)
         emit_sext56(e, T0);
         h_mov_rr(e, 1, acc, T0);
         acc_written(t, a->d);
-        emit_sr_result(t, SR_EUNZ | SR_V | SR_C | 0xFFFF0000u, T4, acc, a->d);
+        emit_sr_result(t, SR_EUNZ | SR_V | SR_C | 0xFFFE0000u, T4, acc, a->d);
         break;
     }
 
@@ -1786,7 +1837,7 @@ static void emit_alu(Tr *t, const AluOp *a)
         h_sar_ri(e, 1, T0, n);
         h_mov_rr(e, 1, acc, T0);
         acc_written(t, a->d);
-        emit_sr_result(t, SR_EUNZ | SR_V | SR_C | 0xFFFF0000u, T4, acc, a->d);
+        emit_sr_result(t, SR_EUNZ | SR_V | SR_C | 0xFFFE0000u, T4, acc, a->d);
         break;
     }
 
@@ -1797,7 +1848,7 @@ static void emit_alu(Tr *t, const AluOp *a)
         h_and_ri(e, 0, T4, 1);
         h_sar_ri(e, 1, acc, 1);
         acc_written(t, a->d);
-        emit_sr_result(t, SR_EUNZ | SR_V | SR_C | 0xFFFF0000u, T4, acc, a->d);
+        emit_sr_result(t, SR_EUNZ | SR_V | SR_C | 0xFFFE0000u, T4, acc, a->d);
         break;
 
     case OP_NEG:
@@ -2342,6 +2393,7 @@ enum {
     NP_STATUS_IMM,      /* raw ANDI/ORI CCR or OMR byte logic */
     NP_STATUS_MODE,     /* MR byte logic: retire and reselect scale/LF */
     NP_DIV,             /* one non-restoring divide step */
+    NP_VSL,
     NP_NORM,            /* flag-controlled shift and 16-bit Rn update */
     NP_MOVEP_EA,        /* movep [X or Y]:ea <-> [X or Y]:pp */
     NP_MOVEP_REG,
@@ -2383,6 +2435,39 @@ static bool np_alu(const Insn *in, AluOp *a)
         a->imm = in->ext;
         a->src2 = sources[(inst >> 4) & 3];
         a->minus = (inst >> 2) & 1;
+        return true;
+    }
+    if (!strcmp(name, "mpy S, #n, D") || !strcmp(name, "mpyr S, #n, D") ||
+        !strcmp(name, "mac S, #n, D") || !strcmp(name, "macr S1, S2, D")) {
+        static const int sources[] = {DSP_REG_Y1, DSP_REG_X0, DSP_REG_Y0, DSP_REG_X1};
+        a->op = name[1] == 'a' ? (name[3] == 'r' ? OP_MACR : OP_MAC) :
+                                (name[3] == 'r' ? OP_MPYR : OP_MPY);
+        a->mul_imm = true;
+        unsigned shift = (inst >> 8) & 31;
+        a->imm = shift >= 1 && shift <= 23 ? 1u << (23 - shift) : 0;
+        a->src2 = sources[(inst >> 4) & 3];
+        a->minus = (inst >> 2) & 1;
+        return true;
+    }
+    if (!strcmp(name, "mpy_s_u S1, S2, D") || !strcmp(name, "mac_s_u S1, S2, D") ||
+        !strcmp(name, "dmac S1, S2, D")) {
+        static const int first[] = {4,6,5,7,4,6,5,7,5,7,4,6,7,4,6,5};
+        static const int second[] = {4,6,4,6,7,4,6,5,5,7,5,7,4,6,5,7};
+        bool shift = name[0] == 'd';
+        unsigned mode = shift ? (((inst >> 7) & 2) | ((inst >> 6) & 1)) : ((inst & 64) ? 3 : 2);
+        a->op = name[0] == 'm' && name[1] == 'p' ? OP_MPY : OP_MAC;
+        a->d = (inst >> 5) & 1;
+        a->src = first[inst & 15]; a->src2 = second[inst & 15];
+        a->mul_unsigned1 = (mode & 1) != 0; a->mul_unsigned2 = (mode & 2) != 0;
+        a->mul_extended = true;
+        a->mac_shift24 = shift;
+        a->minus = (inst >> 4) & 1;
+        return true;
+    }
+    if (!strcmp(name, "normf S, D")) {
+        static const int controls[] = {DSP_REG_X0, DSP_REG_Y0, DSP_REG_X1, DSP_REG_Y1, DSP_REG_A1, DSP_REG_B1};
+        a->op = OP_NORMF; a->d = inst & 1;
+        a->shift = controls[((inst >> 1) & 7) - 2];
         return true;
     }
     if (!strcmp(name, "inc D") || !strcmp(name, "dec D")) {
@@ -2523,7 +2608,7 @@ static int np_kind(const Insn *in)
         !strcmp(name, "bchg, #n, D") || !strcmp(name, "btst #n, D")) {
         unsigned reg = (in->inst >> 8) & 63;
         unsigned bit = in->inst & 31;
-        if (reg == DSP_REG_SR && bit >= 16 && strcmp(name, "btst #n, D")) {
+        if (reg == DSP_REG_SR && bit >= 17 && strcmp(name, "btst #n, D")) {
             return NP_BIT_SR_UPPER;
         }
         if (reg >= DSP_REG_SR && reg != DSP_REG_OMR) return NP_BIT_CONTROL;
@@ -2539,6 +2624,7 @@ static int np_kind(const Insn *in)
     }
     if (!strcmp(name, "div S, D")) return NP_DIV;
     if (!strcmp(name, "norm Rn, D")) return NP_NORM;
+    if (!strcmp(name, "vsl")) return NP_VSL;
     if (!strcmp(name, "movec #xx, D1")) {
         return reg_supported(in->inst & 63) ? NP_MOVEC_IMM : NP_MOVEC_SPECIAL;
     }
@@ -2580,13 +2666,13 @@ static int np_kind(const Insn *in)
         return NP_LUA_REL;
     }
     if (!strcmp(name, "movep [X or Y]:ea <-> [X or Y]:pp") ||
-        !strcmp(name, "movep [X or Y]:ea <-> X:qq")) {
+        !strcmp(name, "movep [X or Y]:ea <-> X:qq") || !strcmp(name, "movep [X or Y]:ea <-> Y:qq")) {
         return NP_MOVEP_EA;
     }
     if (!strcmp(name, "movep [X or Y]:pp <-> P:ea") || !strcmp(name, "movep [X or Y]:qq <-> P:ea")) {
         return NP_MOVEP_P;
     }
-    if (!strcmp(name, "movep [X or Y]:pp <-> R") || !strcmp(name, "movep X:qq <-> R")) {
+    if (!strcmp(name, "movep [X or Y]:pp <-> R") || !strcmp(name, "movep X:qq <-> R") || !strcmp(name, "movep Y:qq <-> R")) {
         return reg_supported((in->inst >> 8) & 0x3F) ? NP_MOVEP_REG : NP_MOVEP_SPECIAL;
     }
     if (!strcmp(name, "cmpu S1, S2")) {
@@ -2618,8 +2704,8 @@ static void emit_nonparallel(Tr *t, const Insn *in, int kind)
         if (inst & 0x40) {
             h_or_ri(e, 0, T0, sel == 0 ? value << 8 : value);
         } else {
-            uint32_t mask = sel == 0 ? (value << 8) | 255 :
-                            sel == 1 ? 0xFF00 | value : value;
+            uint32_t mask = sel == 0 ? (value << 8) | 255 | (1u << DSP_SR_FV) :
+                            sel == 1 ? 0x1FF00 | value : value;
             h_and_ri(e, 0, T0, mask);
         }
         /* Byte logic is raw: MOVEC's writable-bit masks do not apply. */
@@ -2668,7 +2754,22 @@ static void emit_nonparallel(Tr *t, const Insn *in, int kind)
         h_or_rr(e, 0, V2, T0);
         h_mov_rr(e, 1, acc, T3);
         acc_written(t, d);
-        emit_sr_result(t, SR_C | SR_V | 0xFFFF0000u, V2, -1, -1);
+        emit_sr_result(t, SR_C | SR_V | 0xFFFE0000u, V2, -1, -1);
+        break;
+    }
+    case NP_VSL: {
+        unsigned d = (inst >> 16) & 1;
+        Ea ea;
+        acc_spill_all(t, false);
+        emit_calc_ea(t, (inst >> 8) & 63, in->ext, EA1, &ea);
+        int addr = ea_addr_reg(t, &ea);
+        h_ld32(e, V1, REG_CORE, REGOFF(DSP_REG_A1 + d));
+        h_ld32(e, V2, REG_CORE, REGOFF(DSP_REG_A0 + d));
+        h_shl_ri(e, 0, V2, 1);
+        h_or_ri(e, 0, V2, (inst >> 4) & 1);
+        h_and_ri(e, 0, V2, 0xffffff);
+        emit_write_mem(t, DSP_SPACE_X, addr, V1);
+        emit_write_mem(t, DSP_SPACE_Y, addr, V2);
         break;
     }
     case NP_NORM: {
@@ -2708,7 +2809,7 @@ static void emit_nonparallel(Tr *t, const Insn *in, int kind)
         h_patch(e, right_done, e->len);
         h_mov_rr(e, 1, acc, T3);
         acc_written(t, d);
-        emit_sr_result(t, SR_EUNZ | SR_V | 0xFFFF0000u, T4, acc, d);
+        emit_sr_result(t, SR_EUNZ | SR_V | 0xFFFE0000u, T4, acc, d);
         break;
     }
     case NP_MOVEC_IMM:
@@ -2852,7 +2953,7 @@ static void emit_nonparallel(Tr *t, const Insn *in, int kind)
         /* Unchanged modifying writes still have peripheral side effects. */
         if (operation != 3) emit_write_mem(t, space, addr, V1);
         h_ld32(e, T0, REG_CORE, REGOFF(DSP_REG_SR));
-        h_and_ri(e, 0, T0, low_peripheral ? ~1u : 0xFFFE);
+        h_and_ri(e, 0, T0, low_peripheral ? ~1u : 0x1FFFE);
         h_or_rr(e, 0, T0, V2);
         h_st32(e, REG_CORE, REGOFF(DSP_REG_SR), T0);
         t->cyc += 2;
@@ -2866,7 +2967,7 @@ static void emit_nonparallel(Tr *t, const Insn *in, int kind)
         h_mov_rr(e, 0, T1, T0);
         h_shr_ri(e, 0, T1, inst & 31);
         h_and_ri(e, 0, T1, 1);
-        h_and_ri(e, 0, T0, 0xAF7E);
+        h_and_ri(e, 0, T0, 0x1AF7E);
         h_or_rr(e, 0, T0, T1);
         h_st32(e, REG_CORE, REGOFF(DSP_REG_SR), T0);
         t->cyc += 2;
@@ -2903,10 +3004,10 @@ static void emit_nonparallel(Tr *t, const Insn *in, int kind)
                 emit_write_reg(t, reg, V1);
             }
         }
-        /* Match the interpreter's 16-bit status mask, including clearing
-         * its upper FV bookkeeping bit, while replacing only carry below. */
+        /* Match the extended status mask, preserving the architectural FV
+         * bit while replacing carry. */
         h_ld32(e, T0, REG_CORE, REGOFF(DSP_REG_SR));
-        h_and_ri(e, 0, T0, 0xFFFE);
+        h_and_ri(e, 0, T0, 0x1FFFE);
         h_or_rr(e, 0, T0, V2);
         h_st32(e, REG_CORE, REGOFF(DSP_REG_SR), T0);
         t->cyc += 2;
@@ -2974,7 +3075,7 @@ static void emit_nonparallel(Tr *t, const Insn *in, int kind)
         unsigned src = (inst >> 8) & 63;
         emit_flags_flush(t);
         emit_read_reg(t, src, V1);
-        h_and_ri(e, 0, V1, 0xAF7F);
+        h_and_ri(e, 0, V1, 0x1AF7F);
         h_st32(e, REG_CORE, REGOFF(DSP_REG_SR), V1);
         break;
     }
@@ -3049,7 +3150,7 @@ static void emit_nonparallel(Tr *t, const Insn *in, int kind)
 
     case NP_MOVEP_P: {
         bool low = !strcmp(in->d.name, "movep [X or Y]:qq <-> P:ea");
-        int space = low ? DSP_SPACE_X : (inst >> 16) & 1;
+        int space = low ? (inst >> 6) & 1 : (inst >> 16) & 1;
         uint32_t peraddr = (low ? 0xffff80 : 0xffffc0) + (inst & 63);
         bool out = (inst & (1u << (low ? 14 : 15))) != 0;
         Ea ea;
@@ -3085,8 +3186,8 @@ static void emit_nonparallel(Tr *t, const Insn *in, int kind)
     case NP_MOVEP_SPECIAL:
     case NP_MOVEP_REG: {
         int reg = (inst >> 8) & 0x3F;
-        bool low = !strcmp(in->d.name, "movep X:qq <-> R");
-        int space = low ? DSP_SPACE_X : (inst >> 16) & 1;
+        bool low = !strcmp(in->d.name, "movep X:qq <-> R") || !strcmp(in->d.name, "movep Y:qq <-> R");
+        int space = low ? (inst >> 5) & 1 : (inst >> 16) & 1;
         uint32_t address = low ? 0xffff80 + ((inst & 31) | ((inst >> 1) & 32)) : 0xffffc0 + (inst & 63);
         if (kind == NP_MOVEP_SPECIAL) acc_spill_all(t, false);
         if (inst & (1 << 15)) {
@@ -3214,9 +3315,9 @@ static void emit_nonparallel(Tr *t, const Insn *in, int kind)
     case NP_MOVEP_EA: {
         /* emu_movep_23: a peripheral (through the interpreter's memory
          * access, out of line) and X/Y memory */
-        bool qq = !strcmp(in->d.name, "movep [X or Y]:ea <-> X:qq");
+        bool qq = !strcmp(in->d.name, "movep [X or Y]:ea <-> X:qq") || !strcmp(in->d.name, "movep [X or Y]:ea <-> Y:qq");
         uint32_t peraddr = (qq ? 0xFFFF80 : 0xFFFFC0) + (inst & 0x3F);
-        int perspace = qq ? DSP_SPACE_X : (inst >> 16) & 1;
+        int perspace = qq ? ((inst >> 7) & 1) : (inst >> 16) & 1;
         int easpace = (inst >> 6) & 1;
         Ea ea;
         emit_calc_ea(t, (inst >> 8) & 0x3F, in->ext, EA1, &ea);
@@ -3409,6 +3510,82 @@ static bool emit_control(Tr *t, const Insn *in)
 
     if (!name) {
         return false;
+    }
+
+    if (!strcmp(name, "do_f") || !strcmp(name, "dor_f")) {
+        bool relative = !strcmp(name, "dor_f");
+        acc_spill_all(t, false);
+        h_mov_rr(e, 1, H_ARG0, REG_CORE);
+        h_ld32(e, H_ARG1, REG_CORE, REGOFF(DSP_REG_LA));
+        h_ld32(e, H_ARG2, REG_CORE, REGOFF(DSP_REG_LC));
+        h_call(e, (const void *)dsp56k_stack_push);
+        h_st32_imm(e, REG_CORE, REGOFF(DSP_REG_LA), ((relative ? at : 0) + in->ext) & 0xffff);
+        h_mov_rr(e, 1, H_ARG0, REG_CORE);
+        h_mov_ri(e, H_ARG1, in->next);
+        h_ld32(e, H_ARG2, REG_CORE, REGOFF(DSP_REG_SR));
+        h_call(e, (const void *)dsp56k_stack_push);
+        h_or_mem32_imm(e, REG_CORE, REGOFF(DSP_REG_SR), (1u << DSP_SR_LF) | (1u << DSP_SR_FV));
+        /* LF changes the block identity. Retire once, then redispatch. */
+        h_st32_imm(e, REG_CORE, OFF(pc), in->next);
+        h_st32_imm(e, REG_CORE, OFF(cur_inst_len), 0);
+        h_st16_imm(e, REG_CORE, OFF(instr_cycle), relative ? 10 : 8);
+        h_mov_rr(e, 1, H_ARG0, REG_CORE);
+        h_call(e, (const void *)dsp56k_post);
+        emit_charge(e, t->cyc);
+        emit_jump_to_epilogue(t);
+        return true;
+    }
+    if (!strcmp(name, "brkcc") || !strcmp(name, "enddo")) {
+        acc_spill_all(t, false);
+        if (!strcmp(name, "brkcc")) {
+            emit_cc(e, inst & 15);
+            size_t taken = h_jcc(e, HC_NE);
+            emit_exit_to(t, in, in->next, 2);
+            h_patch(e, taken, e->len);
+            h_ld32(e, EA1, REG_CORE, REGOFF(DSP_REG_LA));
+            h_add_ri(e, 0, EA1, 1);
+        }
+        h_stub_call_begin(e);
+        h_mov_rr(e, 1, H_ARG0, REG_CORE);
+        h_call(e, (const void *)dsp56k_do_end);
+        h_stub_call_end(e);
+        if (!strcmp(name, "brkcc")) h_st32(e, REG_CORE, OFF(pc), EA1);
+        else h_st32_imm(e, REG_CORE, OFF(pc), in->next);
+        h_st32_imm(e, REG_CORE, OFF(cur_inst_len), 0);
+        h_st16_imm(e, REG_CORE, OFF(instr_cycle), 2);
+        h_mov_rr(e, 1, H_ARG0, REG_CORE);
+        h_call(e, (const void *)dsp56k_post);
+        emit_charge(e, t->cyc);
+        emit_jump_to_epilogue(t);
+        return true;
+    }
+    if (!strcmp(name, "debug") || !strcmp(name, "debugcc") ||
+        !strcmp(name, "trap") || !strcmp(name, "trapcc") ||
+        !strncmp(name, "pflush", 6) || !strcmp(name, "pfree") ||
+        !strncmp(name, "plock", 5) || !strncmp(name, "punlock", 7)) {
+        bool debug = !strncmp(name, "debug", 5);
+        bool trap = !strncmp(name, "trap", 4);
+        bool conditional = !strcmp(name, "debugcc") || !strcmp(name, "trapcc");
+        uint32_t cycles = debug ? (conditional ? 10 : 2) : trap ? 18 : inst == 14 || inst == 15 ? 8 : inst > 15 ? 4 : 2;
+        acc_spill_all(t, false);
+        size_t untaken = 0;
+        if (conditional) { emit_cc(e, inst & 15); untaken = h_jcc(e, HC_EQ); }
+        if (debug) h_st16_imm(e, REG_CORE, OFF(jit_stop_flags), 1);
+        else {
+            h_mov_rr(e, 1, H_ARG0, REG_CORE);
+            h_mov_ri(e, H_ARG1, trap ? DSP_INTER_TRAP : DSP_INTER_ILLEGAL);
+            h_call(e, (const void *)dsp56k_add_interrupt);
+        }
+        if (conditional) h_patch(e, untaken, e->len);
+        /* Halt and exception state must be observed before any cached chain. */
+        h_st32_imm(e, REG_CORE, OFF(pc), in->next);
+        h_st32_imm(e, REG_CORE, OFF(cur_inst_len), 0);
+        h_st16_imm(e, REG_CORE, OFF(instr_cycle), cycles);
+        h_mov_rr(e, 1, H_ARG0, REG_CORE);
+        h_call(e, (const void *)dsp56k_post);
+        emit_charge(e, t->cyc);
+        emit_jump_to_epilogue(t);
+        return true;
     }
 
     if (!strcmp(name, "jmp xxx") || !strcmp(name, "jmp ea") ||
@@ -3753,7 +3930,7 @@ static bool emit_control(Tr *t, const Insn *in)
         return true;
     }
 
-    if (!strcmp(name, "dor #xxx, label") || !strcmp(name, "dor S, label") ||
+    if (!strcmp(name, "do #xxx, expr") || !strcmp(name, "dor #xxx, label") || !strcmp(name, "dor S, label") ||
         !strcmp(name, "do S, expr") || !strcmp(name, "do [X or Y]:aa, expr") ||
         !strcmp(name, "dor [X or Y]:aa, label") ||
         !strcmp(name, "do [X or Y]:ea, expr") || !strcmp(name, "dor [X or Y]:ea, label")) {
@@ -3763,7 +3940,7 @@ static bool emit_control(Tr *t, const Insn *in)
          * decoder path for its non-indirect encodings. */
         if (indirect && ((inst >> 11) & 7) == 6) return false;
         uint32_t before = t->cyc;
-        bool from_reg = !from_memory && strcmp(name, "dor #xxx, label") != 0;
+        bool from_reg = !from_memory && strcmp(name, "dor #xxx, label") != 0 && strcmp(name, "do #xxx, expr") != 0;
         bool absolute = !strncmp(name, "do ", 3);
         unsigned reg = (inst >> 8) & 63;
         if (from_reg && !reg_supported(reg) &&
@@ -3789,6 +3966,7 @@ static bool emit_control(Tr *t, const Insn *in)
         h_mov_ri(e, H_ARG1, in->next);
         h_ld32(e, H_ARG2, REG_CORE, REGOFF(DSP_REG_SR));
         h_call(e, (const void *)dsp56k_stack_push);
+        h_and_mem32_imm(e, REG_CORE, REGOFF(DSP_REG_SR), ~(1u << DSP_SR_FV));
         h_or_mem32_imm(e, REG_CORE, REGOFF(DSP_REG_SR), 1 << DSP_SR_LF);
         if (from_memory) {
             /* Memory counts are read once after both stack pushes and LF. */
@@ -3919,7 +4097,10 @@ static void emit_stubs(Tr *t)
             h_sub_ri(e, 0, T0, 1);
             h_and_ri(e, 0, T0, 0xFFFF);
             h_st32(e, REG_CORE, REGOFF(DSP_REG_LC), T0);
+            size_t repeat = h_jcc(e, HC_NE);
+            h_test_mem8_imm(e, REG_CORE, REGOFF(DSP_REG_SR) + 2, 1);
             j = h_jcc(e, HC_EQ);
+            h_patch(e, repeat, e->len);
             h_ld32(e, T0, REG_CORE, REGOFF(DSP_REG_SSH));
             h_st32(e, REG_CORE, OFF(pc), T0);
             emit_chain(t, s->cyc_before + s->cycles);

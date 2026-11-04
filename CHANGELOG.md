@@ -43,6 +43,8 @@
 
 ## Unreleased
 
+- DSP: complete execution paths for the remaining 25 decoder families, including shifted/mixed multiplies, DMAC, NORMF, VSL, forever loops, conditional breaks, debug and trap instructions, PRAM-mode cache exceptions and isolated Y peripheral transfers. Preserve forever-loop state across arithmetic and nested loops, and correct rounded MAC overflow flags, with extensive native regression coverage.
+
 - DSP: implement immediate multiply-accumulate (MACI/MACRI) in the C interpreter and native JIT, with regression coverage for overflow, rounding and status flags.
 
 - DSP: implement low X peripheral transfers to/from program memory in the C interpreter and JIT, preserving address updates and code-cache invalidation; add exhaustive native regressions.
