@@ -155,6 +155,107 @@ start:
  jb fail
 clock_ok:
  add esp,8
+ ; BMI/ADX instructions are unsupported, before any operand access.
+ mov eax,0x13579bdf
+ mov ebx,0x2468ace0
+ mov ecx,0x01020304
+ mov edx,0x11223344
+ mov esi,0x55667788
+ mov edi,0x99aabbcc
+ trap adcx eax,ebx
+ trap adcx eax,[0x1000000]
+ trap adox eax,ebx
+ trap adox eax,[0x1000000]
+ trap andn eax,ebx,ecx
+ trap andn eax,ebx,[0x1000000]
+ trap bextr eax,ebx,ecx
+ trap bextr eax,[0x1000000],ecx
+ trap blsi eax,ebx
+ trap blsi eax,[0x1000000]
+ trap blsmsk eax,ebx
+ trap blsmsk eax,[0x1000000]
+ trap blsr eax,ebx
+ trap blsr eax,[0x1000000]
+ trap bzhi eax,ebx,ecx
+ trap bzhi eax,[0x1000000],ecx
+ trap mulx eax,ebx,ecx
+ trap mulx eax,ebx,[0x1000000]
+ trap pdep eax,ebx,ecx
+ trap pdep eax,ebx,[0x1000000]
+ trap pext eax,ebx,ecx
+ trap pext eax,ebx,[0x1000000]
+ trap rorx eax,ebx,5
+ trap rorx eax,[0x1000000],5
+ trap sarx eax,ebx,ecx
+ trap sarx eax,[0x1000000],ecx
+ trap shlx eax,ebx,ecx
+ trap shlx eax,[0x1000000],ecx
+ trap shrx eax,ebx,ecx
+ trap shrx eax,[0x1000000],ecx
+ check eax,0x13579bdf
+ check ebx,0x2468ace0
+ check ecx,0x01020304
+ check edx,0x11223344
+ check esi,0x55667788
+ check edi,0x99aabbcc
+ ; Preserve shared legacy carry, multiply, shifts and bit-search behavior.
+ mov eax,0xffffffff
+ stc
+ adc eax,0
+ jnc fail
+ check eax,0
+ stc
+ sbb eax,0
+ jnc fail
+ check eax,0xffffffff
+ mov eax,-7
+ imul eax,eax,9
+ check eax,-63
+ mov eax,0x80000001
+ shl eax,1
+ jnc fail
+ check eax,2
+ shr eax,1
+ jc fail
+ check eax,1
+ mov ebx,0x80000100
+ bsf eax,ebx
+ jz fail
+ check eax,8
+ bsr eax,ebx
+ jz fail
+ check eax,31
+ ; REP BSF/BSR encodings fall back on this CPU, including legacy ZF.
+ mov ebx,1
+ tzcnt eax,ebx
+ jz fail
+ check eax,0
+ mov ebx,0x80000000
+ lzcnt eax,ebx
+ jz fail
+ check eax,31
+ xor ebx,ebx
+ tzcnt eax,ebx
+ jnz fail
+ lzcnt eax,ebx
+ jnz fail
+ ; A fallback bit search with inaccessible data must #PF, not #UD.
+ mov eax,0x76543210
+ mov dword [R+32],0x1000000
+ mov dword [R+24],tzcnt_fault
+ mov dword [R+20],after_tzcnt_fault
+tzcnt_fault:
+ tzcnt eax,[0x1000000]
+after_tzcnt_fault:
+ check dword [R+12],1
+ check eax,0x76543210
+ mov dword [R+24],lzcnt_fault
+ mov dword [R+20],after_lzcnt_fault
+lzcnt_fault:
+ lzcnt eax,[0x1000000]
+after_lzcnt_fault:
+ check dword [R+12],2
+ check eax,0x76543210
  ; Preserve the supported CMPXCHG8B neighbor in the same opcode group.
  mov dword [R+128],0x11223344
  mov dword [R+132],0x55667788
@@ -191,26 +292,27 @@ clock_ok:
  repe cmpsd
  jne fail
  ; An incomplete opcode must fault fetching its next page, not become #UD.
+ mov dword [R+32],0x400000
  mov word [0x3ffffe],0x0f66
  mov dword [R+20],after_fetch
  mov dword [R+24],0x3ffffe
  jmp 0x3ffffe
 after_fetch:
- check dword [R+12],1
+ check dword [R+12],3
  mov byte [0x3ffffd],0xf3
  mov word [0x3ffffe],0xc70f
  mov dword [R+24],0x3ffffd
  mov dword [R+20],after_rdpid_fetch
  jmp 0x3ffffd
 after_rdpid_fetch:
- check dword [R+12],2
+ check dword [R+12],4
  mov word [0x3ffffe],0x010f
  mov dword [R+24],0x3ffffe
  mov dword [R+20],after_rdtscp_fetch
  jmp 0x3ffffe
 after_rdtscp_fetch:
- check dword [R+12],3
- check ebp,43
+ check dword [R+12],5
+ check ebp,73
  mov dword [R],0x43525950
 .halt:
  cli
@@ -239,7 +341,7 @@ ud_handler:
 pf_handler:
  push eax
  mov eax,cr2
- check eax,0x400000
+ check eax,[R+32]
  mov eax,[esp+8]
  check eax,[R+24]
  mov eax,[R+20]

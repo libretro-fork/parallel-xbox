@@ -3869,11 +3869,11 @@ shutdown drain, 32 reinitializations and startup failure fallback.
 `test-pipeline-cache-export.py` retains the direct scratch/growth, incomplete
 data, write retry and teardown byte oracle with the immutable cache path.
 
-`rom/crypto-ud.asm` checks forty-three unsupported crypto/random/processor-ID forms,
+`rom/crypto-ud.asm` checks seventy-three unsupported crypto/random/processor-ID/BMI/ADX forms,
 register and unmapped-memory operands, exact fault EIP, carry/XMM preservation
 and CR0 EM/TS modes. An instruction spanning an unmapped page must raise
 fetch #PF rather than #UD, with the original EIP and CR2. It checks feature
-bits remain absent and reports CRYP, forty-three #UD traps and three #PF.
+bits remain absent and reports CRYP, seventy-three #UD traps and five #PF.
 
 The crypto ROM includes 16/32-bit RDRAND/RDSEED, invalid memory/prefix
 encodings, neighboring unsupported RDPID and supported CMPXCHG8B. Random
@@ -3926,3 +3926,10 @@ with operand-size/REP/REPNZ/LOCK prefixes, unchanged destinations and
 arithmetic flag bits. Missing ModRM bytes across an unmapped page must
 raise fetch #PF first. Ordinary RDTSC preserves ECX/CF and returns
 nondecreasing values; its CPUID feature remains advertised.
+
+BMI/ADX cases cover register and unmapped-memory operands for fifteen
+mnemonics, unchanged destinations and arithmetic flags. Supported controls
+exercise ADC/SBB carry, IMUL, shifts and BSF/BSR. TZCNT/LZCNT encodings
+retain legacy result/ZF semantics on this CPU; zero-input destinations are
+not asserted because legacy BSF/BSR leaves them undefined. Their inaccessible
+memory operands must #PF rather than #UD, with unchanged destinations.

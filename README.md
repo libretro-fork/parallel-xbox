@@ -394,3 +394,10 @@ shared helper. Ordinary RDTSC remains supported. The exception ROM now
 checks 43 traps, arithmetic flags/registers and three fetch-page faults,
 including missing RDPID/RDTSCP instruction bytes. Existing tsc_aux state
 and MSR/save-state handling are retained. No speedup claim is made.
+
+The fixed Xbox CPU rejects BMI/ADX instructions through retained decoder
+checks; their fifteen emitters share the existing illegal-opcode path.
+Dedicated ADX generation and PDEP/PEXT helpers are removed. BSF/BSR paths
+for TZCNT/LZCNT encodings and shared condition-code handling remain intact.
+The ROM checks 73 traps, five page faults and supported arithmetic controls;
+this is code cleanup without a measured speedup claim.
