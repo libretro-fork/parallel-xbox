@@ -535,18 +535,18 @@ int main(void)
     QSIMPLEQ_INIT(&context.labels);
     for (unsigned i = 0; i < ARRAY_SIZE(labels); ++i) {
         labels[i] = label = gen_new_label();
-        assert(!label->present && !label->has_value && !label->u.value);
+        assert(!label->has_value && !label->u.value);
         assert(QSIMPLEQ_EMPTY(&label->branches) && QSIMPLEQ_EMPTY(&label->relocs));
         assert(label->branches.sqh_last == &label->branches.sqh_first);
         assert(label->relocs.sqh_last == &label->relocs.sqh_first);
         /* Each new label must preserve existing list members and values. */
         label->u.value = i + 1;
-        label->present = label->has_value = true;
+        label->has_value = true;
     }
     unsigned count = 0;
     QSIMPLEQ_FOREACH(label, &context.labels, next) {
         assert(count < ARRAY_SIZE(labels) && label == labels[count]);
-        assert(label->present && label->has_value && label->u.value == count + 1);
+        assert(label->has_value && label->u.value == count + 1);
         ++count;
     }
     assert(count == ARRAY_SIZE(labels));

@@ -107,7 +107,6 @@ struct TCGLabelUse {
 
 typedef struct TCGLabel TCGLabel;
 struct TCGLabel {
-    bool present;
     bool has_value;
     union {
         uintptr_t value;

@@ -268,7 +268,6 @@ static TCGOp *tcg_gen_op6ii_i32(TCGOpcode opc, TCGv_i32 a1, TCGv_i32 a2,
 
 void gen_set_label(TCGLabel *l)
 {
-    l->present = 1;
     tcg_gen_op1(INDEX_op_set_label, 0, label_arg(l));
 }
 
