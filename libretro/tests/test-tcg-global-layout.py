@@ -43,10 +43,17 @@ keys += ['static TCGTemp *tcg_temp_new_context(', 'TCGTemp *tcg_temp_new_interna
          'TCGv_ptr tcg_temp_ebb_new_ptr(', 'TCGv_i128 tcg_temp_new_i128(',
          'TCGv_i128 tcg_temp_ebb_new_i128(', 'TCGv_vec tcg_temp_new_vec(',
          'TCGv_vec tcg_temp_new_vec_matching(']
+keys += ['static TCGTemp *tcg_constant_context(', 'TCGTemp *tcg_constant_internal(',
+         'static uintptr_t tcg_constant_handle(', 'TCGv_i32 tcg_constant_i32(',
+         'TCGv_i64 tcg_constant_i64(', 'TCGv_ptr tcg_constant_ptr_int(',
+         'TCGv_vec tcg_constant_vec(', 'TCGv_vec tcg_constant_vec_matching(']
 code = Path(__file__).with_suffix('.c').read_text()
 code = code.replace('/* PRODUCTION */', '\n'.join(function(key) for key in keys) + '\n' +
                     function('static void gen_tb_end(',
-                             (r / 'accel/tcg/translator.c').read_text()))
+                             (r / 'accel/tcg/translator.c').read_text()).replace(
+                                 'tcg_constant_internal(', 'fixture_count_constant(') + '\n' +
+                    function('uint64_t (dup_const)(',
+                             (r / 'tcg/tcg-op-gvec.c').read_text()))
 with tempfile.TemporaryDirectory(prefix='tcg-global-layout-') as temporary:
     folder = Path(temporary)
     (folder / 'test.c').write_text(code)

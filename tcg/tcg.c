@@ -2187,9 +2187,8 @@ void tcg_temp_free_vec(TCGv_vec arg)
     tcg_temp_free_handle((uintptr_t)arg);
 }
 
-TCGTemp *tcg_constant_internal(TCGType type, int64_t val)
+static TCGTemp *tcg_constant_context(TCGContext *s, TCGType type, int64_t val)
 {
-    TCGContext *s = tcg_ctx;
     TCGConstSlot *slots, *e;
     unsigned i;
     TCGTemp *ts;
@@ -2252,33 +2251,46 @@ TCGTemp *tcg_constant_internal(TCGType type, int64_t val)
     return ts;
 }
 
+TCGTemp *tcg_constant_internal(TCGType type, int64_t val)
+{
+    return tcg_constant_context(tcg_ctx, type, val);
+}
+
+static uintptr_t tcg_constant_handle(TCGType type, int64_t val)
+{
+    TCGContext *s = tcg_ctx;
+    TCGTemp *t = tcg_constant_context(s, type, val);
+    return (uintptr_t)temp_tcgv_i32_context(s, t);
+}
+
 TCGv_i32 tcg_constant_i32(int32_t val)
 {
-    return temp_tcgv_i32(tcg_constant_internal(TCG_TYPE_I32, val));
+    return (TCGv_i32)tcg_constant_handle(TCG_TYPE_I32, val);
 }
 
 TCGv_i64 tcg_constant_i64(int64_t val)
 {
-    return temp_tcgv_i64(tcg_constant_internal(TCG_TYPE_I64, val));
+    return (TCGv_i64)tcg_constant_handle(TCG_TYPE_I64, val);
 }
 
 TCGv_ptr tcg_constant_ptr_int(intptr_t val)
 {
-    return temp_tcgv_ptr(tcg_constant_internal(TCG_TYPE_PTR, val));
+    return (TCGv_ptr)tcg_constant_handle(TCG_TYPE_PTR, val);
 }
 
 TCGv_vec tcg_constant_vec(TCGType type, unsigned vece, int64_t val)
 {
-    val = dup_const(vece, val);
-    return temp_tcgv_vec(tcg_constant_internal(type, val));
+    return (TCGv_vec)tcg_constant_handle(type, dup_const(vece, val));
 }
 
 TCGv_vec tcg_constant_vec_matching(TCGv_vec match, unsigned vece, int64_t val)
 {
-    TCGTemp *t = tcgv_vec_temp(match);
+    TCGContext *s = tcg_ctx;
+    TCGTemp *t = tcgv_i32_temp_context(s, (TCGv_i32)match);
 
     tcg_debug_assert(t->temp_allocated != 0);
-    return tcg_constant_vec(t->base_type, vece, val);
+    t = tcg_constant_context(s, t->base_type, dup_const(vece, val));
+    return (TCGv_vec)temp_tcgv_i32_context(s, t);
 }
 
 

@@ -50,7 +50,7 @@ static void count_event(char event)
     count_events[count_event_pos++] = event;
     count_events[count_event_pos] = 0;
 }
-TCGTemp *tcg_constant_internal(TCGType type, int64_t val)
+static TCGTemp *fixture_count_constant(TCGType type, int64_t val)
 {
     assert(type == TCG_TYPE_I32 && val == expected_count);
     ++count_lookups;
@@ -66,6 +66,14 @@ void tcg_gen_exit_tb(const TranslationBlock *tb, unsigned idx)
 {
     assert(tb == expected_tb && idx == TB_EXIT_REQUESTED);
     count_event('E');
+}
+static unsigned constant_tables;
+gpointer g_malloc0(gsize size)
+{
+    void *p = calloc(1, size);
+    assert(p);
+    ++constant_tables;
+    return p;
 }
 /* PRODUCTION */
 
@@ -383,6 +391,118 @@ static void check_temp_new(TCGContext *current, TCGContext *other)
     printf("TCG new: %u owner/typed/matching cases, fresh/reused slots, lifetimes and split layouts PASS\n", cases);
 }
 
+static void check_constant_value(TCGTemp *t, TCGType type, int64_t val)
+{
+    assert(t->base_type == type && t->kind == TEMP_CONST && t->temp_allocated);
+    if (TCG_TARGET_REG_BITS == 32 && type == TCG_TYPE_I64) {
+        assert(t[0].type == TCG_TYPE_I32 && t[1].type == TCG_TYPE_I32);
+        assert(t[1].base_type == type && t[1].kind == TEMP_CONST);
+        assert(t[1].temp_allocated && t[1].temp_subindex == 1);
+        assert(t[HOST_BIG_ENDIAN].val == val);
+        assert(t[!HOST_BIG_ENDIAN].val == (val >> 32));
+    } else {
+        assert(t->type == type && t->val == val);
+    }
+}
+
+static void check_temp_constants(TCGContext *current, TCGContext *other)
+{
+    static const int64_t values[] = {0, 1, -1, INT32_MIN, INT32_MAX, INT64_MIN, INT64_MAX};
+    unsigned tables = constant_tables, cases = 0;
+    assert(!current->const_slots && !other->const_slots);
+    for (unsigned api = 0; api < 3; ++api) {
+        TCGContext *owner = api == 2 ? other : current;
+        TCGContext *untouched = api == 2 ? current : other;
+        int untouched_temps = untouched->nb_temps;
+        for (TCGType type = TCG_TYPE_I32; type <= TCG_TYPE_I64; ++type) {
+            reset_new_temps(owner);
+            ++owner->const_gen;
+            for (unsigned i = 0; i < ARRAY_SIZE(values); ++i) {
+                TCGTemp *t = api == 0 ? tcg_constant_internal(type, values[i]) :
+                                       tcg_constant_context(owner, type, values[i]);
+                check_constant_value(t, type, values[i]);
+                int used = owner->nb_temps;
+                TCGTemp *hit = api == 0 ? tcg_constant_internal(type, values[i]) :
+                                         tcg_constant_context(owner, type, values[i]);
+                assert(hit == t && owner->nb_temps == used);
+                ++cases;
+            }
+            int used = owner->nb_temps;
+            ++owner->const_gen;
+            TCGTemp *fresh = api == 0 ? tcg_constant_internal(type, 0) :
+                                       tcg_constant_context(owner, type, 0);
+            assert(fresh == &owner->temps[used]);
+            assert(owner->nb_temps == used + (int)new_slots(type));
+        }
+        assert(untouched->nb_temps == untouched_temps);
+    }
+    for (unsigned mode = 0; mode < 3; ++mode) {
+        reset_new_temps(current);
+        ++current->const_gen;
+        for (unsigned i = 0; i < ARRAY_SIZE(values); ++i) {
+            int64_t val = mode == 0 ? (int32_t)values[i] :
+                          mode == 1 ? values[i] : (intptr_t)values[i];
+            uintptr_t handle = mode == 0 ? (uintptr_t)tcg_constant_i32(val) :
+                               mode == 1 ? (uintptr_t)tcg_constant_i64(val) :
+                                           (uintptr_t)tcg_constant_ptr_int(val);
+            TCGType type = mode == 0 ? TCG_TYPE_I32 : mode == 1 ? TCG_TYPE_I64 : TCG_TYPE_PTR;
+            TCGTemp *t = tcgv_i32_temp_context(current, (TCGv_i32)handle);
+            assert(handle && (uintptr_t)temp_tcgv_i32_context(current, t) == handle);
+            check_constant_value(t, type, val);
+            assert(tcg_constant_internal(type, val) == t);
+            ++cases;
+        }
+    }
+    static const uint64_t replicated[] = {
+        UINT64_C(0xefefefefefefefef), UINT64_C(0xcdefcdefcdefcdef),
+        UINT64_C(0x89abcdef89abcdef), UINT64_C(0x0123456789abcdef)
+    };
+    for (TCGType type = TCG_TYPE_V64; type <= TCG_TYPE_V256; ++type) {
+        reset_new_temps(current);
+        ++current->const_gen;
+        TCGv_vec source = tcg_temp_new_vec(type);
+        for (unsigned vece = 0; vece < ARRAY_SIZE(replicated); ++vece) {
+            TCGv_vec handle = tcg_constant_vec(type, vece, INT64_C(0x0123456789abcdef));
+            TCGTemp *t = tcgv_vec_temp(handle);
+            check_constant_value(t, type, (int64_t)replicated[vece]);
+            int used = current->nb_temps;
+            assert(tcg_constant_vec_matching(source, vece, INT64_C(0x0123456789abcdef)) == handle);
+            assert(current->nb_temps == used && tcgv_vec_temp(source)->temp_allocated);
+            ++cases;
+        }
+    }
+    /* Discover last-bucket colliders through real insertions, without copying
+     * the hash implementation. Then force linear probing across table wrap. */
+    int64_t collide[3];
+    unsigned found = 0;
+    TCGConstSlot *slots = current->const_slots + TCG_TYPE_I32 * TCG_CONST_SLOTS;
+    for (int64_t val = 0; val < 16384 && found < ARRAY_SIZE(collide); ++val) {
+        reset_new_temps(current);
+        ++current->const_gen;
+        tcg_constant_context(current, TCG_TYPE_I32, val);
+        if (slots[TCG_CONST_SLOTS - 1].gen == current->const_gen) collide[found++] = val;
+    }
+    assert(found == ARRAY_SIZE(collide));
+    reset_new_temps(current);
+    ++current->const_gen;
+    TCGTemp *entries[3];
+    for (unsigned i = 0; i < ARRAY_SIZE(entries); ++i) {
+        entries[i] = tcg_constant_context(current, TCG_TYPE_I32, collide[i]);
+        unsigned slot = i ? i - 1 : TCG_CONST_SLOTS - 1;
+        assert(slots[slot].ts == entries[i] && slots[slot].val == collide[i]);
+        assert(current->nb_temps == (int)i + 1);
+    }
+    for (unsigned i = 0; i < ARRAY_SIZE(entries); ++i) {
+        assert(tcg_constant_context(current, TCG_TYPE_I32, collide[i]) == entries[i]);
+        assert(current->nb_temps == 3);
+    }
+    assert(constant_tables == tables + 2); /* One lazy table per owner. */
+    free(current->const_slots);
+    free(other->const_slots);
+    current->const_slots = other->const_slots = NULL;
+    printf("TCG constants: %u value/type/owner/vector cases, hits, generation invalidation, lazy tables and collision wrap PASS\n", cases);
+}
+
 static void check_global(TCGTemp *temp, TCGTemp *base, intptr_t offset,
                          TCGType type, bool indirect)
 {
@@ -522,6 +642,7 @@ int main(void)
     assert(tcg_malloc(9) == refill_buffer && refill_calls == calls + 1);
     check_temp_free(&context, &other);
     check_temp_new(&context, &other);
+    check_temp_constants(&context, &other);
     check_ops(&other, false); /* Explicit owner differs from TLS. */
     check_ops(&context, true);
     check_rollback(&context);
