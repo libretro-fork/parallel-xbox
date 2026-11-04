@@ -7,7 +7,7 @@ r=Path(sys.argv[1]).resolve(); cc=sys.argv[2] if len(sys.argv)>2 else 'cc'
 s=(r/'hw/xbox/nv2a/pgraph/vk/draw.c').read_text()
 functions=[]
 for name in ['pcache_save_now','finalize_pipeline_cache']:
-    m=re.search(r'^static void '+name+r'\(.*?^\}',s,re.M|re.S);assert m,name
+    m=re.search(r'^static void '+name+r'\([^;{]*\)\s*\{.*?^\}',s,re.M|re.S);assert m,name
     functions.append(m.group())
 code=r'''
 #include <stdbool.h>
@@ -28,6 +28,7 @@ static bool write_ok=true;
 typedef struct {
     int device,vk_pipeline_cache,pipeline_cache;
     void *pipeline_cache_entries;
+    char *pcache_path;
     size_t pcache_saved_len;
     void *pcache_blob;
     size_t pcache_blob_capacity;
@@ -35,10 +36,6 @@ typedef struct {
 typedef struct { PGRAPHVkState *vk_renderer_state; } PGRAPHState;
 static void *g_malloc(size_t n) { allocations++;void *p=malloc(n);assert(p);return p; }
 static void g_free(void *p) { free(p); }
-static const char *xemu_settings_get_base_path(void) { return "fixture"; }
-static char *g_strdup_printf(const char *fmt,...) {
-    char *p=malloc(128);assert(p);va_list ap;va_start(ap,fmt);vsnprintf(p,128,fmt,ap);va_end(ap);return p;
-}
 static int vkGetPipelineCacheData(int device,int cache,size_t *size,void *data) {
     assert(device==1 && cache==2);
     if(!data) {queries++;*size=query_size;return query_result;}
@@ -52,7 +49,7 @@ static bool g_file_set_contents(const char *path,const void *data,size_t len,voi
     writes++;return write_ok;
 }
 static void lru_flush(int *lru) { (void)lru; }
-static void pcache_save_now(PGRAPHVkState *r);
+static void pcache_save_now(void *arg);
 static void pgraph_vk_save_pipeline_cache(PGRAPHState *pg,bool sync) {assert(sync);pcache_save_now(pg->vk_renderer_state);}
 static PGRAPHVkState *state;
 static void vkDestroyPipelineCache(int device,int cache,void *allocator) {
@@ -63,6 +60,7 @@ static void vkDestroyPipelineCache(int device,int cache,void *allocator) {
 int main(void) {
     PGRAPHVkState r={.device=1,.vk_pipeline_cache=2,.pcache_blob_capacity=65536};
     PGRAPHState pg={&r};state=&r;r.pcache_blob=g_malloc(r.pcache_blob_capacity);
+    r.pcache_path=strdup("fixture/vk_pipeline_cache.bin");assert(r.pcache_path);
     pcache_save_now(&r);assert(r.pcache_saved_len==100 && allocations==1 && writes==1);
     void *first=r.pcache_blob;
     pcache_save_now(&r);assert(exports==1 && writes==1 && allocations==1);

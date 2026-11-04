@@ -1,5 +1,6 @@
 # Changelog of the libretro core
 
+- Vulkan pipeline-cache save marks now wake one persistent worker created at renderer startup. A flip no longer creates or joins a host thread; busy marks coalesce, export scratch stays worker-owned, and teardown drains the worker before the final save and cache destruction.
 - OpenGL reuses up to 16 retired single-level linear RGBA8 texture objects (at most 4 MiB of image storage). After an existing flip fence confirms completion, matching uploads update the image directly from guest RAM; surface conversions and other layouts retain their existing paths. Reused objects restore swizzle and LOD state before use.
 - Small recognized Xbox disc images now report the DVD-ROM profile instead of CD-ROM. Identity is retained from the existing media-open probe, with no new command-time reads; frontend detection also recognizes the partition offsets already supported by the block loader.
 - OpenGL rejects module cache binaries that the driver cannot link, releases the failed program, and regenerates the shader instead of publishing an unusable cached stage.
@@ -34,9 +35,16 @@
 
 - Remove AES/PCLMUL execution helpers and crypto engines unused by the fixed Xbox Pentium III. Keep opcode decoding and feature checks, including illegal-instruction and instruction-fetch fault ordering.
 
+- Strengthen speculative pipeline handoff coverage with the real shader-state/render-pass/key layouts and XXH3. Check poisoned slot reuse, complete owned key bytes and a full ring becoming available during completion draining before attempting further copy removal. Renderer behavior is unchanged.
+
 - Select native Windows compiler defaults in the EEPROM hash fixture so CI can run its byte-equivalence checks without sanitizer flag overrides.
 
 - Generate and identify Xbox EEPROMs with libretro-common streaming SHA-1, preserving all custom keyed states and exact EEPROM bytes while removing the duplicate QEMU SHA-1 engine.
+
+
+
+- DSP: execute register bit-test calls natively, retaining accumulator limiting, current status flags and correct stack saves.
+
 
 - Skip clearing the 264-byte fragment shader state immediately before copying it into a Vulkan module key. Keep unused union bytes, options and padding initialized so complete key bytes and cache identity stay the same; prewarm construction is unchanged.
 

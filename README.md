@@ -364,6 +364,12 @@ engine is removed. Deterministic reference checks cover 4,100 hashes and
 400 full EEPROM images across all four versions; OS entropy remains in
 production. No new CPU requirement or measured speedup is claimed.
 
+Vulkan pipeline-cache persistence uses a startup-created lock-free worker;
+optional flip marks coalesce while a save is active, with no live thread join
+or creation. The worker retains its cache path and export scratch. Teardown
+still joins and performs a final save; driver cache extraction can contend
+with shader compilation, so this does not establish global nonblocking behavior.
+
 The fixed Xbox CPU rejects AES/PCLMUL instructions through its existing
 decoder feature checks. Their emitters share the illegal-opcode path and
 the unused engines/helpers are removed. A synthetic ROM checks 20 traps,
