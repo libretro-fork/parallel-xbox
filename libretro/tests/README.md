@@ -4320,3 +4320,17 @@ debt and could prevent cheap frames from executing. A five-million-frame
 synthetic MPYI run reproduced a stall before the fix and completed afterward.
 This is host scheduling credit, not a change to guest arithmetic or cycle
 counts. The test runs in the default native suite as well as its selector.
+
+`dspnative --short-bit-ram` checks 65,536 boundaries with zero interpreter
+calls: every short address, X/Y bus, bit operation, encoded bit number,
+scaling mode and zero/all-one input. Independent memory/carry/status/PC/cycle
+oracles supplement full-state comparisons. Both peripheral read/write
+callbacks are poisoned so any device access fails. Short addresses 0..63
+emit direct RAM loads/stores; they cannot invoke a device and need no
+callback-stop guard. Effective-address and peripheral forms retain their
+existing guarded paths. The existing memory-bit matrix checks those paths,
+and negative controls catch wrong RAM offsets and overly broad fast paths.
+`gp-startup-short-bit-ram.inc` exercises all four operations on both buses
+inside REP and counted DO loops across frames, and serves as an optional
+synthetic timing workload. This optimization does not change bit-operation
+semantics or the handling of peripheral side effects.
