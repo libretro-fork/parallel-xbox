@@ -33,6 +33,8 @@
 
 - Skip clearing the 264-byte fragment shader state immediately before copying it into a Vulkan module key. Keep unused union bytes, options and padding initialized so complete key bytes and cache identity stay the same; prewarm construction is unchanged.
 
+- DSP: run X:pp conditional bit-test calls natively, preserving return-address saves, peripheral read counts and loop-end behavior.
+
 - Skip clearing the 2336-byte vertex shader state immediately before copying it into a Vulkan module key. Preserve all option, padding and unused-union bytes so shader hashes and cache identity stay the same, reducing CPU writes during prewarm and module lookup.
 
 - Skip clearing the 2348-byte module key immediately before copying it into each Vulkan worker completion record. Keep the surrounding padding initialized and preserve record bytes, hashes, queue-drop cleanup and shader ownership, reducing worker CPU memory writes.
