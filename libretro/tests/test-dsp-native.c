@@ -916,8 +916,9 @@ static void check_qq_jumps(Machine *a, Machine *b, unsigned mode)
     }
 }
 
-static void check_qq_calls(Machine *a, Machine *b, unsigned mode)
+static void check_qq_bitcalls(Machine *a, Machine *b, unsigned mode, bool relative)
 {
+    uint32_t opcode = relative ? 0x048080 : 0x01c080;
     static const uint32_t pcs[] = {0, 1, 0x30, 0x7fe};
     static const uint32_t displacements[] = {0, 1, 2, 0x20, 0x7fffff, 0x800000, 0xffffe0, 0xffffff};
     static const uint32_t values[] = {0, 0xffffff, 0xaaaaaa, 0x555555};
@@ -925,12 +926,12 @@ static void check_qq_calls(Machine *a, Machine *b, unsigned mode)
     for (unsigned set = 0; set < 2; set++) {
         for (unsigned port = 0; port < 64; port++) {
             for (unsigned bit = 0; bit < 24; bit++) {
-                uint32_t op = 0x01c080 | (set << 5) | (port << 8) | bit;
+                uint32_t op = opcode | (set << 5) | (port << 8) | bit;
                 for (unsigned value = 0; value < ARRAY_SIZE(values); value++) {
                     uint32_t pc = pcs[(port + bit) & 3];
                     uint32_t displacement = displacements[(port + bit + value) & 7];
                     bool taken = ((values[value] >> bit) & 1) == set;
-                    uint32_t target = taken ? displacement : pc + 2;
+                    uint32_t target = taken ? (relative ? (pc + displacement) & 0xffffff : displacement) : pc + 2;
                     for (unsigned profile = 0; profile < ARRAY_SIZE(profiles); profile++) {
                         Machine *machines[] = {a, b};
                         dspjit_test_reset_fallback_count();
@@ -991,7 +992,7 @@ static void check_qq_calls(Machine *a, Machine *b, unsigned mode)
             for (unsigned bit = 0; bit < 24; bit++) {
                 for (unsigned seed = 0; seed < 2; seed++) {
                     for (unsigned ctx = 0; ctx < ARRAY_SIZE(contexts); ctx++)
-                        check(a, b, 0x01c080 | (set << 5) | (ports[port] << 8) | bit, 0x30,
+                        check(a, b, opcode | (set << 5) | (ports[port] << 8) | bit, 0x30,
                               seed | 0x10000 | 0x1000000 | contexts[ctx], mode, seed != 0);
                 }
             }
@@ -1004,8 +1005,8 @@ static void check_qq_calls(Machine *a, Machine *b, unsigned mode)
                     dspjit_test_reset_fallback_count();
                     for (unsigned engine = 0; engine < 2; engine++) {
                         Machine *m = machines[engine];
-                        uint32_t op = 0x01c080 | (set << 5) | (ports[port] << 8) | bit;
-                        prepare(m, op, 0x30, 1, mode, false);
+                        uint32_t op = opcode | (set << 5) | (ports[port] << 8) | bit;
+                        prepare(m, op, relative ? 0x10 : 0x30, 1, mode, false);
                         dsp_core_t *c = m->dsp->backend;
                         c->pc = 0x20;
                         c->registers[DSP_REG_SR] = 0xff | (mode << DSP_SR_S0) | (1u << DSP_SR_LF);
@@ -1021,7 +1022,7 @@ static void check_qq_calls(Machine *a, Machine *b, unsigned mode)
                             expected[DSP_REG_SSL] = expected[DSP_REG_SR] & 0xffff;
                         }
                         m->dsp->ops->write_memory(m->dsp, 'P', 0x20, op);
-                        m->dsp->ops->write_memory(m->dsp, 'P', 0x21, 0x30);
+                        m->dsp->ops->write_memory(m->dsp, 'P', 0x21, relative ? 0x10 : 0x30);
                         uint32_t (*saved_read)(dsp_core_t *, uint32_t) = c->read_peripheral;
                         void (*saved_write)(dsp_core_t *, uint32_t, uint32_t) = c->write_peripheral;
                         c->read_peripheral = qq_test_read;
@@ -1048,6 +1049,16 @@ static void check_qq_calls(Machine *a, Machine *b, unsigned mode)
             }
         }
     }
+}
+
+static void check_qq_calls(Machine *a, Machine *b, unsigned mode)
+{
+    check_qq_bitcalls(a, b, mode, false);
+}
+
+static void check_qq_relative_calls(Machine *a, Machine *b, unsigned mode)
+{
+    check_qq_bitcalls(a, b, mode, true);
 }
 
 static void check_qq_bits(Machine *a, Machine *b, unsigned mode)
@@ -3926,6 +3937,7 @@ static void check_program_write_sequences(Machine *a, Machine *b, unsigned mode)
 
 int main(int argc, char **argv)
 {
+    bool qq_relative_calls_only = argc == 2 && !strcmp(argv[1], "--qq-relative-calls");
     bool qq_calls_only = argc == 2 && !strcmp(argv[1], "--qq-calls");
     bool qq_jumps_only = argc == 2 && !strcmp(argv[1], "--qq-jumps");
     bool qq_branches_only = argc == 2 && !strcmp(argv[1], "--qq-branches");
@@ -3966,8 +3978,8 @@ int main(int argc, char **argv)
     bool effective_only = argc == 2 && !strcmp(argv[1], "--effective-control");
     bool startup_only = argc == 2 && !strcmp(argv[1], "--startup");
     bool program_only = argc == 2 && !strcmp(argv[1], "--program");
-    if (argc != 1 && !qq_calls_only && !qq_jumps_only && !qq_branches_only && !qq_bits_only && !register_logical_only && !merge_only && !insert_only && !extract_only && !extractu_only && !leading_bits_only && !register_shifts_only && !indirect_memory_loops_only && !short_memory_loops_only && !relative_calls_only && !register_branches_only && !pc_relative_only && !rounded_multiply_only && !y_long_only && !logical_shifts_only && !immediate_logic_only && !relative_only && !loops_only && !program_only && !compare_only && !startup_only && !effective_only && !register_only && !program_control_only && !peripheral_only && !program_peripheral_only && !multiply_only && !normalize_only && !divide_only && !byte_logic_only && !memory_bits_only && !control_bits_only && !offset_control_only && !shifts_only && !signed_right_only && !left_flags_only) {
-        fputs("usage: dspnative [--qq-calls|--qq-jumps|--qq-branches|--qq-bits|--register-logical-shifts|--merge|--insert|--extract|--extractu|--leading-bits|--register-shifts|--indirect-memory-loops|--short-memory-loops|--relative-calls|--register-branches|--pc-relative-loads|--rounded-multiply|--y-long-offset|--logical-shifts|--immediate-logic|--relative|--loops|--program|--compare|--startup|--effective-control|--register-control|--program-control|--peripheral-control|--program-peripheral|--multiply|--normalize|--divide|--status-byte|--memory-bits|--control-bits|--offset-control|--shift-boundaries|--signed-right|--left-flags]\n", stderr);
+    if (argc != 1 && !qq_relative_calls_only && !qq_calls_only && !qq_jumps_only && !qq_branches_only && !qq_bits_only && !register_logical_only && !merge_only && !insert_only && !extract_only && !extractu_only && !leading_bits_only && !register_shifts_only && !indirect_memory_loops_only && !short_memory_loops_only && !relative_calls_only && !register_branches_only && !pc_relative_only && !rounded_multiply_only && !y_long_only && !logical_shifts_only && !immediate_logic_only && !relative_only && !loops_only && !program_only && !compare_only && !startup_only && !effective_only && !register_only && !program_control_only && !peripheral_only && !program_peripheral_only && !multiply_only && !normalize_only && !divide_only && !byte_logic_only && !memory_bits_only && !control_bits_only && !offset_control_only && !shifts_only && !signed_right_only && !left_flags_only) {
+        fputs("usage: dspnative [--qq-relative-calls|--qq-calls|--qq-jumps|--qq-branches|--qq-bits|--register-logical-shifts|--merge|--insert|--extract|--extractu|--leading-bits|--register-shifts|--indirect-memory-loops|--short-memory-loops|--relative-calls|--register-branches|--pc-relative-loads|--rounded-multiply|--y-long-offset|--logical-shifts|--immediate-logic|--relative|--loops|--program|--compare|--startup|--effective-control|--register-control|--program-control|--peripheral-control|--program-peripheral|--multiply|--normalize|--divide|--status-byte|--memory-bits|--control-bits|--offset-control|--shift-boundaries|--signed-right|--left-flags]\n", stderr);
         return 2;
     }
     Machine *a = machine_new(false), *b = machine_new(true);
@@ -3982,8 +3994,9 @@ int main(int argc, char **argv)
     assert(initially_committed == (64u << 10));
 #endif
     check_speculative_decode();
-    if (qq_calls_only || qq_jumps_only || qq_branches_only || qq_bits_only || register_logical_only || merge_only || insert_only || extract_only || extractu_only || leading_bits_only || register_shifts_only || indirect_memory_loops_only || short_memory_loops_only || relative_calls_only || register_branches_only || pc_relative_only || rounded_multiply_only || y_long_only || logical_shifts_only || immediate_logic_only || relative_only || loops_only || program_only || compare_only || startup_only || effective_only || register_only || program_control_only || peripheral_only || program_peripheral_only || multiply_only || normalize_only || divide_only || byte_logic_only || memory_bits_only || control_bits_only || offset_control_only || shifts_only || signed_right_only || left_flags_only) {
+    if (qq_relative_calls_only || qq_calls_only || qq_jumps_only || qq_branches_only || qq_bits_only || register_logical_only || merge_only || insert_only || extract_only || extractu_only || leading_bits_only || register_shifts_only || indirect_memory_loops_only || short_memory_loops_only || relative_calls_only || register_branches_only || pc_relative_only || rounded_multiply_only || y_long_only || logical_shifts_only || immediate_logic_only || relative_only || loops_only || program_only || compare_only || startup_only || effective_only || register_only || program_control_only || peripheral_only || program_peripheral_only || multiply_only || normalize_only || divide_only || byte_logic_only || memory_bits_only || control_bits_only || offset_control_only || shifts_only || signed_right_only || left_flags_only) {
         for (unsigned mode = 0; mode < 4; mode++) {
+            if (qq_relative_calls_only) check_qq_relative_calls(a, b, mode);
             if (qq_calls_only) check_qq_calls(a, b, mode);
             if (qq_jumps_only) check_qq_jumps(a, b, mode);
             if (qq_branches_only) check_qq_branches(a, b, mode);
@@ -4056,6 +4069,7 @@ int main(int argc, char **argv)
     }
     check_status_restore_chains(a, b);
     check_logical_immediates(a, b);
+    for (unsigned mode = 0; mode < 4; mode++) check_qq_relative_calls(a, b, mode);
     for (unsigned mode = 0; mode < 4; mode++) check_qq_calls(a, b, mode);
     for (unsigned mode = 0; mode < 4; mode++) check_qq_jumps(a, b, mode);
     for (unsigned mode = 0; mode < 4; mode++) check_qq_branches(a, b, mode);

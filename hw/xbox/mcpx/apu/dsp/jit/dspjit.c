@@ -3524,7 +3524,10 @@ static bool emit_control(Tr *t, const Insn *in)
     }
 
     if (!strcmp(name, "jsclr #n, [X or Y]:qq, xxxx") ||
-        !strcmp(name, "jsset #n, [X or Y]:qq, xxxx")) {
+        !strcmp(name, "jsset #n, [X or Y]:qq, xxxx") ||
+        !strcmp(name, "bsclr #n, [X or Y]:qq, xxxx") ||
+        !strcmp(name, "bsset #n, [X or Y]:qq, xxxx")) {
+        uint32_t target = name[0] == 'b' ? (at + in->ext) & 0xffffff : in->ext;
         acc_spill_all(t, false);
         h_mov_ri(e, EA1, 0xffff80 + ((inst >> 8) & 63));
         emit_read_mem(t, DSP_SPACE_X, EA1, V1);
@@ -3536,8 +3539,8 @@ static bool emit_control(Tr *t, const Insn *in)
         h_mov_ri(e, H_ARG1, in->next);
         h_ld32(e, H_ARG2, REG_CORE, REGOFF(DSP_REG_SR));
         h_call(e, (const void *)dsp56k_stack_push);
-        emit_stack_check(t, in, in->ext, 6);
-        emit_exit_to(t, in, in->ext, 6);
+        emit_stack_check(t, in, target, 6);
+        emit_exit_to(t, in, target, 6);
         return true;
     }
 

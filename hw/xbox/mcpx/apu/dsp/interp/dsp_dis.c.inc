@@ -664,6 +664,9 @@ static void dis_branch_qq(dsp_core_t* dsp, const char *name)
         (dsp->pc + displacement) & BITMASK(24));
 }
 
+static void dis_bsclr_qq(dsp_core_t* dsp) { dis_branch_qq(dsp, "bsclr"); }
+static void dis_bsset_qq(dsp_core_t* dsp) { dis_branch_qq(dsp, "bsset"); }
+
 static void dis_brclr_qq(dsp_core_t* dsp) { dis_branch_qq(dsp, "brclr"); }
 static void dis_brset_qq(dsp_core_t* dsp) { dis_branch_qq(dsp, "brset"); }
 
