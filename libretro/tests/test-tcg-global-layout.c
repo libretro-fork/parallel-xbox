@@ -3,6 +3,7 @@
 #include "tcg/tcg.h"
 #include "tcg/tcg-temp-internal.h"
 #include "tcg/tcg-op-common.h"
+#include "tcg/tcg-internal.h"
 G_NORETURN void g_assertion_message_expr(const char *domain, const char *file,
                                        int line, const char *func, const char *expr)
 {
@@ -951,6 +952,82 @@ static void check_vector_cmpsel(TCGContext *owner)
     printf("TCG vector compare-selection: %u capability, fallback and alias cases PASS\n", cases);
 }
 
+static void check_vector_data(TCGContext *owner)
+{
+    static unsigned char arena[4096] QEMU_ALIGNED(16);
+    static const tcg_target_long offsets[] = { INTPTR_MIN, -4096, -1, 0, 1, 4096, INTPTR_MAX };
+    unsigned cases = 0;
+    for (TCGType type = TCG_TYPE_V64; type <= TCG_TYPE_V256; ++type)
+    for (unsigned vece = 0; vece < 4; ++vece)
+    for (unsigned oi = 0; oi < ARRAY_SIZE(offsets); ++oi)
+    for (unsigned kind = 0; kind < 6; ++kind)
+    for (TCGType low = TCG_TYPE_V64; low <= (kind == 5 ? type : TCG_TYPE_V64); ++low) {
+        reset_new_temps(owner);
+        TCGv_vec r = tcg_temp_new_vec(type);
+        TCGv_i32 a32 = tcg_temp_new_i32();
+        TCGv_i64 a64 = tcg_temp_new_i64();
+        TCGv_ptr base = tcg_temp_new_ptr();
+        TCGArg ri = tcgv_vec_arg(r);
+        TCGArg expected[3] = { ri, 0, (TCGArg)offsets[oi] };
+        TCGOpcode opc;
+        unsigned args = 3, output_vece = vece;
+        TCGType output_type = type;
+        owner->pool_cur = (uintptr_t)arena;
+        owner->pool_end = owner->pool_cur + sizeof(arena);
+        owner->nb_ops = 0;
+        owner->emit_before_op = NULL;
+        QTAILQ_INIT(&owner->ops);
+        QTAILQ_INIT(&owner->free_ops);
+        if (kind == 0) {
+            opc = INDEX_op_dup_vec;
+            expected[1] = temp_arg(tcgv_i32_temp(a32));
+            args = 2;
+            tcg_gen_dup_i32_vec(vece, r, a32);
+        } else if (kind == 1) {
+            opc = INDEX_op_dup_vec;
+            expected[1] = temp_arg(tcgv_i64_temp(a64));
+            args = 2;
+            if (TCG_TARGET_REG_BITS == 32 && vece == 3) {
+                opc = INDEX_op_dup2_vec;
+                expected[2] = temp_arg(tcgv_i64_temp(a64) + 1);
+                args = 3;
+            }
+            tcg_gen_dup_i64_vec(vece, r, a64);
+        } else {
+            expected[1] = temp_arg(tcgv_ptr_temp(base));
+            switch (kind) {
+            case 2:
+                opc = INDEX_op_dupm_vec;
+                tcg_gen_dup_mem_vec(vece, r, base, offsets[oi]);
+                break;
+            case 3:
+                opc = INDEX_op_ld_vec;
+                output_vece = 0;
+                tcg_gen_ld_vec(r, base, (TCGArg)offsets[oi]);
+                break;
+            case 4:
+                opc = INDEX_op_st_vec;
+                output_vece = 0;
+                tcg_gen_st_vec(r, base, (TCGArg)offsets[oi]);
+                break;
+            default:
+                opc = INDEX_op_st_vec;
+                output_vece = 0;
+                output_type = low;
+                tcg_gen_stl_vec(r, base, (TCGArg)offsets[oi], low);
+                break;
+            }
+        }
+        TCGOp *op = QTAILQ_FIRST(&owner->ops);
+        assert(owner->nb_ops == 1 && op && !QTAILQ_NEXT(op, link));
+        assert(op->opc == opc && TCGOP_TYPE(op) == output_type);
+        assert(TCGOP_VECE(op) == output_vece);
+        for (unsigned j = 0; j < args; ++j) assert(op->args[j] == expected[j]);
+        ++cases;
+    }
+    printf("TCG vector data: %u duplication, offset, partial-store and split-i64 cases PASS\n", cases);
+}
+
 int main(void)
 {
     static TCGContext context;
@@ -1085,6 +1162,7 @@ int main(void)
     check_vector_comparison(&context);
     check_vector_bitsel(&context);
     check_vector_cmpsel(&context);
+    check_vector_data(&context);
     puts("TCG rollback: suffix/full/empty removal, branch uses and reuse PASS");
     puts("TCG ops: owners, allocation/reuse, insertion order and epilogues PASS");
     printf("TCG global layout: %d-bit direct/indirect globals, %shandles and frame PASS\n",

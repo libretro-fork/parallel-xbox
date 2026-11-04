@@ -57,6 +57,8 @@
 
 ## Unreleased
 
+- Reuse the TCG context for vector duplication and memory operand decoding, avoiding repeated Windows TLS lookups while retaining offsets, partial stores and 32-bit split-i64 behavior.
+
 - Reuse the TCG context when decoding vector compare-selection operands, avoiding repeated Windows TLS lookups while preserving direct, expanded and comparison-plus-selection fallback paths.
 - DSP: stop native Y-memory store sequences promptly when a peripheral callback halts the DSP or invalidates code, including repeated stores.
 

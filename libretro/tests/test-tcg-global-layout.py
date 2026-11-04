@@ -57,7 +57,10 @@ code = code.replace('/* PRODUCTION */', '\n'.join(function(key) for key in keys)
                     '\n'.join(function(key, (r / 'tcg/tcg-op-vec.c').read_text())
                               for key in ['void vec_gen_2(', 'void vec_gen_3(', 'void vec_gen_4(', 'void vec_gen_6(',
                                           'static void vec_gen_op2(', 'static void vec_gen_op3(',
-                                          'void tcg_gen_mov_vec(']) + '\n' +
+                                          'void tcg_gen_mov_vec(', 'void tcg_gen_dup_i64_vec(',
+                                          'void tcg_gen_dup_i32_vec(', 'void tcg_gen_dup_mem_vec(',
+                                          'static void vec_gen_ldst(', 'void tcg_gen_ld_vec(',
+                                          'void tcg_gen_st_vec(', 'void tcg_gen_stl_vec(']) + '\n' +
                     '\n'.join(function(key, (r / 'tcg/tcg-op-vec.c').read_text())
                               .replace('tcg_can_emit_vec_op(', 'fixture_vec_capability(')
                               .replace('tcg_expand_vec_op(', 'fixture_vec_expand(')

@@ -177,27 +177,29 @@ void tcg_gen_dupi_vec(unsigned vece, TCGv_vec r, uint64_t a)
 
 void tcg_gen_dup_i64_vec(unsigned vece, TCGv_vec r, TCGv_i64 a)
 {
-    TCGArg ri = tcgv_vec_arg(r);
+    TCGContext *s = tcg_ctx;
+    TCGArg ri = temp_arg(tcgv_vec_temp_context(s, r));
     TCGTemp *rt = arg_temp(ri);
     TCGType type = rt->base_type;
 
     if (TCG_TARGET_REG_BITS == 64) {
-        TCGArg ai = tcgv_i64_arg(a);
+        TCGArg ai = temp_arg(tcgv_i32_temp_context(s, (TCGv_i32)a));
         vec_gen_2(INDEX_op_dup_vec, type, vece, ri, ai);
     } else if (vece == MO_64) {
-        TCGArg al = tcgv_i32_arg(TCGV_LOW(a));
-        TCGArg ah = tcgv_i32_arg(TCGV_HIGH(a));
+        TCGArg al = temp_arg(tcgv_i32_temp_context(s, TCGV_LOW(a)));
+        TCGArg ah = temp_arg(tcgv_i32_temp_context(s, TCGV_HIGH(a)));
         vec_gen_3(INDEX_op_dup2_vec, type, MO_64, ri, al, ah);
     } else {
-        TCGArg ai = tcgv_i32_arg(TCGV_LOW(a));
+        TCGArg ai = temp_arg(tcgv_i32_temp_context(s, TCGV_LOW(a)));
         vec_gen_2(INDEX_op_dup_vec, type, vece, ri, ai);
     }
 }
 
 void tcg_gen_dup_i32_vec(unsigned vece, TCGv_vec r, TCGv_i32 a)
 {
-    TCGArg ri = tcgv_vec_arg(r);
-    TCGArg ai = tcgv_i32_arg(a);
+    TCGContext *s = tcg_ctx;
+    TCGArg ri = temp_arg(tcgv_vec_temp_context(s, r));
+    TCGArg ai = temp_arg(tcgv_i32_temp_context(s, a));
     TCGTemp *rt = arg_temp(ri);
     TCGType type = rt->base_type;
 
@@ -207,8 +209,9 @@ void tcg_gen_dup_i32_vec(unsigned vece, TCGv_vec r, TCGv_i32 a)
 void tcg_gen_dup_mem_vec(unsigned vece, TCGv_vec r, TCGv_ptr b,
                          tcg_target_long ofs)
 {
-    TCGArg ri = tcgv_vec_arg(r);
-    TCGArg bi = tcgv_ptr_arg(b);
+    TCGContext *s = tcg_ctx;
+    TCGArg ri = temp_arg(tcgv_vec_temp_context(s, r));
+    TCGArg bi = temp_arg(tcgv_i32_temp_context(s, (TCGv_i32)b));
     TCGTemp *rt = arg_temp(ri);
     TCGType type = rt->base_type;
 
@@ -217,8 +220,9 @@ void tcg_gen_dup_mem_vec(unsigned vece, TCGv_vec r, TCGv_ptr b,
 
 static void vec_gen_ldst(TCGOpcode opc, TCGv_vec r, TCGv_ptr b, TCGArg o)
 {
-    TCGArg ri = tcgv_vec_arg(r);
-    TCGArg bi = tcgv_ptr_arg(b);
+    TCGContext *s = tcg_ctx;
+    TCGArg ri = temp_arg(tcgv_vec_temp_context(s, r));
+    TCGArg bi = temp_arg(tcgv_i32_temp_context(s, (TCGv_i32)b));
     TCGTemp *rt = arg_temp(ri);
     TCGType type = rt->base_type;
 
@@ -237,8 +241,9 @@ void tcg_gen_st_vec(TCGv_vec r, TCGv_ptr b, TCGArg o)
 
 void tcg_gen_stl_vec(TCGv_vec r, TCGv_ptr b, TCGArg o, TCGType low_type)
 {
-    TCGArg ri = tcgv_vec_arg(r);
-    TCGArg bi = tcgv_ptr_arg(b);
+    TCGContext *s = tcg_ctx;
+    TCGArg ri = temp_arg(tcgv_vec_temp_context(s, r));
+    TCGArg bi = temp_arg(tcgv_i32_temp_context(s, (TCGv_i32)b));
     TCGTemp *rt = arg_temp(ri);
     TCGType type = rt->base_type;
 
