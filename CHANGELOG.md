@@ -35,6 +35,8 @@
 
 - Remove unsupported RDPID/RDTSCP execution paths and their shared helper for the fixed Xbox CPU. Preserve ordinary RDTSC, opcode-fetch faults, register/flag state and existing MSR/save-state layouts.
 
+- DSP: execute register-indirect X/Y relative bit-test branches natively, retaining address updates, wrapped targets and loop-end timing.
+
 - DSP: execute short X/Y relative bit-test branches natively, retaining wrapped targets, flags and loop-end behavior.
 
 - Remove the unused standalone object-option queue and QAPI object factory, then prune 244 unreachable generated definitions and twelve C sources, including crypto visitors/tables. Keep built-in device/property initialization and schema type layouts unchanged.

@@ -3679,7 +3679,11 @@ static bool emit_control(Tr *t, const Insn *in)
 
     if (!strcmp(name, "brclr #n, [X or Y]:pp, xxxx") || !strcmp(name, "brset #n, [X or Y]:pp, xxxx") ||
         !strcmp(name, "brclr #n, [X or Y]:qq, xxxx") || !strcmp(name, "brset #n, [X or Y]:qq, xxxx") ||
-        !strcmp(name, "brclr #n, [X or Y]:aa, xxxx") || !strcmp(name, "brset #n, [X or Y]:aa, xxxx")) {
+        !strcmp(name, "brclr #n, [X or Y]:aa, xxxx") || !strcmp(name, "brset #n, [X or Y]:aa, xxxx") ||
+        !strcmp(name, "brclr #n, [X or Y]:ea, xxxx") || !strcmp(name, "brset #n, [X or Y]:ea, xxxx")) {
+        bool indirect = strstr(name, ":ea") != NULL;
+        if (indirect && ((inst >> 11) & 7) == 6) return false;
+        uint32_t before = t->cyc;
         int memspace = (inst >> 6) & 1;
         bool short_memory = strstr(name, ":aa") != NULL;
         bool low_peripheral = strstr(name, ":qq") != NULL;
@@ -3688,15 +3692,21 @@ static bool emit_control(Tr *t, const Insn *in)
         uint32_t target = (at + in->ext) & 0xFFFFFF;
         size_t j;
         acc_spill_all(t, false);
-        h_mov_ri(e, EA1, addr);
+        if (indirect) {
+            Ea ea;
+            emit_calc_ea(t, (inst >> 8) & 63, in->ext, EA1, &ea);
+            ea_addr_reg(t, &ea);
+        } else h_mov_ri(e, EA1, addr);
         emit_read_mem(t, memspace, EA1, V1);
+        uint32_t cycles = 6 + t->cyc - before;
+        t->cyc = before;
         h_test_ri(e, 0, V1, 1u << numbit);
         j = h_jcc(e, name[2] == 'c' ? HC_EQ : HC_NE);
         /* The operand was read already; finish a DO boundary without
          * reinterpreting the branch and repeating that read. */
-        emit_exit_to(t, in, in->next, 6);
+        emit_exit_to(t, in, in->next, cycles);
         h_patch(e, j, e->len);
-        emit_exit_to(t, in, target, 6);
+        emit_exit_to(t, in, target, cycles);
         return true;
     }
 

@@ -186,13 +186,18 @@ static bool match_insert_controls(uint32_t op)
     return match_insert_source(op) && match_shift_control(op);
 }
 
-/* MCPX currently implements X peripheral callbacks only. Retain strict
- * unsupported Y handling and exclude bit numbers outside the 24-bit word. */
 static bool match_bit_number(uint32_t op)
 {
     return (op & 31) < 24;
 }
 
+static bool match_bitbranch_indirect(uint32_t op)
+{
+    return match_bitcall_indirect(op) && match_bit_number(op);
+}
+
+/* MCPX currently implements X peripheral callbacks only. Retain strict
+ * unsupported Y handling and exclude bit numbers outside the 24-bit word. */
 static bool match_x_qq_bit(uint32_t op)
 {
     return !(op & (1u << 6)) && (op & 31) < 24;
@@ -224,13 +229,13 @@ static const OpcodeEntry nonparallel_opcodes[] = {
     { "000011010001000011000000", "bra xxxx", dis_bra_long, emu_bra_long },
     { "00000101000011aaaa0aaaaa", "bra xxx", dis_bra_imm, emu_bra_imm },
     { "0000110100011RRR11000000", "bra Rn", dis_bra_reg, emu_bra_reg },
-    { "0000110010MMMRRR0S0bbbbb", "brclr #n, [X or Y]:ea, xxxx", NULL, NULL, match_MMMRRR },
+    { "0000110010MMMRRR0S0bbbbb", "brclr #n, [X or Y]:ea, xxxx", dis_brclr_ea, emu_brclr_ea, match_bitbranch_indirect },
     { "0000110010aaaaaa1S0bbbbb", "brclr #n, [X or Y]:aa, xxxx", dis_brclr_aa, emu_brclr_aa, match_bit_number },
     { "0000110011pppppp0S0bbbbb", "brclr #n, [X or Y]:pp, xxxx", dis_brclr_pp, emu_brclr_pp },
     { "0000010010qqqqqq0S0bbbbb", "brclr #n, [X or Y]:qq, xxxx", dis_brclr_qq, emu_brclr_qq, match_x_qq_bit },
     { "0000110011DDDDDD100bbbbb", "brclr #n, S, xxxx", dis_brclr_reg, emu_brclr_reg },
     { "00000000000000100001CCCC", "brkcc", NULL, NULL },
-    { "0000110010MMMRRR0S1bbbbb", "brset #n, [X or Y]:ea, xxxx", NULL, NULL, match_MMMRRR },
+    { "0000110010MMMRRR0S1bbbbb", "brset #n, [X or Y]:ea, xxxx", dis_brset_ea, emu_brset_ea, match_bitbranch_indirect },
     { "0000110010aaaaaa1S1bbbbb", "brset #n, [X or Y]:aa, xxxx", dis_brset_aa, emu_brset_aa, match_bit_number },
     { "0000110011pppppp0S1bbbbb", "brset #n, [X or Y]:pp, xxxx", dis_brset_pp, emu_brset_pp },
     { "0000010010qqqqqq0S1bbbbb", "brset #n, [X or Y]:qq, xxxx", dis_brset_qq, emu_brset_qq, match_x_qq_bit },
