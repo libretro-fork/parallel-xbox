@@ -4350,3 +4350,17 @@ negative controls reject wrong offsets and broadening the fast path to them.
 and counted DO loops across frames and supports synthetic timing comparisons.
 This does not alter immediate operands, peripheral behavior or legacy limiter
 semantics, and does not establish a game-wide performance improvement.
+
+`dspnative --long-move-limiter` checks 3,840 paired X/Y whole-accumulator
+store boundaries with zero interpreter calls. Independent high/low word
+oracles cover both accumulators, all scaling modes, signed limiter edges,
+NOP/CLR/arithmetic source snapshots, short/indirect/extension addresses and
+partial REP. Full-state comparison checks the ALU and retirement effects.
+Previously the low-word replacement used an unscaled 48-bit fit test even
+when the high-word limiter applied scaling. Scale-down can preserve a low
+word that was previously overwritten, while scale-up can require replacement
+or retain the interpreter's existing wrapped fit behavior. Both decisions
+now use the same scaled fit criteria. This preserves the interpreter model,
+including legacy scale-up wrap; it does not introduce new hardware semantics.
+The production fixture records distinct paired stores for signed edges and
+all modes, including repeated stores across frames; the old JIT fails it.

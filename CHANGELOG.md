@@ -57,6 +57,8 @@
 
 ## Unreleased
 
+- DSP: preserve the correct low word in paired X/Y accumulator stores when scaling changes whether the high word is limited.
+
 - DSP: emit direct RAM accesses for parallel short-address loads and stores while preserving pre-ALU source snapshots and accumulator limiting.
 
 - DSP: emit direct RAM accesses for short-address memory bit operations, avoiding unnecessary peripheral bounds and callback-exit checks.
