@@ -1840,6 +1840,12 @@ static void dis_movep_x_qq_reg(dsp_core_t* dsp)
     dis_movep_register(dsp, 0xffff80 + port, DSP_SPACE_X);
 }
 
+static void dis_movep_y_qq_reg(dsp_core_t *dsp)
+{
+    uint32_t port = (dsp->disasm_cur_inst & 31) | ((dsp->disasm_cur_inst >> 1) & 32);
+    dis_movep_register(dsp, 0xffff80 + port, DSP_SPACE_Y);
+}
+
 static void dis_movep_program(dsp_core_t* dsp, uint32_t addr, uint32_t memspace, bool out)
 {
     char srcname[16]="",dstname[16]="",addr_name[12]="";
@@ -1885,7 +1891,7 @@ static void dis_movep_1(dsp_core_t* dsp)
 
 static void dis_movep_qq_program(dsp_core_t* dsp)
 {
-    dis_movep_program(dsp, 0xffff80 + (dsp->disasm_cur_inst & 63), DSP_SPACE_X,
+    dis_movep_program(dsp, 0xffff80 + (dsp->disasm_cur_inst & 63), (dsp->disasm_cur_inst >> 6) & 1,
                       (dsp->disasm_cur_inst & (1u << 14)) != 0);
 }
 
@@ -1948,7 +1954,7 @@ static void dis_movep_23(dsp_core_t* dsp)
     sprintf(dsp->disasm_str_instr,"movep %s,%s", srcname, dstname);
 }
 
-static void dis_movep_x_qq(dsp_core_t* dsp) {
+static void dis_movep_qq_ea(dsp_core_t* dsp, char space) {
     // 00000111W1MMMRRR0Sqqqqqq
 
     char srcname[16]="",dstname[16]="",addr_name[12]="";
@@ -1971,11 +1977,11 @@ static void dis_movep_x_qq(dsp_core_t* dsp) {
             }
         }
 
-        sprintf(dstname, "x:$%04x", addr);
+        sprintf(dstname, "%c:$%04x", space, addr);
     } else {
         /* Read qq */
 
-        sprintf(srcname, "x:$%04x", addr);
+        sprintf(srcname, "%c:$%04x", space, addr);
 
         if (easpace) {
             sprintf(dstname, "y:%s", addr_name);
@@ -1987,6 +1993,9 @@ static void dis_movep_x_qq(dsp_core_t* dsp) {
     sprintf(dsp->disasm_str_instr,"movep %s,%s", srcname, dstname);
 }
 
+
+static void dis_movep_x_qq(dsp_core_t *dsp) { dis_movep_qq_ea(dsp, 'x'); }
+static void dis_movep_y_qq(dsp_core_t *dsp) { dis_movep_qq_ea(dsp, 'y'); }
 
 static void dis_move_x_long(dsp_core_t* dsp) {
     dsp->disasm_cur_inst_len++;
@@ -2095,6 +2104,76 @@ static void dis_maci(dsp_core_t* dsp)
 static void dis_macri(dsp_core_t* dsp)
 {
     dis_multiply_immediate(dsp, "macri");
+}
+
+static void dis_multiply_shift(dsp_core_t *dsp, const char *name)
+{
+    static const unsigned regs[] = {DSP_REG_Y1, DSP_REG_X0, DSP_REG_Y0, DSP_REG_X1};
+    uint32_t op = dsp->disasm_cur_inst;
+    sprintf(dsp->disasm_str_instr, "%s %s%s,#%u,%s", name, op & 4 ? "-" : "+",
+            registers_name[regs[(op >> 4) & 3]], (op >> 8) & 31, registers_name[DSP_REG_A + ((op >> 3) & 1)]);
+}
+
+static void dis_multiply_mixed(dsp_core_t *dsp, const char *name, bool shift)
+{
+    static const unsigned first[] = {4,6,5,7,4,6,5,7,5,7,4,6,7,4,6,5};
+    static const unsigned second[] = {4,6,4,6,7,4,6,5,5,7,5,7,4,6,5,7};
+    static const char *modes[] = {"ss", "us", "su", "uu"};
+    uint32_t op = dsp->disasm_cur_inst;
+    unsigned mode = shift ? (((op >> 7) & 2) | ((op >> 6) & 1)) : ((op & 64) ? 3 : 2);
+    sprintf(dsp->disasm_str_instr, "%s%s %s%s,%s,%s", name, modes[mode], op & 16 ? "-" : "+",
+            registers_name[first[op & 15]], registers_name[second[op & 15]], registers_name[DSP_REG_A + ((op >> 5) & 1)]);
+}
+
+static void dis_mpy_shift(dsp_core_t *dsp) { dis_multiply_shift(dsp, "mpy"); }
+static void dis_mpyr_shift(dsp_core_t *dsp) { dis_multiply_shift(dsp, "mpyr"); }
+static void dis_mac_shift(dsp_core_t *dsp) { dis_multiply_shift(dsp, "mac"); }
+static void dis_macr_shift(dsp_core_t *dsp) { dis_multiply_shift(dsp, "macr"); }
+static void dis_mpy_mixed(dsp_core_t *dsp) { dis_multiply_mixed(dsp, "mpy", false); }
+static void dis_mac_mixed(dsp_core_t *dsp) { dis_multiply_mixed(dsp, "mac", false); }
+static void dis_dmac(dsp_core_t *dsp) { dis_multiply_mixed(dsp, "dmac", true); }
+
+static void dis_normf(dsp_core_t *dsp)
+{
+    static const unsigned controls[] = {DSP_REG_X0, DSP_REG_Y0, DSP_REG_X1, DSP_REG_Y1, DSP_REG_A1, DSP_REG_B1};
+    uint32_t op = dsp->disasm_cur_inst;
+    sprintf(dsp->disasm_str_instr, "normf %s,%s", registers_name[controls[((op >> 1) & 7) - 2]], registers_name[DSP_REG_A + (op & 1)]);
+}
+
+static void dis_vsl(dsp_core_t *dsp)
+{
+    char addr[32];
+    uint32_t op = dsp->disasm_cur_inst;
+    dis_calc_ea(dsp, (op >> 8) & 63, addr);
+    sprintf(dsp->disasm_str_instr, "vsl %s,%u,l:%s", registers_name[DSP_REG_A + ((op >> 16) & 1)], (op >> 4) & 1, addr);
+}
+
+static void dis_remaining_control(dsp_core_t *dsp)
+{
+    uint32_t op = dsp->disasm_cur_inst;
+    if (op == 0x202 || op == 0x203) {
+        dsp->disasm_cur_inst_len++;
+        sprintf(dsp->disasm_str_instr, "%s forever,$%06x", op == 0x202 ? "dor" : "do", read_memory_p(dsp, dsp->pc + 1));
+    } else if (op == 6 || op == 0x200) {
+        sprintf(dsp->disasm_str_instr, "%s", op == 6 ? "trap" : "debug");
+    } else {
+        sprintf(dsp->disasm_str_instr, "%s%u", (op & 0xff0) == 0x210 ? "brkcc" : (op & 0xff0) == 0x300 ? "debugcc" : "trapcc", op & 15);
+    }
+}
+
+static void dis_cache_control(dsp_core_t *dsp)
+{
+    uint32_t op = dsp->disasm_cur_inst;
+    if (op <= 3) {
+        sprintf(dsp->disasm_str_instr, "%s", op == 1 ? "pflushun" : op == 2 ? "pfree" : "pflush");
+    } else if (op == 14 || op == 15) {
+        dsp->disasm_cur_inst_len++;
+        sprintf(dsp->disasm_str_instr, "%s $%06x", op == 15 ? "plockr" : "punlockr", read_memory_p(dsp, dsp->pc + 1));
+    } else {
+        char addr[32];
+        dis_calc_ea(dsp, (op >> 8) & 63, addr);
+        sprintf(dsp->disasm_str_instr, "%s %s", (op & 0x10000) ? "plock" : "punlock", addr);
+    }
 }
 
 static void dis_norm(dsp_core_t* dsp)

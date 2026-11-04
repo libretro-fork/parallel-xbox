@@ -180,11 +180,11 @@ int dsp_get_register_address(dsp_core_t* dsp, const char *regname, uint32_t **ad
         { "R7",  &dsp->registers[DSP_REG_R7],  32, BITMASK(16) },
 
         { "SSH", &dsp->registers[DSP_REG_SSH], 32, BITMASK(16) },
-        { "SSL", &dsp->registers[DSP_REG_SSL], 32, BITMASK(16) },
+        { "SSL", &dsp->registers[DSP_REG_SSL], 32, BITMASK(17) },
         { "SP",  &dsp->registers[DSP_REG_SP],  32, BITMASK(6) },
 
-        /* 16-bit status register */
-        { "SR",  &dsp->registers[DSP_REG_SR],  32, 0xefff },
+        /* Status register, including the extended forever-loop flag. */
+        { "SR",  &dsp->registers[DSP_REG_SR],  32, 0x1efff },
 
         /* 48-bit X register */
         { "X0",  &dsp->registers[DSP_REG_X0],  32, BITMASK(24) },

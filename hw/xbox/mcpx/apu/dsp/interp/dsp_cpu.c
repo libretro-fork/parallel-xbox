@@ -72,6 +72,7 @@ static uint16_t dsp_add56(uint32_t *source, uint32_t *dest);
 static uint16_t dsp_sub56(uint32_t *source, uint32_t *dest);
 static void dsp_mul56(uint32_t source1, uint32_t source2, uint32_t *dest, uint8_t signe);
 static void dsp_rnd56(dsp_core_t* dsp, uint32_t *dest);
+static uint16_t dsp_macr56(dsp_core_t *dsp, const uint32_t *source, uint32_t *dest);
 static uint32_t dsp_signextend(int bits, uint32_t v);
 
 /* Vector addresses per DSP56300FM Table 2-2, indexed by DSP_INTER_* */
@@ -122,8 +123,8 @@ static const int registers_mask[64] = {
 
     0, 0, 0, 0,
     0, 0, 0, 0,
-    0, 16, 8, 6,
-    16, 16, 16, 16
+    0, 17, 8, 6,
+    16, 17, 16, 16
 };
 
 #include "dsp_emu.c.inc"
@@ -203,10 +204,10 @@ static bool match_x_peripheral_bit(uint32_t op)
     return !(op & (1u << 6)) && (op & 31) < 24;
 }
 
-/* P references require memory-alterable EA; MCPX peripherals are X-only. */
-static bool match_qq_program_movep(uint32_t op)
+/* P and VSL destinations require a memory-alterable effective address. */
+static bool match_memory_alterable(uint32_t op)
 {
-    return !(op & 64) && match_MMMRRR(op) && ((op >> 8) & 63) != 52;
+    return match_MMMRRR(op) && ((op >> 8) & 63) != 52;
 }
 
 static const OpcodeEntry nonparallel_opcodes[] = {
@@ -240,7 +241,7 @@ static const OpcodeEntry nonparallel_opcodes[] = {
     { "0000110011pppppp0S0bbbbb", "brclr #n, [X or Y]:pp, xxxx", dis_brclr_pp, emu_brclr_pp },
     { "0000010010qqqqqq0S0bbbbb", "brclr #n, [X or Y]:qq, xxxx", dis_brclr_qq, emu_brclr_qq, match_x_peripheral_bit },
     { "0000110011DDDDDD100bbbbb", "brclr #n, S, xxxx", dis_brclr_reg, emu_brclr_reg },
-    { "00000000000000100001CCCC", "brkcc", NULL, NULL },
+    { "00000000000000100001CCCC", "brkcc", dis_remaining_control, emu_brkcc },
     { "0000110010MMMRRR0S1bbbbb", "brset #n, [X or Y]:ea, xxxx", dis_brset_ea, emu_brset_ea, match_bitbranch_indirect },
     { "0000110010aaaaaa1S1bbbbb", "brset #n, [X or Y]:aa, xxxx", dis_brset_aa, emu_brset_aa, match_bit_number },
     { "0000110011pppppp0S1bbbbb", "brset #n, [X or Y]:pp, xxxx", dis_brset_pp, emu_brset_pp },
@@ -276,21 +277,21 @@ static const OpcodeEntry nonparallel_opcodes[] = {
     { "0000000101iiiiii1000d101", "cmp #xx, S2", dis_cmp_imm, emu_cmp_imm },
     { "00000001010000001100d101", "cmp #xxxx, S2", dis_cmp_long, emu_cmp_long },
     { "00001100000111111111gggd", "cmpu S1, S2", dis_cmpu, emu_cmpu },
-    { "000000000000001000000000", "debug", NULL, NULL },
-    { "00000000000000110000CCCC", "debugcc", NULL, NULL },
+    { "000000000000001000000000", "debug", dis_remaining_control, emu_debug },
+    { "00000000000000110000CCCC", "debugcc", dis_remaining_control, emu_debug },
     { "00000000000000000000101d", "dec D", NULL /*dis_dec*/, emu_dec },
     { "000000011000000001JJd000", "div S, D", dis_div, emu_div },
-    { "000000010010010s1sdkQQQQ", "dmac S1, S2, D", NULL, NULL },
+    { "000000010010010s1sdkQQQQ", "dmac S1, S2, D", dis_dmac, emu_dmac },
     { "0000011001MMMRRR0S000000", "do [X or Y]:ea, expr", dis_do_ea, emu_do_ea, match_MMMRRR },
     { "0000011000aaaaaa0S000000", "do [X or Y]:aa, expr", dis_do_aa, emu_do_aa },
     { "00000110iiiiiiii1000hhhh", "do #xxx, expr", dis_do_imm, emu_do_imm },
     { "0000011011DDDDDD00000000", "do S, expr", dis_do_reg, emu_do_reg },
-    { "000000000000001000000011", "do_f", NULL, NULL },
+    { "000000000000001000000011", "do_f", dis_remaining_control, emu_do_forever },
     { "0000011001MMMRRR0S010000", "dor [X or Y]:ea, label", dis_dor_ea, emu_dor_ea, match_loop_indirect },
     { "0000011000aaaaaa0S010000", "dor [X or Y]:aa, label", dis_dor_aa, emu_dor_aa },
     { "00000110iiiiiiii1001hhhh", "dor #xxx, label", dis_dor_imm, emu_dor_imm },
     { "0000011011DDDDDD00010000", "dor S, label", dis_dor_reg, emu_dor_reg },
-    { "000000000000001000000010", "dor_f", NULL, NULL },
+    { "000000000000001000000010", "dor_f", dis_remaining_control, emu_do_forever },
     { "000000000000000010001100", "enddo", NULL, emu_enddo },
     { "0000000101iiiiii1000d011", "eor #xx, D", dis_eor_imm, emu_eor_imm },
     { "00000001010000001100d011", "eor #xxxx, D", dis_eor_long, emu_eor_long },
@@ -338,10 +339,10 @@ static const OpcodeEntry nonparallel_opcodes[] = {
     { "00001100000111100011sssD", "lsr S, D", dis_lsr_reg, emu_lsr_reg, match_shift_control },
     { "00000100010MMRRR000ddddd", "lua ea, D", dis_lua, emu_lua },
     { "0000010000aaaRRRaaaadddd", "lua (Rn + aa), D", dis_lua_rel, emu_lua_rel },
-    { "00000001000sssss11QQdk10", "mac S, #n, D", NULL, NULL },
+    { "00000001000sssss11QQdk10", "mac S, #n, D", dis_mac_shift, emu_mac_shift },
     { "000000010100000111qqdk10", "maci #xxxx, S, D", dis_maci, emu_maci },
-    { "00000001001001101sdkQQQQ", "mac_s_u S1, S2, D", NULL, NULL },
-    { "00000001000sssss11QQdk11", "macr S1, S2, D", NULL, NULL },
+    { "00000001001001101sdkQQQQ", "mac_s_u S1, S2, D", dis_mac_mixed, emu_mac_mixed },
+    { "00000001000sssss11QQdk11", "macr S1, S2, D", dis_macr_shift, emu_macr_shift },
     { "000000010100000111qqdk11", "macri #xxxx, S, D", dis_macri, emu_macri },
     { "00001100000110111000sssD", "merge S, D", dis_merge, emu_merge, match_shift_control },
     { "0000101001110RRR1WDDDDDD", "move X:(Rn + xxxx) <-> R", dis_move_x_long, emu_move_x_long },
@@ -356,30 +357,30 @@ static const OpcodeEntry nonparallel_opcodes[] = {
     { "00000111W0aaaaaa00dddddd", "movem P:aa <-> R", dis_movem_aa, emu_movem_aa },
     { "0000100sW1MMMRRR1Spppppp", "movep [X or Y]:ea <-> [X or Y]:pp", dis_movep_23, emu_movep_23, match_MMMRRR },
     { "00000111W1MMMRRR0Sqqqqqq", "movep [X or Y]:ea <-> X:qq", dis_movep_x_qq, emu_movep_x_qq, match_MMMRRR },
-    { "00000111W0MMMRRR1Sqqqqqq", "movep [X or Y]:ea <-> Y:qq", NULL, NULL, match_MMMRRR },
+    { "00000111W0MMMRRR1Sqqqqqq", "movep [X or Y]:ea <-> Y:qq", dis_movep_y_qq, emu_movep_y_qq, match_MMMRRR },
     { "0000100sW1MMMRRR01pppppp", "movep [X or Y]:pp <-> P:ea", dis_movep_1, emu_movep_1, match_MMMRRR },
-    { "000000001WMMMRRR0sqqqqqq", "movep [X or Y]:qq <-> P:ea", dis_movep_qq_program, emu_movep_qq_program, match_qq_program_movep },
+    { "000000001WMMMRRR0sqqqqqq", "movep [X or Y]:qq <-> P:ea", dis_movep_qq_program, emu_movep_qq_program, match_memory_alterable },
     { "0000100sW1dddddd00pppppp", "movep [X or Y]:pp <-> R", dis_movep_0, emu_movep_0 },
     { "00000100W1dddddd1q0qqqqq", "movep X:qq <-> R", dis_movep_x_qq_reg, emu_movep_x_qq_reg },
-    { "00000100W1dddddd0q1qqqqq", "movep Y:qq <-> R", NULL, NULL },
-    { "00000001000sssss11QQdk00", "mpy S, #n, D", NULL, NULL },
-    { "00000001001001111sdkQQQQ", "mpy_s_u S1, S2, D", NULL, NULL },
+    { "00000100W1dddddd0q1qqqqq", "movep Y:qq <-> R", dis_movep_y_qq_reg, emu_movep_y_qq_reg },
+    { "00000001000sssss11QQdk00", "mpy S, #n, D", dis_mpy_shift, emu_mpy_shift },
+    { "00000001001001111sdkQQQQ", "mpy_s_u S1, S2, D", dis_mpy_mixed, emu_mpy_mixed },
     { "000000010100000111qqdk00", "mpyi #xxxx, S, D", dis_mpyi, emu_mpyi },
-    { "00000001000sssss11QQdk01", "mpyr S, #n, D", NULL, NULL },
+    { "00000001000sssss11QQdk01", "mpyr S, #n, D", dis_mpyr_shift, emu_mpyr_shift },
     { "000000010100000111qqdk01", "mpyri #xxxx, S, D", dis_mpyri, emu_mpyri },
     { "000000000000000000000000", "nop", NULL, emu_nop},
     { "0000000111011RRR0001d101", "norm Rn, D", dis_norm, emu_norm },
-    { "00001100000111100010sssD", "normf S, D", NULL, NULL },
+    { "00001100000111100010sssD", "normf S, D", dis_normf, emu_normf, match_shift_control },
     { "0000000101iiiiii1000d010", "or #xx, D", dis_or_imm, emu_or_imm },
     { "00000001010000001100d010", "or #xxxx, D", dis_or_long, emu_or_long },
     { "00000000iiiiiiii111110EE", "ori #xx, D", dis_ori, emu_ori },
-    { "000000000000000000000011", "pflush", NULL, NULL },
-    { "000000000000000000000001", "pflushun", NULL, NULL },
-    { "000000000000000000000010", "pfree", NULL, NULL },
-    { "0000101111MMMRRR10000001", "plock ea", NULL, NULL, match_MMMRRR },
-    { "000000000000000000001111", "plockr xxxx", NULL, NULL },
-    { "0000101011MMMRRR10000001", "punlock ea", NULL, NULL, match_MMMRRR },
-    { "000000000000000000001110", "punlockr xxxx", NULL, NULL },
+    { "000000000000000000000011", "pflush", dis_cache_control, emu_cache_control },
+    { "000000000000000000000001", "pflushun", dis_cache_control, emu_cache_control },
+    { "000000000000000000000010", "pfree", dis_cache_control, emu_cache_control },
+    { "0000101111MMMRRR10000001", "plock ea", dis_cache_control, emu_cache_control, match_MMMRRR },
+    { "000000000000000000001111", "plockr xxxx", dis_cache_control, emu_cache_control },
+    { "0000101011MMMRRR10000001", "punlock ea", dis_cache_control, emu_cache_control, match_MMMRRR },
+    { "000000000000000000001110", "punlockr xxxx", dis_cache_control, emu_cache_control },
     { "0000011001MMMRRR0S100000", "rep [X or Y]:ea", dis_rep_ea, emu_rep_ea, match_MMMRRR },
     { "0000011000aaaaaa0S100000", "rep [X or Y]:aa", dis_rep_aa, emu_rep_aa },
     { "00000110iiiiiiii1010hhhh", "rep #xxx", dis_rep_imm, emu_rep_imm },
@@ -393,9 +394,9 @@ static const OpcodeEntry nonparallel_opcodes[] = {
     { "00000010CCCC00000JJJd000", "tcc S1, D1", dis_tcc, emu_tcc },
     { "00000011CCCC0ttt0JJJdTTT", "tcc S1,D2 S2,D2", dis_tcc, emu_tcc },
     { "00000010CCCC1ttt00000TTT", "tcc S2, D2", dis_tcc, emu_tcc },
-    { "000000000000000000000110", "trap", NULL, NULL },
-    { "00000000000000000001CCCC", "trapcc", NULL, NULL },
-    { "0000101S11MMMRRR110i0000", "vsl", NULL, NULL, match_MMMRRR },
+    { "000000000000000000000110", "trap", dis_remaining_control, emu_trap },
+    { "00000000000000000001CCCC", "trapcc", dis_remaining_control, emu_trap },
+    { "0000101S11MMMRRR110i0000", "vsl", dis_vsl, emu_vsl, match_memory_alterable },
     { "000000000000000010000110", "wait", NULL, emu_wait },
 };
 
@@ -773,7 +774,7 @@ static void dsp_postexecute_update_pc(dsp_core_t* dsp)
             --dsp->registers[DSP_REG_LC];
             dsp->registers[DSP_REG_LC] &= BITMASK(16);
 
-            if (dsp->registers[DSP_REG_LC] == 0) {
+            if (dsp->registers[DSP_REG_LC] == 0 && !(dsp->registers[DSP_REG_SR] & (1u << DSP_SR_FV))) {
                 dsp56k_do_end(dsp);
             } else {
                 /* Loop one more time */
@@ -966,6 +967,7 @@ uint32_t dsp56k_read_memory(dsp_core_t* dsp, int space, uint32_t address)
             }
         }
     } else if (space == DSP_SPACE_Y) {
+        if (address >= DSP_PERIPH_BASE) return dsp->read_y_peripheral ? dsp->read_y_peripheral(dsp, address) : 0xffffff;
         assert(address < DSP_YRAM_SIZE);
         return dsp->yram[address];
     } else if (space == DSP_SPACE_P) {
@@ -1031,6 +1033,10 @@ static void write_memory_raw(dsp_core_t* dsp, int space, uint32_t address, uint3
             dsp->xram[address] = value;
         }
     } else if (space == DSP_SPACE_Y) {
+        if (address >= DSP_PERIPH_BASE) {
+            if (dsp->write_y_peripheral) dsp->write_y_peripheral(dsp, address, value);
+            return;
+        }
         assert(address < DSP_YRAM_SIZE);
         dsp->yram[address] = value;
     } else if (space == DSP_SPACE_P) {
@@ -1102,7 +1108,7 @@ static void dsp_write_reg(dsp_core_t* dsp, uint32_t numreg, uint32_t value)
             dsp->registers[DSP_REG_OMR] = value & 0xc7;
             break;
         case DSP_REG_SR:
-            dsp->registers[DSP_REG_SR] = value & 0xaf7f;
+            dsp->registers[DSP_REG_SR] = value & 0x1af7f;
             break;
         case DSP_REG_SP:
             stack_error = dsp->registers[DSP_REG_SP] & (3<<DSP_SP_SE);
@@ -1127,8 +1133,8 @@ static void dsp_write_reg(dsp_core_t* dsp, uint32_t numreg, uint32_t value)
             if (numreg == 0) {
                 value = 0;
             }
-            dsp->stack[1][numreg] = value & BITMASK(16);
-            dsp->registers[DSP_REG_SSL] = value & BITMASK(16);
+            dsp->stack[1][numreg] = value & BITMASK(17);
+            dsp->registers[DSP_REG_SSL] = value & BITMASK(17);
             break;
         default:
             dsp->registers[numreg] = value;
@@ -1166,7 +1172,7 @@ static void dsp_stack_push(dsp_core_t* dsp, uint32_t curpc, uint32_t cursr, uint
         dsp->stack[0][stack] = curpc & BITMASK(16);
         /* SSL part, if instruction is not like "MOVEC xx, SSH"  */
         if (sshOnly == 0) {
-            dsp->stack[1][stack] = cursr & BITMASK(16);
+            dsp->stack[1][stack] = cursr & BITMASK(17);
         }
     } else {
         dsp->stack[0][0] = 0;
@@ -1446,6 +1452,26 @@ static void dsp_rnd56(dsp_core_t* dsp, uint32_t *dest)
     }
 }
 
+/* Round the complete, unwrapped MAC sum. Rounding can itself cross a
+ * signed 56-bit limit, or bring an underflowing sum back into range. */
+static uint16_t dsp_macr56(dsp_core_t *dsp, const uint32_t *source, uint32_t *dest)
+{
+    uint64_t a = dest[2] | ((uint64_t)dest[1] << 24) | ((uint64_t)dest[0] << 48);
+    uint64_t b = source[2] | ((uint64_t)source[1] << 24) | ((uint64_t)source[0] << 48);
+    int64_t x = (a & (UINT64_C(1) << 55)) ? (int64_t)a - (INT64_C(1) << 56) : (int64_t)a;
+    int64_t y = (b & (UINT64_C(1) << 55)) ? (int64_t)b - (INT64_C(1) << 56) : (int64_t)b;
+    int64_t sum = x + y;
+    unsigned mode = (dsp->registers[DSP_REG_SR] >> DSP_SR_S0) & 3;
+    int64_t unit = INT64_C(1) << (mode & 1 ? 25 : mode == 2 ? 23 : 24);
+    int64_t quotient = sum / unit, remainder = sum % unit;
+    if (remainder < 0) { quotient--; remainder += unit; }
+    if (remainder > unit / 2 || (remainder == unit / 2 && quotient % 2)) quotient++;
+    sum = quotient * unit;
+    uint64_t result = (uint64_t)sum;
+    dest[2] = result & 0xffffff; dest[1] = (result >> 24) & 0xffffff; dest[0] = (result >> 48) & 255;
+    return sum < -(INT64_C(1) << 55) || sum >= (INT64_C(1) << 55) ? (1u << DSP_SR_V) | (1u << DSP_SR_L) : 0;
+}
+
 static uint32_t dsp_signextend(int bits, uint32_t v) {
     const int shift = sizeof(int)*8 - bits;
     assert(shift > 0);
@@ -1463,9 +1489,9 @@ static bool dsp56k_name_is_control(const char *name)
 {
     static const char *const heads[] = {
         "bcc", "bra", "brclr", "brset", "bscc", "bsclr", "bsr", "bsset",
-        "do", "dor", "enddo", "jcc", "jclr", "jmp", "jscc", "jsclr", "jset",
+        "do", "dor", "do_f", "dor_f", "brkcc", "enddo", "jcc", "jclr", "jmp", "jscc", "jsclr", "jset",
         "jsr", "jsset", "rep", "rts", "rti", "illegal", "trap", "wait",
-        "stop", "debug", "reset",
+        "stop", "debug", "debugcc", "trapcc", "pflush", "pflushun", "pfree", "plock", "plockr", "punlock", "punlockr", "reset",
     };
     for (size_t i = 0; i < ARRAY_SIZE(heads); i++) {
         size_t n = strlen(heads[i]);
@@ -1554,8 +1580,8 @@ void dsp56k_do_end(dsp_core_t *dsp)
     uint32_t saved_pc, saved_sr;
 
     dsp_stack_pop(dsp, &saved_pc, &saved_sr);
-    dsp->registers[DSP_REG_SR] &= 0x7f;
-    dsp->registers[DSP_REG_SR] |= saved_sr & (1<<DSP_SR_LF);
+    dsp->registers[DSP_REG_SR] &= ~((1u << DSP_SR_LF) | (1u << DSP_SR_FV));
+    dsp->registers[DSP_REG_SR] |= saved_sr & ((1u << DSP_SR_LF) | (1u << DSP_SR_FV));
     dsp_stack_pop(dsp, &dsp->registers[DSP_REG_LA], &dsp->registers[DSP_REG_LC]);
 }
 

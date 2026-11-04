@@ -99,6 +99,9 @@ struct dsp_core_s {
     void *opaque;
 
     /* callbacks */
+    /* Separate Y bus: unmapped reads use the floating-high emulator policy; writes are discarded. */
+    uint32_t (*read_y_peripheral)(dsp_core_t *core, uint32_t address);
+    void (*write_y_peripheral)(dsp_core_t *core, uint32_t address, uint32_t value);
     uint32_t (*read_peripheral)(dsp_core_t* core, uint32_t address);
     void (*write_peripheral)(dsp_core_t* core, uint32_t address, uint32_t value);
 
