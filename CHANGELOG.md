@@ -57,6 +57,7 @@
 
 ## Unreleased
 
+- Let IDE reads retain immutable decoded QCOW2 cluster spans through completion, removing the decoded-cache-to-scratch copy. Bound retention to one view per image and preserve cancellation, cache reuse, overlapping reads/writes and image-close lifetimes.
 - DSP: specialize paired X/Y moves with constant addresses inside both RAM banks, avoiding redundant bounds and peripheral-exit checks.
 
 - DSP: emit direct X/Y RAM accesses for paired short-address moves, preserving limiter decisions and pre-load ALU flags.

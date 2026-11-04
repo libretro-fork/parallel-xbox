@@ -1,0 +1,165 @@
+/* SPDX-License-Identifier: GPL-2.0-or-later */
+#include "block/libretro-file.c"
+#include "block/libretro-qcow2.h"
+#include <assert.h>
+#include <stdio.h>
+#include <string.h>
+#include "qemu/queue.h"
+static void *scratch[64];static size_t capacities[64];
+static bool watching,fail_decode_alloc;
+static size_t scratch_copy_bytes;static unsigned decode_allocations;
+static void *observed_copy(void *dst,const void *src,size_t n)
+{
+ if(watching)for(unsigned i=0;i<64;i++)if(scratch[i] && (uintptr_t)dst>=(uintptr_t)scratch[i] && (uintptr_t)dst-(uintptr_t)scratch[i]<capacities[i])scratch_copy_bytes+=n;
+ return memcpy(dst,src,n);
+}
+static void *observed_malloc(size_t n)
+{if(watching){decode_allocations++;if(fail_decode_alloc)return NULL;}return malloc(n);}
+#define memcpy observed_copy
+#define malloc observed_malloc
+#include "block/libretro-qcow2.c"
+#undef memcpy
+#undef malloc
+#define BDRV_SECTOR_BITS 9
+#define ARRAY_SIZE(a) (sizeof(a)/sizeof((a)[0]))
+#define QEMU_BUILD_BUG_ON(x) _Static_assert(!(x), #x)
+#ifdef _WIN32
+struct iovec { void *iov_base; size_t iov_len; };
+#endif
+/* QIOV */
+typedef void BlockCompletionFunc(void *,int);
+typedef struct {BlockCompletionFunc *cb;void *opaque;int ret;bool live;} BlockAIOCB;
+/* REQUEST */
+typedef struct {struct {int kind;LRQcow2 *qcow2;} m;} BlockBackend;
+#define LR_MEDIUM_QCOW2 2
+static BlockAIOCB pending[64];static unsigned queued,legacy_reads,releases,calls,req_live,scratch_live;
+static BlockAIOCB *lr_disk_submit(BlockBackend *blk,int ret,BlockCompletionFunc *cb,void *opaque)
+{for(unsigned i=0;i<64;i++)if(!pending[i].live){pending[i]=(BlockAIOCB){cb,opaque,ret,true};queued++;return &pending[i];}abort();}
+/* BLOCK */
+static BlockAIOCB *blk_aio_preadv(BlockBackend *blk,int64_t off,QEMUIOVector *v,int flags,BlockCompletionFunc *cb,void *opaque)
+{legacy_reads++;return lr_disk_submit(blk,lr_qcow2_preadv(blk->m.qcow2,off,(LRFileIOV*)v->iov,v->niov),cb,opaque);}
+static BlockAIOCB *blk_abort_aio_request(BlockBackend *blk,BlockCompletionFunc *cb,void *opaque,int ret)
+{return lr_disk_submit(blk,ret,cb,opaque);}
+static void finish(BlockAIOCB *a){assert(a->live);a->live=false;releases++;a->cb(a->opaque,a->ret);}
+static void *req_new(size_t n){req_live++;void*p=calloc(1,n);assert(p);return p;}
+static void req_free(void*p){if(p){assert(req_live);req_live--;free(p);}}
+#define g_new0(t,n) ((t*)req_new(sizeof(t)*(n)))
+#define g_free req_free
+static void *blk_blockalign(BlockBackend *blk,size_t n)
+{
+ void *p;
+#ifdef _WIN32
+ p=_aligned_malloc(n?n:1,4096);
+#else
+ assert(!posix_memalign(&p,4096,n?n:1));
+#endif
+ assert(p);for(unsigned i=0;i<64;i++)if(!scratch[i]){scratch[i]=p;capacities[i]=n;scratch_live++;return p;}abort();
+}
+static void qemu_vfree(void*p)
+{
+ if(!p)return;
+ for(unsigned i=0;i<64;i++)if(scratch[i]==p){scratch[i]=NULL;capacities[i]=0;scratch_live--;
+#ifdef _WIN32
+ _aligned_free(p);
+#else
+ free(p);
+#endif
+ return;}abort();
+}
+static size_t qemu_iovec_from_buf(QEMUIOVector *v,size_t off,const void *src,size_t size)
+{assert(!off&&size==v->size);size_t left=size;for(int i=0;i<v->niov;i++){size_t n=v->iov[i].iov_len<left?v->iov[i].iov_len:left;memcpy(v->iov[i].iov_base,src,n);src=(const uint8_t*)src+n;left-=n;}assert(!left);return size;}
+typedef struct {BlockAIOCB *aiocb;} DMA;
+typedef struct {DMA *dma;} IDEBus;
+typedef struct {QLIST_HEAD(,IDEBufferedRequest) buffered_requests;BlockBackend *blk;IDEBus *bus;} IDEState;
+static void blk_drain(BlockBackend *blk){for(unsigned i=0;i<64;i++)if(pending[i].live)finish(&pending[i]);}
+#define trace_ide_cancel_dma_sync_buffered(cb,req) ((void)0)
+#define trace_ide_cancel_dma_sync_remaining() ((void)0)
+/* IDE */
+static void completed(void *opaque,int ret){assert(ret==*(int*)opaque);calls++;}
+static void pattern(uint8_t *out,size_t n,unsigned gc){for(size_t i=0;i<n;i++)out[i]=(uint8_t)(i/17+i%13+gc*37);}
+int main(int argc,char **argv)
+{
+ assert(argc==2);char error[256];LRFile *file=lr_file_open(argv[1],true,false);assert(file);
+ LRQcow2 *q=lr_qcow2_open(file,true,error,sizeof(error));if(!q){fprintf(stderr,"%s\n",error);abort();}
+ BlockBackend blk={.m={LR_MEDIUM_QCOW2,q}};DMA dma={0};IDEBus bus={&dma};IDEState state={.blk=&blk,.bus=&bus};QLIST_INIT(&state.buffered_requests);
+ size_t cs=q->cs;uint8_t *out=malloc(cs*2+32),*want=malloc(cs*2),*original=malloc(cs);assert(out&&want&&original);
+ pattern(want,cs,0);pattern(want+cs,cs,1);pattern(original,cs,0);
+ int ok=0;QEMUIOVector a,b;watching=true;
+ /* Initial borrowed read publishes no caller bytes and needs no scratch copy. */
+ memset(out,0xcc,cs*2+32);qemu_iovec_init_buf(&a,out,cs);
+ BlockAIOCB *first=ide_buffered_readv(&state,0,&a,cs/512,completed,&ok);
+ assert(q->view_owner->held==q->decoded&&q->decoded->refs==2&&!scratch_live&&!scratch_copy_bytes);
+ assert(out[0]==0xcc&&calls==0);const uint8_t *held=q->view_owner->held->data;
+ /* A second decode uses one alternate buffer, preserving the first view. */
+ qemu_iovec_init_buf(&b,out+cs,cs);BlockAIOCB *second=ide_buffered_readv(&state,cs/512,&b,cs/512,completed,&ok);
+ assert(legacy_reads==1&&decode_allocations==1&&scratch_copy_bytes==cs);
+ assert(q->view_owner->held->data==held&&!memcmp(held,want,cs));
+ assert(q->cached==1&&q->decoded!=q->view_owner->held&&out[cs]==0xcc);
+ finish(second);finish(first);assert(!memcmp(out,want,cs*2)&&!q->view_owner->held);
+ /* Cache-hit view retains the same decoded allocation and performs no copy. */
+ DecodedBuffer *cached=q->decoded;unsigned allocs=decode_allocations;size_t copies=scratch_copy_bytes;
+ memset(out,0xcc,cs);qemu_iovec_init_buf(&a,out,cs);first=ide_buffered_readv(&state,cs/512,&a,cs/512,completed,&ok);
+ assert(q->decoded==cached&&decode_allocations==allocs&&scratch_copy_bytes==copies);finish(first);assert(!memcmp(out,want+cs,cs));
+ /* A retained compressed cluster is immutable across partial rewrite. */
+ first=ide_buffered_readv(&state,0,&a,cs/512,completed,&ok);held=q->view_owner->held->data;
+ uint8_t patch[13];memset(patch,0x7a,sizeof(patch));assert(!lr_qcow2_pwritev(q,117,&(LRFileIOV){patch,sizeof(patch)},1));
+ assert(!memcmp(held,original,cs));finish(first);assert(!memcmp(out,original,cs));
+ memcpy(want+117,patch,sizeof(patch));assert(!lr_qcow2_preadv(q,0,&(LRFileIOV){out,cs},1)&&!memcmp(out,want,cs));
+ /* Keep a view while corrupting a different compressed stream. Error bytes stay private. */
+ first=ide_buffered_readv(&state,cs/512,&a,cs/512,completed,&ok);assert(q->view_owner->held);
+ uint64_t entry=*l2_entry(q,1),coff=entry&q->coff_mask;uint8_t saved[7];assert(!lr_file_pread(file,coff,saved,7));
+ static const uint8_t broken[]={0,1,0,0xfe,0xff,0x5a,7};assert(!lr_file_pwrite(file,coff,broken,7));
+ /* The held cache hit must still work; a cold decode is forced for the error path. */
+ q->cached=~0ull;memset(out+cs,0xcc,cs);qemu_iovec_init_buf(&b,out+cs,cs);int ioerror=-EIO;
+ second=ide_buffered_readv(&state,cs/512,&b,cs/512,completed,&ioerror);assert(second->ret==-EIO);
+ finish(second);for(size_t i=0;i<cs;i++)assert(out[cs+i]==0xcc);
+ assert(!memcmp(q->view_owner->held->data,want+cs,cs));assert(!lr_file_pwrite(file,coff,saved,7));finish(first);
+ /* New view error queues once, with no fallback retry or output publication. */
+ unsigned reads=legacy_reads;assert(!lr_file_pwrite(file,coff,broken,7));q->cached=~0ull;
+ memset(out,0xcc,cs);first=ide_buffered_readv(&state,cs/512,&a,cs/512,completed,&ioerror);
+ assert(first->ret==-EIO&&legacy_reads==reads&&!q->view_owner->held);finish(first);
+ for(size_t i=0;i<cs;i++)assert(out[i]==0xcc);
+ assert(!lr_file_pwrite(file,coff,saved,7));
+ /* Allocation failure preserves the retained payload. */
+ first=ide_buffered_readv(&state,cs/512,&a,cs/512,completed,&ok);
+ q->cached=~0ull;fail_decode_alloc=true;int nomem=-ENOMEM;
+ second=ide_buffered_readv(&state,cs/512,&b,cs/512,completed,&nomem);
+ assert(second->ret==-ENOMEM&&!memcmp(q->view_owner->held->data,want+cs,cs));
+ fail_decode_alloc=false;finish(second);finish(first);
+ /* Eligibility and partial scattered payloads retain destination gaps. */
+ LRQcow2ReadView view;
+ assert(!lr_qcow2_read_view(q,0,cs,&view)); /* rewritten, uncompressed */
+ assert(!lr_qcow2_read_view(q,cs-1,2,&view));
+ assert(!lr_qcow2_read_view(q,0,0,&view));
+ assert(lr_qcow2_read_view(q,-1,1,&view)==-EIO);
+ assert(lr_qcow2_read_view(q,cs*2,1,&view)==-EIO);
+ if(cs>=4096){
+  struct iovec pieces[3]={{out,173},{out+200,0},{out+200,339}};
+  QEMUIOVector scatter={.iov=pieces,.niov=3,.size=512};
+  memset(out,0xcc,cs);
+  first=ide_buffered_readv(&state,cs/512+1,&scatter,1,completed,&ok);
+  assert(q->view_owner->held);finish(first);
+  assert(!memcmp(out,want+cs+512,173));
+  assert(!memcmp(out+200,want+cs+512+173,339));
+  for(unsigned i=173;i<200;i++)assert(out[i]==0xcc);
+ }
+ /* A successful deferred payload also survives closing the image. */
+ first=ide_buffered_readv(&state,cs/512,&a,cs/512,completed,&ok);
+ lr_qcow2_close(q);lr_file_close(file);blk.m.qcow2=NULL;
+ finish(first);assert(!memcmp(out,want+cs,cs));
+ file=lr_file_open(argv[1],true,false);assert(file);
+ q=lr_qcow2_open(file,true,error,sizeof(error));assert(q);blk.m.qcow2=q;
+ /* Cancel, then close the image before releasing its retained view. */
+ memset(out,0xcc,cs);int canceled=-ECANCELED;
+ first=ide_buffered_readv(&state,cs/512,&a,cs/512,completed,&canceled);
+ assert(q->view_owner->held);unsigned before=calls;
+ ide_cancel_dma_sync(&state);assert(calls==before+1);
+ lr_qcow2_close(q);lr_file_close(file);blk.m.qcow2=NULL;
+ finish(first);assert(calls==before+1);
+ for(size_t i=0;i<cs;i++)assert(out[i]==0xcc);
+ ide_buffered_read_cache_clear();assert(!req_live&&!scratch_live);
+ for(unsigned i=0;i<64;i++)assert(!pending[i].live);
+ assert(queued==releases);free(out);free(want);free(original);
+ puts("QCOW2 retained IDE views: copies, overlap, writes, errors, allocation failure and canceled-close lifetime passed");
+ return 0;
+}

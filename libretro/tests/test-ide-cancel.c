@@ -19,6 +19,7 @@ typedef struct IDEBufferedRequest {
     QLIST_ENTRY(IDEBufferedRequest) list;
     QEMUIOVector qiov;
     size_t buffer_capacity;
+    const void *read_view;void *read_view_owner;size_t read_view_size;
     QEMUIOVector *original_qiov;
     BlockCompletionFunc *original_cb;
     void *original_opaque;
@@ -56,6 +57,7 @@ static void tracked_free(void *p) { frees++; free(p); }
 #define trace_ide_cancel_dma_sync_buffered(cb, req) ((void)0)
 #define trace_ide_cancel_dma_sync_remaining() ((void)0)
 
+static void lr_disk_release_read_view(void *owner){assert(!owner);}
 /* PRODUCTION */
 
 typedef struct {

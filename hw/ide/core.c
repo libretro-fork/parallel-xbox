@@ -40,6 +40,7 @@
 #include "qapi/error.h"
 #include "qemu/cutils.h"
 #include "system/runstate.h"
+#include "block/libretro-disk.h"
 #include "ide-internal.h"
 #include "trace.h"
 #include "hw/xbox/chihiro/chihiro.h"
@@ -678,8 +679,18 @@ static struct {
     uint64_t epoch;
 } ide_read_cache;
 
+static void ide_buffered_request_drop_view(IDEBufferedRequest *req)
+{
+    void *owner = req->read_view_owner;
+    req->read_view = NULL;
+    req->read_view_owner = NULL;
+    req->read_view_size = 0;
+    lr_disk_release_read_view(owner);
+}
+
 static void ide_buffered_request_free(IDEBufferedRequest *req)
 {
+    ide_buffered_request_drop_view(req);
     qemu_vfree(qemu_iovec_buf(&req->qiov));
     g_free(req);
 }
@@ -697,6 +708,7 @@ void ide_buffered_read_cache_clear(void)
 
 static void ide_buffered_request_release(IDEBufferedRequest *req, uint64_t epoch)
 {
+    ide_buffered_request_drop_view(req);
     if (epoch == ide_read_cache.epoch &&
         (!ide_read_cache.spare ||
          req->buffer_capacity > ide_read_cache.spare->buffer_capacity)) {
@@ -721,10 +733,10 @@ static void ide_buffered_readv_cb(void *opaque, int ret)
         return;
     }
     if (!ret) {
-        assert(req->qiov.size == req->original_qiov->size);
-        qemu_iovec_from_buf(req->original_qiov, 0,
-                            req->qiov.local_iov.iov_base,
-                            req->original_qiov->size);
+        const void *data = req->read_view ? req->read_view : req->qiov.local_iov.iov_base;
+        size_t size = req->read_view ? req->read_view_size : req->qiov.size;
+        assert(size == req->original_qiov->size);
+        qemu_iovec_from_buf(req->original_qiov, 0, data, size);
     }
     BlockCompletionFunc *cb = req->original_cb;
     void *cb_opaque = req->original_opaque;
@@ -754,25 +766,29 @@ BlockAIOCB *ide_buffered_readv(IDEState *s, int64_t sector_num,
 
     req = ide_read_cache.spare;
     ide_read_cache.spare = NULL;
-    void *buffer = NULL;
     if (!req) {
         req = g_new0(IDEBufferedRequest, 1);
-    } else {
-        buffer = qemu_iovec_buf(&req->qiov);
-    }
-    if (!buffer || req->buffer_capacity < iov->size) {
-        qemu_vfree(buffer);
-        buffer = blk_blockalign(s->blk, iov->size);
-        req->buffer_capacity = iov->size;
+        qemu_iovec_init_buf(&req->qiov, NULL, 0);
     }
     req->orphaned = false;
     req->original_qiov = iov;
     req->original_cb = cb;
     req->original_opaque = opaque;
-    qemu_iovec_init_buf(&req->qiov, buffer, iov->size);
-
-    aioreq = blk_aio_preadv(s->blk, sector_num << BDRV_SECTOR_BITS,
-                            &req->qiov, 0, ide_buffered_readv_cb, req);
+    req->read_view_size = iov->size;
+    aioreq = lr_disk_aio_read_view(s->blk, sector_num << BDRV_SECTOR_BITS,
+                                   iov->size, &req->read_view,
+                                   &req->read_view_owner, ide_buffered_readv_cb, req);
+    if (!aioreq) {
+        void *buffer = qemu_iovec_buf(&req->qiov);
+        if (!buffer || req->buffer_capacity < iov->size) {
+            qemu_vfree(buffer);
+            buffer = blk_blockalign(s->blk, iov->size);
+            req->buffer_capacity = iov->size;
+        }
+        qemu_iovec_init_buf(&req->qiov, buffer, iov->size);
+        aioreq = blk_aio_preadv(s->blk, sector_num << BDRV_SECTOR_BITS,
+                                &req->qiov, 0, ide_buffered_readv_cb, req);
+    }
 
     QLIST_INSERT_HEAD(&s->buffered_requests, req, list);
     return aioreq;

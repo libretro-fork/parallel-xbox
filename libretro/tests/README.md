@@ -4410,3 +4410,5 @@ are checked with zero interpreter calls. Negative controls catch an inclusive
 Y-RAM limit and confusing an EA encoding with its extension-word address.
 The production fixture combines absolute/tagged addresses at 0x90 and 0x7ff
 with ADD, REP, DO, all selectors and both directions across frames.
+
+`test-qcow2-read-views.py CHECKOUT [CC]` runs the production QCOW2 retained-view provider and IDE submission/completion/cancellation helpers against compressed disposable images. It checks removed cache-to-scratch copies, one-view fallback, overlapping decode allocation and failure, immutable snapshots across writes, malformed streams without caller publication or retry, scattered subcluster reads, and successful/canceled completions after image close. ASan/UBSan are enabled by default; `QCOW_READ_VIEW_CLUSTER_SIZE`, `QCOW_READ_VIEW_CFLAGS`, `QCOW_READ_VIEW_BINARY`, `QCOW_READ_VIEW_FIXTURE` and `QCOW_READ_VIEW_SKIP_RUN` support alternate cluster sizes and native cross-built fixtures. qemu-img checks the resulting image. These are correctness and copy-count checks, not benchmarks.

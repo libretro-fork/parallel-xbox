@@ -59,6 +59,53 @@
 /* pieces of a request handed to one system call at a time */
 #define IOV_MAX_PIECES          64
 
+/* References are confined to the existing serialized disk owner. */
+typedef struct DecodedBuffer {
+    unsigned refs;
+    _Alignas(max_align_t) uint8_t data[];
+} DecodedBuffer;
+
+typedef struct DecodedViewOwner {
+    unsigned refs; /* image plus its one optional retained view */
+    DecodedBuffer *held;
+} DecodedViewOwner;
+
+static DecodedBuffer *decoded_new(size_t size)
+{
+    if (size > SIZE_MAX - sizeof(DecodedBuffer)) {
+        return NULL;
+    }
+    DecodedBuffer *buffer = malloc(sizeof(*buffer) + size);
+    if (buffer) {
+        buffer->refs = 1;
+    }
+    return buffer;
+}
+
+static void decoded_release(DecodedBuffer *buffer)
+{
+    if (buffer && !--buffer->refs) {
+        free(buffer);
+    }
+}
+
+static void decoded_owner_release(DecodedViewOwner *owner)
+{
+    if (owner && !--owner->refs) {
+        free(owner);
+    }
+}
+
+void lr_qcow2_release_read_view(void *opaque)
+{
+    DecodedViewOwner *owner = opaque;
+    if (owner) {
+        decoded_release(owner->held);
+        owner->held = NULL;
+        decoded_owner_release(owner);
+    }
+}
+
 struct LRQcow2 {
     LRFile *f;
     bool writable;
@@ -93,6 +140,8 @@ struct LRQcow2 {
     uint8_t *table;             /* a table on its way to the file */
     uint64_t cached;            /* the guest cluster in dcache, or ~0 */
     uint8_t *dcache;            /* the last compressed cluster read */
+    DecodedBuffer *decoded;
+    DecodedViewOwner *view_owner;
 };
 
 static uint64_t be64(const uint8_t *p)
@@ -479,6 +528,16 @@ static int read_compressed(LRQcow2 *q, uint64_t gc, uint64_t e)
         }
         input = q->cbuf;
     }
+    if (q->decoded->refs > 1) {
+        /* The old bytes belong to a pending completion; decode elsewhere. */
+        DecodedBuffer *next = decoded_new((size_t)q->cs);
+        if (!next) {
+            return -ENOMEM;
+        }
+        decoded_release(q->decoded);
+        q->decoded = next;
+        q->dcache = next->data;
+    }
     rinflate_reset(q->inflate, -12);
     rinflate_set_in(q->inflate, input, csize);
     rinflate_set_out(q->inflate, q->dcache, (size_t)q->cs);
@@ -489,6 +548,36 @@ static int read_compressed(LRQcow2 *q, uint64_t gc, uint64_t e)
     }
     q->cached = gc;
     return 0;
+}
+
+int lr_qcow2_read_view(LRQcow2 *q, int64_t off, size_t size, LRQcow2ReadView *view)
+{
+    *view = (LRQcow2ReadView){0};
+    if (off < 0 || (uint64_t)off > q->size || size > q->size - (uint64_t)off) {
+        return -EIO;
+    }
+    if (!size || q->view_owner->held) {
+        return 0;
+    }
+    uint64_t in = (uint64_t)off & (q->cs - 1);
+    if (size > q->cs - in) {
+        return 0;
+    }
+    uint64_t gc = (uint64_t)off >> q->cluster_bits;
+    uint64_t entry = *l2_entry(q, gc);
+    if (!(entry & F_COMPRESSED)) {
+        return 0;
+    }
+    int ret = read_compressed(q, gc, entry);
+    if (ret < 0) {
+        return ret;
+    }
+    q->decoded->refs++;
+    q->view_owner->held = q->decoded;
+    q->view_owner->refs++;
+    view->data = q->dcache + in;
+    view->owner = q->view_owner;
+    return 1;
 }
 
 /* whether entry e names a cluster written in place: its own, data */
@@ -598,11 +687,16 @@ LRQcow2 *lr_qcow2_open(LRFile *f, bool writable, char *err, size_t errlen)
     q->l2 = calloc((size_t)q->l1_size * q->l2e + 1, 8);
     q->table = malloc((size_t)q->cs);
     q->cluster = writable ? malloc((size_t)q->cs) : NULL;
-    q->dcache = malloc((size_t)q->cs);
+    q->decoded = decoded_new((size_t)q->cs);
+    q->dcache = q->decoded ? q->decoded->data : NULL;
+    q->view_owner = calloc(1, sizeof(*q->view_owner));
+    if (q->view_owner) {
+        q->view_owner->refs = 1;
+    }
     q->cbuf = malloc((size_t)q->cs * 2 + 512);
     q->inflate = rinflate_new(-12);
     if (!q->l1 || !q->l2 || !q->table || (writable && !q->cluster) || !q->dcache ||
-        !q->cbuf || !q->inflate) {
+        !q->cbuf || !q->inflate || !q->view_owner) {
         FAIL("out of memory");
     }
     for (uint32_t i = 0; i < q->l1_size; i += (uint32_t)q->l2e) {
@@ -697,7 +791,8 @@ void lr_qcow2_close(LRQcow2 *q)
         rinflate_free(q->inflate);
     }
     free(q->cbuf);
-    free(q->dcache);
+    decoded_release(q->decoded);
+    decoded_owner_release(q->view_owner);
     free(q->cluster);
     free(q->table);
     free(q->rb);
@@ -848,7 +943,13 @@ static int write_new(LRQcow2 *q, uint64_t gc, uint64_t in, uint64_t len,
              * it as the patch workspace instead of copying a full cluster.
              * Invalidate before mutation so failed writes cannot expose
              * modified bytes through the old compressed mapping. */
-            data = q->dcache;
+            if (q->decoded->refs > 1) {
+                /* Patch workspace cannot alter a retained read snapshot. */
+                memcpy(q->cluster, q->dcache, (size_t)q->cs);
+                data = q->cluster;
+            } else {
+                data = q->dcache;
+            }
             q->cached = ~0ull;
         } else if (reads_zero(q, e)) {
             /* Splitting tiny clears costs more than it saves. For bulk

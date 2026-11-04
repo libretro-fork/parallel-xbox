@@ -559,6 +559,33 @@ static bool lr_disk_progress(void)
     return lr_disk_run_pending() || aio_bh_poll(qemu_get_aio_context()) > 0;
 }
 
+void lr_disk_release_read_view(void *owner)
+{
+    lr_qcow2_release_read_view(owner);
+}
+
+BlockAIOCB *lr_disk_aio_read_view(BlockBackend *blk, int64_t offset, size_t size,
+                                 const void **data, void **owner,
+                                 BlockCompletionFunc *cb, void *opaque)
+{
+    *data = NULL;
+    *owner = NULL;
+    if (!blk || blk->m.kind != LR_MEDIUM_QCOW2) {
+        return NULL;
+    }
+    LRQcow2ReadView view;
+    int ret = lr_qcow2_read_view(blk->m.qcow2, offset, size, &view);
+    if (!ret) {
+        return NULL;
+    }
+    if (ret > 0) {
+        *data = view.data;
+        *owner = view.owner;
+        ret = 0;
+    }
+    return lr_disk_submit(blk, ret, cb, opaque);
+}
+
 BlockAIOCB *blk_aio_preadv(BlockBackend *blk, int64_t offset,
                            QEMUIOVector *qiov, BdrvRequestFlags flags,
                            BlockCompletionFunc *cb, void *opaque)

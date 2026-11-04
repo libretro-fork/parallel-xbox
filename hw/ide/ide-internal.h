@@ -326,6 +326,9 @@ typedef struct IDEBufferedRequest {
     QLIST_ENTRY(IDEBufferedRequest) list;
     QEMUIOVector qiov;
     size_t buffer_capacity;
+    const void *read_view;
+    void *read_view_owner;
+    size_t read_view_size;
     QEMUIOVector *original_qiov;
     BlockCompletionFunc *original_cb;
     void *original_opaque;

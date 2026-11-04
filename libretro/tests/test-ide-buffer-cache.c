@@ -50,6 +50,9 @@ static BlockAIOCB *blk_aio_preadv(void*blk,int64_t off,QEMUIOVector*v,int flags,
  abort();
 }
 static BlockAIOCB *blk_abort_aio_request(void*blk,BlockCompletionFunc*cb,void*arg,int ret){(void)blk;(void)cb;(void)arg;(void)ret;abort();}
+static void lr_disk_release_read_view(void *owner){assert(!owner);}
+static BlockAIOCB *lr_disk_aio_read_view(void *blk,int64_t off,size_t size,const void **data,void **owner,BlockCompletionFunc *cb,void *opaque)
+{(void)blk;(void)off;(void)size;(void)cb;(void)opaque;*data=NULL;*owner=NULL;return NULL;}
 /* PRODUCTION */
 static IDEState state;
 static uint8_t destination[131072];

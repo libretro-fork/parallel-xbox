@@ -21,7 +21,8 @@ typedef struct LRQcow2 LRQcow2;
 /* The image in f (which stays the caller's to close, after this). NULL
  * when it is not one this can use, err (errlen bytes) saying why. Every
  * table the disk is found through is read into memory here, once: no
- * allocation after. */
+ * allocation after for tables. Retaining a decoded read view may need one
+ * additional decoded buffer while another read overlaps it. */
 LRQcow2 *lr_qcow2_open(LRFile *f, bool writable, char *err, size_t errlen);
 void lr_qcow2_close(LRQcow2 *q);
 
@@ -31,6 +32,18 @@ int64_t lr_qcow2_size(LRQcow2 *q);
 /* Whole requests on the disk: 0, or -errno. */
 int lr_qcow2_preadv(LRQcow2 *q, int64_t off, const LRFileIOV *iov, int n);
 int lr_qcow2_pwritev(LRQcow2 *q, int64_t off, const LRFileIOV *iov, int n);
+
+/* Owner-serialized immutable snapshot of one compressed-cluster span.
+ * 1: retained view, 0: ordinary preadv required, negative: read error.
+ * Only one view per image is retained at a time. It remains valid through
+ * later reads/writes and image close; release once on the same I/O owner. */
+typedef struct LRQcow2ReadView {
+    const uint8_t *data;
+    void *owner;
+} LRQcow2ReadView;
+int lr_qcow2_read_view(LRQcow2 *q, int64_t off, size_t size, LRQcow2ReadView *view);
+void lr_qcow2_release_read_view(void *owner);
+
 
 /* the range reads zeroes; its whole clusters are given back (holes where
  * nothing else uses them) */
