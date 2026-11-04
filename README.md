@@ -487,3 +487,8 @@ receives the same context without another TLS lookup. Eight-byte alignment,
 exact-fit behavior and allocation sizes are unchanged. The production allocator
 fixture checks explicit owners different from TLS, refill owner/size forwarding,
 zero/odd requests, exact fits and the legacy wrapper on i686 and x86-64.
+
+CPU and mapped-DMA ownership callbacks receive the exact intersection with
+their watched RAM range. Matching uses offset arithmetic for empty and
+final-address spans; it adds no bounce buffer, payload copy, lock or GPU query.
+Existing GPU-owned-memory coherence waits remain where required.
