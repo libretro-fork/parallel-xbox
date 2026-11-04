@@ -4944,7 +4944,9 @@ void dspjit_run(DspJit *jit, int cycles)
                                 core->interrupt_counter != 0)) || core->pc_on_rep) {
             fn = NULL;
 #if DSPJIT_HOST
-            if (!core->pc_on_rep && !core->loop_rep) {
+            /* A restored REP setup marker needs the same single-instruction
+             * post pass: it must not decrement LC before entering the body. */
+            if (!core->loop_rep || core->pc_on_rep) {
                 fn = jit->interrupt_blocks[mode & 3][pc];
                 if (!fn) {
                     fn = dspjit_translate_interrupt(jit, mode, pc);
