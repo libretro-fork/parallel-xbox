@@ -59,6 +59,7 @@
 ## Unreleased
 
 - Mapped read-only raw image reads retain their source through IDE completion, removing intermediate scratch copies while keeping pending reads valid across media close.
+- DSP: specialize constant-address parallel single-bus RAM moves while retaining X mixbuffer aliases, immediate operands and peripheral retirement behavior.
 
 - Large partial writes to compressed HDD clusters with a pending read preserve only unchanged edges, avoiding copies of bytes the write replaces.
 
