@@ -76,11 +76,20 @@ static void dsp_c_step(DSPState *dsp)
     dsp56k_execute_instruction(c_core(dsp));
 }
 
+/* A halted frame can leave positive credit. Preserve ordinary carry, but
+ * never let accumulated host budgets wrap into negative execution debt. */
+static void dsp_c_add_cycles(DSPState *dsp, int cycles)
+{
+    int64_t total = (int64_t)dsp->save_cycles + cycles;
+    dsp->save_cycles = total > INT32_MAX ? INT32_MAX :
+                       total < INT32_MIN ? INT32_MIN : total;
+}
+
 static void dsp_c_run(DSPState *dsp, int cycles)
 {
     dsp_core_t *core = c_core(dsp);
 
-    dsp->save_cycles += cycles;
+    dsp_c_add_cycles(dsp, cycles);
 
     if (dsp->save_cycles <= 0)
         return;
@@ -106,7 +115,7 @@ static void dsp_c_run_until_halt(DSPState *dsp)
 {
     dsp_core_t *core = c_core(dsp);
     if (core->jit) {
-        dsp->save_cycles += 1000;
+        dsp_c_add_cycles(dsp, 1000);
         dspjit_run_until_halt(core->jit, dsp->save_cycles);
         dsp->save_cycles = core->jit_cycles;
     } else {

@@ -58,6 +58,7 @@
 ## Unreleased
 
 - Avoid moving the completed SPIR-V function stream when a reserved 256-word prefix fits; retain the allocation owner through Vulkan shader lifetimes and compact larger prefixes safely.
+- DSP: prevent accumulated cycle budgets from overflowing and stalling execution after long sequences of early-halting frames.
 
 - Reuse the optimizer's TCG context for environment-base checks in load/store forwarding, avoiding TLS lookups while retaining forwarding eligibility and memory-copy invalidation.
 
