@@ -1,0 +1,88 @@
+/* SPDX-License-Identifier: GPL-2.0-or-later */
+#include "qemu/osdep.h"
+#include "tcg/tcg.h"
+G_NORETURN void g_assertion_message_expr(const char *domain, const char *file,
+                                       int line, const char *func, const char *expr)
+{
+    (void)domain;
+    fprintf(stderr, "%s:%d: %s: %s\n", file, line, func, expr ? expr : "unreachable");
+    abort();
+}
+#ifdef _WIN32
+unsigned long tls_key_tcg_ctx;
+#else
+__thread TCGContext *tcg_ctx;
+#endif
+#undef tcg_debug_assert
+#define tcg_debug_assert(x) assert(x)
+#undef g_assert_not_reached
+#define g_assert_not_reached() abort()
+static void tcg_raise_tb_overflow(TCGContext *s) { (void)s; abort(); }
+/* PRODUCTION */
+
+static void check_global(TCGTemp *temp, TCGTemp *base, intptr_t offset,
+                         TCGType type, bool indirect)
+{
+    unsigned slots = TCG_TARGET_REG_BITS == 32 && type == TCG_TYPE_I64 ? 2 : 1;
+    for (unsigned i = 0; i < slots; ++i) {
+        TCGTemp *part = temp + i;
+        assert(part->kind == TEMP_GLOBAL && part->base_type == type);
+        assert(part->type == (slots == 2 ? TCG_TYPE_I32 : type));
+        assert(part->mem_base == base && part->mem_offset == offset + 4 * (intptr_t)i);
+        assert(part->mem_allocated && part->indirect_reg == indirect);
+        assert(part->temp_subindex == i && !part->indirect_base);
+        assert(!part->state && !part->state_ptr && !part->val);
+    }
+}
+
+int main(void)
+{
+    static TCGContext context;
+    assert(sizeof(void *) * CHAR_BIT == TCG_TARGET_REG_BITS);
+#ifdef _WIN32
+    tls_key_tcg_ctx = TlsAlloc();
+    assert(tls_key_tcg_ctx != TLS_OUT_OF_INDEXES);
+#endif
+    SET_tcg_ctx(&context);
+    memset(context.temps, 0xa5, sizeof(context.temps));
+    TCGTemp *fixed = tcg_global_reg_new_internal(&context, TCG_TYPE_PTR, 0);
+    assert(fixed->kind == TEMP_FIXED && fixed->reg == 0);
+    assert(tcg_regset_test_reg(context.reserved_regs, 0));
+    TCGv_ptr handle = temp_tcgv_ptr(fixed);
+    static const intptr_t offsets[] = {0, 4, 512, -8};
+    for (unsigned i = 0; i < ARRAY_SIZE(offsets); ++i) {
+        int first = context.nb_globals;
+        TCGv_i32 value32 = tcg_global_mem_new_i32(handle, offsets[i]);
+        assert(tcgv_i32_temp(value32) == &context.temps[first]);
+        assert(context.nb_globals == first + 1);
+        check_global(tcgv_i32_temp(value32), fixed, offsets[i], TCG_TYPE_I32, false);
+        first = context.nb_globals;
+        TCGv_i64 value64 = tcg_global_mem_new_i64(handle, offsets[i]);
+        assert(tcgv_i64_temp(value64) == &context.temps[first]);
+        assert(context.nb_globals == first + (TCG_TARGET_REG_BITS == 32 ? 2 : 1));
+        check_global(tcgv_i64_temp(value64), fixed, offsets[i], TCG_TYPE_I64, false);
+    }
+    TCGTemp *indirect = tcg_global_mem_new_internal(handle, 128, TCG_TYPE_PTR);
+    int first = context.nb_globals;
+    TCGTemp *value = tcg_global_mem_new_internal(temp_tcgv_ptr(indirect), 256,
+                                               TCG_TYPE_I64);
+    assert(value == &context.temps[first] && indirect->indirect_base);
+    assert(context.nb_indirects == (TCG_TARGET_REG_BITS == 32 ? 2 : 1));
+    check_global(value, indirect, 256, TCG_TYPE_I64, true);
+    tcg_set_frame(&context, 1, 64, 4096);
+    assert(context.frame_start == 64 && context.frame_end == 4160);
+    assert(context.frame_temp->kind == TEMP_FIXED && context.frame_temp->reg == 1);
+    assert(tcg_regset_test_reg(context.reserved_regs, 1));
+    assert(context.nb_globals == context.nb_temps);
+    /* Clearing one compact temporary must not overwrite its next neighbor. */
+    const unsigned char *next = (const void *)&context.temps[context.nb_temps];
+    for (unsigned i = 0; i < sizeof(TCGTemp); ++i) {
+        assert(next[i] == 0xa5);
+    }
+    printf("TCG global layout: %d-bit direct/indirect globals, %shandles and frame PASS\n",
+           TCG_TARGET_REG_BITS, TCG_TARGET_REG_BITS == 32 ? "split halves, " : "");
+#ifdef _WIN32
+    TlsFree(tls_key_tcg_ctx);
+#endif
+    return 0;
+}

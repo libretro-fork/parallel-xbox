@@ -456,3 +456,19 @@ helper in unstripped Linux x86-64 old/new cores, normalizing function targets
 by symbol name and checking all functional metadata bytes. The publication
 stress fixture checks non-null function identity, every argument-location
 field, canonical layouts, stalled-initializer independence and reclamation.
+
+TCG temporaries and globals omit diagnostic names and constructor name
+arguments; register/segment/bounds-name tables are removed. On Linux x86-64,
+TCGTemp is 48 bytes instead of 56, reducing the context by 4096 bytes. Static
+allocation/indexing probes show unchanged index-conversion instruction count
+and one fewer eight-byte store when clearing a fresh temporary. These are
+layout/disassembly results, not timing measurements. Supported host CPU
+requirements remain unchanged. The split-global path is retained for future 32-bit host work, without name
+formatting/allocation. Current core host restrictions are unchanged.
+`test-tcg-global-layout.py CHECKOUT [CC]` compiles production constructors
+against real TCG structures and checks direct/indirect globals, handles,
+register reservation and frame metadata. For the real i686 constructor fixture,
+set `TCG_GLOBAL_LAYOUT_TEST_32BIT=1` and use `i686-w64-mingw32-gcc`. The fixture
+adapts host configuration only in its temporary directory (including the Int128
+struct fallback); production configuration is untouched. This tests 32-bit
+constructors and ABI sizes, and does not constitute a complete 32-bit core port.

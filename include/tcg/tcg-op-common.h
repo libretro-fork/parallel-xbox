@@ -26,8 +26,8 @@ TCGv_i128 tcg_temp_new_i128(void);
 TCGv_vec tcg_temp_new_vec(TCGType type);
 TCGv_vec tcg_temp_new_vec_matching(TCGv_vec match);
 
-TCGv_i32 tcg_global_mem_new_i32(TCGv_ptr reg, intptr_t off, const char *name);
-TCGv_i64 tcg_global_mem_new_i64(TCGv_ptr reg, intptr_t off, const char *name);
+TCGv_i32 tcg_global_mem_new_i32(TCGv_ptr reg, intptr_t off);
+TCGv_i64 tcg_global_mem_new_i64(TCGv_ptr reg, intptr_t off);
 
 /* Generic ops.  */
 

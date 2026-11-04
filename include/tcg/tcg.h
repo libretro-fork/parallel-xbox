@@ -317,7 +317,6 @@ typedef struct TCGTemp {
     int64_t val;
     struct TCGTemp *mem_base;
     intptr_t mem_offset;
-    const char *name;
 
     /* Pass-specific information that can be stored for a temporary.
        One word worth of integer data, and one pointer to data

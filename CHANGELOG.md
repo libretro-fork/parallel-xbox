@@ -1,5 +1,6 @@
 # Changelog of the libretro core
 
+- Remove unused TCG temporary/global names and constructor name arguments. Shrink each temporary and its context storage, avoid diagnostic name setup, and retain global register mappings and guest code generation.
 - Remove unused TCG helper names from static descriptors and published call layouts. Keep function targets, calling-convention metadata and lock-free publication behavior unchanged; each descriptor/layout is one pointer smaller.
 - Compact TCG opcode metadata by removing names used only by disabled IR dumps. Keep an eight-byte table stride, preserve opcode counts/flags, and remove the dump formatter and its unused translation PC argument.
 - Remove unused TCG perf/jitdump and GDB JIT registration infrastructure. Linux no longer calls an empty profiler on each translated block or allocates startup debug ELF metadata; private generated-code capture remains available for tests.
