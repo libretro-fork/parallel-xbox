@@ -164,6 +164,13 @@ static bool match_loop_indirect(uint32_t op)
     return ((op >> 11) & 7) != 6;
 }
 
+/* Bit-test calls already use their extension for the branch target.
+ * Their EA operand permits only the seven register-indirect modes. */
+static bool match_bitcall_indirect(uint32_t op)
+{
+    return ((op >> 11) & 7) != 6;
+}
+
 static bool match_shift_control(uint32_t op)
 {
     return ((op >> 1) & 7) >= 2;
@@ -290,8 +297,8 @@ static const OpcodeEntry nonparallel_opcodes[] = {
     { "000011000000aaaaaaaaaaaa", "jmp xxx", dis_jmp_imm, emu_jmp_imm },
     { "00001111CCCCaaaaaaaaaaaa", "jscc xxx", dis_jscc_imm, emu_jscc_imm },
     { "0000101111MMMRRR1010CCCC", "jscc ea", dis_jscc_ea, emu_jscc_ea, match_MMMRRR },
-    { "0000101101MMMRRR1S00bbbb", "jsclr #n, [X or Y]:ea, xxxx", dis_jsclr_ea, emu_jsclr_ea, match_MMMRRR },
-    { "0000101100MMMRRR1S00bbbb", "jsclr #n, [X or Y]:aa, xxxx", dis_jsclr_aa, emu_jsclr_aa, match_MMMRRR },
+    { "0000101101MMMRRR1S00bbbb", "jsclr #n, [X or Y]:ea, xxxx", dis_jsclr_ea, emu_jsclr_ea, match_bitcall_indirect },
+    { "0000101100aaaaaa1S00bbbb", "jsclr #n, [X or Y]:aa, xxxx", dis_jsclr_aa, emu_jsclr_aa },
     { "0000101110pppppp1S0bbbbb", "jsclr #n, [X or Y]:pp, xxxx", dis_jsclr_pp, emu_jsclr_pp },
     { "0000000111qqqqqq1S0bbbbb", "jsclr #n, [X or Y]:qq, xxxx", dis_jsclr_qq, emu_jsclr_qq, match_x_qq_bit },
     { "0000101111DDDDDD000bbbbb", "jsclr #n, S, xxxx", dis_jsclr_reg, emu_jsclr_reg },
@@ -302,7 +309,7 @@ static const OpcodeEntry nonparallel_opcodes[] = {
     { "0000101011DDDDDD0010bbbb", "jset #n, S, xxxx", dis_jset_reg, emu_jset_reg },
     { "0000101111MMMRRR10000000", "jsr ea", dis_jsr_ea, emu_jsr_ea, match_MMMRRR },
     { "000011010000aaaaaaaaaaaa", "jsr xxx", dis_jsr_imm, emu_jsr_imm },
-    { "0000101101MMMRRR1S10bbbb", "jsset #n, [X or Y]:ea, xxxx", dis_jsset_ea, emu_jsset_ea, match_MMMRRR },
+    { "0000101101MMMRRR1S10bbbb", "jsset #n, [X or Y]:ea, xxxx", dis_jsset_ea, emu_jsset_ea, match_bitcall_indirect },
     { "0000101100aaaaaa1S10bbbb", "jsset #n, [X or Y]:aa, xxxx", dis_jsset_aa, emu_jsset_aa },
     { "0000101110pppppp1S1bbbbb", "jsset #n, [X or Y]:pp, xxxx", dis_jsset_pp, emu_jsset_pp },
     { "0000000111qqqqqq1S1bbbbb", "jsset #n, [X or Y]:qq, xxxx", dis_jsset_qq, emu_jsset_qq, match_x_qq_bit },

@@ -35,6 +35,8 @@
 
 - Remove the unused standalone object-option queue and QAPI object factory, then prune 244 unreachable generated definitions and twelve C sources, including crypto visitors/tables. Keep built-in device/property initialization and schema type layouts unchanged.
 
+- DSP: restore six valid JSCLR short-memory addresses and Y long-offset MOVE encodings that were misidentified as bit-test calls.
+
 - Remove unsupported guest RDRAND/RDSEED helpers and their random seed/TLS infrastructure. Initialize OS entropy directly for EEPROM keys; retain networking RNG and illegal-instruction/fetch behavior.
 
 - DSP: execute register-indirect X/Y bit-test calls natively, preserving address updates, cycle charges and conditional stack saves.
