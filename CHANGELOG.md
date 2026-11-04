@@ -57,6 +57,8 @@
 
 ## Unreleased
 
+- Avoid moving the completed SPIR-V function stream when a reserved 256-word prefix fits; retain the allocation owner through Vulkan shader lifetimes and compact larger prefixes safely.
+
 - Reuse the optimizer's TCG context for environment-base checks in load/store forwarding, avoiding TLS lookups while retaining forwarding eligibility and memory-copy invalidation.
 
 - Reuse the optimizer's TCG context for folded constants and scratch temporaries, avoiding TLS lookups while preserving constant caching, temporary reuse and optimizer metadata initialization.

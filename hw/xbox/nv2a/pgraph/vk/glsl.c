@@ -48,7 +48,7 @@ static GlslcResult compile_glsl(VkShaderStageFlagBits stage,
         abort();
     }
     GlslcOptions opts = { .spirv_1_6 = pgraph_vk_spirv_1_6,
-                          .emit_layout = emit_layout };
+                          .emit_layout = emit_layout, .module_prefix_words = 256 };
     GlslcResult result;
     if (!glslc_compile(st, glsl_source, &opts, &result)) {
         /* A bug in the compiler or a generator: the shader goes next to
@@ -98,7 +98,7 @@ void pgraph_vk_shader_layouts_unref(ShaderLayouts *layouts)
 void pgraph_vk_shader_source_unref(ShaderSource *source)
 {
     if (source && retro_atomic_fetch_sub_int(&source->refs, 1) == 1) {
-        free(source->words);
+        free(source->words_allocation ? source->words_allocation : source->words);
         pgraph_vk_shader_layouts_unref(source->layouts);
         g_free(source);
     }
@@ -110,6 +110,8 @@ ShaderSource *pgraph_vk_compile_shader(VkShaderStageFlagBits stage,
     GlslcResult result = compile_glsl(stage, glsl_source, true);
     ShaderSource *source = pgraph_vk_shader_source_new(result.words,
                                                       result.num_words);
+    source->words_allocation = result.allocation;
+    source->len = sizeof(*source) + result.allocation_words * sizeof(*result.words);
     if (!result.uniforms.count && !result.push_constants.count) {
         return source;
     }
@@ -151,7 +153,7 @@ VkShaderModule pgraph_vk_create_fixed_shader_module_from_glsl(
     GlslcResult result = compile_glsl(stage, glsl, false);
     VkShaderModule module = pgraph_vk_create_shader_module_from_words(
         r, result.words, result.num_words);
-    free(result.words);
+    glslc_result_free_words(&result);
     return module;
 }
 

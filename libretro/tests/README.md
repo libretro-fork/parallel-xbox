@@ -4306,3 +4306,5 @@ This is an exhaustive eligibility check, not execution of every encoding or
 a hardware-validity claim for reserved operands. Existing differential,
 independent-state, callback and production fixtures verify execution behavior.
 Other nonparallel operand/context fallback guards remain separate.
+
+`test-spv-prefix-view.py CHECKOUT [CC]` checks module-prefix ownership against the compact compiler path, recording function-stream moves rather than timings. It covers all stages, SPIR-V versions, layouts, large function growth, fitting and overflowing prefixes, and parse-error cleanup. `SPV_PREFIX_BASELINE_SOURCE` optionally links the previous compiler for a byte/layout oracle. `SPV_PREFIX_CFLAGS`, `SPV_PREFIX_BINARY`, `SPV_PREFIX_SKIP_RUN` and `SPV_PREFIX_OUTPUT_DIR` support sanitized/cross-compiled fixtures and validator inputs. The layout fixture also compares 256-word views against compact modules. Fixed-shader borrowing and worker refcount fixtures exercise release ordering and interior-pointer allocation ownership.

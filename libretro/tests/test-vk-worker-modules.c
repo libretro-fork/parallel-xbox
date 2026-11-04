@@ -78,6 +78,15 @@ static void *consumer(void *arg){ShaderSource *a=arg;for(unsigned i=0;i<200000;i
 int main(void)
 {
  retro_atomic_int_init(&live_sources,0);
+ /* Interior module views retain and release the allocation base. */
+ uint32_t *view_base=malloc(20*sizeof(*view_base));assert(view_base);
+ ShaderSource *view=pgraph_vk_shader_source_new(view_base+4,16);
+ view->words_allocation=view_base;
+ assert(pgraph_vk_shader_source_ref(view)==view);
+ pgraph_vk_shader_source_unref(view);view->words[0]=123;
+ assert(view_base[4]==123);pgraph_vk_shader_source_unref(view);
+ assert(!retro_atomic_load_relaxed_int(&live_sources));
+
  for(unsigned i=0;i<VK_SPEC_READY;i++)vk_spec_ready_order[i]=i;
  ShaderSource *empty=pgraph_vk_shader_source_new(NULL,0);assert(!empty->words&&!empty->num_words);pgraph_vk_shader_source_unref(empty);
  ShaderModuleCacheKey k={.kind=1,.id=42,.len=64};

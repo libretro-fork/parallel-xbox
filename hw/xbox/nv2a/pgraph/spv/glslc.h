@@ -16,6 +16,7 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
+#include <stdlib.h>
 
 typedef enum GlslcStage {
     GLSLC_STAGE_VERTEX,
@@ -30,6 +31,9 @@ typedef struct GlslcOptions {
     bool spirv_1_6;
     /* Export host parameter layouts; fixed shaders do not need them. */
     bool emit_layout;
+    /* Optional front space for assembly without moving the function stream.
+     * Nonzero callers release words with glslc_result_free_words(). */
+    size_t module_prefix_words;
 } GlslcOptions;
 
 typedef struct ShaderUniform {
@@ -45,14 +49,25 @@ typedef struct GlslcLayout {
 } GlslcLayout;
 
 typedef struct GlslcResult {
-    uint32_t *words; /* the module, free() it; NULL on error */
+    uint32_t *words; /* module; free() unless prefix views requested; NULL on error */
     size_t num_words;
     char error[256]; /* why, with the line, on error */
     int error_line;
     /* Present only with emit_layout. Release each members allocation with
      * free(); names live in that allocation. Independent of words. */
     GlslcLayout uniforms, push_constants;
+    /* Set only for a module view inside its allocation. */
+    void *allocation;
+    size_t allocation_words;
 } GlslcResult;
+
+static inline void glslc_result_free_words(GlslcResult *result)
+{
+    free(result->allocation ? result->allocation : result->words);
+    result->words = NULL;
+    result->allocation = NULL;
+    result->num_words = result->allocation_words = 0;
+}
 
 /* Compiles source for stage. Returns whether a module was made; on
  * failure result->error says why. */

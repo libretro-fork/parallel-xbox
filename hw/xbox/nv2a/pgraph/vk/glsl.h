@@ -39,6 +39,7 @@ typedef struct ShaderSource {
     uint32_t *words;
     size_t num_words, len; /* len includes retained layout allocations */
     ShaderLayouts *layouts; /* independent lifetime from the shader words */
+    void *words_allocation; /* optional base when words is an interior view */
 } ShaderSource;
 
 /* Takes ownership of malloc-allocated words. */

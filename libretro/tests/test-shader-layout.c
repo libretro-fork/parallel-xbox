@@ -86,6 +86,15 @@ static void test(GlslcStage stage, const char *text, bool version,
 #ifdef TEST_SPIRV_REFLECT
     oracle(&code);
 #endif
+    GlslcResult view;
+    opts.module_prefix_words = 256;
+    assert(glslc_compile(stage, text, &opts, &view));
+    assert(view.num_words == code.num_words && !memcmp(view.words, code.words, code.num_words * 4));
+    compare(&view.uniforms, code.uniforms.members, code.uniforms.count, code.uniforms.size);
+    compare(&view.push_constants, code.push_constants.members, code.push_constants.count, code.push_constants.size);
+    glslc_result_free_words(&view);
+    free(view.uniforms.members);free(view.push_constants.members);
+    opts.module_prefix_words = 0;
     opts.emit_layout = false;
     assert(glslc_compile(stage, text, &opts, &bare));
     assert(!bare.uniforms.members && !bare.push_constants.members);

@@ -47,26 +47,39 @@ enum {
 typedef struct Buf {
     uint32_t *w;
     size_t n, cap;
+    size_t headroom; /* allocated words preceding w */
 } Buf;
+
+static uint32_t *buf_base(const Buf *b)
+{
+    return b->w ? b->w - b->headroom : NULL;
+}
+
+static void buf_free(Buf *b)
+{
+    free(buf_base(b));
+    memset(b, 0, sizeof(*b));
+}
 
 static void buf_reserve(Buf *b, size_t needed)
 {
     const size_t limit = SIZE_MAX / sizeof(uint32_t);
-    if (needed > limit) {
+    if (b->headroom > limit || needed > limit - b->headroom) {
         abort();
     }
     if (needed <= b->cap) {
         return;
     }
-    size_t cap = b->cap ? b->cap : 1024;
+    size_t capacity_limit = limit - b->headroom;
+    size_t cap = b->cap ? b->cap : (capacity_limit < 1024 ? capacity_limit : 1024);
     while (cap < needed) {
-        cap = cap > limit / 2 ? needed : cap * 2;
+        cap = cap > capacity_limit / 2 ? needed : cap * 2;
     }
-    uint32_t *words = realloc(b->w, cap * sizeof(*words));
+    uint32_t *words = realloc(buf_base(b), (cap + b->headroom) * sizeof(*words));
     if (!words) {
         abort();
     }
-    b->w = words;
+    b->w = words + b->headroom;
     b->cap = cap;
 }
 
@@ -96,11 +109,11 @@ static void buf_append(Buf *b, const Buf *source)
 static void buf_append_take(Buf *b, Buf *source)
 {
     if (!b->n && source->n) {
-        free(b->w);
+        buf_free(b);
         *b = *source;
     } else {
         buf_append(b, source);
-        free(source->w);
+        buf_free(source);
     }
     memset(source, 0, sizeof(*source));
 }
@@ -262,6 +275,7 @@ struct GlslcCtx {
     size_t nfns, fns_cap;
 
     /* the function being emitted */
+    Buf fhead; /* kept in the context so errors release its allocation */
     Buf fvars; /* its OpVariables, for its first block */
     Buf fbody;
     bool in_function;
@@ -1774,7 +1788,7 @@ static void splice_end(C *c, Buf *saved, size_t at)
         memcpy(c->fbody.w + at, made.w, made.n * sizeof(uint32_t));
         c->fbody.n += made.n;
     }
-    free(made.w);
+    buf_free(&made);
 }
 
 static Ex parse_binary(C *c, int min_prec);
@@ -4747,19 +4761,22 @@ static void parse_function(C *c, Type *ret, const char *name)
     memset(&c->fbody, 0, sizeof(c->fbody));
     c->ncf = 0;
     /* OpFunction, parameters */
-    Buf head;
-    memset(&head, 0, sizeof(head));
-    op(&head, SpvOpFunction, 4);
-    buf_put(&head, ret->id);
-    buf_put(&head, f->id);
-    buf_put(&head, SpvFunctionControlMaskNone);
-    buf_put(&head, f->type_id);
+    Buf *head = &c->fhead;
+    memset(head, 0, sizeof(*head));
+    if (!c->funcs.n) {
+        head->headroom = c->opts.module_prefix_words;
+    }
+    op(head, SpvOpFunction, 4);
+    buf_put(head, ret->id);
+    buf_put(head, f->id);
+    buf_put(head, SpvFunctionControlMaskNone);
+    buf_put(head, f->type_id);
     uint32_t param_ids[MAX_ARGS];
     for (int i = 0; i < n; i++) {
         param_ids[i] = new_id(c);
-        op(&head, SpvOpFunctionParameter, 2);
-        buf_put(&head, param_type_id(c, params[i], pmode[i]));
-        buf_put(&head, param_ids[i]);
+        op(head, SpvOpFunctionParameter, 2);
+        buf_put(head, param_type_id(c, params[i], pmode[i]));
+        buf_put(head, param_ids[i]);
     }
     uint32_t entry = new_id(c);
     c->cur_block = entry;
@@ -4798,7 +4815,7 @@ static void parse_function(C *c, Type *ret, const char *name)
         }
         c->terminated = true;
     }
-    buf_append_take(&c->funcs, &head);
+    buf_append_take(&c->funcs, head);
     op(&c->funcs, SpvOpLabel, 1);
     buf_put(&c->funcs, entry);
     buf_append_take(&c->funcs, &c->fvars);
@@ -5076,19 +5093,26 @@ static void assemble(C *c, GlslcResult *result)
         abort();
     }
     size_t total = prefix + c->funcs.n;
-    /* The function stream becomes the result allocation. Reserve once at
-     * its known final size; no separate assembled-module buffer is made. */
-    if (c->funcs.cap < total) {
-        uint32_t *words = realloc(c->funcs.w, total * sizeof(uint32_t));
-        if (!words) {
-            abort();
+    uint32_t *words;
+    if (prefix <= c->funcs.headroom) {
+        /* Prepend into reserved space; the function stream stays in place. */
+        words = c->funcs.w - prefix;
+        result->allocation = buf_base(&c->funcs);
+    } else {
+        /* A larger prefix, or a caller requiring free(words), compacts. */
+        size_t capacity = c->funcs.cap + c->funcs.headroom;
+        if (capacity < total) {
+            uint32_t *base = realloc(buf_base(&c->funcs), total * sizeof(*base));
+            if (!base) {
+                abort();
+            }
+            c->funcs.w = base + c->funcs.headroom;
+            c->funcs.cap = total - c->funcs.headroom;
         }
-        c->funcs.w = words;
-        c->funcs.cap = total;
+        words = buf_base(&c->funcs);
+        memmove(words + prefix, c->funcs.w, c->funcs.n * sizeof(*words));
     }
-    memmove(c->funcs.w + prefix, c->funcs.w,
-            c->funcs.n * sizeof(uint32_t));
-    Header output = { .words = c->funcs.w, .capacity = count.n };
+    Header output = { .words = words, .capacity = count.n };
     emit_header(c, &output);
     if (output.n != count.n) {
         abort();
@@ -5097,11 +5121,12 @@ static void assemble(C *c, GlslcResult *result)
     for (unsigned i = 0; i < sizeof(sections) / sizeof(sections[0]); i++) {
         const Buf *source = sections[i];
         if (source->n) {
-            memcpy(c->funcs.w + at, source->w, source->n * sizeof(uint32_t));
+            memcpy(words + at, source->w, source->n * sizeof(uint32_t));
             at += source->n;
         }
     }
-    result->words = c->funcs.w;
+    result->words = words;
+    result->allocation_words = c->funcs.cap + c->funcs.headroom;
     result->num_words = total;
     memset(&c->funcs, 0, sizeof(c->funcs)); /* ownership moved to caller */
 }
@@ -5110,18 +5135,19 @@ static void ctx_free(C *c)
 {
     free(c->uniforms.members);
     free(c->push_constants.members);
-    free(c->caps.w);
-    free(c->exts.w);
-    free(c->entry_iface.w);
-    free(c->exec_modes.w);
-    free(c->names.w);
-    free(c->decor.w);
-    free(c->types.w);
-    free(c->funcs.w);
-    free(c->fvars.w);
-    free(c->fbody.w);
-    free(c->global_inits.w);
-    free(c->ginit_vars.w);
+    buf_free(&c->caps);
+    buf_free(&c->exts);
+    buf_free(&c->entry_iface);
+    buf_free(&c->exec_modes);
+    buf_free(&c->names);
+    buf_free(&c->decor);
+    buf_free(&c->types);
+    buf_free(&c->funcs);
+    buf_free(&c->fhead);
+    buf_free(&c->fvars);
+    buf_free(&c->fbody);
+    buf_free(&c->global_inits);
+    buf_free(&c->ginit_vars);
     free(c->type_list);
     free(c->consts);
     free(c->syms);
@@ -5146,9 +5172,7 @@ bool glslc_compile(GlslcStage stage, const char *source,
     }
     c->next_id = 1;
     if (setjmp(c->err)) {
-        free(result->words);
-        result->words = NULL;
-        result->num_words = 0;
+        glslc_result_free_words(result);
         ctx_free(c);
         free(c);
         return false;

@@ -16,16 +16,19 @@ prefix=r"""
 #include <stdbool.h>
 #include <stddef.h>
 #include <string.h>
+#include <stdlib.h>
+static void release_words(void *p);
+#define free release_words
+#include "hw/xbox/nv2a/pgraph/spv/glslc.h"
 #include <vulkan/vulkan.h>
 #define VK_CHECK(x) assert((x)==VK_SUCCESS)
 typedef struct { VkDevice device; } PGRAPHVkState;
-typedef struct { uint32_t *words; size_t num_words; } GlslcResult;
 static uint32_t words[]={0x07230203,0x00010000,0,1,0};
 static unsigned live,created,released;
 static VkShaderStageFlagBits expected_stage;
 static const char *expected_source;
 static GlslcResult compile_glsl(VkShaderStageFlagBits stage,const char *source,int emit_layout){
- assert(!live && stage==expected_stage && source==expected_source && !emit_layout);live=1;return (GlslcResult){words,sizeof(words)/4};
+ assert(!live && stage==expected_stage && source==expected_source && !emit_layout);live=1;return (GlslcResult){.words=words,.num_words=sizeof(words)/4};
 }
 static void release_words(void *p){
  assert(p==words && live==2);live=0;released++;
@@ -58,6 +61,6 @@ env=os.environ.copy();env['PATH']=str(Path(cc).resolve().parent)+os.pathsep+env.
 with tempfile.TemporaryDirectory(prefix='fixed-shader-') as tmp:
  d=Path(tmp);(d/'test.c').write_text(prefix+production+suffix)
  exe=d/('test.exe' if os.name=='nt' else 'test')
- subprocess.run([cc,'-O2','-std=gnu11','-Wall','-Wextra','-Werror','-I'+str(r/'deps/vulkan-headers'),str(d/'test.c'),'-o',str(exe)],check=True,env=env)
+ subprocess.run([cc,'-O2','-std=gnu11','-Wall','-Wextra','-Werror','-I'+str(r),'-I'+str(r/'deps/vulkan-headers'),str(d/'test.c'),'-o',str(exe)],check=True,env=env)
  subprocess.run([str(exe)],check=True,env=env,timeout=30)
 print('Fixed shader ownership: 10000 borrowed creations, exact pointer/length and release ordering passed')
