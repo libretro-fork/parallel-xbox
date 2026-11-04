@@ -20,7 +20,6 @@
 #include "exec/plugin-gen.h"
 #include "tcg/tcg-op-common.h"
 #include "internal-common.h"
-#include "disas/disas.h"
 #include "tb-internal.h"
 #include "tb-jmp-cache.h"
 #include "tb-hash.h"
@@ -495,7 +494,7 @@ void translator_loop(CPUState *cpu, TranslationBlock *tb, int *max_insns,
     set_can_do_io(db, true);
     s->emit_before_op = NULL;
 
-    /* May be used by disas_log or plugin callbacks. */
+    /* Record the translated block extent before notifying plugins. */
     tb->size = db->pc_next - db->pc_first;
     tb->icount = db->num_insns;
     tb->ihash = tb_code_hash_func_host(cpu_env(cpu), db->pc_first, tb->size,
@@ -506,21 +505,7 @@ void translator_loop(CPUState *cpu, TranslationBlock *tb, int *max_insns,
         plugin_gen_tb_end(cpu, db->num_insns);
     }
 
-    if (qemu_loglevel_mask(CPU_LOG_TB_IN_ASM)
-        && qemu_log_in_addr_range(db->pc_first)) {
-        FILE *logfile = qemu_log_trylock();
-        if (logfile) {
-            fprintf(logfile, "----------------\n");
 
-            if (!ops->disas_log ||
-                !ops->disas_log(db, cpu, logfile)) {
-                fprintf(logfile, "IN: %s\n", lookup_symbol(db->pc_first));
-                target_disas(logfile, cpu, db);
-            }
-            fprintf(logfile, "\n");
-            qemu_log_unlock(logfile);
-        }
-    }
 }
 
 static bool translator_ld(CPUArchState *env, DisasContextBase *db,

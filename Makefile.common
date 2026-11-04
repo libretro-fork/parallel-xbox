@@ -237,10 +237,6 @@ SOURCES_COMMON := \
 	$(CORE_DIR)/chardev/char-null.c \
 	$(CORE_DIR)/chardev/char.c \
 	$(CORE_DIR)/cpu-common.c \
-	$(CORE_DIR)/disas/disas-common.c \
-	$(CORE_DIR)/disas/disas-host.c \
-	$(CORE_DIR)/disas/disas-target.c \
-	$(CORE_DIR)/disas/objdump.c \
 	$(CORE_DIR)/event-loop-base.c \
 	$(CORE_DIR)/fpu/softfloat.c \
 	$(CORE_DIR)/hw/core/bus.c \

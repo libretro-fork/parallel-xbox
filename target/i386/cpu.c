@@ -46,7 +46,6 @@
 #include "system/qtest.h"
 #include "tcg/tcg-cpu.h"
 
-#include "disas/capstone.h"
 #include "cpu-internal.h"
 
 static void x86_cpu_realizefn(DeviceState *dev, Error **errp);
@@ -4116,23 +4115,7 @@ static bool x86_cpu_has_work(CPUState *cs)
                retro_atomic_load_relaxed_int(&cs->interrupt_request)) != 0;
 }
 
-static void x86_disas_set_info(CPUState *cs, disassemble_info *info)
-{
-    X86CPU *cpu = X86_CPU(cs);
-    CPUX86State *env = &cpu->env;
 
-    info->endian = BFD_ENDIAN_LITTLE;
-    info->mach = (env->hflags & HF_CS64_MASK ? bfd_mach_x86_64
-                  : env->hflags & HF_CS32_MASK ? bfd_mach_i386_i386
-                  : bfd_mach_i386_i8086);
-
-    info->cap_arch = CS_ARCH_X86;
-    info->cap_mode = (env->hflags & HF_CS64_MASK ? CS_MODE_64
-                      : env->hflags & HF_CS32_MASK ? CS_MODE_32
-                      : CS_MODE_16);
-    info->cap_insn_unit = 1;
-    info->cap_insn_split = 8;
-}
 
 static const Property x86_cpu_properties[] = {
     DEFINE_PROP_UINT32("apic-id", X86CPU, apic_id, UNASSIGNED_APIC_ID),
@@ -4326,7 +4309,6 @@ static void x86_cpu_common_class_init(ObjectClass *oc, const void *data)
 #else
     cc->gdb_core_xml_file = "i386-32bit.xml";
 #endif
-    cc->disas_set_info = x86_disas_set_info;
 
     dc->user_creatable = true;
 

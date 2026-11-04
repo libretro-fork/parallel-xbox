@@ -1804,37 +1804,7 @@ void tcg_prologue_init(void)
     flush_idcache_range((uintptr_t)tcg_splitwx_to_rx(s->code_buf),
                         (uintptr_t)s->code_buf, prologue_size);
 
-    if (qemu_loglevel_mask(CPU_LOG_TB_OUT_ASM)) {
-        FILE *logfile = qemu_log_trylock();
-        if (logfile) {
-            fprintf(logfile, "PROLOGUE: [size=%zu]\n", prologue_size);
-            if (s->data_gen_ptr) {
-                size_t code_size = s->data_gen_ptr - s->code_gen_ptr;
-                size_t data_size = prologue_size - code_size;
-                size_t i;
 
-                disas(logfile, s->code_gen_ptr, code_size);
-
-                for (i = 0; i < data_size; i += sizeof(tcg_target_ulong)) {
-                    if (sizeof(tcg_target_ulong) == 8) {
-                        fprintf(logfile,
-                                "0x%08" PRIxPTR ":  .quad  0x%016" PRIx64 "\n",
-                                (uintptr_t)s->data_gen_ptr + i,
-                                *(uint64_t *)(s->data_gen_ptr + i));
-                    } else {
-                        fprintf(logfile,
-                                "0x%08" PRIxPTR ":  .long  0x%08x\n",
-                                (uintptr_t)s->data_gen_ptr + i,
-                                *(uint32_t *)(s->data_gen_ptr + i));
-                    }
-                }
-            } else {
-                disas(logfile, s->code_gen_ptr, prologue_size);
-            }
-            fprintf(logfile, "\n");
-            qemu_log_unlock(logfile);
-        }
-    }
 
     /*
      * Assert that goto_ptr is implemented completely, setting an epilogue.

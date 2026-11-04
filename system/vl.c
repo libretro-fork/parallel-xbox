@@ -97,7 +97,6 @@
 #ifdef CONFIG_TCG
 #endif
 
-#include "disas/disas.h"
 
 #include "trace.h"
 #include "trace/control.h"

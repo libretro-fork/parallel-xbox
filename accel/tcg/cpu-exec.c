@@ -26,7 +26,6 @@
 #include "accel/tcg/cpu-ops.h"
 #include "accel/tcg/helper-retaddr.h"
 #include "trace.h"
-#include "disas/disas.h"
 #include "exec/cpu-common.h"
 #include "exec/cpu-interrupt.h"
 #include "exec/page-protection.h"
@@ -255,33 +254,7 @@ hit:
     return tb;
 }
 
-static void log_cpu_exec(vaddr pc, CPUState *cpu,
-                         const TranslationBlock *tb)
-{
-    if (qemu_log_in_addr_range(pc)) {
-        qemu_log_mask(CPU_LOG_EXEC,
-                      "Trace %d: %p [%08" PRIx64
-                      "/%016" VADDR_PRIx "/%08x/%08x] %s\n",
-                      cpu->cpu_index, tb->tc.ptr, tb->cs_base, pc,
-                      tb->flags, tb_cflags(tb), lookup_symbol(pc));
 
-        if (qemu_loglevel_mask(CPU_LOG_TB_CPU)) {
-            FILE *logfile = qemu_log_trylock();
-            if (logfile) {
-                int flags = CPU_DUMP_CCOP;
-
-                if (qemu_loglevel_mask(CPU_LOG_TB_FPU)) {
-                    flags |= CPU_DUMP_FPU;
-                }
-                if (qemu_loglevel_mask(CPU_LOG_TB_VPU)) {
-                    flags |= CPU_DUMP_VPU;
-                }
-                cpu_dump_state(cpu, logfile, flags);
-                qemu_log_unlock(logfile);
-            }
-        }
-    }
-}
 
 static bool check_for_breakpoints_slow(CPUState *cpu, vaddr pc,
                                        uint32_t *cflags)
@@ -387,22 +360,12 @@ const void *HELPER(lookup_tb_ptr)(CPUArchState *env)
         return tcg_code_gen_epilogue;
     }
 
-    if (qemu_loglevel_mask(CPU_LOG_TB_CPU | CPU_LOG_EXEC)) {
-        log_cpu_exec(s.pc, cpu, tb);
-    }
+
 
     return tb->tc.ptr;
 }
 
-/* Return the current PC from CPU, which may be cached in TB. */
-static vaddr log_pc(CPUState *cpu, const TranslationBlock *tb)
-{
-    if (tb_cflags(tb) & CF_PCREL) {
-        return cpu->cc->get_pc(cpu);
-    } else {
-        return tb->pc;
-    }
-}
+
 
 /* Execute a TB, and fix up the CPU state afterwards if necessary */
 /*
@@ -421,9 +384,7 @@ cpu_tb_exec(CPUState *cpu, TranslationBlock *itb, int *tb_exit)
     TranslationBlock *last_tb;
     const void *tb_ptr = itb->tc.ptr;
 
-    if (qemu_loglevel_mask(CPU_LOG_TB_CPU | CPU_LOG_EXEC)) {
-        log_cpu_exec(log_pc(cpu, itb), cpu, itb);
-    }
+
 
     qemu_thread_jit_execute();
     ret = tcg_qemu_tb_exec(cpu_env(cpu), tb_ptr);
@@ -448,14 +409,7 @@ cpu_tb_exec(CPUState *cpu, TranslationBlock *itb, int *tb_exit)
          * of the start of the TB.
          */
         x86_cpu_synchronize_from_tb(cpu, last_tb);
-        if (qemu_loglevel_mask(CPU_LOG_EXEC)) {
-            vaddr pc = log_pc(cpu, last_tb);
-            if (qemu_log_in_addr_range(pc)) {
-                qemu_log("Stopped execution of TB chain before %p [%016"
-                         VADDR_PRIx "] %s\n",
-                         last_tb->tc.ptr, pc, lookup_symbol(pc));
-            }
-        }
+
     }
 
     /*

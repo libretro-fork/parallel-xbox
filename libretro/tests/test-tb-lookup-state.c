@@ -30,7 +30,7 @@ typedef CPUState CPUArchState;
 typedef struct {struct {const void *ptr;} tc;} TranslationBlock;
 static bool xemu_cpu_boost;
 static int one_insn_per_tb,loglevel;
-static unsigned indirect_calls,lookups,logs,breakpoint_checks;
+static unsigned indirect_calls,lookups,breakpoint_checks;
 static bool hit,breakpoint;
 static TCGTBCPUState looked_up;
 static TranslationBlock block;
@@ -49,7 +49,6 @@ static void cpu_loop_exit(CPUState *cpu) {longjmp(exit_jump,1);}
 static TranslationBlock *tb_lookup(CPUState *cpu,TCGTBCPUState state) {
     assert(cpu->neg.can_do_io);lookups++;looked_up=state;return hit?&block:NULL;
 }
-static void log_cpu_exec(vaddr pc,CPUState *cpu,TranslationBlock *tb) {assert(tb==&block);logs++;}
 /* PRODUCTION */
 static TCGTBCPUState indirect_hook(CPUState *cpu) {indirect_calls++;return x86_get_tb_cpu_state(cpu);}
 static uint32_t random_word(void) {static uint32_t v=0x12abcd;v^=v<<13;v^=v>>17;v^=v<<5;return v;}
@@ -75,10 +74,10 @@ int main(void) {
         if(cpu.singlestep_enabled) expected_cflags|=CF_NO_GOTO_TB|CF_NO_GOTO_PTR|CF_SINGLE_STEP|1;
         else if(one_insn_per_tb) expected_cflags|=CF_NO_GOTO_TB|1;
         else if(loglevel&CPU_LOG_TB_NOCHAIN) expected_cflags|=CF_NO_GOTO_TB;
-        lookups=logs=breakpoint_checks=indirect_calls=0;cpu.neg.can_do_io=false;
+        lookups=breakpoint_checks=indirect_calls=0;cpu.neg.can_do_io=false;
         assert(helper_lookup_tb_ptr(&cpu)==(hit?block.tc.ptr:tcg_code_gen_epilogue));
         assert(looked_up.pc==expected_pc && looked_up.cs_base==expected_base && looked_up.flags==expected_flags && looked_up.cflags==expected_cflags);
-        assert(lookups==1 && breakpoint_checks==1 && logs==(unsigned)(hit && (loglevel&CPU_LOG_EXEC)));
+        assert(lookups==1 && breakpoint_checks==1);
         assert(!indirect_calls);
         check_breakpoint(&cpu);cases++;
     }

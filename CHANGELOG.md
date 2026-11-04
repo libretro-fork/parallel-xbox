@@ -1,5 +1,6 @@
 # Changelog of the libretro core
 
+- Remove disabled QEMU assembly printers, dump-only symbol lookup and unused CPU/translator disassembly callbacks. Keep the Xbox instruction decoder, execution, frontend/error logging and private test capture unchanged.
 - Remove the unused TCG label-presence marker and its per-label write. Keep live binding/value state, branch/relocation queues and generated code behavior unchanged.
 - Reuse one TCG owner for constant lookup and handle encoding, including matching-vector constants. Avoid repeated Windows context lookups while retaining hash probing, generation checks, vector replication and 32-bit split values.
 - Reuse one TCG owner for temporary creation and handle encoding, including matching vectors. Avoid repeated Windows TLS lookups while preserving allocation/reuse, float lifetimes and generic 32-bit split temporaries.

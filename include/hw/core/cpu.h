@@ -21,7 +21,6 @@
 #define QEMU_CPU_H
 
 #include "hw/qdev-core.h"
-#include "disas/dis-asm.h"
 #include "exec/breakpoint.h"
 #include "exec/hwaddr.h"
 #include "exec/vaddr.h"
@@ -141,7 +140,6 @@ struct SysemuCPUOps;
  * @gdb_arch_name: Optional callback that returns the architecture name known
  * to GDB. The returned value is expected to be a simple constant string:
  * the caller will not g_free() it.
- * @disas_set_info: Setup architecture specific components of disassembly info
  * @adjust_watchpoint_address: Perform a target-specific adjustment to an
  * address before attempting to match it against watchpoints.
  * @deprecation_note: If this CPUClass is deprecated, this field provides
@@ -173,7 +171,6 @@ struct CPUClass {
     const char * (*gdb_arch_name)(CPUState *cpu);
     const char * (*gdb_get_core_xml_file)(CPUState *cpu);
 
-    void (*disas_set_info)(CPUState *cpu, disassemble_info *info);
 
     const char *deprecation_note;
     struct AccelCPUClass *accel_cpu;
