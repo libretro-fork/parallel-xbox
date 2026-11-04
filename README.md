@@ -479,3 +479,11 @@ intact. The global-layout fixture also compiles production label creation into
 a poisoned real TCG pool and checks queue heads, identity, order and preserved
 values on i686 and 64-bit hosts. Label size is unchanged by alignment padding;
 the change removes translator bookkeeping rather than allocation bytes.
+
+TCG pool allocation can reuse an existing owner context through
+`tcg_malloc_context`; callers without one retain `tcg_malloc`. Translation,
+liveness and optimizer callers reuse their local owner, and pool refill
+receives the same context without another TLS lookup. Eight-byte alignment,
+exact-fit behavior and allocation sizes are unchanged. The production allocator
+fixture checks explicit owners different from TLS, refill owner/size forwarding,
+zero/odd requests, exact fits and the legacy wrapper on i686 and x86-64.

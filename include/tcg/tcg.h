@@ -733,9 +733,9 @@ void tcg_tb_remove(TranslationBlock *tb);
 TranslationBlock *tcg_tb_lookup(uintptr_t tc_ptr);
 
 /* user-mode: Called with mmap_lock held.  */
-static inline void *tcg_malloc(int size)
+/* Reuse the owner context when the caller already holds it. */
+static inline void *tcg_malloc_context(TCGContext *s, int size)
 {
-    TCGContext *s = tcg_ctx;
     uintptr_t ptr, ptr_end;
 
     /* ??? This is a weak placeholder for minimum malloc alignment.  */
@@ -744,11 +744,16 @@ static inline void *tcg_malloc(int size)
     ptr = s->pool_cur;
     ptr_end = ptr + size;
     if (unlikely(ptr_end > s->pool_end)) {
-        return tcg_malloc_internal(tcg_ctx, size);
+        return tcg_malloc_internal(s, size);
     } else {
         s->pool_cur = ptr_end;
         return (void *)ptr;
     }
+}
+
+static inline void *tcg_malloc(int size)
+{
+    return tcg_malloc_context(tcg_ctx, size);
 }
 
 void tcg_func_start(TCGContext *s);

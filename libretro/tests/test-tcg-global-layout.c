@@ -18,11 +18,15 @@ __thread TCGContext *tcg_ctx;
 #undef g_assert_not_reached
 #define g_assert_not_reached() abort()
 static void tcg_raise_tb_overflow(TCGContext *s) { (void)s; abort(); }
+static TCGContext *refill_owner;
+static int refill_size;
+static unsigned refill_calls;
+static unsigned char refill_buffer[128] QEMU_ALIGNED(16);
 void *tcg_malloc_internal(TCGContext *s, int size)
 {
-    (void)s;
-    (void)size;
-    abort(); /* The label fixture must fit in its real TCG pool. */
+    assert(s == refill_owner && size == refill_size);
+    ++refill_calls;
+    return refill_buffer;
 }
 /* PRODUCTION */
 
@@ -108,9 +112,43 @@ int main(void)
     for (unsigned i = 0; i < sizeof(TCGTemp); ++i) {
         assert(next[i] == 0xa5);
     }
+    /* An explicit owner can differ from TLS; both paths must retain it. */
+    static TCGContext other;
+    static unsigned char other_arena[128] QEMU_ALIGNED(16);
+    static const struct { int requested, aligned; } requests[] = {
+        {0, 0}, {1, 8}, {7, 8}, {8, 8}, {9, 16}, {63, 64}, {64, 64}
+    };
+    uintptr_t base = (uintptr_t)other_arena;
+    uintptr_t current_cursor = context.pool_cur;
+    for (unsigned i = 0; i < ARRAY_SIZE(requests); ++i) {
+        other.pool_cur = base;
+        other.pool_end = base + requests[i].aligned;
+        unsigned calls = refill_calls;
+        assert(tcg_malloc_context(&other, requests[i].requested) == other_arena);
+        assert(other.pool_cur == other.pool_end && refill_calls == calls);
+        assert(context.pool_cur == current_cursor);
+        if (requests[i].aligned) {
+            other.pool_cur = base;
+            other.pool_end = base + requests[i].aligned - 1;
+            refill_owner = &other;
+            refill_size = requests[i].aligned;
+            assert(tcg_malloc_context(&other, requests[i].requested) == refill_buffer);
+            assert(refill_calls == calls + 1 && other.pool_cur == base);
+            assert(context.pool_cur == current_cursor);
+        }
+    }
+    /* Existing callers without a local owner retain their TLS-based API. */
+    context.pool_end = current_cursor + 8;
+    unsigned calls = refill_calls;
+    assert(tcg_malloc(1) == (void *)current_cursor);
+    assert(context.pool_cur == current_cursor + 8 && refill_calls == calls);
+    refill_owner = &context;
+    refill_size = 16;
+    assert(tcg_malloc(9) == refill_buffer && refill_calls == calls + 1);
     printf("TCG global layout: %d-bit direct/indirect globals, %shandles and frame PASS\n",
            TCG_TARGET_REG_BITS, TCG_TARGET_REG_BITS == 32 ? "split halves, " : "");
     puts("TCG labels: pool allocation, queue heads, identity, order and values PASS");
+    puts("TCG pools: explicit/TLS owners, alignment, exact fit and refill forwarding PASS");
 #ifdef _WIN32
     TlsFree(tls_key_tcg_ctx);
 #endif

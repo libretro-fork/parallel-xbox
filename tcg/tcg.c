@@ -302,7 +302,7 @@ static __attribute__((unused)) inline void tcg_patch64(tcg_insn_unit *p,
 static void tcg_out_reloc(TCGContext *s, tcg_insn_unit *code_ptr, int type,
                           TCGLabel *l, intptr_t addend)
 {
-    TCGRelocation *r = tcg_malloc(sizeof(TCGRelocation));
+    TCGRelocation *r = tcg_malloc_context(s, sizeof(TCGRelocation));
 
     r->type = type;
     r->ptr = code_ptr;
@@ -320,7 +320,7 @@ static void tcg_out_label(TCGContext *s, TCGLabel *l)
 TCGLabel *gen_new_label(void)
 {
     TCGContext *s = tcg_ctx;
-    TCGLabel *l = tcg_malloc(sizeof(TCGLabel));
+    TCGLabel *l = tcg_malloc_context(s, sizeof(TCGLabel));
 
     memset(l, 0, sizeof(TCGLabel));
     QSIMPLEQ_INIT(&l->branches);
@@ -604,7 +604,7 @@ static void tcg_out_movext3(TCGContext *s, const TCGMovExtend *i1,
 __attribute__((unused))
 static TCGLabelQemuLdst *new_ldst_label(TCGContext *s)
 {
-    TCGLabelQemuLdst *l = tcg_malloc(sizeof(*l));
+    TCGLabelQemuLdst *l = tcg_malloc_context(s, sizeof(*l));
 
     memset(l, 0, sizeof(*l));
     QSIMPLEQ_INSERT_TAIL(&s->ldst_labels, l, next);
@@ -628,7 +628,7 @@ typedef struct TCGLabelPoolData {
 static TCGLabelPoolData *new_pool_alloc(TCGContext *s, int nlong, int rtype,
                                         tcg_insn_unit *label, intptr_t addend)
 {
-    TCGLabelPoolData *n = tcg_malloc(sizeof(TCGLabelPoolData)
+    TCGLabelPoolData *n = tcg_malloc_context(s, sizeof(TCGLabelPoolData)
                                      + sizeof(tcg_target_ulong) * nlong);
 
     n->label = label;
@@ -3046,7 +3046,7 @@ static TCGOp *tcg_op_alloc(TCGOpcode opc, unsigned nargs)
 
     /* Most opcodes have 3 or 4 operands: reduce fragmentation. */
     nargs = MAX(4, nargs);
-    op = tcg_malloc(sizeof(TCGOp) + sizeof(TCGArg) * nargs);
+    op = tcg_malloc_context(s, sizeof(TCGOp) + sizeof(TCGArg) * nargs);
 
  found:
     memset(op, 0, offsetof(TCGOp, link));
@@ -3448,7 +3448,7 @@ liveness_pass_1(TCGContext *s)
     TCGOp *op, *op_prev;
     TCGRegSet *prefs;
 
-    prefs = tcg_malloc(sizeof(TCGRegSet) * nb_temps);
+    prefs = tcg_malloc_context(s, sizeof(TCGRegSet) * nb_temps);
     for (int i = 0; i < nb_temps; ++i) {
         s->temps[i].state_ptr = prefs + i;
     }
@@ -3646,7 +3646,7 @@ liveness_pass_1(TCGContext *s)
                 if (ts->state_ptr == NULL) {
                     tcg_debug_assert(temp_idx(ts) == nb_temps);
                     nb_temps++;
-                    ts->state_ptr = tcg_malloc(sizeof(TCGRegSet));
+                    ts->state_ptr = tcg_malloc_context(s, sizeof(TCGRegSet));
                     ts->state = TS_DEAD;
                     la_reset_pref(ts);
                 }
@@ -6340,7 +6340,7 @@ int tcg_gen_code(TCGContext *s, TranslationBlock *tb)
     s->pool_labels = NULL;
 
     s->gen_insn_data =
-        tcg_malloc(sizeof(uint64_t) * s->gen_tb->icount * INSN_START_WORDS);
+        tcg_malloc_context(s, sizeof(uint64_t) * s->gen_tb->icount * INSN_START_WORDS);
 
     tcg_out_tb_start(s);
 

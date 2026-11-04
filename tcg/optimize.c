@@ -135,7 +135,7 @@ static void init_ts_info(OptContext *ctx, TCGTemp *ts)
 
     ti = ts->state_ptr;
     if (ti == NULL) {
-        ti = tcg_malloc(sizeof(TempOptInfo));
+        ti = tcg_malloc_context(ctx->tcg, sizeof(TempOptInfo));
         ts->state_ptr = ti;
     }
 
@@ -267,7 +267,7 @@ static void record_mem_copy(OptContext *ctx, TCGType type,
     if (mc) {
         QSIMPLEQ_REMOVE_HEAD(&ctx->mem_free, next);
     } else {
-        mc = tcg_malloc(sizeof(*mc));
+        mc = tcg_malloc_context(ctx->tcg, sizeof(*mc));
     }
 
     memset(mc, 0, sizeof(*mc));
