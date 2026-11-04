@@ -4291,3 +4291,18 @@ The production fixture `gp-startup-halted-store-loops.inc` uses the real
 X-peripheral HALT register at DO endpoints, then resumes across frames.
 It checks counts one/two/three, all scale modes and snapshots accumulator,
 LC and SP after completion; full machine state is compared after every halt.
+
+`dspnative --parallel-coverage` queries the production native-eligibility gate
+for all 16,777,216 possible 24-bit words without executing them. It checks the
+parallel ranges independently, including low Class II words and neighbouring
+nonparallel MOVEP words. Exactly 15,794,176 words are parallel encodings;
+15,547,392 are eligible for native emission. The remaining parallel words use
+one of the four reserved ALU bytes (04/08/0c/15), which remain rejected.
+The audit passes against both the old operand gates and the simplified gate,
+proving identical eligibility across the complete encoding space. Register
+slots zero through three in immediate/memory decorations select other move
+formats, rather than exposing unsupported immediate/ordinary-memory operands.
+This is an exhaustive eligibility check, not execution of every encoding or
+a hardware-validity claim for reserved operands. Existing differential,
+independent-state, callback and production fixtures verify execution behavior.
+Other nonparallel operand/context fallback guards remain separate.

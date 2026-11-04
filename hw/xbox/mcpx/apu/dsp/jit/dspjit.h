@@ -31,6 +31,10 @@ void dspjit_run(DspJit *jit, int cycles);
 void dspjit_run_until_halt(DspJit *jit, int cycles);
 
 #ifdef DSPJIT_TEST
+/* Nonexecuting query of the production parallel eligibility gate. */
+#if DSPJIT_HOST
+int dspjit_test_parallel_native(uint32_t instruction);
+#endif
 /* Test builds count actual execution through either interpreter path. */
 uint64_t dspjit_test_fallback_count(void);
 uint64_t dspjit_test_invalidation_scans(void);
