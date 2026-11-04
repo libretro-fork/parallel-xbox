@@ -756,7 +756,7 @@ static inline void *tcg_malloc(int size)
 
 void tcg_func_start(TCGContext *s);
 
-int tcg_gen_code(TCGContext *s, TranslationBlock *tb, uint64_t pc_start);
+int tcg_gen_code(TCGContext *s, TranslationBlock *tb);
 
 void tb_target_set_jmp_target(const TranslationBlock *, int,
                               uintptr_t, uintptr_t);
@@ -809,9 +809,10 @@ enum {
 };
 
 typedef struct TCGOpDef {
-    const char *name;
     uint8_t nb_oargs, nb_iargs, nb_cargs, nb_args;
     uint16_t flags;
+    /* Keep a power-of-two stride for hot opcode table lookups. */
+    uint16_t reserved;
 } TCGOpDef;
 
 extern const TCGOpDef tcg_op_defs[];
@@ -1027,7 +1028,6 @@ static inline const TCGOpcode *tcg_swap_vecop_list(const TCGOpcode *n)
 }
 
 bool tcg_can_emit_vecop_list(const TCGOpcode *, TCGType, unsigned);
-void tcg_dump_ops(TCGContext *s, FILE *f, bool have_prefs);
 
 void gen_bb_epilogue(void); /* translate.c */
 

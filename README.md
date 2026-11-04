@@ -439,3 +439,11 @@ symbol/unwind registration is no longer provided. Guest execution, generated
 TCG instructions and the normal host ABI prologue/epilogue are unchanged.
 The private capture builder still works through a force-included test macro;
 regular builds contain neither that macro nor its environment lookup.
+
+TCG opcode definitions contain argument counts and flags in eight-byte entries;
+diagnostic name pointers and the disabled IR dump formatter are removed.
+The reserved two bytes retain a power-of-two table stride. Opcode numbering,
+argument counts and flags are unchanged. `libretro/tests/compare-tcg-opdefs.py`
+compares the linked old/new tables in Linux x86-64 binaries and reports table
+sizes and dynamic relocations, independently of the source initializer macros.
+The code generator also omits the PC parameter used only by those IR dumps.

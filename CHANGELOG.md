@@ -1,5 +1,6 @@
 # Changelog of the libretro core
 
+- Compact TCG opcode metadata by removing names used only by disabled IR dumps. Keep an eight-byte table stride, preserve opcode counts/flags, and remove the dump formatter and its unused translation PC argument.
 - Remove unused TCG perf/jitdump and GDB JIT registration infrastructure. Linux no longer calls an empty profiler on each translated block or allocates startup debug ELF metadata; private generated-code capture remains available for tests.
 - Generate smaller host code for ADD register,0 by recording its simpler arithmetic flags. Carry-dependent ADC and memory/LOCK accesses retain their existing behavior; no host CPU requirement changes.
 - Generate smaller host code for SUB/CMP register,0 by using their simpler arithmetic flags. Carry-dependent SBB and memory/LOCK accesses retain their existing paths; no host CPU requirement changes.

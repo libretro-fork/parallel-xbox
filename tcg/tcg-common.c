@@ -26,9 +26,11 @@
 #include "tcg/tcg.h"
 #include "tcg-has.h"
 
+QEMU_BUILD_BUG_ON(sizeof(TCGOpDef) != 8);
+
 const TCGOpDef tcg_op_defs[] = {
 #define DEF(s, oargs, iargs, cargs, flags) \
-         { #s, oargs, iargs, cargs, iargs + oargs + cargs, flags },
+         { oargs, iargs, cargs, iargs + oargs + cargs, flags, 0 },
 #include "tcg/tcg-opc.h"
 #undef DEF
 };

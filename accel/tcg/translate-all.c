@@ -257,7 +257,7 @@ static int setjmp_gen_code(CPUArchState *env, TranslationBlock *tb,
     tcg_ctx->cpu = NULL;
     *max_insns = tb->icount;
 
-    return tcg_gen_code(tcg_ctx, tb, pc);
+    return tcg_gen_code(tcg_ctx, tb);
 }
 
 /* Called with mmap_lock held for user mode emulation.  */
