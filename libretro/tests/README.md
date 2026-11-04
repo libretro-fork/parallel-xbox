@@ -3851,3 +3851,9 @@ BINARY and SKIP_RUN use the EEPROM_SHA1_ prefix for native fixtures.
 
 The EEPROM fixture selects static native flags for MinGW/Windows by default
 and ASan/UBSan elsewhere; EEPROM_SHA1_CFLAGS can override this selection.
+
+`rom/crypto-ud.asm` checks twenty unsupported AES/PCLMUL legacy/VEX forms,
+register and unmapped-memory operands, exact fault EIP, carry/XMM preservation
+and CR0 EM/TS modes. An instruction spanning an unmapped page must raise
+fetch #PF rather than #UD, with the original EIP and CR2. It checks feature
+bits remain absent and reports CRYP, twenty #UD traps and one #PF.

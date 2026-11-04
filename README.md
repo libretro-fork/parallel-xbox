@@ -363,3 +363,9 @@ custom initial states and 512-bit prefix count. The duplicate util/sha1
 engine is removed. Deterministic reference checks cover 4,100 hashes and
 400 full EEPROM images across all four versions; OS entropy remains in
 production. No new CPU requirement or measured speedup is claimed.
+
+The fixed Xbox CPU rejects AES/PCLMUL instructions through its existing
+decoder feature checks. Their emitters share the illegal-opcode path and
+the unused engines/helpers are removed. A synthetic ROM checks 20 traps,
+unchanged XMM/flags, inaccessible operands, CR0 modes and fetch-page faults.
+Host libretro-common hash acceleration and OS entropy are unaffected.

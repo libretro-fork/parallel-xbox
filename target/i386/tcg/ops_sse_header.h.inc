@@ -340,19 +340,6 @@ DEF_HELPER_4(glue(pcmpistrm, SUFFIX), void, env, Reg, Reg, i32)
 DEF_HELPER_3(crc32, tl, i32, tl, i32)
 #endif
 
-/* AES-NI op helpers */
-#if SHIFT >= 1
-DEF_HELPER_4(glue(aesdec, SUFFIX), void, env, Reg, Reg, Reg)
-DEF_HELPER_4(glue(aesdeclast, SUFFIX), void, env, Reg, Reg, Reg)
-DEF_HELPER_4(glue(aesenc, SUFFIX), void, env, Reg, Reg, Reg)
-DEF_HELPER_4(glue(aesenclast, SUFFIX), void, env, Reg, Reg, Reg)
-#if SHIFT == 1
-DEF_HELPER_3(glue(aesimc, SUFFIX), void, env, Reg, Reg)
-DEF_HELPER_4(glue(aeskeygenassist, SUFFIX), void, env, Reg, Reg, i32)
-#endif
-DEF_HELPER_5(glue(pclmulqdq, SUFFIX), void, env, Reg, Reg, Reg, i32)
-#endif
-
 /* F16C helpers */
 #if SHIFT >= 1
 DEF_HELPER_3(glue(cvtph2ps, SUFFIX), void, env, Reg, Reg)

@@ -19,9 +19,11 @@
  * License along with this library; if not, see <http://www.gnu.org/licenses/>.
  */
 
-#include "crypto/aes.h"
-#include "crypto/aes-round.h"
-#include "crypto/clmul.h"
+
+/* Native float conversions use these vector types independently of crypto. */
+#if defined(__i386__) || defined(__x86_64__)
+#include <emmintrin.h>
+#endif
 
 #if SHIFT == 0
 #define Reg MMXReg
@@ -2420,88 +2422,6 @@ target_ulong helper_crc32(uint32_t crc1, target_ulong msg, uint32_t len)
 
 #endif
 
-void glue(helper_pclmulqdq, SUFFIX)(CPUX86State *env, Reg *d, Reg *v, Reg *s,
-                                    uint32_t ctrl)
-{
-    int a_idx = (ctrl & 1) != 0;
-    int b_idx = (ctrl & 16) != 0;
-
-    for (int i = 0; i < SHIFT; i++) {
-        uint64_t a = v->Q(2 * i + a_idx);
-        uint64_t b = s->Q(2 * i + b_idx);
-        Int128 *r = (Int128 *)&d->ZMM_X(i);
-
-        *r = clmul_64(a, b);
-    }
-}
-
-void glue(helper_aesdec, SUFFIX)(CPUX86State *env, Reg *d, Reg *v, Reg *s)
-{
-    for (int i = 0; i < SHIFT; i++) {
-        AESState *ad = (AESState *)&d->ZMM_X(i);
-        AESState *st = (AESState *)&v->ZMM_X(i);
-        AESState *rk = (AESState *)&s->ZMM_X(i);
-
-        aesdec_ISB_ISR_IMC_AK(ad, st, rk, false);
-    }
-}
-
-void glue(helper_aesdeclast, SUFFIX)(CPUX86State *env, Reg *d, Reg *v, Reg *s)
-{
-    for (int i = 0; i < SHIFT; i++) {
-        AESState *ad = (AESState *)&d->ZMM_X(i);
-        AESState *st = (AESState *)&v->ZMM_X(i);
-        AESState *rk = (AESState *)&s->ZMM_X(i);
-
-        aesdec_ISB_ISR_AK(ad, st, rk, false);
-    }
-}
-
-void glue(helper_aesenc, SUFFIX)(CPUX86State *env, Reg *d, Reg *v, Reg *s)
-{
-    for (int i = 0; i < SHIFT; i++) {
-        AESState *ad = (AESState *)&d->ZMM_X(i);
-        AESState *st = (AESState *)&v->ZMM_X(i);
-        AESState *rk = (AESState *)&s->ZMM_X(i);
-
-        aesenc_SB_SR_MC_AK(ad, st, rk, false);
-    }
-}
-
-void glue(helper_aesenclast, SUFFIX)(CPUX86State *env, Reg *d, Reg *v, Reg *s)
-{
-    for (int i = 0; i < SHIFT; i++) {
-        AESState *ad = (AESState *)&d->ZMM_X(i);
-        AESState *st = (AESState *)&v->ZMM_X(i);
-        AESState *rk = (AESState *)&s->ZMM_X(i);
-
-        aesenc_SB_SR_AK(ad, st, rk, false);
-    }
-}
-
-#if SHIFT == 1
-void glue(helper_aesimc, SUFFIX)(CPUX86State *env, Reg *d, Reg *s)
-{
-    AESState *ad = (AESState *)&d->ZMM_X(0);
-    AESState *st = (AESState *)&s->ZMM_X(0);
-
-    aesdec_IMC(ad, st, false);
-}
-
-void glue(helper_aeskeygenassist, SUFFIX)(CPUX86State *env, Reg *d, Reg *s,
-                                          uint32_t ctrl)
-{
-    int i;
-    Reg tmp = *s;
-
-    for (i = 0 ; i < 4 ; i++) {
-        d->B(i) = AES_sbox[tmp.B(i + 4)];
-        d->B(i + 8) = AES_sbox[tmp.B(i + 12)];
-    }
-    d->L(1) = (d->L(0) << 24 | d->L(0) >> 8) ^ ctrl;
-    d->L(3) = (d->L(2) << 24 | d->L(2) >> 8) ^ ctrl;
-}
-#endif
 #endif
 
 #if SHIFT >= 1

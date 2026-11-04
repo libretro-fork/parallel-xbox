@@ -32,6 +32,8 @@
 
 ## Unreleased
 
+- Remove AES/PCLMUL execution helpers and crypto engines unused by the fixed Xbox Pentium III. Keep opcode decoding and feature checks, including illegal-instruction and instruction-fetch fault ordering.
+
 - Select native Windows compiler defaults in the EEPROM hash fixture so CI can run its byte-equivalence checks without sanitizer flag overrides.
 
 - Generate and identify Xbox EEPROMs with libretro-common streaming SHA-1, preserving all custom keyed states and exact EEPROM bytes while removing the duplicate QEMU SHA-1 engine.
