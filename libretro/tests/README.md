@@ -4179,6 +4179,8 @@ outside this change.
 
 `test-tcg-addr-check.py CHECKOUT [CC]` runs the production address-type diagnostic helper with the real assertion macro in release, debug and static-analysis modes. It requires zero release context fetches and verifies that both diagnostic modes fetch the owner and catch a mismatched type. It does not disable memory-operation constraints or the real address-width branches.
 
+The global-layout fixture also checks the production vector operand decoders and two/three-operand emission helpers against real TCG contexts and operation queues: all vector widths and element sizes, wider inputs, destination aliases, and identical handles resolved against distinct owners. The actual emitted argument pointers and metadata must match.
+
 `test-tcg-vec-abs.py CHECKOUT [CC]` exercises the production ABS vector fallback with scalar mock emitters in release, debug and static-analysis modes. It covers all lane sizes and vector widths, aliased destinations, signed minima, direct/expanded ABS, and SMAX, arithmetic-shift and comparison fallbacks. Real fallback queries remain live; only the diagnostic SUB query disappears in release. This validates emission decisions and lane results, not native host vector instruction encodings.
 
 The same mode fixture also checks `tcg_debug_check`: diagnostic predicates are not evaluated in release, mismatches remain visible in debug/static-analysis modes, and valid `tcg_debug_assert` predicates still evaluate in every mode. Live capability queries and real chaining guards remain separate from these sanity checks.

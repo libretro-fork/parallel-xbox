@@ -53,7 +53,10 @@ code = code.replace('/* PRODUCTION */', '\n'.join(function(key) for key in keys)
                              (r / 'accel/tcg/translator.c').read_text()).replace(
                                  'tcg_constant_internal(', 'fixture_count_constant(') + '\n' +
                     function('uint64_t (dup_const)(',
-                             (r / 'tcg/tcg-op-gvec.c').read_text()))
+                             (r / 'tcg/tcg-op-gvec.c').read_text()) + '\n' +
+                    '\n'.join(function(key, (r / 'tcg/tcg-op-vec.c').read_text())
+                              for key in ['void vec_gen_2(', 'void vec_gen_3(',
+                                          'static void vec_gen_op2(', 'static void vec_gen_op3(']))
 with tempfile.TemporaryDirectory(prefix='tcg-global-layout-') as temporary:
     folder = Path(temporary)
     (folder / 'test.c').write_text(code)

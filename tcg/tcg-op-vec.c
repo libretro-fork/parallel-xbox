@@ -137,8 +137,9 @@ void vec_gen_6(TCGOpcode opc, TCGType type, unsigned vece, TCGArg r,
 
 static void vec_gen_op2(TCGOpcode opc, unsigned vece, TCGv_vec r, TCGv_vec a)
 {
-    TCGTemp *rt = tcgv_vec_temp(r);
-    TCGTemp *at = tcgv_vec_temp(a);
+    TCGContext *s = tcg_ctx;
+    TCGTemp *rt = tcgv_vec_temp_context(s, r);
+    TCGTemp *at = tcgv_vec_temp_context(s, a);
     TCGType type = rt->base_type;
 
     /* Must enough inputs for the output.  */
@@ -149,9 +150,10 @@ static void vec_gen_op2(TCGOpcode opc, unsigned vece, TCGv_vec r, TCGv_vec a)
 static void vec_gen_op3(TCGOpcode opc, unsigned vece,
                         TCGv_vec r, TCGv_vec a, TCGv_vec b)
 {
-    TCGTemp *rt = tcgv_vec_temp(r);
-    TCGTemp *at = tcgv_vec_temp(a);
-    TCGTemp *bt = tcgv_vec_temp(b);
+    TCGContext *s = tcg_ctx;
+    TCGTemp *rt = tcgv_vec_temp_context(s, r);
+    TCGTemp *at = tcgv_vec_temp_context(s, a);
+    TCGTemp *bt = tcgv_vec_temp_context(s, b);
     TCGType type = rt->base_type;
 
     /* Must enough inputs for the output.  */

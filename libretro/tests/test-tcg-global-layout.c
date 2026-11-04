@@ -125,6 +125,55 @@ static void check_ops(TCGContext *owner, bool current)
     }
 }
 
+static void check_vector_operands(TCGContext *owner, TCGContext *other)
+{
+    static unsigned char arena[8192] QEMU_ALIGNED(16);
+    unsigned cases = 0;
+    /* Same offsets in a different context must resolve to that context. */
+    TCGv_vec handle = (TCGv_vec)((uintptr_t)&owner->temps[5] - (uintptr_t)owner);
+    assert(tcgv_vec_temp_context(other, handle) == &other->temps[5]);
+    assert(tcgv_vec_temp(handle) == &owner->temps[5]);
+    for (TCGType type = TCG_TYPE_V64; type <= TCG_TYPE_V256; ++type) {
+        for (unsigned vece = 0; vece < 4; ++vece) {
+            for (unsigned wider = 0; wider < 2; ++wider) {
+                for (unsigned alias = 0; alias < 3; ++alias) {
+                    owner->pool_cur = (uintptr_t)arena;
+                    owner->pool_end = owner->pool_cur + sizeof(arena);
+                    owner->nb_ops = 0;
+                    owner->emit_before_op = NULL;
+                    QTAILQ_INIT(&owner->ops);
+                    QTAILQ_INIT(&owner->free_ops);
+                    unsigned ri = 5, ai = alias == 1 ? ri : 19;
+                    unsigned bi = alias == 2 ? ri : 37;
+                    owner->temps[ri].base_type = type;
+                    owner->temps[ai].base_type = ai == ri ? type :
+                        (wider ? TCG_TYPE_V256 : type);
+                    owner->temps[bi].base_type = bi == ri ? type :
+                        (wider ? TCG_TYPE_V256 : type);
+                    TCGv_vec rv = (TCGv_vec)((uintptr_t)&owner->temps[ri] - (uintptr_t)owner);
+                    TCGv_vec av = (TCGv_vec)((uintptr_t)&owner->temps[ai] - (uintptr_t)owner);
+                    TCGv_vec bv = (TCGv_vec)((uintptr_t)&owner->temps[bi] - (uintptr_t)owner);
+                    vec_gen_op2(INDEX_op_mov_vec, vece, rv, av);
+                    vec_gen_op3(INDEX_op_xor_vec, vece, rv, av, bv);
+                    TCGOp *op = QTAILQ_FIRST(&owner->ops);
+                    assert(owner->nb_ops == 2 && op->opc == INDEX_op_mov_vec);
+                    assert(TCGOP_TYPE(op) == type && TCGOP_VECE(op) == vece);
+                    assert(op->args[0] == temp_arg(&owner->temps[ri]));
+                    assert(op->args[1] == temp_arg(&owner->temps[ai]));
+                    op = QTAILQ_NEXT(op, link);
+                    assert(op && op->opc == INDEX_op_xor_vec && !QTAILQ_NEXT(op, link));
+                    assert(TCGOP_TYPE(op) == type && TCGOP_VECE(op) == vece);
+                    assert(op->args[0] == temp_arg(&owner->temps[ri]));
+                    assert(op->args[1] == temp_arg(&owner->temps[ai]));
+                    assert(op->args[2] == temp_arg(&owner->temps[bi]));
+                    cases += 2;
+                }
+            }
+        }
+    }
+    printf("TCG vector operands: %u emission cases, widths, aliasing and owners PASS\n", cases);
+}
+
 static void check_rollback(TCGContext *owner)
 {
     static unsigned char arena[4096] QEMU_ALIGNED(16);
@@ -647,6 +696,7 @@ int main(void)
     check_ops(&context, true);
     check_rollback(&context);
     check_count_operands(&context);
+    check_vector_operands(&context, &other);
     puts("TCG rollback: suffix/full/empty removal, branch uses and reuse PASS");
     puts("TCG ops: owners, allocation/reuse, insertion order and epilogues PASS");
     printf("TCG global layout: %d-bit direct/indirect globals, %shandles and frame PASS\n",

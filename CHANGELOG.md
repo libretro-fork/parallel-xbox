@@ -57,6 +57,8 @@
 
 ## Unreleased
 
+- Reuse the TCG context when decoding the operands of basic vector moves and logical operations, avoiding repeated Windows TLS lookups while preserving operand-width checks.
+
 - DSP repeats containing native DO/DOR, forever-loop setup, ENDDO or nested REP setup now remain native, preserving the current model for handler-updated counts, stack frames and sequential retirement.
 
 - DSP repeats containing native branches, calls and returns now remain native. Untaken controls correctly suppress sequential PC advance while taken targets are preserved, including equal-target cases; saved return PCs also retain the correct value at program-RAM boundaries.
