@@ -607,6 +607,9 @@ nasm -f bin -I"$here/rom/" -o "$work/sysec/xemu/Complex_4627v1.03.bin" "$here/ro
 mkdir -p "$work/sysei/xemu"
 cp "$work/sys/xemu/mcpx_1.0.bin" "$work/sysei/xemu/"
 nasm -f bin -I"$here/rom/" -o "$work/sysei/xemu/Complex_4627v1.03.bin" "$here/rom/entry-invalidate.asm"
+mkdir -p "$work/sysselfsub/xemu"
+cp "$work/sys/xemu/mcpx_1.0.bin" "$work/sysselfsub/xemu/"
+nasm -f bin -I "$here/rom/" -o "$work/sysselfsub/xemu/Complex_4627v1.03.bin" "$here/rom/self-sub.asm"
 mkdir -p "$work/syscrypto/xemu"
 cp "$work/sys/xemu/mcpx_1.0.bin" "$work/syscrypto/xemu/"
 nasm -f bin -o "$work/syscrypto/xemu/Complex_4627v1.03.bin" "$here/rom/crypto-ud.asm"
@@ -832,6 +835,16 @@ for hard in enabled disabled; do
         echo "FAIL: dynamic entry invalidation ($hard/$boost)"; exit 1;
       }
     done
+  done
+done
+
+# Identical-register SUB/CMP: flags, partial writes and exceptions.
+for boost in enabled disabled; do
+  t "self SUB/CMP, CPU Boost $boost" $h "$(path "$core")" "$(path "$work/sysselfsub")" \
+    $vp --opt "xemu_cpu_boost=$boost" --frames 60 --strict \
+    --peek 0x300000 --peek 0x300004 --peek 0x300008 --peek 0x30000c --peek 0x300018 >"$work/self-sub-$boost.txt"
+  for want in "peek_0x300000=0x53535542" "peek_0x300004=0x00000000" "peek_0x300008=0x00000800" "peek_0x30000c=0x00000001" "peek_0x300018=0x00000002"; do
+    grep -q "^$want$" "$work/self-sub-$boost.txt" || { cat "$work/self-sub-$boost.txt"; exit 1; }
   done
 done
 

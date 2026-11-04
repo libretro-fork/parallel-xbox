@@ -401,3 +401,21 @@ Dedicated ADX generation and PDEP/PEXT helpers are removed. BSF/BSR paths
 for TZCNT/LZCNT encodings and shared condition-code handling remain intact.
 The ROM checks 73 traps, five page faults and supported arithmetic controls;
 this is code cleanup without a measured speedup claim.
+
+Same-register SUB/CMP records the known zero result and arithmetic flags
+without saving the old operand for lazy subtraction flags. Memory forms and
+invalid LOCK forms retain their existing exception paths. The synthetic
+`libretro/tests/rom/self-sub.asm` covers AL/AH/AX/EAX writes, comparisons,
+varying input flags and memory/LOCK faults. This adds no host ISA requirement.
+
+For emitted-code audits, `libretro/tests/build-tcg-capture.py CHECKOUT OUTDIR`
+builds a private capture module and restores the normal object/module before
+returning. Use the normal build dependency environment and do not run another
+build in that checkout concurrently. Set `XEMU_TCG_CAPTURE` to a fresh path
+when running that private module; only synthetic ROM PCs in
+0xfff00000..0xfff0ffff are captured. Compare two files with
+`libretro/tests/compare-tcg-capture.py BASELINE CANDIDATE`; keys include guest
+PC, byte count, instruction count, cflags and CPU flags. It reports unmatched
+keys and all distinct sizes, rather than treating different block entries as
+equivalent. Normal core builds have no capture hook or capture environment
+lookup. These byte counts establish code size, not execution speed.

@@ -3923,6 +3923,19 @@ static void gen_SUB(DisasContext *s, X86DecodedInsn *decode)
 {
     MemOp ot = decode->op[1].ot;
 
+    /* SUB/CMP of the same register has a known zero result and flags.
+     * Keep memory/LOCK forms on the normal faulting path. */
+    if (!(s->prefix & PREFIX_LOCK) &&
+        decode->op[1].unit == X86_OP_INT && !decode->op[1].has_ea &&
+        decode->op[2].unit == X86_OP_INT && !decode->op[2].has_ea &&
+        decode->op[1].n == decode->op[2].n &&
+        decode->op[1].ot == decode->op[2].ot) {
+        tcg_gen_movi_tl(s->T0, 0);
+        decode->cc_op = CC_OP_EFLAGS;
+        decode->cc_src = tcg_constant_tl(CC_Z | CC_P);
+        return;
+    }
+
     if (s->prefix & PREFIX_LOCK) {
         tcg_gen_neg_tl(s->T0, s->T1);
         tcg_gen_atomic_fetch_add_tl(s->cc_srcT, s->A0, s->T0,
