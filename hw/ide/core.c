@@ -3016,9 +3016,32 @@ static int ide_drive_pio_post_load(void *opaque, int version_id)
     if (s->end_transfer_fn_idx >= ARRAY_SIZE(transfer_end_table)) {
         return -EINVAL;
     }
+    if (s->cur_io_buffer_offset < 0 || s->cur_io_buffer_len < 0 ||
+        s->cur_io_buffer_offset > s->io_buffer_total_len ||
+        s->cur_io_buffer_len > s->io_buffer_total_len - s->cur_io_buffer_offset) {
+        return -EINVAL;
+    }
     s->end_transfer_func = transfer_end_table[s->end_transfer_fn_idx];
+    if (version_id >= 2 && s->end_transfer_func == ide_atapi_cmd_reply_end &&
+        (s->packet_transfer_size < 0 || s->io_buffer_index < 0 ||
+         s->io_buffer_index > s->io_buffer_total_len ||
+         (s->lba != -1 &&
+          ((s->cd_sector_size != 2048 && s->cd_sector_size != 2352) ||
+           s->io_buffer_size < s->io_buffer_index ||
+           s->io_buffer_size > s->io_buffer_total_len || s->lba < 0)))) {
+        return -EINVAL;
+    }
     s->data_ptr = s->io_buffer + s->cur_io_buffer_offset;
     s->data_end = s->data_ptr + s->cur_io_buffer_len;
+    /* Version one never saved the sector cursor/buffer bounds, so a
+     * multi-phase ATAPI read from that format cannot resume correctly. */
+    if (version_id < 2 && s->end_transfer_func == ide_atapi_cmd_reply_end) {
+        if (s->packet_transfer_size > 0) {
+            return -EINVAL;
+        }
+        s->lba = -1;
+        s->io_buffer_index = s->cur_io_buffer_offset + s->cur_io_buffer_len;
+    }
     s->atapi_dma = s->feature & 1; /* as per cmd_packet */
 
     return 0;
@@ -3100,7 +3123,7 @@ static const VMStateDescription vmstate_ide_tray_state = {
 
 static const VMStateDescription vmstate_ide_drive_pio_state = {
     .name = "ide_drive/pio_state",
-    .version_id = 1,
+    .version_id = 2,
     .minimum_version_id = 1,
     .pre_save = ide_drive_pio_pre_save,
     .post_load = ide_drive_pio_post_load,
@@ -3114,6 +3137,10 @@ static const VMStateDescription vmstate_ide_drive_pio_state = {
         VMSTATE_UINT8(end_transfer_fn_idx, IDEState),
         VMSTATE_INT32(elementary_transfer_size, IDEState),
         VMSTATE_INT32(packet_transfer_size, IDEState),
+        VMSTATE_INT32_V(lba, IDEState, 2),
+        VMSTATE_INT32_V(cd_sector_size, IDEState, 2),
+        VMSTATE_INT32_V(io_buffer_index, IDEState, 2),
+        VMSTATE_INT32_V(io_buffer_size, IDEState, 2),
         VMSTATE_END_OF_LIST()
     }
 };

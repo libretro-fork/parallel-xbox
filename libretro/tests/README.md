@@ -4501,3 +4501,29 @@ Linux defaults to ASan/UBSan. `CHD_CODEC_CFLAGS`, `CHD_CODEC_WORK`,
 FLAC and Huffman dependencies are linked; FLAC audio/CD layouts are not covered
 by this fixture. The core cannot mount CHD content yet. See
 `libretro-common/CHD-UPSTREAM.txt` for the pin and remaining integration rules.
+
+### Whole-phase ATAPI PIO
+
+`python3 libretro/tests/test-atapi-pio-phase.py . [cc]` exercises the production
+PIO functions with delayed completion, raw/cooked byte oracles, ten byte-count
+limits (including non-sector divisors), immediate-transfer adapters, IRQ counts,
+load-pointer reconstruction after partial phase consumption and malformed-state
+bounds. Linux defaults to ASan/UBSan; `ATAPI_PIO_CFLAGS`, `ATAPI_PIO_BINARY` and
+`ATAPI_PIO_SKIP_RUN` support native cross-build tests. Existing IDE cancellation
+fixtures cover the buffered request owner used by this path.
+
+`rom/dvd-pio-phase.asm` reads 137 DVD sectors in five 65534-byte-limited phases,
+using REP INSW for the entire announced phase without sector-boundary status
+polls. It checks all 0x11200 words and runs against native, content and SAF image
+paths in run.sh. RAM 0x300000 is DPOK, 0x300004 is zero on success, 0x30000c is
+0x11200, 0x300010 is zero (no bad address), and 0x300014 is five phases. `BCL`
+can select another byte limit for private runs. PIO subsection version two saves
+sector cursor/bounds; unfinished version-one ATAPI replies are rejected because
+the old format omitted the cursor needed to resume them correctly.
+
+For an active-phase native state run, assemble with `-DPIO_DELAY=100000000`,
+then use 160 harness frames with `--save 5 --load 10 --load-again 20
+--verify-load`. The guest delays consumption after DRQ, leaving its PIO buffer
+live across the save. Both loads must restore identical RAM and the read must
+still finish with the word/phase results above. This is a guest instruction
+loop for the fixture, not a host wait in the core.

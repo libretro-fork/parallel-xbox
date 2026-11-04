@@ -92,76 +92,60 @@ static void cd_data_to_raw(uint8_t *buf, int lba)
     memset(buf, 0, 288);
 }
 
-static int
-cd_read_sector_sync(IDEState *s)
-{
-    int ret;
-
-    trace_cd_read_sector_sync(s->lba);
-
-    switch (s->cd_sector_size) {
-    case 2048:
-        ret = blk_pread(s->blk, (int64_t)s->lba << ATAPI_SECTOR_BITS,
-                        ATAPI_SECTOR_SIZE, s->io_buffer, 0);
-        break;
-    case 2352:
-        ret = blk_pread(s->blk, (int64_t)s->lba << ATAPI_SECTOR_BITS,
-                        ATAPI_SECTOR_SIZE, s->io_buffer + 16, 0);
-        if (ret >= 0) {
-            cd_data_to_raw(s->io_buffer, s->lba);
-        }
-        break;
-    default:
-        return -EIO;
-    }
-
-    if (ret >= 0) {
-        s->lba++;
-        s->io_buffer_index = 0;
-    }
-
-    return ret;
-}
-
+/* A PIO phase is advertised only after all its bytes are resident. A guest
+ * may consume the whole byte count without polling status at sector edges.
+ * Retain at most one sector's unused tail between phases; no disk refill is
+ * permitted after DRQ has exposed a phase. */
 static void cd_read_sector_cb(void *opaque, int ret)
 {
     IDEState *s = opaque;
+    int n = s->qiov.size / ATAPI_SECTOR_SIZE;
+    int tail = s->io_buffer_size;
 
     trace_cd_read_sector_cb(s->lba, ret);
-
     if (ret < 0) {
         ide_atapi_io_error(s, ret);
         return;
     }
-
     if (s->cd_sector_size == 2352) {
-        cd_data_to_raw(s->io_buffer, s->lba);
+        /* Expand backwards so framed sectors never overwrite input that
+         * has yet to move. Cooked DVD reads need no payload rearrangement. */
+        for (int i = n - 1; i >= 0; i--) {
+            uint8_t *dst = s->io_buffer + tail + i * 2352;
+            memmove(dst + 16, s->io_buffer + tail + i * 2048, 2048);
+            cd_data_to_raw(dst, s->lba + i);
+        }
     }
-
-    s->lba++;
-    s->io_buffer_index = 0;
+    s->lba += n;
+    s->io_buffer_size = tail + n * s->cd_sector_size;
     s->status &= ~BUSY_STAT;
-
     ide_atapi_cmd_reply_end(s);
 }
 
-static int cd_read_sector(IDEState *s)
+static int cd_read_sector(IDEState *s, int phase_size)
 {
-    void *buf;
+    int tail = s->io_buffer_size - s->io_buffer_index;
+    int n;
 
-    if (s->cd_sector_size != 2048 && s->cd_sector_size != 2352) {
+    if ((s->cd_sector_size != 2048 && s->cd_sector_size != 2352) ||
+        tail < 0 || tail >= s->cd_sector_size || phase_size <= tail) {
         return -EINVAL;
     }
-
-    buf = (s->cd_sector_size == 2352) ? s->io_buffer + 16 : s->io_buffer;
-    qemu_iovec_init_buf(&s->qiov, buf, ATAPI_SECTOR_SIZE);
-
+    n = DIV_ROUND_UP(phase_size - tail, s->cd_sector_size);
+    if (tail + n * s->cd_sector_size > s->io_buffer_total_len) {
+        return -EINVAL;
+    }
+    if (tail) {
+        memmove(s->io_buffer, s->io_buffer + s->io_buffer_index, tail);
+    }
+    s->io_buffer_index = 0;
+    s->io_buffer_size = tail;
+    qemu_iovec_init_buf(&s->qiov, s->io_buffer + tail,
+                        n * ATAPI_SECTOR_SIZE);
     trace_cd_read_sector(s->lba);
-
-    ide_buffered_readv(s, (int64_t)s->lba << 2, &s->qiov, 4,
+    s->status = (s->status & ~DRQ_STAT) | BUSY_STAT;
+    ide_buffered_readv(s, (int64_t)s->lba << 2, &s->qiov, n * 4,
                        cd_read_sector_cb, s);
-
-    s->status |= BUSY_STAT;
     return 0;
 }
 
@@ -218,54 +202,30 @@ void ide_atapi_cmd_reply_end(IDEState *s)
                                       s->elementary_transfer_size,
                                       s->io_buffer_index);
 
-        /* see if a new sector must be read */
-        if (s->lba != -1 && s->io_buffer_index >= s->cd_sector_size) {
-            if (!s->elementary_transfer_size) {
-                ret = cd_read_sector(s);
-                if (ret < 0) {
-                    ide_atapi_io_error(s, ret);
-                }
-                return;
-            } else {
-                /* rebuffering within an elementary transfer is
-                 * only possible with a sync request because we
-                 * end up with a race condition otherwise */
-                ret = cd_read_sector_sync(s);
-                if (ret < 0) {
-                    ide_atapi_io_error(s, ret);
-                    return;
-                }
-            }
+        byte_count_limit = atapi_byte_count_limit(s);
+        trace_ide_atapi_cmd_reply_end_bcl(s, byte_count_limit);
+        size = s->packet_transfer_size;
+        if (size > byte_count_limit) {
+            size = byte_count_limit & ~1;
         }
-        if (s->elementary_transfer_size > 0) {
-            /* there are some data left to transmit in this elementary
-               transfer */
-            size = s->cd_sector_size - s->io_buffer_index;
-            if (size > s->elementary_transfer_size)
-                size = s->elementary_transfer_size;
-        } else {
-            /* a new transfer is needed */
-            s->nsector = (s->nsector & ~7) | ATAPI_INT_REASON_IO;
-            ide_bus_set_irq(s->bus);
-            byte_count_limit = atapi_byte_count_limit(s);
-            trace_ide_atapi_cmd_reply_end_bcl(s, byte_count_limit);
-            size = s->packet_transfer_size;
-            if (size > byte_count_limit) {
-                /* byte count limit must be even if this case */
-                if (byte_count_limit & 1)
-                    byte_count_limit--;
-                size = byte_count_limit;
-            }
-            s->lcyl = size & 0xff;
-            s->hcyl = size >> 8;
-            s->elementary_transfer_size = size;
-            /* we cannot transmit more than one sector at a time */
-            if (s->lba != -1) {
-                if (size > (s->cd_sector_size - s->io_buffer_index))
-                    size = (s->cd_sector_size - s->io_buffer_index);
-            }
-            trace_ide_atapi_cmd_reply_end_new(s, s->status);
+        if (size <= 0) {
+            ide_atapi_io_error(s, -EINVAL);
+            return;
         }
+        if (s->lba != -1 &&
+            size > s->io_buffer_size - s->io_buffer_index) {
+            ret = cd_read_sector(s, size);
+            if (ret < 0) {
+                ide_atapi_io_error(s, ret);
+            }
+            return;
+        }
+        s->nsector = (s->nsector & ~7) | ATAPI_INT_REASON_IO;
+        ide_bus_set_irq(s->bus);
+        s->lcyl = size & 0xff;
+        s->hcyl = size >> 8;
+        s->elementary_transfer_size = size;
+        trace_ide_atapi_cmd_reply_end_new(s, s->status);
         s->packet_transfer_size -= size;
         s->elementary_transfer_size -= size;
         s->io_buffer_index += size;
@@ -318,7 +278,8 @@ static void ide_atapi_cmd_read_pio(IDEState *s, int lba, int nb_sectors,
     s->lba = lba;
     s->packet_transfer_size = nb_sectors * sector_size;
     s->elementary_transfer_size = 0;
-    s->io_buffer_index = sector_size;
+    s->io_buffer_index = 0;
+    s->io_buffer_size = 0;
     s->cd_sector_size = sector_size;
 
     ide_atapi_cmd_reply_end(s);

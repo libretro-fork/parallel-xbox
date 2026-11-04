@@ -1,5 +1,6 @@
 # Changelog of the libretro core
 
+- Buffer each complete ATAPI PIO data phase before announcing it to the guest. Multi-sector bursts no longer refill synchronously between sectors; partial-sector tails are retained, raw CD framing expands in place, and active PIO savestates retain their sector cursor and buffer bounds.
 - Prepare RetroArch libretro-common rchd/rzstd and their codec dependencies for CHD support, pinned with independent byte-oracle tests. CHD mounting is not enabled by this groundwork; asynchronous disk and ATAPI PIO integration is still required.
 - Memory ownership callback lists now use lock-free RCU publication and deferred node reclamation. DMA readers can finish using an unlinked callback without racing an immediate free; removals do not wait for a grace period or force direct mappings through bounce buffers.
 - CPU/DMA memory callbacks now receive only the bytes that overlap their watched range. Accesses starting before a watch no longer extend the callback past the real access, and empty or final-address spans are matched without end-address wraparound.

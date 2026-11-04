@@ -27,5 +27,7 @@ The pinned API accepts pipeline depth one only. Borrowed input must remain
 valid until the read step has consumed it. A step bounds decoding by hunk,
 not host wall-clock time: run file access and decoding on their owned worker,
 not on retro_run. Do not add a guest-visible wait for a worker completion.
-ATAPI PIO's mid-phase synchronous refill must be replaced before enabling
-compressed media, while preserving the announced byte count and DRQ burst.
+ATAPI PIO now prepares complete phases asynchronously and retains sector tails,
+while preserving the announced byte count and DRQ burst. The current disk
+provider still completes its file reads synchronously at submission; the CHD
+worker and readiness-aware disk dispatch are required before mounting media.
