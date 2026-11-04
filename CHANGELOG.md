@@ -32,11 +32,16 @@
 
 ## Unreleased
 
+- Strengthen speculative pipeline handoff coverage with the real shader-state/render-pass/key layouts and XXH3. Check poisoned slot reuse, complete owned key bytes and a full ring becoming available during completion draining before attempting further copy removal. Renderer behavior is unchanged.
+
 - Select native Windows compiler defaults in the EEPROM hash fixture so CI can run its byte-equivalence checks without sanitizer flag overrides.
 
 - Generate and identify Xbox EEPROMs with libretro-common streaming SHA-1, preserving all custom keyed states and exact EEPROM bytes while removing the duplicate QEMU SHA-1 engine.
 
+
+
 - DSP: execute register bit-test calls natively, retaining accumulator limiting, current status flags and correct stack saves.
+
 
 - Skip clearing the 264-byte fragment shader state immediately before copying it into a Vulkan module key. Keep unused union bytes, options and padding initialized so complete key bytes and cache identity stay the same; prewarm construction is unchanged.
 
