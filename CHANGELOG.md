@@ -37,6 +37,8 @@
 
 ## Unreleased
 
+- DSP: execute register-indirect X/Y relative bit-test calls natively, preserving address updates, wrapped targets and conditional stack saves.
+
 - DSP: execute short X/Y relative bit-test calls natively, preserving wrapped targets, source memory and conditional stack saves.
 
 - Remove unreachable BMI1/BMI2 and ADX emitters plus PDEP/PEXT helpers for the fixed Xbox CPU. Preserve decoder/fault ordering, legacy TZCNT/LZCNT-as-BSF/BSR behavior and shared condition-code machinery.
