@@ -322,7 +322,7 @@ struct Tr {
     bool loaded[2];     /* A/B are in their host registers */
     bool dirty[2];      /* ... and newer than the state's */
     uint32_t cyc;       /* the cycles of the instructions translated so far */
-    bool wrote_x;       /* the instruction being translated writes X */
+    bool wrote_memory;  /* the instruction being translated writes X or Y */
     int mode;           /* the scaling mode the block is for */
     bool loop_active;   /* LF is part of the block cache identity */
     bool interrupt_retirement; /* retire once before returning to dispatch */
@@ -583,7 +583,7 @@ static void emit_write_x(Tr *t, int addr, int val)
     s->reg = addr;
     s->reg2 = val;
     s->back = e->len;
-    t->wrote_x = true;
+    t->wrote_memory = true;
 }
 
 static void emit_read_y(Tr *t, int addr, int out)
@@ -604,6 +604,9 @@ static void emit_write_y(Tr *t, int addr, int val)
 {
     Emitter *e = &t->e;
     size_t j;
+
+    /* Either peripheral bus can halt or invalidate program code. */
+    t->wrote_memory = true;
 
     h_cmp_ri(e, 0, addr, DSP_YRAM_SIZE);
     j = h_jcc(e, HC_AE);
@@ -2122,7 +2125,6 @@ static void emit_pm_0(Tr *t, const Insn *in, const AluOp *a)
     emit_read_reg(t, DSP_REG_X0 + space * 2, V2);
     emit_alu(t, a);
     emit_write_mem(t, space, ea.reg, V1);
-    t->wrote_x = true;
     emit_write_reg(t, DSP_REG_A + d, V2);
 }
 
@@ -2161,8 +2163,6 @@ static void emit_pm_1(Tr *t, const Insn *in, const AluOp *a)
             h_st32(e, REG_CORE, REGOFF(primary), V1);
     } else {
         emit_write_mem(t, space, ea.reg, V1);
-        /* Either peripheral bus can halt or invalidate program code. */
-        t->wrote_x = true;
     }
     emit_write_reg(t, destination, V2);
 }
@@ -4253,18 +4253,18 @@ static bool emit_control(Tr *t, const Insn *in)
 
 
 /* after a native instruction: the DO loop's end, when the PC reached
- * LA+1 inside one; and, after one that wrote X, the halt a write to the
+ * LA+1 inside one; and, after one that wrote X or Y, the halt a write to the
  * peripherals may have asked for, or P code changed by a DMA callback. */
 static void emit_insn_checks(Tr *t, const Insn *in, uint32_t cycles)
 {
     Emitter *e = &t->e;
     size_t j;
 
-    if (t->wrote_x) {
+    if (t->wrote_memory) {
         h_cmp_mem16_imm(e, REG_CORE, OFF(jit_stop_flags), 0);
         j = h_jcc(e, HC_NE);
         stub_set_insn(t, stub_new(t, STUB_WRITE_EXIT, j), in, cycles, t->cyc - cycles);
-        t->wrote_x = false;
+        t->wrote_memory = false;
     }
     if (t->loop_active) {
         h_cmp_mem32_imm(e, REG_CORE, REGOFF(DSP_REG_LA), in->next - 1);
@@ -4838,13 +4838,13 @@ retry:
         emit_jump_to_epilogue(t);
         goto finalize_rep;
     }
-    if (t->wrote_x) {
+    if (t->wrote_memory) {
         /* halted: this repeat ends the interpreter's way, then out */
         size_t j;
         h_cmp_mem16_imm(e, REG_CORE, OFF(jit_stop_flags), 0);
         j = h_jcc(e, HC_NE);
         stub_set_insn(t, stub_new(t, STUB_REP_POST, j), &in, cycles, 0);
-        t->wrote_x = false;
+        t->wrote_memory = false;
     }
     /* one repeat fewer; another while the budget lasts */
     h_sub_ri(e, 0, REG_LC, 1);

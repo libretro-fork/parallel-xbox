@@ -4264,3 +4264,16 @@ register to verify snapshot ordering. REP and callback halt checks cover both
 buses. A production fixture combines these moves with REP and lazy ALU flags.
 Reserved ALU slots retain fallback; this does not establish new hardware
 semantics for legacy immediate-tag store addresses.
+
+`dspnative --y-store-retirement` checks 768 boundaries with zero interpreter
+calls. Register-to-Y stores and mixed X-load/Y-store parallel moves cover
+NOP, CLR and arithmetic ALUs, all four scale modes, effective/extension
+addresses, ordinary retirement and partial REP. Callback oracles require
+exactly one Y write, its original source value, no peripheral reads or X
+writes, exact PC/cycles and remaining repeat count. Halt cases give the JIT
+an oversized budget to detect extra iterations. The shared Y-store emitter
+now requests the same stop-flag check as X stores, including callback-driven
+code invalidation; Class I/II no longer need family-local bookkeeping.
+The halt regression fails against the pre-fix emitter. These are synthetic
+callback tests and do not establish game performance or hardware behavior
+for unimplemented Y peripheral devices.
