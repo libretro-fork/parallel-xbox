@@ -3848,3 +3848,6 @@ from the previous engine. It checks detection and tampered-hash rejection
 for all four versions. Only test entropy is deterministic. The optional
 EEPROM_SHA1_BASELINE=REV builds the original source from history; CFLAGS,
 BINARY and SKIP_RUN use the EEPROM_SHA1_ prefix for native fixtures.
+
+The EEPROM fixture selects static native flags for MinGW/Windows by default
+and ASan/UBSan elsewhere; EEPROM_SHA1_CFLAGS can override this selection.

@@ -15,7 +15,8 @@ code=Path(__file__).with_suffix('.c').read_text().replace('/* TYPES */',header).
 with tempfile.TemporaryDirectory(prefix='eeprom-sha1-') as tmp:
  p=Path(tmp);(p/'test.c').write_text(code);l=r/'libretro-common'
  binary=os.environ.get('EEPROM_SHA1_BINARY',str(p/'test'))
- flags=shlex.split(os.environ.get('EEPROM_SHA1_CFLAGS','-fsanitize=address,undefined'))
+ win='mingw' in cc or os.name=='nt'
+ flags=shlex.split(os.environ.get('EEPROM_SHA1_CFLAGS','-static' if win else '-fsanitize=address,undefined'))
  subprocess.run([cc,'-O2','-g','-std=gnu11','-Wall','-Wextra','-Wno-sign-compare','-ffunction-sections','-fdata-sections','-Wl,--gc-sections','-I'+str(l/'include'),*flags,str(p/'test.c'),str(l/'hash/lrc_hash.c'),str(l/'features/features_cpu.c'),'-pthread','-o',binary],check=True)
  if not os.environ.get('EEPROM_SHA1_SKIP_RUN'):
   text=subprocess.check_output([binary,str(p/'eeprom.bin')],text=True);print(text,end='')
