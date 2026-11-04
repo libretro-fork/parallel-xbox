@@ -3537,7 +3537,9 @@ static bool emit_control(Tr *t, const Insn *in)
         !strcmp(name, "bsclr #n, [X or Y]:aa, xxxx") ||
         !strcmp(name, "bsset #n, [X or Y]:aa, xxxx") ||
         !strcmp(name, "jsclr #n, [X or Y]:ea, xxxx") ||
-        !strcmp(name, "jsset #n, [X or Y]:ea, xxxx")) {
+        !strcmp(name, "jsset #n, [X or Y]:ea, xxxx") ||
+        !strcmp(name, "bsclr #n, [X or Y]:ea, xxxx") ||
+        !strcmp(name, "bsset #n, [X or Y]:ea, xxxx")) {
         bool indirect = strstr(name, ":ea") != NULL;
         if (indirect && ((inst >> 11) & 7) == 6) return false;
         uint32_t before = t->cyc;

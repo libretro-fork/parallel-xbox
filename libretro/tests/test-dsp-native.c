@@ -1236,8 +1236,10 @@ static void check_register_bitcalls(Machine *a, Machine *b, unsigned mode)
     }
 }
 
-static void check_indirect_memory_bitcontrol(Machine *a, Machine *b, unsigned mode, bool branch)
+static void check_indirect_memory_bitcontrol(Machine *a, Machine *b, unsigned mode, unsigned form)
 {
+    bool branch = form == 1;
+    bool relative = form != 0;
     static const uint32_t pcs[] = {0, 1, 0x30, 0x7fe};
     static const uint32_t offsets[] = {0, 1, 2, 0x20, 0x7fffff, 0x800000, 0xffffe0, 0xffffff};
     static const uint32_t values[] = {0, 0xffffff, 0xaaaaaa, 0x555555};
@@ -1246,17 +1248,17 @@ static void check_indirect_memory_bitcontrol(Machine *a, Machine *b, unsigned mo
         if (am == 6) continue;
         for (unsigned space = 0; space < 2; space++) {
             for (unsigned set = 0; set < 2; set++) {
-                for (unsigned bit = 0; bit < (branch ? 24 : 16); bit++) {
-                    uint32_t op = (branch ? 0x0c8000 : 0x0b4080) | (ea << 8) | (space << 6) | (set << 5) | bit;
+                for (unsigned bit = 0; bit < (relative ? 24 : 16); bit++) {
+                    uint32_t op = (form == 2 ? 0x0d8000 : branch ? 0x0c8000 : 0x0b4080) | (ea << 8) | (space << 6) | (set << 5) | bit;
                     for (unsigned value = 0; value < ARRAY_SIZE(values); value++) {
-                        for (unsigned profile = 0; profile < (branch ? 2 : 4); profile++) {
-                            bool loop = branch ? profile == 1 : profile >= 2;
+                        for (unsigned profile = 0; profile < (relative ? 2 : 4); profile++) {
+                            bool loop = relative ? profile == 1 : profile >= 2;
                             bool taken = ((values[value] >> bit) & 1) == set;
                             uint32_t address = am == 5 ? 0x23 : 0x20;
                             uint32_t next_r = am == 0 ? 0x1d : am == 1 ? 0x23 : am == 2 ? 0x1f : am == 3 ? 0x21 : 0x20;
-                            uint32_t pc = branch ? loop ? 0x20 : pcs[(ea + bit + value) & 3] : 0;
-                            uint32_t ext = branch ? loop ? 0x10 : offsets[(ea + bit + value) & 7] : 0x30;
-                            uint32_t taken_target = branch ? (pc + ext) & 0xffffff : ext;
+                            uint32_t pc = relative ? loop ? 0x20 : pcs[(ea + bit + value) & 3] : 0;
+                            uint32_t ext = relative ? loop ? 0x10 : offsets[(ea + bit + value) & 7] : 0x30;
+                            uint32_t taken_target = relative ? (pc + ext) & 0xffffff : ext;
                             uint32_t next = pc + 2;
                             uint32_t target = loop ? branch ? 0x40 : taken ? next : 0x40 : taken ? taken_target : next;
                             Machine *machines[] = {a, b};
@@ -1322,12 +1324,17 @@ static void check_indirect_memory_bitcontrol(Machine *a, Machine *b, unsigned mo
 
 static void check_indirect_memory_bitcalls(Machine *a, Machine *b, unsigned mode)
 {
-    check_indirect_memory_bitcontrol(a, b, mode, false);
+    check_indirect_memory_bitcontrol(a, b, mode, 0);
 }
 
 static void check_indirect_memory_bitbranches(Machine *a, Machine *b, unsigned mode)
 {
-    check_indirect_memory_bitcontrol(a, b, mode, true);
+    check_indirect_memory_bitcontrol(a, b, mode, 1);
+}
+
+static void check_indirect_relative_calls(Machine *a, Machine *b, unsigned mode)
+{
+    check_indirect_memory_bitcontrol(a, b, mode, 2);
 }
 
 static void check_qq_bits(Machine *a, Machine *b, unsigned mode)
@@ -4259,6 +4266,7 @@ int main(int argc, char **argv)
         puts("native DSP: 32768 bit-call decode probes agree");
         return 0;
     }
+    bool indirect_relative_calls_only = argc == 2 && !strcmp(argv[1], "--indirect-relative-calls");
     bool short_relative_calls_only = argc == 2 && !strcmp(argv[1], "--short-relative-calls");
     bool pp_relative_calls_only = argc == 2 && !strcmp(argv[1], "--pp-relative-calls");
     bool indirect_bitbranches_only = argc == 2 && !strcmp(argv[1], "--indirect-memory-bitbranches");
@@ -4308,8 +4316,8 @@ int main(int argc, char **argv)
     bool effective_only = argc == 2 && !strcmp(argv[1], "--effective-control");
     bool startup_only = argc == 2 && !strcmp(argv[1], "--startup");
     bool program_only = argc == 2 && !strcmp(argv[1], "--program");
-    if (argc != 1 && !short_relative_calls_only && !pp_relative_calls_only && !indirect_bitbranches_only && !short_bitbranches_only && !indirect_bitcalls_only && !short_bitcalls_only && !register_bitcalls_only && !pp_calls_only && !qq_relative_calls_only && !qq_calls_only && !qq_jumps_only && !qq_branches_only && !qq_bits_only && !register_logical_only && !merge_only && !insert_only && !extract_only && !extractu_only && !leading_bits_only && !register_shifts_only && !indirect_memory_loops_only && !short_memory_loops_only && !relative_calls_only && !register_branches_only && !pc_relative_only && !rounded_multiply_only && !y_long_only && !logical_shifts_only && !immediate_logic_only && !relative_only && !loops_only && !program_only && !compare_only && !startup_only && !effective_only && !register_only && !program_control_only && !peripheral_only && !program_peripheral_only && !multiply_only && !normalize_only && !divide_only && !byte_logic_only && !memory_bits_only && !control_bits_only && !offset_control_only && !shifts_only && !signed_right_only && !left_flags_only) {
-        fputs("usage: dspnative [--short-relative-calls|--pp-relative-calls|--indirect-memory-bitbranches|--short-memory-bitbranches|--bitcall-decode|--indirect-memory-bitcalls|--short-memory-bitcalls|--register-bitcalls|--pp-calls|--qq-relative-calls|--qq-calls|--qq-jumps|--qq-branches|--qq-bits|--register-logical-shifts|--merge|--insert|--extract|--extractu|--leading-bits|--register-shifts|--indirect-memory-loops|--short-memory-loops|--relative-calls|--register-branches|--pc-relative-loads|--rounded-multiply|--y-long-offset|--logical-shifts|--immediate-logic|--relative|--loops|--program|--compare|--startup|--effective-control|--register-control|--program-control|--peripheral-control|--program-peripheral|--multiply|--normalize|--divide|--status-byte|--memory-bits|--control-bits|--offset-control|--shift-boundaries|--signed-right|--left-flags]\n", stderr);
+    if (argc != 1 && !indirect_relative_calls_only && !short_relative_calls_only && !pp_relative_calls_only && !indirect_bitbranches_only && !short_bitbranches_only && !indirect_bitcalls_only && !short_bitcalls_only && !register_bitcalls_only && !pp_calls_only && !qq_relative_calls_only && !qq_calls_only && !qq_jumps_only && !qq_branches_only && !qq_bits_only && !register_logical_only && !merge_only && !insert_only && !extract_only && !extractu_only && !leading_bits_only && !register_shifts_only && !indirect_memory_loops_only && !short_memory_loops_only && !relative_calls_only && !register_branches_only && !pc_relative_only && !rounded_multiply_only && !y_long_only && !logical_shifts_only && !immediate_logic_only && !relative_only && !loops_only && !program_only && !compare_only && !startup_only && !effective_only && !register_only && !program_control_only && !peripheral_only && !program_peripheral_only && !multiply_only && !normalize_only && !divide_only && !byte_logic_only && !memory_bits_only && !control_bits_only && !offset_control_only && !shifts_only && !signed_right_only && !left_flags_only) {
+        fputs("usage: dspnative [--indirect-relative-calls|--short-relative-calls|--pp-relative-calls|--indirect-memory-bitbranches|--short-memory-bitbranches|--bitcall-decode|--indirect-memory-bitcalls|--short-memory-bitcalls|--register-bitcalls|--pp-calls|--qq-relative-calls|--qq-calls|--qq-jumps|--qq-branches|--qq-bits|--register-logical-shifts|--merge|--insert|--extract|--extractu|--leading-bits|--register-shifts|--indirect-memory-loops|--short-memory-loops|--relative-calls|--register-branches|--pc-relative-loads|--rounded-multiply|--y-long-offset|--logical-shifts|--immediate-logic|--relative|--loops|--program|--compare|--startup|--effective-control|--register-control|--program-control|--peripheral-control|--program-peripheral|--multiply|--normalize|--divide|--status-byte|--memory-bits|--control-bits|--offset-control|--shift-boundaries|--signed-right|--left-flags]\n", stderr);
         return 2;
     }
     Machine *a = machine_new(false), *b = machine_new(true);
@@ -4325,8 +4333,9 @@ int main(int argc, char **argv)
 #endif
     check_speculative_decode();
     check_bitcall_decode();
-    if (short_relative_calls_only || pp_relative_calls_only || indirect_bitbranches_only || short_bitbranches_only || indirect_bitcalls_only || short_bitcalls_only || register_bitcalls_only || pp_calls_only || qq_relative_calls_only || qq_calls_only || qq_jumps_only || qq_branches_only || qq_bits_only || register_logical_only || merge_only || insert_only || extract_only || extractu_only || leading_bits_only || register_shifts_only || indirect_memory_loops_only || short_memory_loops_only || relative_calls_only || register_branches_only || pc_relative_only || rounded_multiply_only || y_long_only || logical_shifts_only || immediate_logic_only || relative_only || loops_only || program_only || compare_only || startup_only || effective_only || register_only || program_control_only || peripheral_only || program_peripheral_only || multiply_only || normalize_only || divide_only || byte_logic_only || memory_bits_only || control_bits_only || offset_control_only || shifts_only || signed_right_only || left_flags_only) {
+    if (indirect_relative_calls_only || short_relative_calls_only || pp_relative_calls_only || indirect_bitbranches_only || short_bitbranches_only || indirect_bitcalls_only || short_bitcalls_only || register_bitcalls_only || pp_calls_only || qq_relative_calls_only || qq_calls_only || qq_jumps_only || qq_branches_only || qq_bits_only || register_logical_only || merge_only || insert_only || extract_only || extractu_only || leading_bits_only || register_shifts_only || indirect_memory_loops_only || short_memory_loops_only || relative_calls_only || register_branches_only || pc_relative_only || rounded_multiply_only || y_long_only || logical_shifts_only || immediate_logic_only || relative_only || loops_only || program_only || compare_only || startup_only || effective_only || register_only || program_control_only || peripheral_only || program_peripheral_only || multiply_only || normalize_only || divide_only || byte_logic_only || memory_bits_only || control_bits_only || offset_control_only || shifts_only || signed_right_only || left_flags_only) {
         for (unsigned mode = 0; mode < 4; mode++) {
+            if (indirect_relative_calls_only) check_indirect_relative_calls(a, b, mode);
             if (short_relative_calls_only) check_short_relative_calls(a, b, mode);
             if (pp_relative_calls_only) check_pp_relative_calls(a, b, mode);
             if (indirect_bitbranches_only) check_indirect_memory_bitbranches(a, b, mode);
@@ -4408,6 +4417,7 @@ int main(int argc, char **argv)
     }
     check_status_restore_chains(a, b);
     check_logical_immediates(a, b);
+    for (unsigned mode = 0; mode < 4; mode++) check_indirect_relative_calls(a, b, mode);
     for (unsigned mode = 0; mode < 4; mode++) check_short_relative_calls(a, b, mode);
     for (unsigned mode = 0; mode < 4; mode++) check_pp_relative_calls(a, b, mode);
     for (unsigned mode = 0; mode < 4; mode++) check_indirect_memory_bitbranches(a, b, mode);

@@ -694,6 +694,9 @@ static void dis_bitbranch_indirect(dsp_core_t* dsp, const char *name)
 static void dis_brclr_ea(dsp_core_t* dsp) { dis_bitbranch_indirect(dsp, "brclr"); }
 static void dis_brset_ea(dsp_core_t* dsp) { dis_bitbranch_indirect(dsp, "brset"); }
 
+static void dis_bsclr_ea(dsp_core_t* dsp) { dis_bitbranch_indirect(dsp, "bsclr"); }
+static void dis_bsset_ea(dsp_core_t* dsp) { dis_bitbranch_indirect(dsp, "bsset"); }
+
 static void dis_brclr_pp(dsp_core_t* dsp)
 {
     uint32_t xxxx = read_memory_p(dsp, dsp->pc+1);
