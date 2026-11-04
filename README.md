@@ -349,3 +349,11 @@ size. Ordinary images retain the capacity heuristic. Identity belongs to the
 mounted medium, clears on replacement/eject, survives device reset, and is
 unchanged after a failed open. ATAPI profile queries add no file I/O, locks,
 sector copies, shader/PSO state or media sidecar dependency.
+
+OpenGL can retain up to 16 retired single-level linear RGBA8 sampled textures,
+with a 4 MiB image-storage cap, for exact-size direct uploads into existing storage after an existing flip fence
+confirms earlier GPU use has completed. Pending objects cause a normal cache miss,
+with no additional fence, poll or wait.
+Surface conversions, compressed/mipmapped textures and other formats keep their
+existing lifetimes. This introduces no shader/PSO variants or explicit GPU waits;
+GL driver calls can still stall, and no game-speed gain is implied.

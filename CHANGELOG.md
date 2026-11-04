@@ -1,5 +1,6 @@
 # Changelog of the libretro core
 
+- OpenGL reuses up to 16 retired single-level linear RGBA8 texture objects (at most 4 MiB of image storage). After an existing flip fence confirms completion, matching uploads update the image directly from guest RAM; surface conversions and other layouts retain their existing paths. Reused objects restore swizzle and LOD state before use.
 - Small recognized Xbox disc images now report the DVD-ROM profile instead of CD-ROM. Identity is retained from the existing media-open probe, with no new command-time reads; frontend detection also recognizes the partition offsets already supported by the block loader.
 - OpenGL rejects module cache binaries that the driver cannot link, releases the failed program, and regenerates the shader instead of publishing an unusable cached stage.
 - OpenGL shader cache writes use a bounded background writer. Stage-module saves no longer perform filesystem I/O on the render thread, and shader eviction no longer joins a disk-save thread. Busy slots defer optional persistence without waiting or recopying module binaries.

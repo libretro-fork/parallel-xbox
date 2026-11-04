@@ -44,6 +44,7 @@
 
 #include "gloffscreen.h"
 #include "constants.h"
+#include "texture-recycle.h"
 
 /* Composition parameters stay on the render thread. A published ticket
  * identifies an already-composed display image rather than a live surface. */
@@ -134,6 +135,8 @@ typedef struct TextureBinding {
     unsigned int addrp;
     uint32_t border_color;
     bool border_color_set;
+    /* Exact 11+11-bit dimensions; zero after alternate-storage use. */
+    uint8_t recycle_key[3];
     GLfloat max_anisotropy;
     GLenum gl_target;
     GLuint gl_texture;
@@ -269,6 +272,8 @@ typedef struct PGRAPHGLState {
      * under the reports' own ordering, the display one is the render
      * thread's alone. */
     ObjPool surface_pool, texture_pool, report_pool;
+    SampledTexturePool sampled_texture_pool;
+    uint64_t sampled_flip_serial, sampled_flip_wait_serial;
     uint32_t clear_parameter;
     GLuint s2t_byte_pbo;
     Scratch surf_scratch, s2t_scratch, pvideo_scratch;

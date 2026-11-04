@@ -13,8 +13,11 @@ typedef void *GLsync;typedef int GLint;
 #define NV2A_GL_DFRAME_TERMINATOR() ((void)0)
 #define unlikely(x) (x)
 #define QTAILQ_FOREACH(v,h,f) for((v)=(h)->first;(v);(v)=(v)->f.next)
+static void glDeleteTextures(int n,const unsigned *t){assert(n==1&&t);}
+/* POOL */
+
 typedef struct SurfaceBinding { unsigned cpu_reads,cpu_reads_last_flip;struct {struct SurfaceBinding *next;}entry; } SurfaceBinding;
-typedef struct {GLsync flip_fence,flip_wait_fence;unsigned flip_scale;bool flip_failed,flip_display_queued;retro_atomic_int_t download_dirty_surfaces_pending,disp_check_pending,shader_cache_writeback_pending;bool gl_zpass_query_open;struct {SurfaceBinding *first;}surfaces;} PGRAPHGLState;
+typedef struct {SampledTexturePool sampled_texture_pool;uint64_t sampled_flip_serial,sampled_flip_wait_serial;GLsync flip_fence,flip_wait_fence;unsigned flip_scale;bool flip_failed,flip_display_queued;retro_atomic_int_t download_dirty_surfaces_pending,disp_check_pending,shader_cache_writeback_pending;bool gl_zpass_query_open;struct {SurfaceBinding *first;}surfaces;} PGRAPHGLState;
 typedef struct {PGRAPHGLState *gl_renderer_state;bool host_flip_pending,reports_pending;unsigned surface_scale_factor;retro_atomic_int_t waiting_for_flip,scanout_changed,sync_pending,flush_pending;struct {retro_atomic_int_t touched,dl_pending;}cpu;} PGRAPHState;
 typedef struct {PGRAPHState pgraph;struct {int lock;}pfifo;} NV2AState;
 typedef struct {struct {void (*process_pending)(NV2AState *);void (*cpu_access_service)(NV2AState *);void (*surface_update)(NV2AState *,bool,bool,bool);void (*flip_stall)(NV2AState *);bool (*flip_stall_ready)(NV2AState *);int (*poll_pending_report)(NV2AState *);}ops;} PGRAPHRenderer;
@@ -94,6 +97,7 @@ int main(void){
     assert(locks==before_locks+(n==0));
     assert(d.pgraph.sync_pending==(n==0?0:1));
     assert(polls==before+1&&finishes==1&&d.pgraph.host_flip_pending);
+    assert(!r.sampled_texture_pool.completed);
     assert(created-deleted<=2&&xemu_cost_segn==(int)cost&&predownloads==downloads);
    }
    d.pgraph.sync_pending=1;
@@ -103,6 +107,7 @@ int main(void){
    gpu_done=created;owner_dispatch(&d);assert(displays==2&&d.pgraph.sync_pending==0);
   }
   assert(!d.pgraph.host_flip_pending&&finishes==2&&deadlines==2&&predownloads==downloads+1&&refreshes==2&&xemu_cost_segn==0);
+  assert(r.sampled_texture_pool.completed==(cost?2:1));
   assert(!pfifo_puller_should_stall(&d));
   unsigned before=polls;for(unsigned n=0;n<20;n++)pgraph_process_pending_flip(&d);assert(polls==before&&finishes==2);
   pgraph_gl_discard_flip(&d.pgraph);assert(created==deleted);cases++;
@@ -127,10 +132,12 @@ int main(void){
  for(unsigned frame=0;frame<5000;frame++){
   xemu_cost_segn=frame%3;complete_on_flush=frame&1;d.pgraph.surface_scale_factor=expected_scale=1+frame%4;
   required=xemu_cost_segn?created+1:(uintptr_t)r.flip_fence;
+  uint64_t watermark=r.sampled_texture_pool.completed;
   generic_flip(&d,&d.pgraph);assert(created-deleted<=2);d.pgraph.sync_pending=1;
   for(unsigned n=0;n<frame%7&&d.pgraph.host_flip_pending;n++)owner_dispatch(&d);
   gpu_done=created;owner_dispatch(&d);assert(displays==frame+1);
   assert(!d.pgraph.host_flip_pending&&created-deleted<=1&&finishes==frame+1&&deadlines==frame+1);
+  assert(r.sampled_texture_pool.completed==(watermark>required?watermark:required));
  }
  pgraph_gl_discard_flip(&d.pgraph);assert(created==deleted);
  printf("PASS: %u flip retirement schedules, 5000 mixed frames, bounded fences and deferred query reads\n",cases);
