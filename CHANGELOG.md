@@ -57,6 +57,8 @@
 
 ## Unreleased
 
+- DSP: specialize paired X/Y moves with constant addresses inside both RAM banks, avoiding redundant bounds and peripheral-exit checks.
+
 - DSP: emit direct X/Y RAM accesses for paired short-address moves, preserving limiter decisions and pre-load ALU flags.
 
 - DSP: preserve ALU condition flags when a parallel paired-memory load overwrites the whole accumulator.

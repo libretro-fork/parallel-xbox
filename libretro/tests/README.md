@@ -4380,18 +4380,33 @@ retains the interpreter's E/U/N/Z clearing behavior. Whole-accumulator loads
 now publish pending ALU flags before replacing their source, as ordinary
 accumulator writes already do. A production fixture saves TST flags after
 paired loads across frames, including flags deferred from a preceding TST.
-This is a flag-ordering correction; it does not
-add the planned direct-RAM optimization for paired moves.
+These checks cover flag ordering independently of RAM address specialization.
 
 Paired short-address X/Y moves now emit fixed-offset accesses to both RAM
 banks. Both load words are captured before the ALU; store sources, limiter
 results and pre-load flag publication retain their existing order. Only
 short addresses 0..63 use this path, so no device callback or callback-exit
-check is required. Effective-address and immediate-tag forms retain their
-existing guarded accesses. The `--long-load-flags` and `--long-move-limiter`
+check is required. Computed effective addresses retain guarded accesses;
+constant extension addresses are covered below. The `--long-load-flags` and `--long-move-limiter`
 matrices check 44,544 boundaries, including independent register/memory/flag
 oracles, every pair selector and supported ALU byte, scaling and REP.
 The new `gp-startup-paired-short-ram.inc` fixture combines all selectors and
 load/store directions with ADD, REP and counted DO across frames; it can
 also serve as an optional synthetic timing workload. This does not imply
 a game-wide or universal C-versus-Rust performance improvement.
+
+`dspnative --constant-pair-ram` adds 10,752 paired-move boundary checks for
+absolute and legacy immediate-tag address operands, all pair selectors and
+directions, representative ALUs, four scaling modes, and RAM boundary words.
+Peripheral callbacks are poisoned. A nonexecuting production-helper query
+checks all 16,777,216 24-bit addresses plus UINT32_MAX: only addresses below
+0x800 fit ordinary RAM in both banks. The first address beyond Y RAM, X
+aliases and peripheral addresses stay on guarded paths without being executed
+by the boundary probes. Constant addresses use direct fixed-offset accesses;
+computed EAs retain their existing behavior. Extension decoding and extra
+cycles still occur, and PM4's existing immediate-tag-as-address interpretation
+is preserved. Together with the flag and limiter matrices, 55,296 boundaries
+are checked with zero interpreter calls. Negative controls catch an inclusive
+Y-RAM limit and confusing an EA encoding with its extension-word address.
+The production fixture combines absolute/tagged addresses at 0x90 and 0x7ff
+with ADD, REP, DO, all selectors and both directions across frames.
