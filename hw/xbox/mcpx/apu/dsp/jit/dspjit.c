@@ -2287,6 +2287,9 @@ static void emit_pm_4x(Tr *t, const Insn *in, const AluOp *a)
         case 5: {
             int n = numreg - 4;
             int acc = acc_reg(n);
+            /* The flags belong to the ALU result before the parallel load
+             * replaces it, just as in emit_write_reg's accumulator path. */
+            if (t->lazy_acc == n) emit_flags_flush(t);
             /* A0 = V2, A1 = V1, A2 = sign of V1 */
             h_mov_rr(e, 1, acc, V1);
             h_shl_ri(e, 1, acc, 40);

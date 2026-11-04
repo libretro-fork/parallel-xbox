@@ -57,6 +57,8 @@
 
 ## Unreleased
 
+- DSP: preserve ALU condition flags when a parallel paired-memory load overwrites the whole accumulator.
+
 - Write eligible Vulkan inline arrays on devices with native vertex formats directly into an already-owned upload slot, removing the intermediate CPU-array copy. Preserve CPU fallback and materialize pending data before submission, save, conversion or conflicting uploads; discard host views on load.
 - DSP: preserve the correct low word in paired X/Y accumulator stores when scaling changes whether the high word is limited.
 

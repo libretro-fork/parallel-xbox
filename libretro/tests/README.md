@@ -4366,3 +4366,19 @@ now use the same scaled fit criteria. This preserves the interpreter model,
 including legacy scale-up wrap; it does not introduce new hardware semantics.
 The production fixture records distinct paired stores for signed edges and
 all modes, including repeated stores across frames; the old JIT fails it.
+
+`dspnative --long-load-flags` checks 40,704 paired-move boundaries with zero
+interpreter calls. All eight pair selectors and 252 supported ALU bytes run
+against the interpreter across scaling modes and ordinary/DO/long-interrupt
+contexts. Independent NOP oracles cover every short address, pair selector
+and direction, with poisoned peripheral callbacks and exact register/memory/
+status/PC/cycle checks. Independent TST oracles require flags for a zero
+pre-load accumulator when the load supplies nonzero positive/negative data;
+both overwritten and opposite flag-source accumulators, all scale modes,
+short/indirect/extension operands and partial REP are covered. Scaling mode 3
+retains the interpreter's E/U/N/Z clearing behavior. Whole-accumulator loads
+now publish pending ALU flags before replacing their source, as ordinary
+accumulator writes already do. A production fixture saves TST flags after
+paired loads across frames, including flags deferred from a preceding TST.
+This is a flag-ordering correction; it does not
+add the planned direct-RAM optimization for paired moves.
