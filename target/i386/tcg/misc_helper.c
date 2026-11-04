@@ -143,8 +143,3 @@ void helper_wrpkru(CPUX86State *env, uint32_t ecx, uint64_t val)
     env->pkru = val;
     tlb_flush(cs);
 }
-
-target_ulong HELPER(rdpid)(CPUX86State *env)
-{
-    return env->tsc_aux;
-}

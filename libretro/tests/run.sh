@@ -840,7 +840,7 @@ for boost in enabled disabled; do
   t "unsupported crypto, CPU Boost $boost" $h "$(path "$core")" "$(path "$work/syscrypto")" \
     $vp --opt "xemu_cpu_boost=$boost" --frames 60 --strict \
     --peek 0x300000 --peek 0x300004 --peek 0x300008 --peek 0x30000c >"$work/crypto-ud-$boost.txt"
-  for want in "peek_0x300000=0x43525950" "peek_0x300004=0x00000000" "peek_0x300008=0x0000001d" "peek_0x30000c=0x00000001"; do
+  for want in "peek_0x300000=0x43525950" "peek_0x300004=0x00000000" "peek_0x300008=0x0000002b" "peek_0x30000c=0x00000003"; do
     grep -q "^$want$" "$work/crypto-ud-$boost.txt" || { cat "$work/crypto-ud-$boost.txt"; exit 1; }
   done
 done

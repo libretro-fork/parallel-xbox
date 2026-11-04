@@ -3869,11 +3869,11 @@ shutdown drain, 32 reinitializations and startup failure fallback.
 `test-pipeline-cache-export.py` retains the direct scratch/growth, incomplete
 data, write retry and teardown byte oracle with the immutable cache path.
 
-`rom/crypto-ud.asm` checks twenty-nine unsupported crypto/random forms,
+`rom/crypto-ud.asm` checks forty-three unsupported crypto/random/processor-ID forms,
 register and unmapped-memory operands, exact fault EIP, carry/XMM preservation
 and CR0 EM/TS modes. An instruction spanning an unmapped page must raise
 fetch #PF rather than #UD, with the original EIP and CR2. It checks feature
-bits remain absent and reports CRYP, twenty-nine #UD traps and one #PF.
+bits remain absent and reports CRYP, forty-three #UD traps and three #PF.
 
 The crypto ROM includes 16/32-bit RDRAND/RDSEED, invalid memory/prefix
 encodings, neighboring unsupported RDPID and supported CMPXCHG8B. Random
@@ -3899,3 +3899,9 @@ contexts add modulo/bit-reversed addressing, interrupts and stack errors.
 `gp-startup-indirect-memory-bitcalls` exercises X/Y calls, postincrement,
 predecrement and native returns across frames. Long/immediate EA forms remain
 on the existing interpreter path pending separate extension-word work.
+
+The processor-ID cases cover RDPID register/prefix/memory forms, RDTSCP
+with operand-size/REP/REPNZ/LOCK prefixes, unchanged destinations and
+arithmetic flag bits. Missing ModRM bytes across an unmapped page must
+raise fetch #PF first. Ordinary RDTSC preserves ECX/CF and returns
+nondecreasing values; its CPUID feature remains advertised.

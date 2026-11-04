@@ -388,3 +388,9 @@ QOM property application and UserCreatable completion remain. The existing
 QAPI pruner removes the newly unreachable functions and lookup tables;
 header-only schema types required by remaining block headers retain their
 values/layouts. This is infrastructure cleanup, with no FPS claim.
+
+RDPID and RDTSCP use the fixed Xbox CPU illegal-opcode path without their
+shared helper. Ordinary RDTSC remains supported. The exception ROM now
+checks 43 traps, arithmetic flags/registers and three fetch-page faults,
+including missing RDPID/RDTSCP instruction bytes. Existing tsc_aux state
+and MSR/save-state handling are retained. No speedup claim is made.

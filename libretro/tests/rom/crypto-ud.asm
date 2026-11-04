@@ -11,9 +11,18 @@ org 0xfff00000
  mov dword [R+16],%%op
  mov dword [R+20],%%next
  stc
+ pushfd
+ pop dword [R+28]
 %%op: %1
 %%next:
  jnc fail
+ push eax
+ pushfd
+ pop eax
+ xor eax,[R+28]
+ and eax,0x8d5
+ jnz fail
+ pop eax
  inc ebp
  check dword [R+8],ebp
 %endmacro
@@ -59,6 +68,8 @@ start:
  mov cr0,eax
  mov eax,1
  cpuid
+ test edx,0x10
+ jz fail
  test ecx,0x42000002
  jnz fail
  movups xmm0,[pattern]
@@ -97,6 +108,53 @@ start:
  trap db 0xf2,0x0f,0xc7,0xf0   ; invalid REPNZ RDRAND
  trap db 0xf3,0x0f,0xc7,0xf8   ; RDPID remains independently unsupported
  check eax,0x76543210
+ ; RDPID register/size-prefix forms preserve all destination values.
+ mov ebx,0x12345678
+ mov ecx,0x89abcdef
+ mov edx,0xfedcba98
+ mov esi,0x11223344
+ mov edi,0x55667788
+ trap rdpid ecx
+ trap rdpid edx
+ trap rdpid ebx
+ trap rdpid esi
+ trap rdpid edi
+ trap rdpid ebp
+ trap db 0x66,0xf3,0x0f,0xc7,0xf8
+ trap db 0xf3,0x66,0x0f,0xc7,0xf8
+ trap db 0xf3,0x0f,0xc7,0x3d,0,0,0,1
+ check eax,0x76543210
+ check ebx,0x12345678
+ check ecx,0x89abcdef
+ check edx,0xfedcba98
+ check esi,0x11223344
+ check edi,0x55667788
+ ; RDTSCP shares the old RDPID helper but is also absent from this CPU.
+ trap rdtscp
+ trap db 0x66,0x0f,0x01,0xf9
+ trap db 0xf3,0x0f,0x01,0xf9
+ trap db 0xf2,0x0f,0x01,0xf9
+ trap db 0xf0,0x0f,0x01,0xf9
+ check eax,0x76543210
+ check ecx,0x89abcdef
+ check edx,0xfedcba98
+ ; Ordinary RDTSC is supported, leaves ECX/CF alone and is nondecreasing.
+ stc
+ rdtsc
+ jnc fail
+ check ecx,0x89abcdef
+ push eax
+ push edx
+ stc
+ rdtsc
+ jnc fail
+ cmp edx,[esp]
+ jb fail
+ ja clock_ok
+ cmp eax,[esp+4]
+ jb fail
+clock_ok:
+ add esp,8
  ; Preserve the supported CMPXCHG8B neighbor in the same opcode group.
  mov dword [R+128],0x11223344
  mov dword [R+132],0x55667788
@@ -135,10 +193,24 @@ start:
  ; An incomplete opcode must fault fetching its next page, not become #UD.
  mov word [0x3ffffe],0x0f66
  mov dword [R+20],after_fetch
+ mov dword [R+24],0x3ffffe
  jmp 0x3ffffe
 after_fetch:
  check dword [R+12],1
- check ebp,29
+ mov byte [0x3ffffd],0xf3
+ mov word [0x3ffffe],0xc70f
+ mov dword [R+24],0x3ffffd
+ mov dword [R+20],after_rdpid_fetch
+ jmp 0x3ffffd
+after_rdpid_fetch:
+ check dword [R+12],2
+ mov word [0x3ffffe],0x010f
+ mov dword [R+24],0x3ffffe
+ mov dword [R+20],after_rdtscp_fetch
+ jmp 0x3ffffe
+after_rdtscp_fetch:
+ check dword [R+12],3
+ check ebp,43
  mov dword [R],0x43525950
 .halt:
  cli
@@ -147,7 +219,7 @@ after_fetch:
 fail:
  mov [R+4],ebp
  mov dword [R],0x4641494c
- jmp after_fetch.halt
+ jmp after_rdtscp_fetch.halt
 gate:
  mov word [edi],ax
  mov word [edi+2],8
@@ -169,7 +241,7 @@ pf_handler:
  mov eax,cr2
  check eax,0x400000
  mov eax,[esp+8]
- check eax,0x3ffffe
+ check eax,[R+24]
  mov eax,[R+20]
  mov [esp+8],eax
  inc dword [R+12]

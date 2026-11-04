@@ -3749,13 +3749,8 @@ static void gen_multi0F(DisasContext *s, X86DecodedInsn *decode)
                 goto illegal_op;
             }
             if (s->prefix & PREFIX_REPZ) {
-                if (!(s->cpuid_7_0_ecx_features & CPUID_7_0_ECX_RDPID)) {
-                    goto illegal_op;
-                }
-                gen_helper_rdpid(s->T0, tcg_env);
-                rm = (modrm & 7) | REX_B(s);
-                gen_op_mov_reg_v(s, dflag, rm, s->T0);
-                break;
+                /* RDPID is absent from the fixed Xbox Pentium III. */
+                goto illegal_op;
             } else {
                 if (!(s->cpuid_7_0_ebx_features & CPUID_7_0_EBX_RDSEED)) {
                     goto illegal_op;
@@ -4159,16 +4154,8 @@ static void gen_multi0F(DisasContext *s, X86DecodedInsn *decode)
             goto illegal_op;
 
         case 0xf9: /* rdtscp */
-            if (!(s->cpuid_ext2_features & CPUID_EXT2_RDTSCP)) {
-                goto illegal_op;
-            }
-            gen_update_cc_op(s);
-            gen_update_eip_cur(s);
-            translator_io_start(&s->base);
-            gen_helper_rdtsc(tcg_env);
-            gen_helper_rdpid(s->T0, tcg_env);
-            gen_op_mov_reg_v(s, dflag, R_ECX, s->T0);
-            break;
+            /* RDTSCP is absent too; ordinary RDTSC remains supported. */
+            goto illegal_op;
 
         default:
             goto illegal_op;
