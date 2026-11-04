@@ -44,6 +44,8 @@
 
 ## Unreleased
 
+- DSP data instructions now remain in native code while interrupts are pending or moving through the fast-interrupt pipeline, with instruction-by-instruction loop and interrupt retirement and regression coverage.
+
 - DSP: execute RTI natively in the C JIT, restoring return status before selecting the resumed scaling/loop mode; add stack-edge, loop-boundary and multi-frame regressions.
 
 - DSP: complete execution paths for the remaining 25 decoder families, including shifted/mixed multiplies, DMAC, NORMF, VSL, forever loops, conditional breaks, debug and trap instructions, PRAM-mode cache exceptions and isolated Y peripheral transfers. Preserve forever-loop state across arithmetic and nested loops, and correct rounded MAC overflow flags, with extensive native regression coverage.
