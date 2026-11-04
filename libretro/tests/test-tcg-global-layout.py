@@ -23,7 +23,8 @@ def function(key):
     return source[start:end]
 
 
-keys = ['static TCGOp *tcg_op_alloc(', 'TCGOp *tcg_emit_op(',
+keys = ['static void remove_label_use(', 'void tcg_op_remove(',
+        'void tcg_remove_ops_after(', 'static TCGOp *tcg_op_alloc(', 'TCGOp *tcg_emit_op(',
         'TCGOp *tcg_op_insert_before(', 'TCGOp *tcg_op_insert_after(',
         'TCGLabel *gen_new_label(',
         'static TCGTemp *tcg_temp_alloc(', 'static TCGTemp *tcg_global_alloc(',

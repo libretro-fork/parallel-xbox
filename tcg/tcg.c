@@ -3022,7 +3022,7 @@ void tcg_remove_ops_after(TCGOp *op)
     TCGContext *s = tcg_ctx;
 
     while (true) {
-        TCGOp *last = tcg_last_op();
+        TCGOp *last = QTAILQ_LAST(&s->ops);
         if (last == op) {
             return;
         }

@@ -88,6 +88,63 @@ static void check_ops(TCGContext *owner, bool current)
     }
 }
 
+static void check_rollback(TCGContext *owner)
+{
+    static unsigned char arena[4096] QEMU_ALIGNED(16);
+    static const TCGOpcode codes[] = {
+        INDEX_op_mov, INDEX_op_br, INDEX_op_brcond, INDEX_op_brcond2_i32, INDEX_op_br
+    };
+    static const unsigned label_indices[] = {0, 0, 3, 5, 0};
+    TCGLabel label = {0};
+    TCGLabelUse uses[4];
+    TCGOp *ops[5], *op;
+    QSIMPLEQ_INIT(&label.branches);
+    QTAILQ_INIT(&owner->ops);
+    QTAILQ_INIT(&owner->free_ops);
+    owner->pool_cur = (uintptr_t)arena;
+    owner->pool_end = owner->pool_cur + sizeof(arena);
+    owner->nb_ops = 0;
+    for (unsigned i = 0; i < ARRAY_SIZE(ops); ++i) {
+        op = ops[i] = tcg_op_alloc(owner, codes[i], label_indices[i] + 1);
+        QTAILQ_INSERT_TAIL(&owner->ops, op, link);
+        if (i) {
+            op->args[label_indices[i]] = label_arg(&label);
+            uses[i - 1].op = op;
+            QSIMPLEQ_INSERT_TAIL(&label.branches, &uses[i - 1], next);
+        }
+    }
+    /* Preserve a branch while discarding all three supported branch forms. */
+    tcg_remove_ops_after(ops[1]);
+    assert(owner->nb_ops == 2 && QTAILQ_LAST(&owner->ops) == ops[1]);
+    assert(QSIMPLEQ_FIRST(&label.branches) == &uses[0]);
+    assert(!QSIMPLEQ_NEXT(&uses[0], next));
+    assert(label.branches.sqh_last == &uses[0].next.sqe_next);
+    unsigned count = 0;
+    QTAILQ_FOREACH(op, &owner->free_ops, link) {
+        assert(count < 3 && op == ops[4 - count]);
+        ++count;
+    }
+    assert(count == 3);
+    tcg_remove_ops_after(ops[1]); /* Already at the saved tail. */
+    assert(owner->nb_ops == 2 && QTAILQ_FIRST(&owner->free_ops) == ops[4]);
+    tcg_remove_ops_after(ops[0]);
+    assert(owner->nb_ops == 1 && QSIMPLEQ_EMPTY(&label.branches));
+    assert(label.branches.sqh_last == &label.branches.sqh_first);
+    tcg_remove_ops_after(NULL); /* Discard the entire speculative sequence. */
+    assert(!owner->nb_ops && QTAILQ_EMPTY(&owner->ops));
+    assert(QTAILQ_LAST(&owner->ops) == NULL);
+    tcg_remove_ops_after(NULL); /* Empty input remains a no-op. */
+    count = 0;
+    QTAILQ_FOREACH(op, &owner->free_ops, link) {
+        assert(count < ARRAY_SIZE(ops) && op == ops[4 - count]);
+        ++count;
+    }
+    assert(count == ARRAY_SIZE(ops));
+    uintptr_t cursor = owner->pool_cur;
+    assert(tcg_op_alloc(owner, INDEX_op_mov, 1) == ops[4]);
+    assert(owner->nb_ops == 1 && owner->pool_cur == cursor);
+}
+
 static void check_global(TCGTemp *temp, TCGTemp *base, intptr_t offset,
                          TCGType type, bool indirect)
 {
@@ -219,6 +276,8 @@ int main(void)
     assert(tcg_malloc(9) == refill_buffer && refill_calls == calls + 1);
     check_ops(&other, false); /* Explicit owner differs from TLS. */
     check_ops(&context, true);
+    check_rollback(&context);
+    puts("TCG rollback: suffix/full/empty removal, branch uses and reuse PASS");
     puts("TCG ops: owners, allocation/reuse, insertion order and epilogues PASS");
     printf("TCG global layout: %d-bit direct/indirect globals, %shandles and frame PASS\n",
            TCG_TARGET_REG_BITS, TCG_TARGET_REG_BITS == 32 ? "split halves, " : "");
