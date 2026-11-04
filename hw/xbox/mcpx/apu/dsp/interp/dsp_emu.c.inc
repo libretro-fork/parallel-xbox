@@ -8338,7 +8338,7 @@ static void emu_move_y_imm(dsp_core_t* dsp)
     emu_move_xy_imm(dsp, DSP_SPACE_Y);
 }
 
-static void emu_multiply_immediate(dsp_core_t* dsp, bool rounded)
+static void emu_multiply_immediate(dsp_core_t* dsp, bool rounded, bool accumulate)
 {
     uint32_t xxxx = read_memory_p(dsp, dsp->pc+1);
     dsp->cur_inst_len++;
@@ -8357,6 +8357,14 @@ static void emu_multiply_immediate(dsp_core_t* dsp, bool rounded)
 
     uint32_t source[3];
     dsp_mul56(xxxx, dsp->registers[srcreg], source, k ? SIGN_MINUS : SIGN_PLUS);
+    uint16_t newsr = 0;
+    if (accumulate) {
+        uint32_t dest[3] = {dsp->registers[DSP_REG_A2 + d],
+                           dsp->registers[DSP_REG_A1 + d],
+                           dsp->registers[DSP_REG_A0 + d]};
+        newsr = dsp_add56(source, dest);
+        memcpy(source, dest, sizeof(source));
+    }
     if (rounded) {
         dsp_rnd56(dsp, source);
     }
@@ -8373,16 +8381,27 @@ static void emu_multiply_immediate(dsp_core_t* dsp, bool rounded)
 
     emu_ccr_update_e_u_n_z(dsp, source[0], source[1], source[2]);
     dsp->registers[DSP_REG_SR] &= BITMASK(16)-(1<<DSP_SR_V);
+    dsp->registers[DSP_REG_SR] |= newsr & 0xfe;
 }
 
 static void emu_mpyi(dsp_core_t* dsp)
 {
-    emu_multiply_immediate(dsp, false);
+    emu_multiply_immediate(dsp, false, false);
 }
 
 static void emu_mpyri(dsp_core_t* dsp)
 {
-    emu_multiply_immediate(dsp, true);
+    emu_multiply_immediate(dsp, true, false);
+}
+
+static void emu_maci(dsp_core_t* dsp)
+{
+    emu_multiply_immediate(dsp, false, true);
+}
+
+static void emu_macri(dsp_core_t* dsp)
+{
+    emu_multiply_immediate(dsp, true, true);
 }
 
 static void emu_norm(dsp_core_t* dsp)

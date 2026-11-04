@@ -42,6 +42,8 @@
 
 ## Unreleased
 
+- DSP: implement immediate multiply-accumulate (MACI/MACRI) in the C interpreter and native JIT, with regression coverage for overflow, rounding and status flags.
+
 - DSP: implement low X peripheral transfers to/from program memory in the C interpreter and JIT, preserving address updates and code-cache invalidation; add exhaustive native regressions.
 
 - DSP: execute X:qq register MOVEP transfers natively, including split peripheral ports, register masks, accumulator limiting and SSH stack effects.
