@@ -296,7 +296,7 @@ python3 "$here/test-vk-vertex-copies.py" "$here/../.." "$cc"
 python3 "$here/test-vk-vertex-formats.py" "$here/../.." "$cc"
 python3 "$here/test-vk-worker-modules.py" "$here/../.." "$cc"
 python3 "$here/test-worker-key-hash.py" "$here/../.." "$cc" --clear-baseline --check-only
-python3 "$here/test-pre-module-keys.py" "$here/../.." "$cc" --vertex-clear-baseline --check-only
+python3 "$here/test-pre-module-keys.py" "$here/../.." "$cc" --fragment-clear-baseline --check-only
 python3 "$here/test-prepare-xiso.py"
 # Production GL transfers against Mesa's GL on a surfaceless EGL display
 case $core in

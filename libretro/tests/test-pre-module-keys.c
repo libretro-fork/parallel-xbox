@@ -28,7 +28,7 @@ static void *count_clear(void *dst,int v,size_t n){cleared+=n;return memset(dst,
 #ifdef CHECKED
 #undef memset
 #endif
-#ifdef REFERENCE_VERTEX_CLEAR
+#if defined(REFERENCE_VERTEX_CLEAR) || defined(REFERENCE_FRAGMENT_CLEAR)
 #define REFERENCE_PRE(r,s,g,v) reference_pre_refs(r,s,g,v)
 #else
 #define REFERENCE_PRE(r,s,g,v) reference_refs(r,s,g,v,NULL)
@@ -42,7 +42,22 @@ static void correctness(void){
   state.psh.depth_format=trial&4?DEPTH_FORMAT_UI_CLAMP:DEPTH_FORMAT_D24;state.psh.shader_stage_program=(uint32_t)PS_TEXTUREMODES_PROJECT2D<<((trial%4)*5);
   need_geometry=(trial&1)!=0;PGRAPHVkState r={.use_push_constants_for_uniform_attrs=(trial&2)!=0};
   ShaderModuleCacheKey a[3],b[3];memset(a,0x97,sizeof(a));memset(b,0x38,sizeof(b));
-  int na=reference_keys(&state,r.use_push_constants_for_uniform_attrs,a);int nb=vk_state_module_keys(&state,r.use_push_constants_for_uniform_attrs,b);
+#ifdef CHECKED
+  cleared=0;
+#endif
+  int na=reference_keys(&state,r.use_push_constants_for_uniform_attrs,a);
+#ifdef CHECKED
+  size_t old_full_clear=cleared;cleared=0;
+#endif
+  int nb=vk_state_module_keys(&state,r.use_push_constants_for_uniform_attrs,b);
+#ifdef CHECKED
+  assert(cleared==(size_t)nb*sizeof(ShaderModuleCacheKey)-sizeof(state.vsh)-sizeof(state.psh));
+#ifdef REFERENCE_FRAGMENT_CLEAR
+  assert(old_full_clear-cleared==sizeof(state.psh));
+#else
+  assert(old_full_clear-cleared==sizeof(state.vsh)+sizeof(state.psh));
+#endif
+#endif
   assert(na==nb&&!memcmp(a,b,na*sizeof(a[0])));
   ShaderModuleInfo *ga,*va,*gb,*vb,*psh;
 #ifdef CHECKED
@@ -60,7 +75,9 @@ static void correctness(void){
   assert(lookups==expected&&lookups==1+(unsigned)need_geometry&&ga==gb&&va==vb&&!memcmp(old,captured,lookups*sizeof(old[0])));
 #ifdef CHECKED
   assert(cleared==lookups*sizeof(ShaderModuleCacheKey)-sizeof(state.vsh));
-#ifdef REFERENCE_VERTEX_CLEAR
+#ifdef REFERENCE_FRAGMENT_CLEAR
+  assert(old_cleared==cleared);
+#elif defined(REFERENCE_VERTEX_CLEAR)
   assert(old_cleared-cleared==sizeof(state.vsh));
 #else
   assert(old_cleared-cleared==sizeof(ShaderModuleCacheKey)+sizeof(state.vsh));
@@ -86,7 +103,7 @@ static double bench(unsigned current,unsigned full,unsigned geom){
  timespec_get(&b,TIME_UTC);return ((b.tv_sec-a.tv_sec)*1e9+b.tv_nsec-a.tv_nsec)/1000000;
 }
 #endif
-int main(void){correctness();printf("module-key=%zu vertex-state=%zu bytes; omitted overwritten clear checked\n",sizeof(ShaderModuleCacheKey),sizeof(VshState));
+int main(void){correctness();printf("module-key=%zu vertex-state=%zu fragment-state=%zu bytes; omitted overwritten clears checked\n",sizeof(ShaderModuleCacheKey),sizeof(VshState),sizeof(PshState));
 #ifndef CHECKED
  puts("Isolated key builders/modeled lookup capture; no shader compilation/GPU timing; ns/state");
  for(unsigned round=0;round<5;round++)for(unsigned full=0;full<2;full++)for(unsigned geom=0;geom<2;geom++){

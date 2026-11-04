@@ -734,7 +734,11 @@ static int vk_state_module_keys(const ShaderState *st, bool push_constants,
                                 ShaderModuleCacheKey *keys)
 {
     int n = vk_pre_state_module_keys(st, push_constants, keys);
-    memset(&keys[n], 0, sizeof(keys[n]));
+    /* The fragment state is copied next; retain zeros in the unused union. */
+    memset(&keys[n], 0, offsetof(ShaderModuleCacheKey, psh.state));
+    const size_t after_psh = offsetof(ShaderModuleCacheKey, psh.state) +
+                             sizeof(keys[n].psh.state);
+    memset((char *)&keys[n] + after_psh, 0, sizeof(keys[n]) - after_psh);
     keys[n].kind = VK_SHADER_STAGE_FRAGMENT_BIT;
     keys[n].psh.state = st->psh;
     keys[n].psh.glsl_opts.vulkan = true;
