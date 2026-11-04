@@ -56,6 +56,8 @@
 
 ## Unreleased
 
+- DSP repeats containing native DO/DOR, forever-loop setup, ENDDO or nested REP setup now remain native, preserving the current model for handler-updated counts, stack frames and sequential retirement.
+
 - DSP repeats containing native branches, calls and returns now remain native. Untaken controls correctly suppress sequential PC advance while taken targets are preserved, including equal-target cases; saved return PCs also retain the correct value at program-RAM boundaries.
 
 - DSP repeats containing debug, trap and cache-control instructions now execute natively with correct partial-repeat PC, halt state and deferred exceptions. Their retirement also preserves the interpreter's PC value at the end of program RAM.

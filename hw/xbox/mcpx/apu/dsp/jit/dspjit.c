@@ -3584,8 +3584,8 @@ static bool emit_control(Tr *t, const Insn *in)
         h_call(e, (const void *)dsp56k_stack_push);
         h_or_mem32_imm(e, REG_CORE, REGOFF(DSP_REG_SR), (1u << DSP_SR_LF) | (1u << DSP_SR_FV));
         /* LF changes the block identity. Retire once, then redispatch. */
-        h_st32_imm(e, REG_CORE, OFF(pc), in->next);
-        h_st32_imm(e, REG_CORE, OFF(cur_inst_len), 0);
+        h_st32_imm(e, REG_CORE, OFF(pc), in->at);
+        h_st32_imm(e, REG_CORE, OFF(cur_inst_len), in->len);
         h_st16_imm(e, REG_CORE, OFF(instr_cycle), relative ? 10 : 8);
         h_mov_rr(e, 1, H_ARG0, REG_CORE);
         h_call(e, (const void *)dsp56k_post);
@@ -3607,9 +3607,13 @@ static bool emit_control(Tr *t, const Insn *in)
         h_mov_rr(e, 1, H_ARG0, REG_CORE);
         h_call(e, (const void *)dsp56k_do_end);
         h_stub_call_end(e);
-        if (!strcmp(name, "brkcc")) h_st32(e, REG_CORE, OFF(pc), EA1);
-        else h_st32_imm(e, REG_CORE, OFF(pc), in->next);
-        h_st32_imm(e, REG_CORE, OFF(cur_inst_len), 0);
+        if (!strcmp(name, "brkcc")) {
+            h_st32(e, REG_CORE, OFF(pc), EA1);
+            h_st32_imm(e, REG_CORE, OFF(cur_inst_len), 0);
+        } else {
+            h_st32_imm(e, REG_CORE, OFF(pc), in->at);
+            h_st32_imm(e, REG_CORE, OFF(cur_inst_len), in->len);
+        }
         h_st16_imm(e, REG_CORE, OFF(instr_cycle), 2);
         h_mov_rr(e, 1, H_ARG0, REG_CORE);
         h_call(e, (const void *)dsp56k_post);
@@ -4043,7 +4047,7 @@ static bool emit_control(Tr *t, const Insn *in)
             h_st32(e, REG_CORE, REGOFF(DSP_REG_LC), V1);
         }
         h_mov_rr(e, 1, H_ARG0, REG_CORE);
-        h_mov_ri(e, H_ARG1, in->next);
+        h_mov_ri(e, H_ARG1, in->at + in->len);
         h_ld32(e, H_ARG2, REG_CORE, REGOFF(DSP_REG_SR));
         h_call(e, (const void *)dsp56k_stack_push);
         h_and_mem32_imm(e, REG_CORE, REGOFF(DSP_REG_SR), ~(1u << DSP_SR_FV));
@@ -4071,6 +4075,10 @@ static bool emit_control(Tr *t, const Insn *in)
         }
         uint32_t cycles = 6 + t->cyc - before;
         t->cyc = before;
+        if (t->interrupt_retirement) {
+            emit_fallthrough(t, in, in->next, cycles);
+            return true;
+        }
         emit_stack_check(t, in, in->next, cycles);
         /* DOR enables LF. Chain through that identity's stable table;
          * a missing translation still leaves through the normal path. */
@@ -4716,17 +4724,9 @@ static dspjit_block_fn dspjit_translate_rep(DspJit *jit, int mode, uint32_t pc)
         return NULL;
     }
     if (!decode_insn(core, pc, &in)) return NULL;
-    if (in.d.control && (!strcmp(in.d.name, "ill") || !strcmp(in.d.name, "wait") ||
-                         !strcmp(in.d.name, "stop") || !strcmp(in.d.name, "reset") ||
-                         !strncmp(in.d.name, "debug", 5) || !strncmp(in.d.name, "trap", 4) ||
-                         !strncmp(in.d.name, "pflush", 6) || !strcmp(in.d.name, "pfree") ||
-                         !strncmp(in.d.name, "plock", 5) || !strncmp(in.d.name, "punlock", 7) ||
-                         in.d.name[0] == 'j' || in.d.name[0] == 'b' ||
-                         !strcmp(in.d.name, "rts") || !strcmp(in.d.name, "rti"))) {
-        /* These emitters retire at the original PC with the decoded length.
-         * Post must perform REP's decrement, deferring interrupts until the
-         * last body iteration. Taken branches preserve their selected PC;
-         * untaken branches use sequential retirement. Loop setup remains separate. */
+    if (in.d.control) {
+        /* Every supported control emitter now distinguishes sequential
+         * retirement from a selected PC. Post applies REP state once. */
         return dspjit_translate_interrupt(jit, mode, pc);
     }
     if (!insn_native(&in)) {

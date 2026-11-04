@@ -1,0 +1,25 @@
+; REP DO setup decrements the handler-updated LC; nested REP establishes a new first-pass count and preserves loop stack/caller state.
+        dd 0x0A8581 ; P:000
+        dd 0x000000 ; P:001
+        dd 0x08F485 ; P:002
+        dd 0x000002 ; P:003
+        dd 0x0500B9 ; P:004
+        dd 0x44F400 ; P:005
+        dd 0x000001 ; P:006
+        dd 0x200013 ; P:007
+        dd 0x0502BF ; P:008
+        dd 0x0601A0 ; P:009
+        dd 0x060180 ; P:00A
+        dd 0x00000C ; P:00B
+        dd 0x200040 ; P:00C
+        dd 0x0602A0 ; P:00D
+        dd 0x0603A0 ; P:00E
+        dd 0x200040 ; P:00F
+        dd 0x67F400 ; P:010
+        dd 0x001400 ; P:011
+        dd 0x565F00 ; P:012
+        dd 0x0445B9 ; P:013
+        dd 0x455F00 ; P:014
+        dd 0x08F484 ; P:015
+        dd 0x000001 ; P:016
+        dd 0x0C0000 ; P:017
