@@ -49,6 +49,8 @@
 
 ## Unreleased
 
+- DSP repeats with X/Y memory counts now start natively, including peripheral reads and all accepted address modes. Repeat cycle accounting also handles raw memory counts with upper bits correctly across pause/resume.
+
 - Immediate/register DSP repeats now start natively during interrupt pipelines. Native repeat bodies also keep running with pending interrupts, deferring them until the repeat ends instead of stepping every iteration through the interpreter.
 
 - DSP native branches, calls, returns, loop setup and exception controls now remain in native code during interrupt pipelines while preserving per-instruction retirement, vector stack saves and return timing.
