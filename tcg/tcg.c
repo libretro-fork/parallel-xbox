@@ -2510,7 +2510,7 @@ bool tcg_op_deposit_valid(TCGType type, unsigned ofs, unsigned len)
     return TCG_TARGET_deposit_valid(type, ofs, len);
 }
 
-static TCGOp *tcg_op_alloc(TCGOpcode opc, unsigned nargs);
+static TCGOp *tcg_op_alloc(TCGContext *s, TCGOpcode opc, unsigned nargs);
 
 static void tcg_gen_callN(void *func, TCGHelperInfo *info,
                           TCGTemp *ret, TCGTemp **args)
@@ -2524,8 +2524,9 @@ static void tcg_gen_callN(void *func, TCGHelperInfo *info,
 
     gen_bb_epilogue();
 
+    TCGContext *s = tcg_ctx;
     total_args = info->nr_out + info->nr_in + 2;
-    op = tcg_op_alloc(INDEX_op_call, total_args);
+    op = tcg_op_alloc(s, INDEX_op_call, total_args);
 
 
     TCGOP_CALLO(op) = n = info->nr_out;
@@ -2586,10 +2587,10 @@ static void tcg_gen_callN(void *func, TCGHelperInfo *info,
     op->args[pi++] = (uintptr_t)info;
     tcg_debug_assert(pi == total_args);
 
-    if (tcg_ctx->emit_before_op) {
-        QTAILQ_INSERT_BEFORE(tcg_ctx->emit_before_op, op, link);
+    if (s->emit_before_op) {
+        QTAILQ_INSERT_BEFORE(s->emit_before_op, op, link);
     } else {
-        QTAILQ_INSERT_TAIL(&tcg_ctx->ops, op, link);
+        QTAILQ_INSERT_TAIL(&s->ops, op, link);
     }
 
     tcg_debug_assert(n_extend < ARRAY_SIZE(extend_free));
@@ -3029,9 +3030,8 @@ void tcg_remove_ops_after(TCGOp *op)
     }
 }
 
-static TCGOp *tcg_op_alloc(TCGOpcode opc, unsigned nargs)
+static TCGOp *tcg_op_alloc(TCGContext *s, TCGOpcode opc, unsigned nargs)
 {
-    TCGContext *s = tcg_ctx;
     TCGOp *op = NULL;
 
     if (unlikely(!QTAILQ_EMPTY(&s->free_ops))) {
@@ -3067,12 +3067,13 @@ TCGOp *tcg_emit_op(TCGOpcode opc, unsigned nargs)
         gen_bb_epilogue();
     }
 
-   TCGOp *op = tcg_op_alloc(opc, nargs);
+    TCGContext *s = tcg_ctx;
+    TCGOp *op = tcg_op_alloc(s, opc, nargs);
 
-    if (tcg_ctx->emit_before_op) {
-        QTAILQ_INSERT_BEFORE(tcg_ctx->emit_before_op, op, link);
+    if (s->emit_before_op) {
+        QTAILQ_INSERT_BEFORE(s->emit_before_op, op, link);
     } else {
-        QTAILQ_INSERT_TAIL(&tcg_ctx->ops, op, link);
+        QTAILQ_INSERT_TAIL(&s->ops, op, link);
     }
     return op;
 }
@@ -3080,7 +3081,7 @@ TCGOp *tcg_emit_op(TCGOpcode opc, unsigned nargs)
 TCGOp *tcg_op_insert_before(TCGContext *s, TCGOp *old_op,
                             TCGOpcode opc, TCGType type, unsigned nargs)
 {
-    TCGOp *new_op = tcg_op_alloc(opc, nargs);
+    TCGOp *new_op = tcg_op_alloc(s, opc, nargs);
 
     TCGOP_TYPE(new_op) = type;
     QTAILQ_INSERT_BEFORE(old_op, new_op, link);
@@ -3090,7 +3091,7 @@ TCGOp *tcg_op_insert_before(TCGContext *s, TCGOp *old_op,
 TCGOp *tcg_op_insert_after(TCGContext *s, TCGOp *old_op,
                            TCGOpcode opc, TCGType type, unsigned nargs)
 {
-    TCGOp *new_op = tcg_op_alloc(opc, nargs);
+    TCGOp *new_op = tcg_op_alloc(s, opc, nargs);
 
     TCGOP_TYPE(new_op) = type;
     QTAILQ_INSERT_AFTER(&s->ops, old_op, new_op, link);

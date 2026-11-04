@@ -23,7 +23,9 @@ def function(key):
     return source[start:end]
 
 
-keys = ['TCGLabel *gen_new_label(',
+keys = ['static TCGOp *tcg_op_alloc(', 'TCGOp *tcg_emit_op(',
+        'TCGOp *tcg_op_insert_before(', 'TCGOp *tcg_op_insert_after(',
+        'TCGLabel *gen_new_label(',
         'static TCGTemp *tcg_temp_alloc(', 'static TCGTemp *tcg_global_alloc(',
         'static TCGTemp *tcg_global_reg_new_internal(', 'void tcg_set_frame(',
         'static TCGTemp *tcg_global_mem_new_internal(',

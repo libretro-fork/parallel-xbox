@@ -28,7 +28,65 @@ void *tcg_malloc_internal(TCGContext *s, int size)
     ++refill_calls;
     return refill_buffer;
 }
+static unsigned epilogue_calls;
+const TCGOpDef tcg_op_defs[NB_OPS] = {
+    [INDEX_op_br] = { .flags = TCG_OPF_BB_END },
+};
+void gen_bb_epilogue(void)
+{
+    ++epilogue_calls;
+    /* Real epilogues may emit operations; these must precede the terminator. */
+    tcg_emit_op(INDEX_op_mov, 2);
+}
 /* PRODUCTION */
+
+static void check_ops(TCGContext *owner, bool current)
+{
+    static unsigned char op_arena[4096] QEMU_ALIGNED(16);
+    memset(op_arena, 0xa5, sizeof(op_arena));
+    owner->pool_cur = (uintptr_t)op_arena;
+    owner->pool_end = owner->pool_cur + sizeof(op_arena);
+    owner->nb_ops = 0;
+    QTAILQ_INIT(&owner->ops);
+    QTAILQ_INIT(&owner->free_ops);
+    owner->emit_before_op = NULL;
+    TCGOp *a = tcg_op_alloc(owner, INDEX_op_mov, 1);
+    assert(a->opc == INDEX_op_mov && a->nargs == 4);
+    assert(!a->life && !a->param1 && !a->param2);
+    QTAILQ_INSERT_TAIL(&owner->ops, a, link);
+    TCGOp *b = tcg_op_insert_before(owner, a, INDEX_op_mov, TCG_TYPE_I32, 2);
+    TCGOp *c = tcg_op_insert_after(owner, a, INDEX_op_mov, TCG_TYPE_I64, 2);
+    assert(TCGOP_TYPE(b) == TCG_TYPE_I32 && TCGOP_TYPE(c) == TCG_TYPE_I64);
+    assert(QTAILQ_FIRST(&owner->ops) == b && QTAILQ_NEXT(b, link) == a);
+    assert(QTAILQ_NEXT(a, link) == c && !QTAILQ_NEXT(c, link));
+    assert(owner->nb_ops == 3);
+    QTAILQ_REMOVE(&owner->ops, b, link);
+    QTAILQ_INSERT_TAIL(&owner->free_ops, b, link);
+    --owner->nb_ops;
+    uintptr_t cursor = owner->pool_cur;
+    /* Skip an undersized free node; reuse it for the next smaller request. */
+    TCGOp *large = tcg_op_alloc(owner, INDEX_op_mov, 7);
+    assert(large != b && large->nargs == 7 && owner->pool_cur > cursor);
+    cursor = owner->pool_cur;
+    TCGOp *reused = tcg_op_alloc(owner, INDEX_op_mov, 2);
+    assert(reused == b && reused->nargs == 4 && owner->pool_cur == cursor);
+    assert(!reused->life && !reused->param1 && !reused->param2);
+    assert(QTAILQ_EMPTY(&owner->free_ops) && owner->nb_ops == 4);
+    if (current) {
+        TCGOp *tail = tcg_emit_op(INDEX_op_mov, 2);
+        assert(QTAILQ_NEXT(c, link) == tail && !QTAILQ_NEXT(tail, link));
+        owner->emit_before_op = a;
+        TCGOp *before = tcg_emit_op(INDEX_op_mov, 2);
+        assert(QTAILQ_FIRST(&owner->ops) == before && QTAILQ_NEXT(before, link) == a);
+        owner->emit_before_op = NULL;
+        unsigned calls = epilogue_calls;
+        TCGOp *end = tcg_emit_op(INDEX_op_br, 1);
+        TCGOp *epilogue = QTAILQ_NEXT(tail, link);
+        assert(epilogue_calls == calls + 1 && epilogue->opc == INDEX_op_mov);
+        assert(QTAILQ_NEXT(epilogue, link) == end && !QTAILQ_NEXT(end, link));
+        assert(owner->nb_ops == 8);
+    }
+}
 
 static void check_global(TCGTemp *temp, TCGTemp *base, intptr_t offset,
                          TCGType type, bool indirect)
@@ -159,6 +217,9 @@ int main(void)
     refill_owner = &context;
     refill_size = 16;
     assert(tcg_malloc(9) == refill_buffer && refill_calls == calls + 1);
+    check_ops(&other, false); /* Explicit owner differs from TLS. */
+    check_ops(&context, true);
+    puts("TCG ops: owners, allocation/reuse, insertion order and epilogues PASS");
     printf("TCG global layout: %d-bit direct/indirect globals, %shandles and frame PASS\n",
            TCG_TARGET_REG_BITS, TCG_TARGET_REG_BITS == 32 ? "split halves, " : "");
     puts("TCG labels: pool allocation, queue heads, identity, order and values PASS");
