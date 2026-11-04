@@ -3528,12 +3528,21 @@ static bool emit_control(Tr *t, const Insn *in)
         !strcmp(name, "bsclr #n, [X or Y]:qq, xxxx") ||
         !strcmp(name, "bsset #n, [X or Y]:qq, xxxx") ||
         ((!strcmp(name, "jsclr #n, [X or Y]:pp, xxxx") ||
-          !strcmp(name, "jsset #n, [X or Y]:pp, xxxx")) && !(inst & (1u << 6)))) {
+          !strcmp(name, "jsset #n, [X or Y]:pp, xxxx")) && !(inst & (1u << 6))) ||
+        !strcmp(name, "jsclr #n, S, xxxx") || !strcmp(name, "jsset #n, S, xxxx")) {
         /* Only X has MCPX peripheral callbacks; Y must not alias them. */
         uint32_t target = name[0] == 'b' ? (at + in->ext) & 0xffffff : in->ext;
-        acc_spill_all(t, false);
-        h_mov_ri(e, EA1, (strstr(name, ":pp") ? 0xffffc0 : 0xffff80) + ((inst >> 8) & 63));
-        emit_read_mem(t, DSP_SPACE_X, EA1, V1);
+        if (strstr(name, ", S, xxxx")) {
+            int reg = (inst >> 8) & 63;
+            if (!reg_supported(reg) && (reg < DSP_REG_SR || reg > DSP_REG_LC)) return false;
+            if (reg == DSP_REG_SR) emit_flags_flush(t);
+            emit_read_reg(t, reg, V1);
+            acc_spill_all(t, false);
+        } else {
+            acc_spill_all(t, false);
+            h_mov_ri(e, EA1, (strstr(name, ":pp") ? 0xffffc0 : 0xffff80) + ((inst >> 8) & 63));
+            emit_read_mem(t, DSP_SPACE_X, EA1, V1);
+        }
         h_test_ri(e, 0, V1, 1u << (inst & 31));
         size_t taken = h_jcc(e, name[2] == 'c' ? HC_EQ : HC_NE);
         emit_exit_to(t, in, in->next, 6);
