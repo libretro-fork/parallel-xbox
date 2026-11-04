@@ -4698,6 +4698,13 @@ static dspjit_block_fn dspjit_translate_rep(DspJit *jit, int mode, uint32_t pc)
         return NULL;
     }
     if (!decode_insn(core, pc, &in)) return NULL;
+    if (in.d.control && (!strcmp(in.d.name, "ill") || !strcmp(in.d.name, "wait") ||
+                         !strcmp(in.d.name, "stop") || !strcmp(in.d.name, "reset"))) {
+        /* These emitters retire at the original PC with the decoded length.
+         * Post must perform REP's decrement, deferring interrupts until the
+         * last body iteration. Other controls have different PC semantics. */
+        return dspjit_translate_interrupt(jit, mode, pc);
+    }
     if (!insn_native(&in)) {
         return NULL;
     }
