@@ -75,6 +75,33 @@ gpointer g_malloc0(gsize size)
     ++constant_tables;
     return p;
 }
+/* Record only the host-specific capability/expansion boundary. The operand
+ * decoding and direct IR emission below use the production implementation. */
+static int vector_capability;
+static unsigned vector_queries, vector_expansions, vector_arity;
+static TCGOpcode vector_expected_op;
+static TCGType vector_expected_type;
+static unsigned vector_expected_vece;
+static TCGArg vector_expected_args[3];
+static int fixture_vec_capability(TCGOpcode opc, TCGType type, unsigned vece)
+{
+    assert(opc == vector_expected_op && type == vector_expected_type);
+    assert(vece == vector_expected_vece);
+    ++vector_queries;
+    return vector_capability;
+}
+static void fixture_vec_expand(TCGOpcode opc, TCGType type, unsigned vece, ...)
+{
+    assert(opc == vector_expected_op && type == vector_expected_type);
+    assert(vece == vector_expected_vece);
+    ++vector_expansions;
+    va_list ap;
+    va_start(ap, vece);
+    for (unsigned i = 0; i < vector_arity; ++i) {
+        assert(va_arg(ap, TCGArg) == vector_expected_args[i]);
+    }
+    va_end(ap);
+}
 /* PRODUCTION */
 
 static void check_ops(TCGContext *owner, bool current)
@@ -167,10 +194,43 @@ static void check_vector_operands(TCGContext *owner, TCGContext *other)
                     assert(op->args[1] == temp_arg(&owner->temps[ai]));
                     assert(op->args[2] == temp_arg(&owner->temps[bi]));
                     cases += 2;
+                    vector_expected_type = type;
+                    vector_expected_vece = vece;
+                    vector_expected_args[0] = temp_arg(&owner->temps[ri]);
+                    vector_expected_args[1] = temp_arg(&owner->temps[ai]);
+                    vector_expected_args[2] = temp_arg(&owner->temps[bi]);
+                    for (unsigned arity = 2; arity <= 3; ++arity) {
+                        vector_arity = arity;
+                        vector_expected_op = arity == 2 ? INDEX_op_neg_vec : INDEX_op_add_vec;
+                        for (int cap = -1; cap <= 1; ++cap) {
+                            vector_capability = cap;
+                            vector_queries = vector_expansions = 0;
+                            owner->pool_cur = (uintptr_t)arena;
+                            owner->nb_ops = 0;
+                            QTAILQ_INIT(&owner->ops);
+                            bool ok = arity == 2 ? do_op2(vece, rv, av, vector_expected_op) :
+                                do_op3(vece, rv, av, bv, vector_expected_op);
+                            assert(ok == (cap != 0) && vector_queries == 1);
+                            assert(vector_expansions == (unsigned)(cap < 0));
+                            assert(owner->nb_ops == (cap > 0));
+                            op = QTAILQ_FIRST(&owner->ops);
+                            if (cap > 0) {
+                                assert(op && !QTAILQ_NEXT(op, link));
+                                assert(op->opc == vector_expected_op);
+                                assert(TCGOP_TYPE(op) == type && TCGOP_VECE(op) == vece);
+                                for (unsigned j = 0; j < arity; ++j) {
+                                    assert(op->args[j] == vector_expected_args[j]);
+                                }
+                            } else {
+                                assert(!op);
+                            }
+                        }
+                    }
                 }
             }
         }
     }
+    puts("TCG optional vector operands: 432 direct/expanded/unsupported cases PASS");
     printf("TCG vector operands: %u emission cases, widths, aliasing and owners PASS\n", cases);
 }
 

@@ -57,6 +57,8 @@
 
 ## Unreleased
 
+- Reuse the TCG context when decoding optional vector arithmetic operands, avoiding repeated Windows TLS lookups while preserving direct, expanded and unsupported capability paths.
+
 - Reuse the TCG context when decoding the operands of basic vector moves and logical operations, avoiding repeated Windows TLS lookups while preserving operand-width checks.
 
 - DSP repeats containing native DO/DOR, forever-loop setup, ENDDO or nested REP setup now remain native, preserving the current model for handler-updated counts, stack frames and sequential retirement.

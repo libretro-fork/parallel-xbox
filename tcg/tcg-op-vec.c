@@ -276,8 +276,9 @@ void tcg_gen_andc_vec(unsigned vece, TCGv_vec r, TCGv_vec a, TCGv_vec b)
 
 static bool do_op2(unsigned vece, TCGv_vec r, TCGv_vec a, TCGOpcode opc)
 {
-    TCGTemp *rt = tcgv_vec_temp(r);
-    TCGTemp *at = tcgv_vec_temp(a);
+    TCGContext *s = tcg_ctx;
+    TCGTemp *rt = tcgv_vec_temp_context(s, r);
+    TCGTemp *at = tcgv_vec_temp_context(s, a);
     TCGArg ri = temp_arg(rt);
     TCGArg ai = temp_arg(at);
     TCGType type = rt->base_type;
@@ -425,9 +426,10 @@ void tcg_gen_cmp_vec(TCGCond cond, unsigned vece,
 static bool do_op3(unsigned vece, TCGv_vec r, TCGv_vec a,
                    TCGv_vec b, TCGOpcode opc)
 {
-    TCGTemp *rt = tcgv_vec_temp(r);
-    TCGTemp *at = tcgv_vec_temp(a);
-    TCGTemp *bt = tcgv_vec_temp(b);
+    TCGContext *s = tcg_ctx;
+    TCGTemp *rt = tcgv_vec_temp_context(s, r);
+    TCGTemp *at = tcgv_vec_temp_context(s, a);
+    TCGTemp *bt = tcgv_vec_temp_context(s, b);
     TCGArg ri = temp_arg(rt);
     TCGArg ai = temp_arg(at);
     TCGArg bi = temp_arg(bt);
