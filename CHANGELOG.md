@@ -33,6 +33,8 @@
 
 - Replace the Vulkan dynamic-sibling ShaderState clone with a borrowed 2304-byte prefix and a 316-byte canonical fragment tail. Hash spans directly, compare views against owned cache entries and publish complete queue records once; preserve exact state bytes, worker decisions and module ownership. Align the generated state and keep uncommon sibling work outside the resident binding path.
 
+- DSP: execute X:qq conditional bit-test calls natively with correct return-address saves and single peripheral reads.
+
 - DSP: execute X:qq absolute bit-test jumps natively, retaining single peripheral reads and correct loop-end handling.
 
 

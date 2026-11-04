@@ -3523,6 +3523,24 @@ static bool emit_control(Tr *t, const Insn *in)
         return true;
     }
 
+    if (!strcmp(name, "jsclr #n, [X or Y]:qq, xxxx") ||
+        !strcmp(name, "jsset #n, [X or Y]:qq, xxxx")) {
+        acc_spill_all(t, false);
+        h_mov_ri(e, EA1, 0xffff80 + ((inst >> 8) & 63));
+        emit_read_mem(t, DSP_SPACE_X, EA1, V1);
+        h_test_ri(e, 0, V1, 1u << (inst & 31));
+        size_t taken = h_jcc(e, name[2] == 'c' ? HC_EQ : HC_NE);
+        emit_exit_to(t, in, in->next, 6);
+        h_patch(e, taken, e->len);
+        h_mov_rr(e, 1, H_ARG0, REG_CORE);
+        h_mov_ri(e, H_ARG1, in->next);
+        h_ld32(e, H_ARG2, REG_CORE, REGOFF(DSP_REG_SR));
+        h_call(e, (const void *)dsp56k_stack_push);
+        emit_stack_check(t, in, in->ext, 6);
+        emit_exit_to(t, in, in->ext, 6);
+        return true;
+    }
+
     if (!strncmp(name, "jclr #n, ", 9) || !strncmp(name, "jset #n, ", 9)) {
         bool clear = name[1] == 'c';
         int space = (inst >> 6) & 1;

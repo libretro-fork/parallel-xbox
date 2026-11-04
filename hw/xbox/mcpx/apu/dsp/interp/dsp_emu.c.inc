@@ -7491,6 +7491,25 @@ static void emu_jscc_imm(dsp_core_t* dsp)
     dsp->instr_cycle += 2;
 }
 
+static void emu_jscall_qq(dsp_core_t* dsp, bool set)
+{
+    uint32_t address = 0xffff80 + ((dsp->cur_inst >> 8) & 63);
+    uint32_t value = dsp56k_read_memory(dsp, DSP_SPACE_X, address);
+    uint32_t target = read_memory_p(dsp, dsp->pc + 1);
+    bool tested = (value >> (dsp->cur_inst & 31)) & 1;
+    dsp->instr_cycle += 4;
+    if (tested == set) {
+        dsp_stack_push(dsp, dsp->pc + 2, dsp->registers[DSP_REG_SR], 0);
+        dsp->pc = target;
+        dsp->cur_inst_len = 0;
+    } else {
+        dsp->cur_inst_len++;
+    }
+}
+
+static void emu_jsclr_qq(dsp_core_t* dsp) { emu_jscall_qq(dsp, false); }
+static void emu_jsset_qq(dsp_core_t* dsp) { emu_jscall_qq(dsp, true); }
+
 static void emu_jsclr_aa(dsp_core_t* dsp)
 {
     uint32_t memspace, addr, value, newpc, numbit, newaddr;
