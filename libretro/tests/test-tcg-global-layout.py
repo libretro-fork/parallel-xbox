@@ -23,7 +23,11 @@ def function(key, source=source):
     return source[start:end]
 
 
-keys = ['static void remove_label_use(', 'void tcg_op_remove(',
+keys = ['static void tcg_temp_free_context(', 'void tcg_temp_free_internal(',
+        'static void tcg_temp_free_handle(', 'void tcg_temp_free_i32(',
+        'void tcg_temp_free_i64(', 'void tcg_temp_free_i128(',
+        'void tcg_temp_free_ptr(', 'void tcg_temp_free_vec(',
+        'static void remove_label_use(', 'void tcg_op_remove(',
         'void tcg_remove_ops_after(', 'static TCGOp *tcg_op_alloc(', 'TCGOp *tcg_emit_op(',
         'TCGOp *tcg_op_insert_before(', 'TCGOp *tcg_op_insert_after(',
         'TCGLabel *gen_new_label(',

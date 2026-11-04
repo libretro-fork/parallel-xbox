@@ -2126,10 +2126,8 @@ TCGv_vec tcg_temp_new_vec_matching(TCGv_vec match)
     return temp_tcgv_vec(t);
 }
 
-void tcg_temp_free_internal(TCGTemp *ts)
+static void tcg_temp_free_context(TCGContext *s, TCGTemp *ts)
 {
-    TCGContext *s = tcg_ctx;
-
     switch (ts->kind) {
     case TEMP_CONST:
     case TEMP_TB:
@@ -2146,29 +2144,40 @@ void tcg_temp_free_internal(TCGTemp *ts)
     }
 }
 
+void tcg_temp_free_internal(TCGTemp *ts)
+{
+    tcg_temp_free_context(tcg_ctx, ts);
+}
+
+static void tcg_temp_free_handle(uintptr_t handle)
+{
+    TCGContext *s = tcg_ctx;
+    tcg_temp_free_context(s, tcgv_i32_temp_context(s, (TCGv_i32)handle));
+}
+
 void tcg_temp_free_i32(TCGv_i32 arg)
 {
-    tcg_temp_free_internal(tcgv_i32_temp(arg));
+    tcg_temp_free_handle((uintptr_t)arg);
 }
 
 void tcg_temp_free_i64(TCGv_i64 arg)
 {
-    tcg_temp_free_internal(tcgv_i64_temp(arg));
+    tcg_temp_free_handle((uintptr_t)arg);
 }
 
 void tcg_temp_free_i128(TCGv_i128 arg)
 {
-    tcg_temp_free_internal(tcgv_i128_temp(arg));
+    tcg_temp_free_handle((uintptr_t)arg);
 }
 
 void tcg_temp_free_ptr(TCGv_ptr arg)
 {
-    tcg_temp_free_internal(tcgv_ptr_temp(arg));
+    tcg_temp_free_handle((uintptr_t)arg);
 }
 
 void tcg_temp_free_vec(TCGv_vec arg)
 {
-    tcg_temp_free_internal(tcgv_vec_temp(arg));
+    tcg_temp_free_handle((uintptr_t)arg);
 }
 
 TCGTemp *tcg_constant_internal(TCGType type, int64_t val)

@@ -532,9 +532,14 @@ static inline size_t temp_idx(TCGTemp *ts)
  * its index means that we don't use 0.  That leaves offset 0 free for
  * a NULL representation without having to leave index 0 unused.
  */
+static inline TCGTemp *tcgv_i32_temp_context(TCGContext *s, TCGv_i32 v)
+{
+    return (void *)s + (uintptr_t)v;
+}
+
 static inline TCGTemp *tcgv_i32_temp(TCGv_i32 v)
 {
-    return (void *)tcg_ctx + (uintptr_t)v;
+    return tcgv_i32_temp_context(tcg_ctx, v);
 }
 
 static inline TCGTemp *tcgv_i64_temp(TCGv_i64 v)

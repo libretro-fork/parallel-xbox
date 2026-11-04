@@ -221,6 +221,61 @@ static void check_count_operands(TCGContext *owner)
     printf("TCG count operands: %u budget/exit/idle combinations, values and lazy allocation order PASS\n", cases);
 }
 
+static void check_temp_free(TCGContext *current, TCGContext *other)
+{
+    static const TCGTempKind kinds[] = {TEMP_EBB, TEMP_TB, TEMP_CONST};
+    static const unsigned indices[] = {0, 31, 32, 63, 64, TCG_MAX_TEMPS - 2};
+    static const TCGType types[] = {
+        TCG_TYPE_I32, TCG_TYPE_I64, TCG_TYPE_I128, TCG_TYPE_PTR,
+        TCG_TYPE_V64, TCG_TYPE_I32, TCG_TYPE_I32
+    };
+    unsigned cases = 0;
+    for (unsigned mode = 0; mode < ARRAY_SIZE(types); ++mode) {
+        TCGContext *owner = mode == 6 ? other : current;
+        TCGContext *untouched = mode == 6 ? current : other;
+        for (unsigned k = 0; k < ARRAY_SIZE(kinds); ++k) {
+            for (unsigned i = 0; i < ARRAY_SIZE(indices); ++i) {
+                memset(owner->free_temps, 0, sizeof(owner->free_temps));
+                memset(untouched->free_temps, 0, sizeof(untouched->free_temps));
+                TCGTemp *temp = &owner->temps[indices[i]];
+                memset(temp, 0, 2 * sizeof(*temp));
+                temp->kind = kinds[k];
+                temp->base_type = types[mode];
+                temp->type = TCG_TYPE_I32;
+                temp->temp_allocated = 1;
+                temp->val = 0x12345678;
+                temp[1].temp_subindex = 1;
+                temp[1].temp_allocated = 1;
+                temp[1].val = 0x7abcdef0;
+                TCGTemp expected[2];
+                memcpy(expected, temp, sizeof(expected));
+                if (kinds[k] == TEMP_EBB) expected[0].temp_allocated = 0;
+                uintptr_t handle = (uintptr_t)temp - (uintptr_t)owner;
+                assert(tcgv_i32_temp_context(owner, (TCGv_i32)handle) == temp);
+                switch (mode) {
+                case 0: tcg_temp_free_i32((TCGv_i32)handle); break;
+                case 1: tcg_temp_free_i64((TCGv_i64)handle); break;
+                case 2: tcg_temp_free_i128((TCGv_i128)handle); break;
+                case 3: tcg_temp_free_ptr((TCGv_ptr)handle); break;
+                case 4: tcg_temp_free_vec((TCGv_vec)handle); break;
+                case 5: tcg_temp_free_internal(temp); break;
+                case 6: tcg_temp_free_context(owner, temp); break;
+                }
+                assert(!memcmp(expected, temp, sizeof(expected)));
+                for (unsigned type = 0; type < TCG_TYPE_COUNT; ++type) {
+                    for (unsigned bit = 0; bit < TCG_MAX_TEMPS; ++bit) {
+                        bool set = kinds[k] == TEMP_EBB && type == types[mode] && bit == indices[i];
+                        assert(!!test_bit(bit, owner->free_temps[type].l) == set);
+                        assert(!test_bit(bit, untouched->free_temps[type].l));
+                    }
+                }
+                ++cases;
+            }
+        }
+    }
+    printf("TCG free: %u typed/pointer/owner cases, ignored kinds, bitmaps and adjacent slots PASS\n", cases);
+}
+
 static void check_global(TCGTemp *temp, TCGTemp *base, intptr_t offset,
                          TCGType type, bool indirect)
 {
@@ -358,6 +413,7 @@ int main(void)
     refill_owner = &context;
     refill_size = 16;
     assert(tcg_malloc(9) == refill_buffer && refill_calls == calls + 1);
+    check_temp_free(&context, &other);
     check_ops(&other, false); /* Explicit owner differs from TLS. */
     check_ops(&context, true);
     check_rollback(&context);
