@@ -674,6 +674,20 @@ static void dis_brset_qq(dsp_core_t* dsp) { dis_bitbranch_memory(dsp, "brset", f
 static void dis_brclr_aa(dsp_core_t* dsp) { dis_bitbranch_memory(dsp, "brclr", true); }
 static void dis_brset_aa(dsp_core_t* dsp) { dis_bitbranch_memory(dsp, "brset", true); }
 
+static void dis_bitbranch_indirect(dsp_core_t* dsp, const char *name)
+{
+    char address[32];
+    uint32_t displacement = read_memory_p(dsp, dsp->pc + 1);
+    dsp->disasm_cur_inst_len++;
+    dis_calc_ea(dsp, (dsp->disasm_cur_inst >> 8) & 63, address);
+    sprintf(dsp->disasm_str_instr, "%s #%u,%c:%s,p:$%06x", name,
+            dsp->disasm_cur_inst & 31, (dsp->disasm_cur_inst & 64) ? 'y' : 'x',
+            address, (dsp->pc + displacement) & BITMASK(24));
+}
+
+static void dis_brclr_ea(dsp_core_t* dsp) { dis_bitbranch_indirect(dsp, "brclr"); }
+static void dis_brset_ea(dsp_core_t* dsp) { dis_bitbranch_indirect(dsp, "brset"); }
+
 static void dis_brclr_pp(dsp_core_t* dsp)
 {
     uint32_t xxxx = read_memory_p(dsp, dsp->pc+1);

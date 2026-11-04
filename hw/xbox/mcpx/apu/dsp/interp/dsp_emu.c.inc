@@ -6540,6 +6540,23 @@ static void emu_brset_qq(dsp_core_t* dsp) { emu_bitbranch_memory(dsp, true, fals
 static void emu_brclr_aa(dsp_core_t* dsp) { emu_bitbranch_memory(dsp, false, true); }
 static void emu_brset_aa(dsp_core_t* dsp) { emu_bitbranch_memory(dsp, true, true); }
 
+static void emu_bitbranch_indirect(dsp_core_t* dsp, bool set)
+{
+    uint32_t displacement = read_memory_p(dsp, dsp->pc + 1);
+    uint32_t address;
+    emu_calc_ea(dsp, (dsp->cur_inst >> 8) & 63, &address);
+    uint32_t value = dsp56k_read_memory(dsp, (dsp->cur_inst >> 6) & 1, address);
+    dsp->cur_inst_len++;
+    dsp->instr_cycle += 4;
+    if (((value >> (dsp->cur_inst & 31)) & 1) == set) {
+        dsp->pc = (dsp->pc + displacement) & BITMASK(24);
+        dsp->cur_inst_len = 0;
+    }
+}
+
+static void emu_brclr_ea(dsp_core_t* dsp) { emu_bitbranch_indirect(dsp, false); }
+static void emu_brset_ea(dsp_core_t* dsp) { emu_bitbranch_indirect(dsp, true); }
+
 static void emu_brclr_pp(dsp_core_t* dsp)
 {
     uint32_t xxxx = read_memory_p(dsp, dsp->pc+1);
