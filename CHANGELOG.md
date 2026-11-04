@@ -50,6 +50,8 @@
 
 ## Unreleased
 
+- DSP repeats that write SR with MOVEC now execute natively, preserving scaling-mode changes, loop retirement and interrupt deferral between iterations.
+
 - DSP repeats with X/Y memory counts now start natively, including peripheral reads and all accepted address modes. Repeat cycle accounting also handles raw memory counts with upper bits correctly across pause/resume.
 
 - Immediate/register DSP repeats now start natively during interrupt pipelines. Native repeat bodies also keep running with pending interrupts, deferring them until the repeat ends instead of stepping every iteration through the interpreter.
