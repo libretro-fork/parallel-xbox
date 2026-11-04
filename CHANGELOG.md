@@ -45,6 +45,8 @@
 
 ## Unreleased
 
+- DSP native branches, calls, returns, loop setup and exception controls now remain in native code during interrupt pipelines while preserving per-instruction retirement, vector stack saves and return timing.
+
 - DSP data instructions now remain in native code while interrupts are pending or moving through the fast-interrupt pipeline, with instruction-by-instruction loop and interrupt retirement and regression coverage.
 
 - DSP: execute RTI natively in the C JIT, restoring return status before selecting the resumed scaling/loop mode; add stack-edge, loop-boundary and multi-frame regressions.
