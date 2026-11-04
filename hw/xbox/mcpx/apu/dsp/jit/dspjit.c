@@ -2076,7 +2076,6 @@ static bool pm_supported(const Insn *in)
     }
     switch (type) {
     case 0:
-        return false;
     case 1:
         return true;
     case 2:
@@ -2107,6 +2106,24 @@ static bool pm_supported(const Insn *in)
     default:
         return true;
     }
+}
+
+/* Class II: snapshot the limited accumulator and bus input register,
+ * run the ALU, then store the accumulator word and replace it with input. */
+static void emit_pm_0(Tr *t, const Insn *in, const AluOp *a)
+{
+    uint32_t inst = in->inst;
+    unsigned space = (inst >> 15) & 1, d = (inst >> 16) & 1;
+    Ea ea;
+    emit_calc_ea(t, (inst >> 8) & 63, in->ext, EA1, &ea);
+    if (ea.kind == EA_IMM) { ea.kind = EA_ABS; ea.abs = ea.imm; }
+    ea_addr_reg(t, &ea);
+    emit_read_reg(t, DSP_REG_A + d, V1);
+    emit_read_reg(t, DSP_REG_X0 + space * 2, V2);
+    emit_alu(t, a);
+    emit_write_mem(t, space, ea.reg, V1);
+    t->wrote_x = true;
+    emit_write_reg(t, DSP_REG_A + d, V2);
 }
 
 /* Memory move plus accumulator-to-opposite-bus register transfer. Both
@@ -2418,6 +2435,9 @@ static void emit_parallel(Tr *t, const Insn *in)
 
     decode_alu(inst & 0xFF, &a);
     switch (type) {
+    case 0:
+        emit_pm_0(t, in, &a);
+        break;
     case 1:
         emit_pm_1(t, in, &a);
         break;
@@ -4505,7 +4525,7 @@ static bool insn_native(const Insn *in)
     if (in->d.control) {
         return false;
     }
-    if (in->inst >= 0x100000) {
+    if (dsp56k_is_parallel(in->inst)) {
         return pm_supported(in);
     }
     return in->np != NP_NONE;
@@ -4516,7 +4536,7 @@ static bool insn_native(const Insn *in)
 static void emit_native(Tr *t, const Insn *in)
 {
     t->cyc += 2;
-    if (in->inst >= 0x100000) {
+    if (dsp56k_is_parallel(in->inst)) {
         emit_parallel(t, in);
     } else {
         emit_nonparallel(t, in, in->np);

@@ -4251,3 +4251,16 @@ repeat halt state. Writes in this family guard halt/code invalidation on either
 bus. A production-block fixture sweeps selectors and modes with REP, varied
 ALU operations and lazy state over 100-frame comparisons in both baselines.
 Reserved ALU slots and other unsupported operand/decoder forms retain fallback.
+
+`dspnative --parallel-class-ii` checks 39,168 boundaries with zero
+interpreter calls, plus 65,536 nonexecuting decode probes. Class II X-memory/
+register and register/Y-memory moves (DSP56300 manual pp. 13-120 and 13-124)
+now reach their existing interpreter/disassembler handlers and native emission.
+The shared classifier includes their low opcode range while excluding adjacent
+MOVEP encodings. The matrix covers all supported ALU bytes, A/B selectors,
+X/Y routing, scaling and effective addresses. Independent NOP/CLR oracles check
+limiter edges and pre-ALU snapshots; peripheral callbacks mutate the input
+register to verify snapshot ordering. REP and callback halt checks cover both
+buses. A production fixture combines these moves with REP and lazy ALU flags.
+Reserved ALU slots retain fallback; this does not establish new hardware
+semantics for legacy immediate-tag store addresses.

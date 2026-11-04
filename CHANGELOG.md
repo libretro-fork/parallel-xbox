@@ -58,6 +58,7 @@
 ## Unreleased
 
 - Reuse the TCG context when decoding vector bit-selection operands, avoiding repeated Windows TLS lookups while preserving native selection and logical-operation fallbacks.
+- DSP: decode Class II parallel moves correctly and execute them natively, with regression coverage for ALU ordering, both memory buses and MOVEP decoding.
 
 - Reuse the TCG context when decoding vector comparison operands, avoiding repeated Windows TLS lookups while preserving test-condition lowering and host expansion paths.
 
