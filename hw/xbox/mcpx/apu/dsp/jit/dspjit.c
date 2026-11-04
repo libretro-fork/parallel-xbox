@@ -4677,7 +4677,7 @@ static dspjit_block_fn dspjit_translate_rep(DspJit *jit, int mode, uint32_t pc)
         return NULL;
     }
     if (!decode_insn(core, pc, &in)) return NULL;
-    if (!insn_native(&in) || in.np == NP_MOVEC_SR) {
+    if (!insn_native(&in)) {
         return NULL;
     }
 
@@ -4703,7 +4703,7 @@ retry:
     }
     cycles = t->cyc;
     t->cyc = 0;
-    if (in.np == NP_MOVEM_P_WRITE || in.np == NP_MOVEC_SPECIAL ||
+    if (in.np == NP_MOVEM_P_WRITE || in.np == NP_MOVEC_SR || in.np == NP_MOVEC_SPECIAL ||
         in.np == NP_MOVEM_P_SPECIAL || in.np == NP_MOVEP_SPECIAL ||
         in.np == NP_MOVEP_P || in.np == NP_STATUS_MODE || in.np == NP_BIT_CONTROL ||
         in.np == NP_MOVE_XY_LONG_SPECIAL) {
