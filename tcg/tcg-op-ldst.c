@@ -37,6 +37,17 @@
 /* the libretro core's idle detection: every guest store is announced */
 #define LR_QUIET_STORE() lr_quiet_store_emitted()
 
+/* Address-type validation is diagnostic. Do not fetch TLS for it in release
+ * builds; the load/store internals retain their real address-width branches. */
+static inline void tcg_debug_assert_addr_type(TCGType addr_type)
+{
+#if defined(CONFIG_DEBUG_TCG) || defined(QEMU_STATIC_ANALYSIS)
+    tcg_debug_assert(addr_type == tcg_ctx->addr_type);
+#else
+    (void)addr_type;
+#endif
+}
+
 static void check_max_alignment(unsigned a_bits)
 {
     /*
@@ -223,7 +234,7 @@ static void tcg_gen_qemu_ld_i32_int(TCGv_i32 val, TCGTemp *addr,
 void tcg_gen_qemu_ld_i32_chk(TCGv_i32 val, TCGTemp *addr, TCGArg idx,
                              MemOp memop, TCGType addr_type)
 {
-    tcg_debug_assert(addr_type == tcg_ctx->addr_type);
+    tcg_debug_assert_addr_type(addr_type);
     tcg_debug_assert((memop & MO_SIZE) <= MO_32);
     tcg_gen_qemu_ld_i32_int(val, addr, idx, memop);
 }
@@ -270,7 +281,7 @@ void tcg_gen_qemu_st_i32_chk(TCGv_i32 val, TCGTemp *addr, TCGArg idx,
                              MemOp memop, TCGType addr_type)
 {
     LR_QUIET_STORE();
-    tcg_debug_assert(addr_type == tcg_ctx->addr_type);
+    tcg_debug_assert_addr_type(addr_type);
     tcg_debug_assert((memop & MO_SIZE) <= MO_32);
     tcg_gen_qemu_st_i32_int(val, addr, idx, memop);
 }
@@ -336,7 +347,7 @@ static void tcg_gen_qemu_ld_i64_int(TCGv_i64 val, TCGTemp *addr,
 void tcg_gen_qemu_ld_i64_chk(TCGv_i64 val, TCGTemp *addr, TCGArg idx,
                              MemOp memop, TCGType addr_type)
 {
-    tcg_debug_assert(addr_type == tcg_ctx->addr_type);
+    tcg_debug_assert_addr_type(addr_type);
     tcg_debug_assert((memop & MO_SIZE) <= MO_64);
     tcg_gen_qemu_ld_i64_int(val, addr, idx, memop);
 }
@@ -391,7 +402,7 @@ static void tcg_gen_qemu_st_i64_int(TCGv_i64 val, TCGTemp *addr,
 void tcg_gen_qemu_st_i64_chk(TCGv_i64 val, TCGTemp *addr, TCGArg idx,
                              MemOp memop, TCGType addr_type)
 {
-    tcg_debug_assert(addr_type == tcg_ctx->addr_type);
+    tcg_debug_assert_addr_type(addr_type);
     tcg_debug_assert((memop & MO_SIZE) <= MO_64);
     tcg_gen_qemu_st_i64_int(val, addr, idx, memop);
 }
@@ -575,7 +586,7 @@ static void tcg_gen_qemu_ld_i128_int(TCGv_i128 val, TCGTemp *addr,
 void tcg_gen_qemu_ld_i128_chk(TCGv_i128 val, TCGTemp *addr, TCGArg idx,
                               MemOp memop, TCGType addr_type)
 {
-    tcg_debug_assert(addr_type == tcg_ctx->addr_type);
+    tcg_debug_assert_addr_type(addr_type);
     tcg_debug_assert((memop & MO_SIZE) == MO_128);
     tcg_debug_assert((memop & MO_SIGN) == 0);
     tcg_gen_qemu_ld_i128_int(val, addr, idx, memop);
@@ -687,7 +698,7 @@ static void tcg_gen_qemu_st_i128_int(TCGv_i128 val, TCGTemp *addr,
 void tcg_gen_qemu_st_i128_chk(TCGv_i128 val, TCGTemp *addr, TCGArg idx,
                               MemOp memop, TCGType addr_type)
 {
-    tcg_debug_assert(addr_type == tcg_ctx->addr_type);
+    tcg_debug_assert_addr_type(addr_type);
     tcg_debug_assert((memop & MO_SIZE) == MO_128);
     tcg_debug_assert((memop & MO_SIGN) == 0);
     tcg_gen_qemu_st_i128_int(val, addr, idx, memop);
@@ -781,7 +792,7 @@ void tcg_gen_atomic_cmpxchg_i32_chk(TCGv_i32 retv, TCGTemp *addr,
                                     TCGType addr_type)
 {
     LR_QUIET_STORE();
-    tcg_debug_assert(addr_type == tcg_ctx->addr_type);
+    tcg_debug_assert_addr_type(addr_type);
     tcg_debug_assert((memop & MO_SIZE) <= MO_32);
     tcg_gen_nonatomic_cmpxchg_i32_int(retv, addr, cmpv, newv, idx, memop);
 }
@@ -827,7 +838,7 @@ void tcg_gen_nonatomic_cmpxchg_i64_chk(TCGv_i64 retv, TCGTemp *addr,
                                        TCGType addr_type)
 {
     LR_QUIET_STORE();
-    tcg_debug_assert(addr_type == tcg_ctx->addr_type);
+    tcg_debug_assert_addr_type(addr_type);
     tcg_debug_assert((memop & MO_SIZE) <= MO_64);
     tcg_gen_nonatomic_cmpxchg_i64_int(retv, addr, cmpv, newv, idx, memop);
 }
@@ -837,7 +848,7 @@ void tcg_gen_atomic_cmpxchg_i64_chk(TCGv_i64 retv, TCGTemp *addr,
                                     TCGArg idx, MemOp memop, TCGType addr_type)
 {
     LR_QUIET_STORE();
-    tcg_debug_assert(addr_type == tcg_ctx->addr_type);
+    tcg_debug_assert_addr_type(addr_type);
     tcg_debug_assert((memop & MO_SIZE) <= MO_64);
     tcg_gen_nonatomic_cmpxchg_i64_int(retv, addr, cmpv, newv, idx, memop);
 }
@@ -904,7 +915,7 @@ void tcg_gen_atomic_##NAME##_i32_chk(TCGv_i32 ret, TCGTemp *addr,       \
                                      TCGv_i32 val, TCGArg idx,          \
                                      MemOp memop, TCGType addr_type)    \
 {                                                                       \
-    tcg_debug_assert(addr_type == tcg_ctx->addr_type);                  \
+    tcg_debug_assert_addr_type(addr_type);                  \
     tcg_debug_assert((memop & MO_SIZE) <= MO_32);                       \
     do_nonatomic_op_i32(ret, addr, val, idx, memop, NEW,                \
                         tcg_gen_##OP##_i32);                            \
@@ -913,7 +924,7 @@ void tcg_gen_atomic_##NAME##_i64_chk(TCGv_i64 ret, TCGTemp *addr,       \
                                      TCGv_i64 val, TCGArg idx,          \
                                      MemOp memop, TCGType addr_type)    \
 {                                                                       \
-    tcg_debug_assert(addr_type == tcg_ctx->addr_type);                  \
+    tcg_debug_assert_addr_type(addr_type);                  \
     tcg_debug_assert((memop & MO_SIZE) <= MO_64);                       \
     do_nonatomic_op_i64(ret, addr, val, idx, memop, NEW,                \
                         tcg_gen_##OP##_i64);                            \
@@ -925,7 +936,7 @@ void tcg_gen_atomic_##NAME##_i128_chk(TCGv_i128 ret, TCGTemp *addr,     \
                                       TCGv_i128 val, TCGArg idx,        \
                                       MemOp memop, TCGType addr_type)   \
 {                                                                       \
-    tcg_debug_assert(addr_type == tcg_ctx->addr_type);                  \
+    tcg_debug_assert_addr_type(addr_type);                  \
     tcg_debug_assert((memop & MO_SIZE) == MO_128);                      \
     do_nonatomic_op_i128(ret, addr, val, idx, memop, NEW,               \
                          tcg_gen_##OP##_i64);                           \

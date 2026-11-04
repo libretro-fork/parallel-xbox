@@ -4176,3 +4176,5 @@ matches the current interpreter model, including its existing sleep/reset
 limitations; it does not claim new hardware semantics for control instructions
 inside REP. Other control bodies with different PC retirement rules remain
 outside this change.
+
+`test-tcg-addr-check.py CHECKOUT [CC]` runs the production address-type diagnostic helper with the real assertion macro in release, debug and static-analysis modes. It requires zero release context fetches and verifies that both diagnostic modes fetch the owner and catch a mismatched type. It does not disable memory-operation constraints or the real address-width branches.
