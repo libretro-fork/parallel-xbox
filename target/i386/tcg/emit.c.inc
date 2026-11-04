@@ -3923,6 +3923,15 @@ static void gen_SUB(DisasContext *s, X86DecodedInsn *decode)
 {
     MemOp ot = decode->op[1].ot;
 
+    /* Subtracting zero leaves the register unchanged and clears CF/OF/AF.
+     * SBB also calls this emitter, with T1 holding carry instead of zero. */
+    if (decode->e.gen == gen_SUB && !(s->prefix & PREFIX_LOCK) &&
+        decode->op[1].unit == X86_OP_INT && !decode->op[1].has_ea &&
+        decode->op[2].unit == X86_OP_IMM && decode->immediate == 0) {
+        prepare_update1_cc(decode, s, CC_OP_LOGICB + ot);
+        return;
+    }
+
     /* SUB/CMP of the same register has a known zero result and flags.
      * Keep memory/LOCK forms on the normal faulting path. */
     if (!(s->prefix & PREFIX_LOCK) &&

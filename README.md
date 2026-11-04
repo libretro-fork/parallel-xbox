@@ -419,3 +419,9 @@ PC, byte count, instruction count, cflags and CPU flags. It reports unmatched
 keys and all distinct sizes, rather than treating different block entries as
 equivalent. Normal core builds have no capture hook or capture environment
 lookup. These byte counts establish code size, not execution speed.
+
+SUB/CMP register,0 uses logic-result flags (SF/ZF/PF, with CF/OF/AF clear)
+without storing a redundant subtraction source. SBB immediate zero retains
+its carry-dependent subtraction path. Memory and LOCK forms are excluded.
+`libretro/tests/rom/sub-zero.asm` checks all four register widths, varying
+incoming flags, SBB carry controls and zero-immediate memory/LOCK faults.

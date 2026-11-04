@@ -1,5 +1,6 @@
 # Changelog of the libretro core
 
+- Generate smaller host code for SUB/CMP register,0 by using their simpler arithmetic flags. Carry-dependent SBB and memory/LOCK accesses retain their existing paths; no host CPU requirement changes.
 - Generate smaller host code for same-register SUB/CMP by recording their known zero result and flags directly. Partial-register writes and memory/LOCK exception behavior remain intact; no new host CPU requirement.
 - Vulkan pipeline-cache save marks now wake one persistent worker created at renderer startup. A flip no longer creates or joins a host thread; busy marks coalesce, export scratch stays worker-owned, and teardown drains the worker before the final save and cache destruction.
 - OpenGL reuses up to 16 retired single-level linear RGBA8 texture objects (at most 4 MiB of image storage). After an existing flip fence confirms completion, matching uploads update the image directly from guest RAM; surface conversions and other layouts retain their existing paths. Reused objects restore swizzle and LOD state before use.
