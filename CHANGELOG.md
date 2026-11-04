@@ -57,6 +57,8 @@
 
 ## Unreleased
 
+- DSP: decode Class II parallel moves correctly and execute them natively, with regression coverage for ALU ordering, both memory buses and MOVEP decoding.
+
 - Reuse the TCG context when decoding vector comparison operands, avoiding repeated Windows TLS lookups while preserving test-condition lowering and host expansion paths.
 
 - Reuse the TCG context when decoding immediate and scalar-count vector shift operands, avoiding repeated Windows TLS lookups while retaining zero-shift moves and host expansion paths.

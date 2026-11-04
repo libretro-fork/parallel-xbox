@@ -165,6 +165,13 @@ void dsp56k_write_memory(dsp_core_t* dsp, int space, uint32_t address, uint32_t 
 uint32_t *dsp56k_memory_ptr(dsp_core_t* dsp, int space, uint32_t address, uint32_t count, bool write);
 
 /* Interrupt relative functions */
+/* Class II dual moves sit below the usual parallel-opcode threshold.
+ * Bit 14 distinguishes them from the adjacent MOVEP encodings. */
+static inline bool dsp56k_is_parallel(uint32_t instruction)
+{
+    return instruction >= 0x100000 || (instruction & 0xfe4000) == 0x080000;
+}
+
 void dsp56k_add_interrupt(dsp_core_t* dsp, uint16_t inter);
 void dsp56k_raise_illegal(dsp_core_t *dsp);
 

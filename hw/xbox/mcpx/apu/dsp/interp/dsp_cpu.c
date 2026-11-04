@@ -530,7 +530,7 @@ static uint16_t disasm_instruction(dsp_core_t* dsp, dsp_trace_disasm_t mode)
 
     dsp->disasm_parallelmove_name[0] = 0;
 
-    if (dsp->disasm_cur_inst < 0x100000) {
+    if (!dsp56k_is_parallel(dsp->disasm_cur_inst)) {
         const OpcodeEntry *op = lookup_opcode(dsp->disasm_cur_inst);
         if (op->template) {
             if (op->dis_func) {
@@ -689,7 +689,7 @@ void dsp56k_execute_instruction(dsp_core_t* dsp)
         }
     }
 
-    if (dsp->cur_inst < 0x100000) {
+    if (!dsp56k_is_parallel(dsp->cur_inst)) {
         const OpcodeEntry *op = dsp->pram_opcache[dsp->pc];
         if (op == NULL) {
             op = lookup_opcode(dsp->cur_inst);
@@ -1520,7 +1520,7 @@ void dsp56k_decode(dsp_core_t *dsp, uint32_t pc, DspDecoded *d)
     d->emu = NULL;
     d->len = 1;
     if (d->inst & 0xFF000000) return;
-    if (d->inst < 0x100000) {
+    if (!dsp56k_is_parallel(d->inst)) {
         const OpcodeEntry *op = lookup_opcode_try(d->inst);
         if (!op) return;
         d->emu = op->emu_func ? op->emu_func : emu_undefined;
