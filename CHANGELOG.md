@@ -1,5 +1,6 @@
 # Changelog of the libretro core
 
+- Reuse one TCG owner for temporary creation and handle encoding, including matching vectors. Avoid repeated Windows TLS lookups while preserving allocation/reuse, float lifetimes and generic 32-bit split temporaries.
 - Reuse one TCG owner when decoding and freeing typed temporary handles. Avoid the second Windows context lookup while retaining free bitmap/type selection, ignored constant/TB frees and 32-bit temporary handling.
 - Patch block-end instruction-count operands directly from their TCG temporary. Avoid handle round trips and reuse one constant for budget and idle checks, preserving lazy allocation order and count values.
 - Retain the TCG owner throughout block translation and pass it to block-start/end bookkeeping. Avoid repeated Windows context lookups for instruction tails, budgets, idle checks and insertion anchors; generated guest operations and ordering stay unchanged.

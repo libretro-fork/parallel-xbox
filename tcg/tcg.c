@@ -1988,9 +1988,8 @@ TCGv_i64 tcg_global_mem_new_i64(TCGv_ptr reg, intptr_t off)
     return temp_tcgv_i64(ts);
 }
 
-TCGTemp *tcg_temp_new_internal(TCGType type, TCGTempKind kind)
+static TCGTemp *tcg_temp_new_context(TCGContext *s, TCGType type, TCGTempKind kind)
 {
-    TCGContext *s = tcg_ctx;
     TCGTemp *ts;
     int n;
 
@@ -2054,76 +2053,84 @@ TCGTemp *tcg_temp_new_internal(TCGType type, TCGTempKind kind)
     return ts;
 }
 
+TCGTemp *tcg_temp_new_internal(TCGType type, TCGTempKind kind)
+{
+    return tcg_temp_new_context(tcg_ctx, type, kind);
+}
+
+static uintptr_t tcg_temp_new_handle(TCGType type, TCGTempKind kind)
+{
+    TCGContext *s = tcg_ctx;
+    TCGTemp *t = tcg_temp_new_context(s, type, kind);
+    return (uintptr_t)temp_tcgv_i32_context(s, t);
+}
+
 TCGv_i32 tcg_temp_new_i32(void)
 {
-    return temp_tcgv_i32(tcg_temp_new_internal(TCG_TYPE_I32, TEMP_TB));
+    return (TCGv_i32)tcg_temp_new_handle(TCG_TYPE_I32, TEMP_TB);
 }
 
 TCGv_i32 tcg_temp_ebb_new_i32(void)
 {
-    return temp_tcgv_i32(tcg_temp_new_internal(TCG_TYPE_I32, TEMP_EBB));
+    return (TCGv_i32)tcg_temp_new_handle(TCG_TYPE_I32, TEMP_EBB);
 }
 
 TCGv_i64 tcg_temp_new_i64(void)
 {
-    return temp_tcgv_i64(tcg_temp_new_internal(TCG_TYPE_I64, TEMP_TB));
+    return (TCGv_i64)tcg_temp_new_handle(TCG_TYPE_I64, TEMP_TB);
 }
 
 TCGv_i64 tcg_temp_ebb_new_i64(void)
 {
-    return temp_tcgv_i64(tcg_temp_new_internal(TCG_TYPE_I64, TEMP_EBB));
+    return (TCGv_i64)tcg_temp_new_handle(TCG_TYPE_I64, TEMP_EBB);
 }
 
+/* Float temporaries retain their existing EBB lifetime. */
 TCGv_f32 tcg_temp_new_f32(void)
 {
-    TCGTemp *t = tcg_temp_new_internal(TCG_TYPE_F32, false);
-    return temp_tcgv_f32(t);
+    return (TCGv_f32)tcg_temp_new_handle(TCG_TYPE_F32, TEMP_EBB);
 }
 
 TCGv_f64 tcg_temp_new_f64(void)
 {
-    TCGTemp *t = tcg_temp_new_internal(TCG_TYPE_F64, false);
-    return temp_tcgv_f64(t);
+    return (TCGv_f64)tcg_temp_new_handle(TCG_TYPE_F64, TEMP_EBB);
 }
 
 TCGv_ptr tcg_temp_new_ptr(void)
 {
-    return temp_tcgv_ptr(tcg_temp_new_internal(TCG_TYPE_PTR, TEMP_TB));
+    return (TCGv_ptr)tcg_temp_new_handle(TCG_TYPE_PTR, TEMP_TB);
 }
 
 TCGv_ptr tcg_temp_ebb_new_ptr(void)
 {
-    return temp_tcgv_ptr(tcg_temp_new_internal(TCG_TYPE_PTR, TEMP_EBB));
+    return (TCGv_ptr)tcg_temp_new_handle(TCG_TYPE_PTR, TEMP_EBB);
 }
 
 TCGv_i128 tcg_temp_new_i128(void)
 {
-    return temp_tcgv_i128(tcg_temp_new_internal(TCG_TYPE_I128, TEMP_TB));
+    return (TCGv_i128)tcg_temp_new_handle(TCG_TYPE_I128, TEMP_TB);
 }
 
 TCGv_i128 tcg_temp_ebb_new_i128(void)
 {
-    return temp_tcgv_i128(tcg_temp_new_internal(TCG_TYPE_I128, TEMP_EBB));
+    return (TCGv_i128)tcg_temp_new_handle(TCG_TYPE_I128, TEMP_EBB);
 }
 
 TCGv_vec tcg_temp_new_vec(TCGType type)
 {
-    TCGTemp *t;
-
-
-    t = tcg_temp_new_internal(type, TEMP_EBB);
-    return temp_tcgv_vec(t);
+    return (TCGv_vec)tcg_temp_new_handle(type, TEMP_EBB);
 }
 
 /* Create a new temp of the same type as an existing temp.  */
 TCGv_vec tcg_temp_new_vec_matching(TCGv_vec match)
 {
-    TCGTemp *t = tcgv_vec_temp(match);
+    TCGContext *s = tcg_ctx;
+    TCGTemp *t = tcgv_i32_temp_context(s, (TCGv_i32)match);
 
     tcg_debug_assert(t->temp_allocated != 0);
 
-    t = tcg_temp_new_internal(t->base_type, TEMP_EBB);
-    return temp_tcgv_vec(t);
+    t = tcg_temp_new_context(s, t->base_type, TEMP_EBB);
+    return (TCGv_vec)temp_tcgv_i32_context(s, t);
 }
 
 static void tcg_temp_free_context(TCGContext *s, TCGTemp *ts)

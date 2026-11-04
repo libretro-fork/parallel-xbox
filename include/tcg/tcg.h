@@ -607,9 +607,14 @@ static inline TCGArg tcgv_vec_arg(TCGv_vec v)
     return temp_arg(tcgv_vec_temp(v));
 }
 
+static inline TCGv_i32 temp_tcgv_i32_context(TCGContext *s, TCGTemp *t)
+{
+    return (TCGv_i32)((void *)t - (void *)s);
+}
+
 static inline TCGv_i32 temp_tcgv_i32(TCGTemp *t)
 {
-    return (TCGv_i32)((void *)t - (void *)tcg_ctx);
+    return temp_tcgv_i32_context(tcg_ctx, t);
 }
 
 static inline TCGv_i64 temp_tcgv_i64(TCGTemp *t)

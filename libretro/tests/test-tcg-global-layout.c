@@ -276,6 +276,113 @@ static void check_temp_free(TCGContext *current, TCGContext *other)
     printf("TCG free: %u typed/pointer/owner cases, ignored kinds, bitmaps and adjacent slots PASS\n", cases);
 }
 
+static unsigned new_slots(TCGType type)
+{
+    return type == TCG_TYPE_I64 ? 64 / TCG_TARGET_REG_BITS :
+           type == TCG_TYPE_I128 ? 128 / TCG_TARGET_REG_BITS : 1;
+}
+
+static void reset_new_temps(TCGContext *owner)
+{
+    owner->nb_temps = owner->nb_globals = 0;
+    memset(owner->temps, 0xa5, sizeof(owner->temps));
+    memset(owner->free_temps, 0, sizeof(owner->free_temps));
+}
+
+static void check_new_temp(TCGContext *owner, TCGTemp *temp,
+                           TCGType type, TCGTempKind kind)
+{
+    unsigned n = new_slots(type);
+    assert(temp == owner->temps && owner->nb_temps == (int)n);
+    for (unsigned i = 0; i < n; ++i) {
+        assert(temp[i].base_type == type && temp[i].kind == kind);
+        assert(temp[i].type == (n == 1 ? type : TCG_TYPE_REG));
+        assert(temp[i].temp_allocated && temp[i].temp_subindex == i);
+        assert(!temp[i].val && !temp[i].state_ptr && !temp[i].mem_base);
+    }
+    const unsigned char *guard = (const void *)&owner->temps[n];
+    for (unsigned i = 0; i < sizeof(TCGTemp); ++i) assert(guard[i] == 0xa5);
+}
+
+static uintptr_t new_typed(unsigned mode)
+{
+    switch (mode) {
+    case 0: return (uintptr_t)tcg_temp_new_i32();
+    case 1: return (uintptr_t)tcg_temp_ebb_new_i32();
+    case 2: return (uintptr_t)tcg_temp_new_i64();
+    case 3: return (uintptr_t)tcg_temp_ebb_new_i64();
+    case 4: return (uintptr_t)tcg_temp_new_ptr();
+    case 5: return (uintptr_t)tcg_temp_ebb_new_ptr();
+    case 6: return (uintptr_t)tcg_temp_new_i128();
+    case 7: return (uintptr_t)tcg_temp_ebb_new_i128();
+    case 8: return (uintptr_t)tcg_temp_new_f32();
+    case 9: return (uintptr_t)tcg_temp_new_f64();
+    default: return (uintptr_t)tcg_temp_new_vec(TCG_TYPE_V64 + mode - 10);
+    }
+}
+
+static void check_temp_new(TCGContext *current, TCGContext *other)
+{
+    static const TCGType types[] = {
+        TCG_TYPE_I32, TCG_TYPE_I64, TCG_TYPE_I128, TCG_TYPE_F32,
+        TCG_TYPE_F64, TCG_TYPE_V64, TCG_TYPE_V128, TCG_TYPE_V256
+    };
+    unsigned cases = 0;
+    for (unsigned api = 0; api < 3; ++api) {
+        TCGContext *owner = api == 2 ? other : current;
+        for (unsigned i = 0; i < ARRAY_SIZE(types); ++i) {
+            for (unsigned k = 0; k < 2; ++k) {
+                TCGTempKind kind = k ? TEMP_TB : TEMP_EBB;
+                TCGType type = types[i];
+                reset_new_temps(owner);
+                TCGTemp *t = api == 0 ? tcg_temp_new_internal(type, kind) :
+                                       tcg_temp_new_context(owner, type, kind);
+                check_new_temp(owner, t, type, kind);
+                t->val = 0x12345678;
+                tcg_temp_free_context(owner, t);
+                TCGTemp *again = api == 0 ? tcg_temp_new_internal(type, kind) :
+                                           tcg_temp_new_context(owner, type, kind);
+                assert(again == (kind == TEMP_EBB ? t : t + new_slots(type)));
+                assert(owner->nb_temps == (int)(new_slots(type) * (kind == TEMP_EBB ? 1 : 2)));
+                assert(t->val == 0x12345678 && again->temp_allocated);
+                ++cases;
+            }
+        }
+    }
+    static const TCGType typed_types[] = {
+        TCG_TYPE_I32, TCG_TYPE_I32, TCG_TYPE_I64, TCG_TYPE_I64,
+        TCG_TYPE_PTR, TCG_TYPE_PTR, TCG_TYPE_I128, TCG_TYPE_I128,
+        TCG_TYPE_F32, TCG_TYPE_F64, TCG_TYPE_V64, TCG_TYPE_V128, TCG_TYPE_V256
+    };
+    for (unsigned mode = 0; mode < ARRAY_SIZE(typed_types); ++mode) {
+        TCGType type = typed_types[mode];
+        TCGTempKind kind = mode >= 8 || (mode & 1) ? TEMP_EBB : TEMP_TB;
+        reset_new_temps(current);
+        uintptr_t handle = new_typed(mode);
+        TCGTemp *t = tcgv_i32_temp_context(current, (TCGv_i32)handle);
+        assert(handle && handle == (uintptr_t)temp_tcgv_i32_context(current, t));
+        check_new_temp(current, t, type, kind);
+        tcg_temp_free_context(current, t);
+        uintptr_t again = new_typed(mode);
+        assert((again == handle) == (kind == TEMP_EBB));
+        assert(current->nb_temps == (int)(new_slots(type) * (kind == TEMP_EBB ? 1 : 2)));
+        ++cases;
+    }
+    for (TCGType type = TCG_TYPE_V64; type <= TCG_TYPE_V256; ++type) {
+        reset_new_temps(current);
+        TCGv_vec source = tcg_temp_new_vec(type);
+        TCGv_vec match = tcg_temp_new_vec_matching(source);
+        assert(source != match && current->nb_temps == 2);
+        TCGTemp *t = tcgv_vec_temp(match);
+        assert(t->base_type == type && t->kind == TEMP_EBB && t->temp_allocated);
+        tcg_temp_free_vec(match);
+        assert(tcg_temp_new_vec_matching(source) == match && current->nb_temps == 2);
+        assert(tcgv_vec_temp(source)->temp_allocated);
+        ++cases;
+    }
+    printf("TCG new: %u owner/typed/matching cases, fresh/reused slots, lifetimes and split layouts PASS\n", cases);
+}
+
 static void check_global(TCGTemp *temp, TCGTemp *base, intptr_t offset,
                          TCGType type, bool indirect)
 {
@@ -414,6 +521,7 @@ int main(void)
     refill_size = 16;
     assert(tcg_malloc(9) == refill_buffer && refill_calls == calls + 1);
     check_temp_free(&context, &other);
+    check_temp_new(&context, &other);
     check_ops(&other, false); /* Explicit owner differs from TLS. */
     check_ops(&context, true);
     check_rollback(&context);

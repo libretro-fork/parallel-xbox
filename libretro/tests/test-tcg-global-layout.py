@@ -35,6 +35,14 @@ keys = ['static void tcg_temp_free_context(', 'void tcg_temp_free_internal(',
         'static TCGTemp *tcg_global_reg_new_internal(', 'void tcg_set_frame(',
         'static TCGTemp *tcg_global_mem_new_internal(',
         'TCGv_i32 tcg_global_mem_new_i32(', 'TCGv_i64 tcg_global_mem_new_i64(']
+keys += ['static TCGTemp *tcg_temp_new_context(', 'TCGTemp *tcg_temp_new_internal(',
+         'static uintptr_t tcg_temp_new_handle(', 'TCGv_i32 tcg_temp_new_i32(',
+         'TCGv_i32 tcg_temp_ebb_new_i32(', 'TCGv_i64 tcg_temp_new_i64(',
+         'TCGv_i64 tcg_temp_ebb_new_i64(', 'TCGv_f32 tcg_temp_new_f32(',
+         'TCGv_f64 tcg_temp_new_f64(', 'TCGv_ptr tcg_temp_new_ptr(',
+         'TCGv_ptr tcg_temp_ebb_new_ptr(', 'TCGv_i128 tcg_temp_new_i128(',
+         'TCGv_i128 tcg_temp_ebb_new_i128(', 'TCGv_vec tcg_temp_new_vec(',
+         'TCGv_vec tcg_temp_new_vec_matching(']
 code = Path(__file__).with_suffix('.c').read_text()
 code = code.replace('/* PRODUCTION */', '\n'.join(function(key) for key in keys) + '\n' +
                     function('static void gen_tb_end(',
