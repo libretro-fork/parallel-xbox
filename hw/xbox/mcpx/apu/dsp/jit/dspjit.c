@@ -3531,7 +3531,12 @@ static bool emit_control(Tr *t, const Insn *in)
           !strcmp(name, "jsset #n, [X or Y]:pp, xxxx")) && !(inst & (1u << 6))) ||
         !strcmp(name, "jsclr #n, S, xxxx") || !strcmp(name, "jsset #n, S, xxxx") ||
         !strcmp(name, "jsclr #n, [X or Y]:aa, xxxx") ||
-        !strcmp(name, "jsset #n, [X or Y]:aa, xxxx")) {
+        !strcmp(name, "jsset #n, [X or Y]:aa, xxxx") ||
+        !strcmp(name, "jsclr #n, [X or Y]:ea, xxxx") ||
+        !strcmp(name, "jsset #n, [X or Y]:ea, xxxx")) {
+        bool indirect = strstr(name, ":ea") != NULL;
+        if (indirect && ((inst >> 11) & 7) == 6) return false;
+        uint32_t before = t->cyc;
         /* Only X has MCPX peripheral callbacks; Y must not alias them. */
         uint32_t target = name[0] == 'b' ? (at + in->ext) & 0xffffff : in->ext;
         if (strstr(name, ", S, xxxx")) {
@@ -3540,6 +3545,12 @@ static bool emit_control(Tr *t, const Insn *in)
             if (reg == DSP_REG_SR) emit_flags_flush(t);
             emit_read_reg(t, reg, V1);
             acc_spill_all(t, false);
+        } else if (indirect) {
+            acc_spill_all(t, false);
+            Ea ea;
+            emit_calc_ea(t, (inst >> 8) & 63, in->ext, EA1, &ea);
+            ea_addr_reg(t, &ea);
+            emit_read_mem(t, (inst >> 6) & 1, EA1, V1);
         } else {
             acc_spill_all(t, false);
             bool short_memory = strstr(name, ":aa") != NULL;
@@ -3547,16 +3558,18 @@ static bool emit_control(Tr *t, const Insn *in)
             h_mov_ri(e, EA1, base + ((inst >> 8) & 63));
             emit_read_mem(t, short_memory ? (inst >> 6) & 1 : DSP_SPACE_X, EA1, V1);
         }
+        uint32_t cycles = 6 + t->cyc - before;
+        t->cyc = before;
         h_test_ri(e, 0, V1, 1u << (inst & 31));
         size_t taken = h_jcc(e, name[2] == 'c' ? HC_EQ : HC_NE);
-        emit_exit_to(t, in, in->next, 6);
+        emit_exit_to(t, in, in->next, cycles);
         h_patch(e, taken, e->len);
         h_mov_rr(e, 1, H_ARG0, REG_CORE);
         h_mov_ri(e, H_ARG1, in->next);
         h_ld32(e, H_ARG2, REG_CORE, REGOFF(DSP_REG_SR));
         h_call(e, (const void *)dsp56k_stack_push);
-        emit_stack_check(t, in, target, 6);
-        emit_exit_to(t, in, target, 6);
+        emit_stack_check(t, in, target, cycles);
+        emit_exit_to(t, in, target, cycles);
         return true;
     }
 
