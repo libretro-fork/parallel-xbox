@@ -35,6 +35,8 @@
 
 - Remove unreachable BMI1/BMI2 and ADX emitters plus PDEP/PEXT helpers for the fixed Xbox CPU. Preserve decoder/fault ordering, legacy TZCNT/LZCNT-as-BSF/BSR behavior and shared condition-code machinery.
 
+- DSP: execute X:pp relative bit-test calls natively, preserving wrapped targets, conditional stack saves and single peripheral reads.
+
 - Remove unsupported RDPID/RDTSCP execution paths and their shared helper for the fixed Xbox CPU. Preserve ordinary RDTSC, opcode-fetch faults, register/flag state and existing MSR/save-state layouts.
 
 - DSP: execute register-indirect X/Y relative bit-test branches natively, retaining address updates, wrapped targets and loop-end timing.
