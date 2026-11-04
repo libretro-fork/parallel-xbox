@@ -3489,6 +3489,24 @@ static void emit_exit_to(Tr *t, const Insn *in, uint32_t target, uint32_t cycles
     emit_chain_to(t, target, t->cyc + cycles);
 }
 
+/* Untaken controls retire sequentially. REP may suppress their normal
+ * advance; a taken branch to the same address must still keep its target. */
+static void emit_fallthrough(Tr *t, const Insn *in, uint32_t next, uint32_t cycles)
+{
+    Emitter *e = &t->e;
+    if (!t->interrupt_retirement) {
+        emit_exit_to(t, in, next, cycles);
+        return;
+    }
+    h_st32_imm(e, REG_CORE, OFF(pc), in->at);
+    h_st32_imm(e, REG_CORE, OFF(cur_inst_len), (next - in->at) & (DSP_PRAM_SIZE - 1));
+    h_st16_imm(e, REG_CORE, OFF(instr_cycle), cycles);
+    h_mov_rr(e, 1, H_ARG0, REG_CORE);
+    h_call(e, (const void *)dsp56k_post);
+    emit_charge(e, t->cyc);
+    emit_jump_to_epilogue(t);
+}
+
 /* after a push or pop: a stack error raised ends the instruction
  * through dsp56k_post (the interrupt) */
 static void emit_stack_check(Tr *t, const Insn *in, uint32_t target, uint32_t cycles)
@@ -3561,7 +3579,7 @@ static bool emit_control(Tr *t, const Insn *in)
         h_call(e, (const void *)dsp56k_stack_push);
         h_st32_imm(e, REG_CORE, REGOFF(DSP_REG_LA), ((relative ? at : 0) + in->ext) & 0xffff);
         h_mov_rr(e, 1, H_ARG0, REG_CORE);
-        h_mov_ri(e, H_ARG1, in->next);
+        h_mov_ri(e, H_ARG1, in->at + in->len);
         h_ld32(e, H_ARG2, REG_CORE, REGOFF(DSP_REG_SR));
         h_call(e, (const void *)dsp56k_stack_push);
         h_or_mem32_imm(e, REG_CORE, REGOFF(DSP_REG_SR), (1u << DSP_SR_LF) | (1u << DSP_SR_FV));
@@ -3580,7 +3598,7 @@ static bool emit_control(Tr *t, const Insn *in)
         if (!strcmp(name, "brkcc")) {
             emit_cc(e, inst & 15);
             size_t taken = h_jcc(e, HC_NE);
-            emit_exit_to(t, in, in->next, 2);
+            emit_fallthrough(t, in, in->next, 2);
             h_patch(e, taken, e->len);
             h_ld32(e, EA1, REG_CORE, REGOFF(DSP_REG_LA));
             h_add_ri(e, 0, EA1, 1);
@@ -3650,7 +3668,7 @@ static bool emit_control(Tr *t, const Insn *in)
         if (conditional) {
             emit_cc(e, computed ? inst & 0xF : (inst >> 12) & 0xF);
             size_t taken = h_jcc(e, HC_NE);
-            emit_exit_to(t, in, in->next, cycles);
+            emit_fallthrough(t, in, in->next, cycles);
             h_patch(e, taken, e->len);
         }
         if (computed) {
@@ -3704,7 +3722,7 @@ static bool emit_control(Tr *t, const Insn *in)
             bool low_condition = computed || register_relative || !strcmp(name, "bscc xxxx");
             emit_cc(e, low_condition ? inst & 0xF : (inst >> 12) & 0xF);
             size_t taken = h_jcc(e, HC_NE);
-            emit_exit_to(t, in, in->next, cycles);
+            emit_fallthrough(t, in, in->next, cycles);
             h_patch(e, taken, e->len);
         }
         h_st32(e, REG_CORE, OFF(pc), EA1);
@@ -3716,7 +3734,7 @@ static bool emit_control(Tr *t, const Insn *in)
             long_irq = h_jcc(e, HC_EQ);
         }
         h_mov_rr(e, 1, H_ARG0, REG_CORE);
-        h_mov_ri(e, H_ARG1, in->next);
+        h_mov_ri(e, H_ARG1, in->at + in->len);
         h_ld32(e, H_ARG2, REG_CORE, REGOFF(DSP_REG_SR));
         h_call(e, (const void *)dsp56k_stack_push);
         if (!conditional) {
@@ -3794,10 +3812,10 @@ static bool emit_control(Tr *t, const Insn *in)
         t->cyc = before;
         h_test_ri(e, 0, V1, 1u << (inst & 31));
         size_t taken = h_jcc(e, name[2] == 'c' ? HC_EQ : HC_NE);
-        emit_exit_to(t, in, in->next, cycles);
+        emit_fallthrough(t, in, in->next, cycles);
         h_patch(e, taken, e->len);
         h_mov_rr(e, 1, H_ARG0, REG_CORE);
-        h_mov_ri(e, H_ARG1, in->next);
+        h_mov_ri(e, H_ARG1, in->at + in->len);
         h_ld32(e, H_ARG2, REG_CORE, REGOFF(DSP_REG_SR));
         h_call(e, (const void *)dsp56k_stack_push);
         emit_stack_check(t, in, target, cycles);
@@ -3847,7 +3865,7 @@ static bool emit_control(Tr *t, const Insn *in)
         taken = h_jcc(e, clear ? HC_EQ : HC_NE);
         /* The operand has already been read; post-processing must not
          * repeat a peripheral read when the target ends a DO loop. */
-        emit_exit_to(t, in, next, 6);
+        emit_fallthrough(t, in, next, 6);
         h_patch(e, taken, e->len);
         emit_exit_to(t, in, in->ext, 6);
         return true;
@@ -3858,7 +3876,7 @@ static bool emit_control(Tr *t, const Insn *in)
         if (name[1] == 'c') {
             emit_cc(e, inst & 15);
             size_t taken = h_jcc(e, HC_NE);
-            emit_exit_to(t, in, in->next, 2);
+            emit_fallthrough(t, in, in->next, 2);
             h_patch(e, taken, e->len);
         }
         h_ld32(e, EA1, REG_CORE, REGOFF(DSP_REG_R0 + ((inst >> 8) & 7)));
@@ -3885,7 +3903,7 @@ static bool emit_control(Tr *t, const Insn *in)
             size_t j;
             emit_cc(e, cc);
             j = h_jcc(e, HC_NE);
-            emit_exit_to(t, in, in->next, 2);
+            emit_fallthrough(t, in, in->next, 2);
             h_patch(e, j, e->len);
         }
         emit_exit_to(t, in, target, 2);
@@ -3905,7 +3923,7 @@ static bool emit_control(Tr *t, const Insn *in)
         acc_spill_all(t, false);
         h_test_ri(e, 0, V1, 1u << numbit);
         j = h_jcc(e, name[2] == 'c' ? HC_EQ : HC_NE);
-        emit_exit_to(t, in, in->next, 6);
+        emit_fallthrough(t, in, in->next, 6);
         h_patch(e, j, e->len);
         emit_exit_to(t, in, target, 6);
         return true;
@@ -3938,7 +3956,7 @@ static bool emit_control(Tr *t, const Insn *in)
         j = h_jcc(e, name[2] == 'c' ? HC_EQ : HC_NE);
         /* The operand was read already; finish a DO boundary without
          * reinterpreting the branch and repeating that read. */
-        emit_exit_to(t, in, in->next, cycles);
+        emit_fallthrough(t, in, in->next, cycles);
         h_patch(e, j, e->len);
         emit_exit_to(t, in, target, cycles);
         return true;
@@ -4702,10 +4720,13 @@ static dspjit_block_fn dspjit_translate_rep(DspJit *jit, int mode, uint32_t pc)
                          !strcmp(in.d.name, "stop") || !strcmp(in.d.name, "reset") ||
                          !strncmp(in.d.name, "debug", 5) || !strncmp(in.d.name, "trap", 4) ||
                          !strncmp(in.d.name, "pflush", 6) || !strcmp(in.d.name, "pfree") ||
-                         !strncmp(in.d.name, "plock", 5) || !strncmp(in.d.name, "punlock", 7))) {
+                         !strncmp(in.d.name, "plock", 5) || !strncmp(in.d.name, "punlock", 7) ||
+                         in.d.name[0] == 'j' || in.d.name[0] == 'b' ||
+                         !strcmp(in.d.name, "rts") || !strcmp(in.d.name, "rti"))) {
         /* These emitters retire at the original PC with the decoded length.
          * Post must perform REP's decrement, deferring interrupts until the
-         * last body iteration. Other controls have different PC semantics. */
+         * last body iteration. Taken branches preserve their selected PC;
+         * untaken branches use sequential retirement. Loop setup remains separate. */
         return dspjit_translate_interrupt(jit, mode, pc);
     }
     if (!insn_native(&in)) {
