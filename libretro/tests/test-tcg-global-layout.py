@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-2.0-or-later
-"""Compile production global allocation against the real TCG structures."""
+"""Compile production global/label allocation against real TCG structures."""
 from pathlib import Path
 import os
 import shlex
@@ -23,7 +23,8 @@ def function(key):
     return source[start:end]
 
 
-keys = ['static TCGTemp *tcg_temp_alloc(', 'static TCGTemp *tcg_global_alloc(',
+keys = ['TCGLabel *gen_new_label(',
+        'static TCGTemp *tcg_temp_alloc(', 'static TCGTemp *tcg_global_alloc(',
         'static TCGTemp *tcg_global_reg_new_internal(', 'void tcg_set_frame(',
         'static TCGTemp *tcg_global_mem_new_internal(',
         'TCGv_i32 tcg_global_mem_new_i32(', 'TCGv_i64 tcg_global_mem_new_i64(']

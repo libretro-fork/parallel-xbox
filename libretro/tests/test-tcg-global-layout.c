@@ -18,6 +18,12 @@ __thread TCGContext *tcg_ctx;
 #undef g_assert_not_reached
 #define g_assert_not_reached() abort()
 static void tcg_raise_tb_overflow(TCGContext *s) { (void)s; abort(); }
+void *tcg_malloc_internal(TCGContext *s, int size)
+{
+    (void)s;
+    (void)size;
+    abort(); /* The label fixture must fit in its real TCG pool. */
+}
 /* PRODUCTION */
 
 static void check_global(TCGTemp *temp, TCGTemp *base, intptr_t offset,
@@ -44,6 +50,29 @@ int main(void)
     assert(tls_key_tcg_ctx != TLS_OUT_OF_INDEXES);
 #endif
     SET_tcg_ctx(&context);
+    static unsigned char arena[16384] QEMU_ALIGNED(16);
+    TCGLabel *labels[128], *label;
+    context.pool_cur = (uintptr_t)arena;
+    context.pool_end = context.pool_cur + sizeof(arena);
+    memset(arena, 0xa5, sizeof(arena));
+    QSIMPLEQ_INIT(&context.labels);
+    for (unsigned i = 0; i < ARRAY_SIZE(labels); ++i) {
+        labels[i] = label = gen_new_label();
+        assert(!label->present && !label->has_value && !label->u.value);
+        assert(QSIMPLEQ_EMPTY(&label->branches) && QSIMPLEQ_EMPTY(&label->relocs));
+        assert(label->branches.sqh_last == &label->branches.sqh_first);
+        assert(label->relocs.sqh_last == &label->relocs.sqh_first);
+        /* Each new label must preserve existing list members and values. */
+        label->u.value = i + 1;
+        label->present = label->has_value = true;
+    }
+    unsigned count = 0;
+    QSIMPLEQ_FOREACH(label, &context.labels, next) {
+        assert(count < ARRAY_SIZE(labels) && label == labels[count]);
+        assert(label->present && label->has_value && label->u.value == count + 1);
+        ++count;
+    }
+    assert(count == ARRAY_SIZE(labels));
     memset(context.temps, 0xa5, sizeof(context.temps));
     TCGTemp *fixed = tcg_global_reg_new_internal(&context, TCG_TYPE_PTR, 0);
     assert(fixed->kind == TEMP_FIXED && fixed->reg == 0);
@@ -81,6 +110,7 @@ int main(void)
     }
     printf("TCG global layout: %d-bit direct/indirect globals, %shandles and frame PASS\n",
            TCG_TARGET_REG_BITS, TCG_TARGET_REG_BITS == 32 ? "split halves, " : "");
+    puts("TCG labels: pool allocation, queue heads, identity, order and values PASS");
 #ifdef _WIN32
     TlsFree(tls_key_tcg_ctx);
 #endif

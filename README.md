@@ -472,3 +472,10 @@ set `TCG_GLOBAL_LAYOUT_TEST_32BIT=1` and use `i686-w64-mingw32-gcc`. The fixture
 adapts host configuration only in its temporary directory (including the Int128
 struct fallback); production configuration is untouched. This tests 32-bit
 constructors and ABI sizes, and does not constitute a complete 32-bit core port.
+
+TCG labels use pointer identity and no longer assign diagnostic IDs or reset a
+per-block diagnostic counter. Branch/relocation lists and label values remain
+intact. The global-layout fixture also compiles production label creation into
+a poisoned real TCG pool and checks queue heads, identity, order and preserved
+values on i686 and 64-bit hosts. Label size is unchanged by alignment padding;
+the change removes translator bookkeeping rather than allocation bytes.

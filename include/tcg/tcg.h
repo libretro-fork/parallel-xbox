@@ -109,7 +109,6 @@ typedef struct TCGLabel TCGLabel;
 struct TCGLabel {
     bool present;
     bool has_value;
-    uint16_t id;
     union {
         uintptr_t value;
         const tcg_insn_unit *value_ptr;
@@ -379,7 +378,6 @@ static inline TCGRegSet output_pref(const TCGOp *op, unsigned i)
 struct TCGContext {
     uintptr_t pool_cur, pool_end;
     TCGPool *pool_first, *pool_current, *pool_first_large;
-    int nb_labels;
     int nb_globals;
     int nb_temps;
     int nb_indirects;

@@ -323,7 +323,6 @@ TCGLabel *gen_new_label(void)
     TCGLabel *l = tcg_malloc(sizeof(TCGLabel));
 
     memset(l, 0, sizeof(TCGLabel));
-    l->id = s->nb_labels++;
     QSIMPLEQ_INIT(&l->branches);
     QSIMPLEQ_INIT(&l->relocs);
 
@@ -1866,7 +1865,6 @@ void tcg_func_start(TCGContext *s)
     }
 
     s->nb_ops = 0;
-    s->nb_labels = 0;
     s->current_frame_offset = s->frame_start;
 
 
