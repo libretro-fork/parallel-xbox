@@ -23,6 +23,7 @@
 #include "qemu/file-map.h"
 #include "ui/xemu-settings.h"
 #include "renderer.h"
+#include "pcache-worker.h"
 #include "libretro/dsp-ownership.h"
 #include "hw/xbox/nv2a/pgraph/spv/clear.h"
 #include "hw/xbox/nv2a/pgraph/blend.h"
@@ -30,6 +31,7 @@
 #include <retro_atomic.h>
 #include <rthreads/retro_eventcount.h>
 
+static void pcache_save_now(void *arg);
 static void pump_quiesce(PGRAPHState *pg);
 static void gpl_init(PGRAPHVkState *r);
 static void gpl_finalize(PGRAPHVkState *r);
@@ -180,7 +182,7 @@ static void init_pipeline_cache(PGRAPHState *pg)
     char *pc_path = g_strdup_printf("%s/vk_pipeline_cache.bin",
                                     xemu_settings_get_base_path());
     xemu_file_map(&pc, pc_path);
-    g_free(pc_path);
+    r->pcache_path = pc_path;
 
     VkPipelineCacheCreateInfo cache_info = {
         .sType = VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO,
@@ -204,8 +206,8 @@ static void init_pipeline_cache(PGRAPHState *pg)
                            &r->pcache_saved_len, NULL);
     r->pcache_blob_capacity = MAX(r->pcache_saved_len, 64 * 1024);
     r->pcache_blob = g_malloc(r->pcache_blob_capacity);
-    r->pcache_thread_spawned = false;
-    retro_atomic_int_init(&r->pcache_busy, 0);
+    /* Startup only: a flip never creates or joins a host thread. */
+    r->pcache_worker = vk_pcache_worker_create(pcache_save_now, r);
 
     /* MEASURED: Crazy Taxi keeps more than 2048 pipelines live. */
     const size_t pipeline_cache_size = 8192;
@@ -222,21 +224,20 @@ static void init_pipeline_cache(PGRAPHState *pg)
     r->pipeline_cache.post_node_evict = pipeline_cache_entry_post_evict;
 }
 
-/* Saved from the flip (renderer.c) as well as at finalize: the exit path
- * may crash in driver teardown. A helper thread writes the blob, so the
- * write never stalls the pfifo thread (MEASURED); the cache is internally
- * synchronized (not EXTERNALLY_SYNCHRONIZED), so it reads while others
- * compile. */
-static void pcache_save_now(PGRAPHVkState *r)
+/* Optional flip marks wake a persistent startup-created worker. The worker
+ * alone owns export scratch and saved length until lifecycle teardown joins
+ * it. Driver cache synchronization can still contend with compilation. */
+static void pcache_save_now(void *arg)
 {
+    PGRAPHVkState *r = arg;
     size_t pc_len = 0;
     if (vkGetPipelineCacheData(r->device, r->vk_pipeline_cache, &pc_len,
                                NULL) != VK_SUCCESS ||
         !pc_len || pc_len == r->pcache_saved_len) {
         return;
     }
-    /* Saves own this scratch serially: the previous worker is joined before
-     * a new save or teardown starts. Old contents need not survive growth. */
+    /* The persistent worker owns scratch serially; teardown joins it before
+     * the final synchronous save. Old contents need not survive growth. */
     if (pc_len > r->pcache_blob_capacity) {
         size_t grown = r->pcache_blob_capacity <= SIZE_MAX / 2 ?
                        r->pcache_blob_capacity * 2 : pc_len;
@@ -247,42 +248,22 @@ static void pcache_save_now(PGRAPHVkState *r)
     pc_len = r->pcache_blob_capacity;
     if (vkGetPipelineCacheData(r->device, r->vk_pipeline_cache, &pc_len,
                                r->pcache_blob) == VK_SUCCESS) {
-        char *pc_path = g_strdup_printf("%s/vk_pipeline_cache.bin",
-                                        xemu_settings_get_base_path());
-        if (g_file_set_contents(pc_path, r->pcache_blob, pc_len, NULL)) {
+        if (g_file_set_contents(r->pcache_path, r->pcache_blob, pc_len, NULL)) {
             r->pcache_saved_len = pc_len;
         }
-        g_free(pc_path);
     }
-}
-
-static void *pcache_save_thread(void *arg)
-{
-    PGRAPHVkState *r = arg;
-    pcache_save_now(r);
-    retro_atomic_store_relaxed_int(&r->pcache_busy, 0);
-    return NULL;
 }
 
 void pgraph_vk_save_pipeline_cache(PGRAPHState *pg, bool sync)
 {
     PGRAPHVkState *r = pg->vk_renderer_state;
-
-    if (r->pcache_thread_spawned) {
-        if (!sync && retro_atomic_load_relaxed_int(&r->pcache_busy)) {
-            return; /* previous save still writing: skip this mark */
-        }
-        qemu_thread_join(&r->pcache_thread);
-        r->pcache_thread_spawned = false;
-    }
     if (sync) {
+        vk_pcache_worker_destroy(r->pcache_worker);
+        r->pcache_worker = NULL;
         pcache_save_now(r);
-        return;
+    } else {
+        vk_pcache_worker_request(r->pcache_worker);
     }
-    retro_atomic_store_relaxed_int(&r->pcache_busy, 1);
-    qemu_thread_create(&r->pcache_thread, "vk-pcache", pcache_save_thread, r,
-                       QEMU_THREAD_JOINABLE);
-    r->pcache_thread_spawned = true;
 }
 
 static void finalize_pipeline_cache(PGRAPHState *pg)
@@ -297,6 +278,8 @@ static void finalize_pipeline_cache(PGRAPHState *pg)
     g_free(r->pcache_blob);
     r->pcache_blob = NULL;
     r->pcache_blob_capacity = 0;
+    g_free(r->pcache_path);
+    r->pcache_path = NULL;
 
     vkDestroyPipelineCache(r->device, r->vk_pipeline_cache, NULL);
 }

@@ -220,8 +220,8 @@ static void pgraph_vk_flip_stall(NV2AState *d)
     pgraph_vk_seed_service();
     pgraph_vk_libpump_step(&d->pgraph);
 
-    /* The pipeline cache reaches disk every 600 flips (about 10 s), on a
-     * thread: the shutdown path does not save it. */
+    /* Optional cache save marks coalesce on the persistent worker every
+     * 600 flips. Lifecycle teardown also drains it and makes a final save. */
     static unsigned flips;
     if (++flips % 600 == 0) {
         pgraph_vk_save_pipeline_cache(&d->pgraph, false);

@@ -3861,3 +3861,10 @@ Differential contexts cover control aliases, interrupts, stack errors and DO
 endpoints. CLR-to-SR call chains independently verify deferred Z is observed
 and saved; `gp-startup-register-bitcalls` exercises those dependencies and
 native returns across frames. Reserved register encodings remain unsupported.
+
+`test-vk-pcache-worker.py` executes the production save-mark API and persistent
+worker with libretro-common atomics, threads and eventcounts. It holds a save
+while 10000 marks return, checks 1000 completed saves with one thread, pending
+shutdown drain, 32 reinitializations and startup failure fallback.
+`test-pipeline-cache-export.py` retains the direct scratch/growth, incomplete
+data, write retry and teardown byte oracle with the immutable cache path.

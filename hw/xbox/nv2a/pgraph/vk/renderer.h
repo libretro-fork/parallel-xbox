@@ -738,9 +738,8 @@ typedef struct PGRAPHVkState {
     Lru pipeline_cache;
     VkPipelineCache vk_pipeline_cache;
     /* Pipeline cache persistence helper (pgraph_vk_save_pipeline_cache) */
-    QemuThread pcache_thread;
-    bool pcache_thread_spawned;
-    retro_atomic_int_t pcache_busy;
+    struct VkPCacheWorker *pcache_worker;
+    char *pcache_path;
     size_t pcache_saved_len;
     void *pcache_blob;
     size_t pcache_blob_capacity;
