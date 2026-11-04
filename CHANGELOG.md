@@ -37,6 +37,8 @@
 
 ## Unreleased
 
+- DSP: execute register relative bit-test calls natively, preserving accumulator limiting, current status, wrapped targets and conditional stack saves.
+
 - DSP: execute register-indirect X/Y relative bit-test calls natively, preserving address updates, wrapped targets and conditional stack saves.
 
 - DSP: execute short X/Y relative bit-test calls natively, preserving wrapped targets, source memory and conditional stack saves.

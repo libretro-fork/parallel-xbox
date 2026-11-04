@@ -3532,6 +3532,7 @@ static bool emit_control(Tr *t, const Insn *in)
           !strcmp(name, "bsclr #n, [X or Y]:pp, xxxx") ||
           !strcmp(name, "bsset #n, [X or Y]:pp, xxxx")) && !(inst & (1u << 6))) ||
         !strcmp(name, "jsclr #n, S, xxxx") || !strcmp(name, "jsset #n, S, xxxx") ||
+        !strcmp(name, "bsclr #n, S, xxxx") || !strcmp(name, "bsset #n, S, xxxx") ||
         !strcmp(name, "jsclr #n, [X or Y]:aa, xxxx") ||
         !strcmp(name, "jsset #n, [X or Y]:aa, xxxx") ||
         !strcmp(name, "bsclr #n, [X or Y]:aa, xxxx") ||

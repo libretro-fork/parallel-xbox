@@ -6671,6 +6671,26 @@ static void emu_bset_aa(dsp_core_t* dsp)
     dsp->instr_cycle += 2;
 }
 
+static void emu_relative_register_bitcall(dsp_core_t* dsp, bool set)
+{
+    uint32_t displacement = read_memory_p(dsp, dsp->pc + 1);
+    uint32_t reg = (dsp->cur_inst >> 8) & 63;
+    uint32_t value;
+    if (reg == DSP_REG_A || reg == DSP_REG_B) emu_pm_read_accu24(dsp, reg, &value);
+    else value = dsp->registers[reg];
+    dsp->cur_inst_len++;
+    dsp->instr_cycle += 4;
+    if (((value >> (dsp->cur_inst & 31)) & 1) == set) {
+        uint32_t target = (dsp->pc + displacement) & BITMASK(24);
+        dsp_stack_push(dsp, dsp->pc + 2, dsp->registers[DSP_REG_SR], 0);
+        dsp->pc = target;
+        dsp->cur_inst_len = 0;
+    }
+}
+
+static void emu_bsclr_reg(dsp_core_t* dsp) { emu_relative_register_bitcall(dsp, false); }
+static void emu_bsset_reg(dsp_core_t* dsp) { emu_relative_register_bitcall(dsp, true); }
+
 static void emu_bscc_long(dsp_core_t* dsp)
 {
     uint32_t displacement = read_memory_p(dsp, dsp->pc + 1);
