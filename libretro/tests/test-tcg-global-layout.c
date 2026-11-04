@@ -266,6 +266,14 @@ int main(void)
             assert(context.pool_cur == current_cursor);
         }
     }
+    static const int op_counts[] = {0, 3999, 4000, 4001, INT_MAX};
+    for (unsigned i = 0; i < ARRAY_SIZE(op_counts); ++i) {
+        other.nb_ops = op_counts[i];
+        context.nb_ops = op_counts[i] < 4000 ? 4000 : 0;
+        assert(tcg_op_buf_full(&other) == (op_counts[i] >= 4000));
+        assert(tcg_op_buf_full(&context) == (context.nb_ops >= 4000));
+    }
+    puts("TCG operation limit: supplied owners and 3999/4000/4001 boundaries PASS");
     /* Existing callers without a local owner retain their TLS-based API. */
     context.pool_end = current_cursor + 8;
     unsigned calls = refill_calls;

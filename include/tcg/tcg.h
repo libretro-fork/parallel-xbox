@@ -681,7 +681,7 @@ static inline TCGOp *tcg_last_op(void)
 }
 
 /* Test for whether to terminate the TB for using too many opcodes.  */
-static inline bool tcg_op_buf_full(void)
+static inline bool tcg_op_buf_full(TCGContext *s)
 {
     /* This is not a hard limit, it merely stops translation when
      * we have produced "enough" opcodes.  We want to limit TB size
@@ -690,7 +690,7 @@ static inline bool tcg_op_buf_full(void)
      * 16-bit unsigned offsets, TranslationBlock.jmp_reset_offset[]
      * and TCGContext.gen_insn_end_off[].
      */
-    return tcg_ctx->nb_ops >= 4000;
+    return s->nb_ops >= 4000;
 }
 
 /* pool based memory allocation */

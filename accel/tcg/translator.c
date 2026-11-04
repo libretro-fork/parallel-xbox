@@ -207,7 +207,7 @@ static bool lr_quiet_candidate_prefix(const DisasContextBase *db)
     }
 }
 
-static TCGOp *gen_tb_start(DisasContextBase *db, uint32_t cflags)
+static TCGOp *gen_tb_start(TCGContext *s, DisasContextBase *db, uint32_t cflags)
 {
     TCGv_i32 count = NULL;
     TCGOp *icount_start_insn = NULL;
@@ -235,7 +235,7 @@ static TCGOp *gen_tb_start(DisasContextBase *db, uint32_t cflags)
          * can update the argument with the actual insn count.
          */
         tcg_gen_sub_i32(count, count, tcg_constant_i32(0));
-        icount_start_insn = tcg_last_op();
+        icount_start_insn = QTAILQ_LAST(&s->ops);
         if (!(cflags & CF_NOIRQ)) {
             test = tcg_temp_new_i32();
             tcg_gen_ld16s_i32(test, tcg_env,
@@ -258,10 +258,10 @@ static TCGOp *gen_tb_start(DisasContextBase *db, uint32_t cflags)
      * budget.
      */
     if (cflags & CF_NOIRQ) {
-        tcg_ctx->exitreq_label = NULL;
+        s->exitreq_label = NULL;
     } else {
-        tcg_ctx->exitreq_label = gen_new_label();
-        tcg_gen_brcondi_i32(TCG_COND_LT, test, 0, tcg_ctx->exitreq_label);
+        s->exitreq_label = gen_new_label();
+        tcg_gen_brcondi_i32(TCG_COND_LT, test, 0, s->exitreq_label);
     }
 
     if (budget) {
@@ -278,24 +278,24 @@ static TCGOp *gen_tb_start(DisasContextBase *db, uint32_t cflags)
      * (but polls of a register that has not changed, cputlb.c), the TSC
      * and interrupts, in C. Not in a block that may not be
      * interrupted. */
-    tcg_ctx->lr_quiet_label = NULL;
-    tcg_ctx->lr_quiet_insn = NULL;
-    tcg_ctx->lr_quiet_first = tcg_ctx->lr_quiet_last = NULL;
-    tcg_ctx->lr_quiet_store = false;
-    tcg_ctx->lr_quiet_enabled = (cflags & CF_USE_ICOUNT) && !(cflags & CF_NOIRQ);
-    if (tcg_ctx->lr_quiet_enabled && lr_quiet_candidate_prefix(db)) {
+    s->lr_quiet_label = NULL;
+    s->lr_quiet_insn = NULL;
+    s->lr_quiet_first = s->lr_quiet_last = NULL;
+    s->lr_quiet_store = false;
+    s->lr_quiet_enabled = (cflags & CF_USE_ICOUNT) && !(cflags & CF_NOIRQ);
+    if (s->lr_quiet_enabled && lr_quiet_candidate_prefix(db)) {
         TCGv_i32 quiet = tcg_temp_new_i32();
 
         tcg_gen_ld_i32(quiet, tcg_env,
                        offsetof(CPUState, neg.lr_quiet) - sizeof(CPUState));
-        tcg_ctx->lr_quiet_first = tcg_last_op();
+        s->lr_quiet_first = QTAILQ_LAST(&s->ops);
         tcg_gen_sub_i32(quiet, quiet, tcg_constant_i32(0));
-        tcg_ctx->lr_quiet_insn = tcg_last_op();
+        s->lr_quiet_insn = QTAILQ_LAST(&s->ops);
         tcg_gen_st_i32(quiet, tcg_env,
                        offsetof(CPUState, neg.lr_quiet) - sizeof(CPUState));
-        tcg_ctx->lr_quiet_label = gen_new_label();
-        tcg_gen_brcondi_i32(TCG_COND_LT, quiet, 0, tcg_ctx->lr_quiet_label);
-        tcg_ctx->lr_quiet_last = tcg_last_op();
+        s->lr_quiet_label = gen_new_label();
+        tcg_gen_brcondi_i32(TCG_COND_LT, quiet, 0, s->lr_quiet_label);
+        s->lr_quiet_last = QTAILQ_LAST(&s->ops);
     }
 
     return icount_start_insn;
@@ -341,7 +341,7 @@ void lr_quiet_store_emitted(void)
     }
 }
 
-static void gen_tb_end(const TranslationBlock *tb, uint32_t cflags,
+static void gen_tb_end(TCGContext *s, const TranslationBlock *tb, uint32_t cflags,
                        TCGOp *icount_start_insn, int num_insns)
 {
     if (icount_start_insn) {
@@ -353,16 +353,16 @@ static void gen_tb_end(const TranslationBlock *tb, uint32_t cflags,
                            tcgv_i32_arg(tcg_constant_i32(num_insns)));
     }
 
-    if (tcg_ctx->exitreq_label) {
-        gen_set_label(tcg_ctx->exitreq_label);
+    if (s->exitreq_label) {
+        gen_set_label(s->exitreq_label);
         tcg_gen_exit_tb(tb, TB_EXIT_REQUESTED);
     }
-    if (tcg_ctx->lr_quiet_label) {
-        tcg_set_insn_param(tcg_ctx->lr_quiet_insn, 2,
+    if (s->lr_quiet_label) {
+        tcg_set_insn_param(s->lr_quiet_insn, 2,
                            tcgv_i32_arg(tcg_constant_i32(num_insns)));
-        gen_set_label(tcg_ctx->lr_quiet_label);
+        gen_set_label(s->lr_quiet_label);
         tcg_gen_exit_tb(tb, TB_EXIT_REQUESTED);
-        tcg_ctx->lr_quiet_label = NULL;
+        s->lr_quiet_label = NULL;
     }
 }
 
@@ -386,6 +386,7 @@ void translator_loop(CPUState *cpu, TranslationBlock *tb, int *max_insns,
                      vaddr pc, void *host_pc, const TranslatorOps *ops,
                      DisasContextBase *db)
 {
+    TCGContext *s = tcg_ctx;
     uint32_t cflags = tb_cflags(tb);
     TCGOp *icount_start_insn;
     TCGOp *first_insn_start = NULL;
@@ -410,7 +411,7 @@ void translator_loop(CPUState *cpu, TranslationBlock *tb, int *max_insns,
     tcg_debug_assert(db->is_jmp == DISAS_NEXT);  /* no early exit */
 
     /* Start translating.  */
-    icount_start_insn = gen_tb_start(db, cflags);
+    icount_start_insn = gen_tb_start(s, db, cflags);
     ops->tb_start(db, cpu);
     tcg_debug_assert(db->is_jmp == DISAS_NEXT);  /* no early exit */
 
@@ -420,7 +421,7 @@ void translator_loop(CPUState *cpu, TranslationBlock *tb, int *max_insns,
     while (true) {
         *max_insns = ++db->num_insns;
         ops->insn_start(db, cpu);
-        db->insn_start = tcg_last_op();
+        db->insn_start = QTAILQ_LAST(&s->ops);
         if (first_insn_start == NULL) {
             first_insn_start = db->insn_start;
         }
@@ -465,7 +466,7 @@ void translator_loop(CPUState *cpu, TranslationBlock *tb, int *max_insns,
 
         /* Stop translation if the output buffer is full,
            or we have executed all of the allowed instructions.  */
-        if (tcg_op_buf_full() || db->num_insns >= db->max_insns) {
+        if (tcg_op_buf_full(s) || db->num_insns >= db->max_insns) {
             db->is_jmp = DISAS_TOO_MANY;
             break;
         }
@@ -473,7 +474,7 @@ void translator_loop(CPUState *cpu, TranslationBlock *tb, int *max_insns,
 
     /* Emit code to exit the TB, as indicated by db->is_jmp.  */
     ops->tb_stop(db, cpu);
-    gen_tb_end(tb, cflags, icount_start_insn, db->num_insns);
+    gen_tb_end(s, tb, cflags, icount_start_insn, db->num_insns);
 
     /*
      * Manage can_do_io for the translation block: set to false before
@@ -483,12 +484,12 @@ void translator_loop(CPUState *cpu, TranslationBlock *tb, int *max_insns,
         tcg_debug_assert(first_insn_start == db->insn_start);
     } else {
         tcg_debug_assert(first_insn_start != db->insn_start);
-        tcg_ctx->emit_before_op = first_insn_start;
+        s->emit_before_op = first_insn_start;
         set_can_do_io(db, false);
     }
-    tcg_ctx->emit_before_op = db->insn_start;
+    s->emit_before_op = db->insn_start;
     set_can_do_io(db, true);
-    tcg_ctx->emit_before_op = NULL;
+    s->emit_before_op = NULL;
 
     /* May be used by disas_log or plugin callbacks. */
     tb->size = db->pc_next - db->pc_first;
