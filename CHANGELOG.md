@@ -39,6 +39,8 @@
 
 - Strengthen speculative pipeline handoff coverage with the real shader-state/render-pass/key layouts and XXH3. Check poisoned slot reuse, complete owned key bytes and a full ring becoming available during completion draining before attempting further copy removal. Renderer behavior is unchanged.
 
+- DSP: execute short X/Y memory bit-test calls natively, preserving source memory, conditional stack saves and loop-end handling.
+
 - Select native Windows compiler defaults in the EEPROM hash fixture so CI can run its byte-equivalence checks without sanitizer flag overrides.
 
 - Generate and identify Xbox EEPROMs with libretro-common streaming SHA-1, preserving all custom keyed states and exact EEPROM bytes while removing the duplicate QEMU SHA-1 engine.
