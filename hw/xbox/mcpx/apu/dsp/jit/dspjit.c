@@ -3678,10 +3678,12 @@ static bool emit_control(Tr *t, const Insn *in)
     }
 
     if (!strcmp(name, "brclr #n, [X or Y]:pp, xxxx") || !strcmp(name, "brset #n, [X or Y]:pp, xxxx") ||
-        !strcmp(name, "brclr #n, [X or Y]:qq, xxxx") || !strcmp(name, "brset #n, [X or Y]:qq, xxxx")) {
+        !strcmp(name, "brclr #n, [X or Y]:qq, xxxx") || !strcmp(name, "brset #n, [X or Y]:qq, xxxx") ||
+        !strcmp(name, "brclr #n, [X or Y]:aa, xxxx") || !strcmp(name, "brset #n, [X or Y]:aa, xxxx")) {
         int memspace = (inst >> 6) & 1;
+        bool short_memory = strstr(name, ":aa") != NULL;
         bool low_peripheral = strstr(name, ":qq") != NULL;
-        uint32_t addr = (low_peripheral ? 0xffff80 : 0xffffc0) + ((inst >> 8) & 63);
+        uint32_t addr = (short_memory ? 0 : low_peripheral ? 0xffff80 : 0xffffc0) + ((inst >> 8) & 63);
         int numbit = inst & 0x1F;
         uint32_t target = (at + in->ext) & 0xFFFFFF;
         size_t j;

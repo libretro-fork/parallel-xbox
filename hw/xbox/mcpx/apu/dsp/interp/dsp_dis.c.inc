@@ -655,20 +655,24 @@ static void dis_bra_imm(dsp_core_t* dsp)
         (dsp->pc + dsp_signextend(9, xxx)) & BITMASK(24) );
 }
 
-static void dis_branch_qq(dsp_core_t* dsp, const char *name)
+static void dis_bitbranch_memory(dsp_core_t* dsp, const char *name, bool short_memory)
 {
     uint32_t displacement = read_memory_p(dsp, dsp->pc + 1);
     dsp->disasm_cur_inst_len++;
-    sprintf(dsp->disasm_str_instr, "%s #%u,x:$%06x,p:$%06x", name,
-        dsp->disasm_cur_inst & 31, 0xffff80 + ((dsp->disasm_cur_inst >> 8) & 63),
+    sprintf(dsp->disasm_str_instr, "%s #%u,%c:$%06x,p:$%06x", name,
+        dsp->disasm_cur_inst & 31, short_memory && (dsp->disasm_cur_inst & 64) ? 'y' : 'x',
+        (short_memory ? 0 : 0xffff80) + ((dsp->disasm_cur_inst >> 8) & 63),
         (dsp->pc + displacement) & BITMASK(24));
 }
 
-static void dis_bsclr_qq(dsp_core_t* dsp) { dis_branch_qq(dsp, "bsclr"); }
-static void dis_bsset_qq(dsp_core_t* dsp) { dis_branch_qq(dsp, "bsset"); }
+static void dis_bsclr_qq(dsp_core_t* dsp) { dis_bitbranch_memory(dsp, "bsclr", false); }
+static void dis_bsset_qq(dsp_core_t* dsp) { dis_bitbranch_memory(dsp, "bsset", false); }
 
-static void dis_brclr_qq(dsp_core_t* dsp) { dis_branch_qq(dsp, "brclr"); }
-static void dis_brset_qq(dsp_core_t* dsp) { dis_branch_qq(dsp, "brset"); }
+static void dis_brclr_qq(dsp_core_t* dsp) { dis_bitbranch_memory(dsp, "brclr", false); }
+static void dis_brset_qq(dsp_core_t* dsp) { dis_bitbranch_memory(dsp, "brset", false); }
+
+static void dis_brclr_aa(dsp_core_t* dsp) { dis_bitbranch_memory(dsp, "brclr", true); }
+static void dis_brset_aa(dsp_core_t* dsp) { dis_bitbranch_memory(dsp, "brset", true); }
 
 static void dis_brclr_pp(dsp_core_t* dsp)
 {

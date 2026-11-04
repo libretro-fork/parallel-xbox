@@ -33,6 +33,8 @@
 
 ## Unreleased
 
+- DSP: execute short X/Y relative bit-test branches natively, retaining wrapped targets, flags and loop-end behavior.
+
 - Remove the unused standalone object-option queue and QAPI object factory, then prune 244 unreachable generated definitions and twelve C sources, including crypto visitors/tables. Keep built-in device/property initialization and schema type layouts unchanged.
 
 - DSP: restore six valid JSCLR short-memory addresses and Y long-offset MOVE encodings that were misidentified as bit-test calls.
