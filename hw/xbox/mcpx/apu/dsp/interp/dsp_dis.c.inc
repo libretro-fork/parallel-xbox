@@ -1792,22 +1792,20 @@ static void dis_movem_ea(dsp_core_t* dsp)
     sprintf(dsp->disasm_str_instr,"movem %s,%s", srcname, dstname);
 }
 
-static void dis_movep_0(dsp_core_t* dsp)
+static void dis_movep_register(dsp_core_t* dsp, uint32_t addr, uint32_t memspace)
 {
     char srcname[16]="",dstname[16]="";
-    uint32_t addr, memspace, numreg;
+    uint32_t numreg;
 
     /* S,x:pp */
     /* x:pp,D */
     /* S,y:pp */
     /* y:pp,D */
 
-    addr = 0xffffc0 + (dsp->disasm_cur_inst & BITMASK(6));
-    memspace = (dsp->disasm_cur_inst>>16) & 1;
     numreg = (dsp->disasm_cur_inst>>8) & BITMASK(6);
 
     if (dsp->disasm_cur_inst & (1<<15)) {
-        /* Write pp */
+        /* Write peripheral */
 
         strcpy(srcname, registers_name[numreg]);
 
@@ -1817,7 +1815,7 @@ static void dis_movep_0(dsp_core_t* dsp)
             sprintf(dstname, "x:$%06x", addr);
         }
     } else {
-        /* Read pp */
+        /* Read peripheral */
 
         if (memspace) {
             sprintf(srcname, "y:$%06x", addr);
@@ -1829,6 +1827,17 @@ static void dis_movep_0(dsp_core_t* dsp)
     }
 
     sprintf(dsp->disasm_str_instr,"movep %s,%s", srcname, dstname);
+}
+
+static void dis_movep_0(dsp_core_t* dsp)
+{
+    dis_movep_register(dsp, 0xffffc0 + (dsp->disasm_cur_inst & 63), (dsp->disasm_cur_inst >> 16) & 1);
+}
+
+static void dis_movep_x_qq_reg(dsp_core_t* dsp)
+{
+    uint32_t port = (dsp->disasm_cur_inst & 31) | ((dsp->disasm_cur_inst >> 1) & 32);
+    dis_movep_register(dsp, 0xffff80 + port, DSP_SPACE_X);
 }
 
 static void dis_movep_1(dsp_core_t* dsp)

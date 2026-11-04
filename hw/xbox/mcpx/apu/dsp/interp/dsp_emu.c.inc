@@ -8121,21 +8121,19 @@ static void emu_movem_ea(dsp_core_t* dsp)
     dsp->instr_cycle += 4;
 }
 
-static void emu_movep_0(dsp_core_t* dsp)
+static void emu_movep_register(dsp_core_t* dsp, uint32_t addr, uint32_t memspace)
 {
     /* S,x:pp */
     /* x:pp,D */
     /* S,y:pp */
     /* y:pp,D */
 
-    uint32_t addr, memspace, numreg, value, dummy;
+    uint32_t numreg, value, dummy;
 
-    addr = 0xffffc0 + (dsp->cur_inst & BITMASK(6));
-    memspace = (dsp->cur_inst>>16) & 1;
     numreg = (dsp->cur_inst>>8) & BITMASK(6);
 
     if  (dsp->cur_inst & (1<<15)) {
-        /* Write pp */
+        /* Write peripheral */
         if ((numreg == DSP_REG_A) || (numreg == DSP_REG_B)) {
             emu_pm_read_accu24(dsp, numreg, &value);
         }
@@ -8147,13 +8145,24 @@ static void emu_movep_0(dsp_core_t* dsp)
         }
         dsp56k_write_memory(dsp, memspace, addr, value);
     } else {
-        /* Read pp */
+        /* Read peripheral */
         value = dsp56k_read_memory(dsp, memspace, addr);
         value &= BITMASK(registers_mask[numreg]);
         dsp_write_reg(dsp, numreg, value);
     }
 
     dsp->instr_cycle += 2;
+}
+
+static void emu_movep_0(dsp_core_t* dsp)
+{
+    emu_movep_register(dsp, 0xffffc0 + (dsp->cur_inst & 63), (dsp->cur_inst >> 16) & 1);
+}
+
+static void emu_movep_x_qq_reg(dsp_core_t* dsp)
+{
+    uint32_t port = (dsp->cur_inst & 31) | ((dsp->cur_inst >> 1) & 32);
+    emu_movep_register(dsp, 0xffff80 + port, DSP_SPACE_X);
 }
 
 static void emu_movep_1(dsp_core_t* dsp)
