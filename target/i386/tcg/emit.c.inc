@@ -1217,6 +1217,15 @@ static void gen_ADD(DisasContext *s, X86DecodedInsn *decode)
 {
     MemOp ot = decode->op[1].ot;
 
+    /* ADD zero leaves the register unchanged and clears CF/OF/AF.
+     * ADC also calls this emitter, with T1 holding the incoming carry. */
+    if (decode->e.gen == gen_ADD && !(s->prefix & PREFIX_LOCK) &&
+        decode->op[1].unit == X86_OP_INT && !decode->op[1].has_ea &&
+        decode->op[2].unit == X86_OP_IMM && decode->immediate == 0) {
+        prepare_update1_cc(decode, s, CC_OP_LOGICB + ot);
+        return;
+    }
+
     if (s->prefix & PREFIX_LOCK) {
         tcg_gen_atomic_add_fetch_tl(s->T0, s->A0, s->T1,
                                     s->mem_index, ot | MO_LE);

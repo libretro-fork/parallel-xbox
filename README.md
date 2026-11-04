@@ -425,3 +425,9 @@ without storing a redundant subtraction source. SBB immediate zero retains
 its carry-dependent subtraction path. Memory and LOCK forms are excluded.
 `libretro/tests/rom/sub-zero.asm` checks all four register widths, varying
 incoming flags, SBB carry controls and zero-immediate memory/LOCK faults.
+
+ADD register,0 also uses logic-result flags (SF/ZF/PF, CF/OF/AF clear),
+avoiding a redundant zero-source store. ADC immediate zero keeps its carry
+handling; memory and LOCK forms are excluded. The `add-zero.asm` synthetic
+ROM checks AL/AH/AX/EAX, varying input flags, preserved registers, ADC carry,
+CMP controls and invalid LOCK / zero-immediate memory fault behavior.
