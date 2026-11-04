@@ -37,6 +37,8 @@
 
 - Remove unsupported guest RDRAND/RDSEED helpers and their random seed/TLS infrastructure. Initialize OS entropy directly for EEPROM keys; retain networking RNG and illegal-instruction/fetch behavior.
 
+- DSP: execute register-indirect X/Y bit-test calls natively, preserving address updates, cycle charges and conditional stack saves.
+
 - Remove AES/PCLMUL execution helpers and crypto engines unused by the fixed Xbox Pentium III. Keep opcode decoding and feature checks, including illegal-instruction and instruction-fetch fault ordering.
 
 - Strengthen speculative pipeline handoff coverage with the real shader-state/render-pass/key layouts and XXH3. Check poisoned slot reuse, complete owned key bytes and a full ring becoming available during completion draining before attempting further copy removal. Renderer behavior is unchanged.
