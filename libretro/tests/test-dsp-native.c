@@ -4714,7 +4714,13 @@ static void check_program_write_sequences(Machine *a, Machine *b, unsigned mode)
 
 static void check_native_interrupt_retirement(Machine *a, Machine *b, unsigned mode)
 {
-    static const uint32_t ops[] = {0, 0x200010, 0x200080, 0x0141c1};
+    static const uint32_t ops[] = {
+        0, 0x200010, 0x200080, 0x0141c1,
+        0x0c0020, 0x0d0020, 0x0e0020, 0x0f0020,
+        0x0ad080, 0x0d10c0, 0x0d1080, 0x0d1040,
+        0x00000c, 0x000004, 0x060280, 0x000203,
+        0x000202, 0x000200, 0x000006, 0x00000e
+    };
     for (unsigned op = 0; op < ARRAY_SIZE(ops); op++)
     for (unsigned stage = 0; stage < 8; stage++)
     for (unsigned position = 0; position < 3; position++)
@@ -4732,7 +4738,8 @@ static void check_native_interrupt_retirement(Machine *a, Machine *b, unsigned m
             m->dsp->ops->write_memory(m->dsp, 'P', c->pc + 1, 3);
             c->registers[DSP_REG_SR] = (c->registers[DSP_REG_SR] & 0xff) |
                 (mode << DSP_SR_S0) | (loop ? 1u << DSP_SR_LF : 0);
-            c->registers[DSP_REG_LA] = c->pc + (op == 3 ? 1 : 0);
+            DspDecoded decoded; dsp56k_decode(c, c->pc, &decoded);
+            c->registers[DSP_REG_LA] = c->pc + decoded.len - 1;
             c->registers[DSP_REG_LC] = loop == 1 ? 1 : 2;
             c->interrupt_state = stage < 6 ? DSP_INTERRUPT_DISABLED : DSP_INTERRUPT_NONE;
             c->interrupt_pipeline_count = stage < 6 ? stage : 0;
@@ -4791,6 +4798,56 @@ static void check_native_interrupt_sequence(Machine *a, Machine *b, unsigned mod
         }
         if (dspjit_test_fallback_count() || compare_machines(a, b)) exit(1);
         cases++;
+    }
+}
+
+static void check_native_long_interrupt(Machine *a, Machine *b, unsigned mode)
+{
+    static const uint32_t pcs[] = {0x41, 0x42, 8, 0x20, 0x21, 0x43, 0x44};
+    static const uint32_t cycles[] = {2, 4, 6, 10, 12, 16, 18};
+    static const unsigned depths[] = {2, 2, 3, 3, 3, 2, 2};
+    Machine *machines[] = {a, b};
+    for (unsigned combined = 0; combined < 2; combined++) {
+        for (unsigned engine = 0; engine < 2; engine++) {
+            Machine *m = machines[engine]; prepare(m, 0, 0, 1, mode, false);
+            dsp_core_t *c = m->dsp->backend;
+            for (unsigned pc = 0; pc < 0x50; pc++) m->dsp->ops->write_memory(m->dsp, 'P', pc, 0);
+            /* Warm an ordinary destination before entering an interrupt. A
+             * pipeline control must return to dispatch, never chain into it. */
+            m->dsp->ops->write_memory(m->dsp, 'P', 0x21, 4);
+            c->pc = 0x20; c->registers[DSP_REG_SR] = 0;
+            if (!engine) {for (unsigned i = 0; i < 2; i++) m->dsp->ops->step(m->dsp);}
+            else {m->dsp->save_cycles = 0; m->dsp->ops->run(m->dsp, 1);}
+            m->dsp->ops->write_memory(m->dsp, 'P', 8, 0x0d0020);
+            c->registers[DSP_REG_SP] = 2;
+            c->registers[DSP_REG_SSH] = 0x20; c->registers[DSP_REG_SSL] = 0;
+            c->pc = 0x40; c->cycle_count = 0; c->num_inst = 0;
+            c->registers[DSP_REG_SR] = (mode << DSP_SR_S0) | 0xa5;
+            c->interrupt_counter = 1; c->interrupt_is_pending[DSP_INTER_TRAP] = 1;
+            c->interrupt_ipl[DSP_INTER_TRAP] = 3;
+            m->dsp->save_cycles = 0;
+        }
+        dspjit_test_reset_fallback_count();
+        for (unsigned step = 0; step < ARRAY_SIZE(pcs); step++) {
+            for (unsigned engine = 0; engine < 2; engine++) {
+                Machine *m = machines[engine]; dsp_core_t *c = m->dsp->backend;
+                if (!engine) {m->dsp->ops->step(m->dsp); c->cycle_count += c->instr_cycle;}
+                else if (!combined) {m->dsp->save_cycles = 0; m->dsp->ops->run(m->dsp, 1);}
+                else if (step == ARRAY_SIZE(pcs) - 1) m->dsp->ops->run(m->dsp, 17);
+                else continue;
+                if (c->pc != pcs[step] || c->cycle_count != cycles[step] ||
+                    c->registers[DSP_REG_SP] != depths[step] ||
+                    (step >= 2 && c->stack[0][3] != 0x43) ||
+                    (step >= 2 && c->stack[1][3] != ((mode << DSP_SR_S0) | 0xa5)) ||
+                    (step >= 5 && c->registers[DSP_REG_SR] != ((mode << DSP_SR_S0) | 0xa5))) {
+                    fprintf(stderr, "long interrupt mode=%u engine=%u combined=%u step=%u PC=%x SP=%x SR=%x cycles=%u\n",
+                            mode, engine, combined, step, c->pc, c->registers[DSP_REG_SP], c->registers[DSP_REG_SR], c->cycle_count); exit(1);
+                }
+            }
+            if ((!combined || step == ARRAY_SIZE(pcs) - 1) &&
+                (dspjit_test_fallback_count() || compare_machines(a, b))) exit(1);
+            cases++;
+        }
     }
 }
 
@@ -5017,7 +5074,7 @@ int main(int argc, char **argv)
     check_bitcall_decode();
     if (interrupt_only || rti_only || remaining_smoke || remaining_control_only || remaining_data_only || remaining_only || immediate_mac_only || qq_program_moves_only || qq_register_moves_only || control_bitbranches_only || register_relative_calls_only || indirect_relative_calls_only || short_relative_calls_only || pp_relative_calls_only || indirect_bitbranches_only || short_bitbranches_only || indirect_bitcalls_only || short_bitcalls_only || register_bitcalls_only || pp_calls_only || qq_relative_calls_only || qq_calls_only || qq_jumps_only || qq_branches_only || qq_bits_only || register_logical_only || merge_only || insert_only || extract_only || extractu_only || leading_bits_only || register_shifts_only || indirect_memory_loops_only || short_memory_loops_only || relative_calls_only || register_branches_only || pc_relative_only || rounded_multiply_only || y_long_only || logical_shifts_only || immediate_logic_only || relative_only || loops_only || program_only || compare_only || startup_only || effective_only || register_only || program_control_only || peripheral_only || program_peripheral_only || multiply_only || normalize_only || divide_only || byte_logic_only || memory_bits_only || control_bits_only || offset_control_only || shifts_only || signed_right_only || left_flags_only) {
         for (unsigned mode = 0; mode < 4; mode++) {
-            if (interrupt_only) { check_native_interrupt_retirement(a, b, mode); check_native_interrupt_sequence(a, b, mode); check_native_interrupt_invalidation(a, b, mode); }
+            if (interrupt_only) { check_native_interrupt_retirement(a, b, mode); check_native_interrupt_sequence(a, b, mode); check_native_long_interrupt(a, b, mode); check_native_interrupt_invalidation(a, b, mode); }
             if (rti_only) { check_native_rti(a, b, mode); check_native_rti_loops(a, b, mode); check_native_rti_cache(a, b, mode); }
             if (remaining_smoke || remaining_control_only || remaining_only) {
                 check_remaining_control(a, b, mode);
@@ -5127,7 +5184,7 @@ int main(int argc, char **argv)
         check_remaining_y_program(a, b, mode);
         check_remaining_y_ea(a, b, mode);
     }
-    for (unsigned mode = 0; mode < 4; mode++) { check_native_interrupt_retirement(a, b, mode); check_native_interrupt_sequence(a, b, mode); check_native_interrupt_invalidation(a, b, mode); }
+    for (unsigned mode = 0; mode < 4; mode++) { check_native_interrupt_retirement(a, b, mode); check_native_interrupt_sequence(a, b, mode); check_native_long_interrupt(a, b, mode); check_native_interrupt_invalidation(a, b, mode); }
     for (unsigned mode = 0; mode < 4; mode++) { check_native_rti(a, b, mode); check_native_rti_loops(a, b, mode); check_native_rti_cache(a, b, mode); }
     check_status_restore_chains(a, b);
     check_logical_immediates(a, b);

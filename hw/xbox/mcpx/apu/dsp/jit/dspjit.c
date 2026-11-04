@@ -26,7 +26,7 @@
  * SR-changing control paths select the matching table or return through
  * dispatch when that identity changes. A REP repeats its instruction in a loop of its own
  * (rep_blocks). Interrupt pipelines use native single-instruction retirement
- * for data instructions; control instructions and REP setup still step. A
+ * for data and supported control instructions; REP setup still steps. A
  * block charges its cycles when it ends, so a run may go a block past its
  * budget; the budget carries over,
  * as the interpreter's does.
@@ -325,6 +325,7 @@ struct Tr {
     bool wrote_x;       /* the instruction being translated writes X */
     int mode;           /* the scaling mode the block is for */
     bool loop_active;   /* LF is part of the block cache identity */
+    bool interrupt_retirement; /* retire once before returning to dispatch */
     int lazy_acc;       /* SR's E, U, N, Z are those of this accumulator's
                            value, not computed yet (-1: none) */
     uint32_t end;       /* the P address the block ends before */
@@ -445,6 +446,16 @@ static void emit_chain(Tr *t, uint32_t cyc)
 {
     Emitter *e = &t->e;
 
+    if (t->interrupt_retirement) {
+        /* The control emitter already selected the PC. A pipeline stage
+         * must observe this instruction before any cached target executes. */
+        h_st32_imm(e, REG_CORE, OFF(cur_inst_len), 0);
+        h_st16_imm(e, REG_CORE, OFF(instr_cycle), cyc);
+        h_mov_rr(e, 1, H_ARG0, REG_CORE);
+        h_call(e, (const void *)dsp56k_post);
+        emit_jump_to_epilogue(t);
+        return;
+    }
     if (cyc) {
         h_add_mem32_imm(e, REG_CORE, OFF(cycle_count), cyc);
         h_add_mem32_imm(e, REG_CORE, OFF(num_inst), cyc);
@@ -469,6 +480,10 @@ static void emit_chain_to(Tr *t, uint32_t target, uint32_t cyc)
     Emitter *e = &t->e;
 
     h_st32_imm(e, REG_CORE, OFF(pc), target);
+    if (t->interrupt_retirement) {
+        emit_chain(t, cyc);
+        return;
+    }
     if (cyc) {
         h_add_mem32_imm(e, REG_CORE, OFF(cycle_count), cyc);
         h_add_mem32_imm(e, REG_CORE, OFF(num_inst), cyc);
@@ -4540,16 +4555,29 @@ retry:
 /* Interrupt pipelines require retirement after every instruction. These
  * translations share the arithmetic emitters but never chain or specialize
  * for LF: post-processing handles loops and interrupt redirection dynamically.
- * Control instructions still use their existing interpreter retirement path. */
+ * Native control emitters retire their selected PC through the same post
+ * routine, then return to dispatch instead of chaining a warmed target. */
 static dspjit_block_fn dspjit_translate_interrupt(DspJit *jit, int mode, uint32_t pc)
 {
     Insn in;
     Tr *t = jit->tr;
-    if (!decode_insn(jit->core, pc, &in) || !insn_native(&in)) {
-        return NULL;
-    }
+    dspjit_block_fn fn;
+    if (!decode_insn(jit->core, pc, &in)) return NULL;
+    /* REP setup has its own first-pass PC semantics. Retain that path
+     * until its native pipeline retirement is implemented separately. */
+    if (in.d.control && (!strcmp(in.d.name, "rep #xxx") ||
+                         !strcmp(in.d.name, "rep S"))) return NULL;
+    if (!in.d.control && !insn_native(&in)) return NULL;
 retry:
     translate_begin(jit, mode);
+    t->interrupt_retirement = true;
+    if (in.d.control) {
+        if (!emit_control(t, &in)) {
+            qemu_thread_jit_execute();
+            return NULL;
+        }
+        goto finish;
+    }
     emit_native(t, &in);
     acc_spill_all(t, false);
     h_st32_imm(&t->e, REG_CORE, OFF(pc), in.at);
@@ -4559,7 +4587,8 @@ retry:
     h_mov_rr(&t->e, 1, H_ARG0, REG_CORE);
     h_call(&t->e, (const void *)dsp56k_post);
     emit_jump_to_epilogue(t);
-    dspjit_block_fn fn = translate_end(jit);
+finish:
+    fn = translate_end(jit);
     if (!fn && t->e.overflow && jit->cache_committed < jit->cache_len &&
         dspjit_commit_exec(jit, jit->cache_committed + DSPJIT_COMMIT_BYTES)) {
         goto retry;
@@ -4839,7 +4868,7 @@ void dspjit_run(DspJit *jit, int cycles)
         dspjit_prepare_mode(jit, mode);
 
         /* Pending interrupts and pipeline stages retire one instruction at
-         * a time. REP setup/body and control instructions retain their step. */
+         * a time. REP setup/body and unsupported encodings retain their step. */
         if (core->interrupt_state == DSP_INTERRUPT_DISABLED ||
             core->interrupt_counter != 0 || core->pc_on_rep) {
             fn = NULL;
