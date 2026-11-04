@@ -3904,6 +3904,28 @@ static bool emit_control(Tr *t, const Insn *in)
         return true;
     }
 
+    if (!strcmp(name, "rti")) {
+        acc_spill_all(t, false);
+        /* Pop replaces SSL with the preceding frame. Snapshot the return
+         * status first, and preserve it across either host calling ABI. */
+        h_ld32(e, V1, REG_CORE, REGOFF(DSP_REG_SSL));
+        h_stub_call_begin(e);
+        h_mov_rr(e, 1, H_ARG0, REG_CORE);
+        h_call(e, (const void *)dsp56k_stack_pop);
+        h_stub_call_end(e);
+        h_st32(e, REG_CORE, OFF(pc), T0);
+        h_st32(e, REG_CORE, REGOFF(DSP_REG_SR), V1);
+        /* Restoring SR can change scaling and LF. Retire once and select
+         * the resulting block identity, including loop/stack exceptions. */
+        h_st32_imm(e, REG_CORE, OFF(cur_inst_len), 0);
+        h_st16_imm(e, REG_CORE, OFF(instr_cycle), 4);
+        h_mov_rr(e, 1, H_ARG0, REG_CORE);
+        h_call(e, (const void *)dsp56k_post);
+        emit_charge(e, t->cyc);
+        emit_jump_to_epilogue(t);
+        return true;
+    }
+
     if (!strcmp(name, "rts")) {
         acc_spill_all(t, false);
         h_mov_rr(e, 1, H_ARG0, REG_CORE);
