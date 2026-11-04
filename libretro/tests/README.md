@@ -4438,3 +4438,17 @@ Constant RAM accesses avoid address setup, bounds stubs and callback exits;
 computed addresses and peripheral targets keep their existing paths. The
 production fixture uses RAM limits and both immediate directions with ADD,
 REP and counted DO across frames. Synthetic timing is not a game-wide claim.
+
+`dspnative --constant-class-moves` adds 40,800 boundaries for Class I/II
+absolute and tagged address operands: both buses, RAM limits and X aliases,
+all memory/register selector combinations, representative ALUs, modes and
+ordinary/long-interrupt contexts. Peripheral callbacks are poisoned. Existing
+Class I/II matrices retain all-ALU, independent state, limiter, REP and callback
+coverage. `--class-callbacks` selects their 3,072 callback cases separately.
+Both classes now specialize ordinary constant RAM addresses with the existing
+per-bus predicate. Store sources, Class II input snapshots, Class I opposite-
+bus transfers and accumulator pseudo-register publication keep their order.
+Immediate loads remain values; store tags retain their address interpretation.
+Computed, alias and peripheral operands keep mapped/guarded paths. A new
+production fixture combines both classes with ADD, REP, counted DO and RAM
+limit addresses across frames, and supports optional synthetic timing.
