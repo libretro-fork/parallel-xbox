@@ -2584,7 +2584,7 @@ static int np_kind(const Insn *in)
     if (!strcmp(name, "movep [X or Y]:pp <-> P:ea")) {
         return NP_MOVEP_P;
     }
-    if (!strcmp(name, "movep [X or Y]:pp <-> R")) {
+    if (!strcmp(name, "movep [X or Y]:pp <-> R") || !strcmp(name, "movep X:qq <-> R")) {
         return reg_supported((in->inst >> 8) & 0x3F) ? NP_MOVEP_REG : NP_MOVEP_SPECIAL;
     }
     if (!strcmp(name, "cmpu S1, S2")) {
@@ -3079,7 +3079,9 @@ static void emit_nonparallel(Tr *t, const Insn *in, int kind)
     case NP_MOVEP_SPECIAL:
     case NP_MOVEP_REG: {
         int reg = (inst >> 8) & 0x3F;
-        int space = (inst >> 16) & 1;
+        bool low = !strcmp(in->d.name, "movep X:qq <-> R");
+        int space = low ? DSP_SPACE_X : (inst >> 16) & 1;
+        uint32_t address = low ? 0xffff80 + ((inst & 31) | ((inst >> 1) & 32)) : 0xffffc0 + (inst & 63);
         if (kind == NP_MOVEP_SPECIAL) acc_spill_all(t, false);
         if (inst & (1 << 15)) {
             if (reg == DSP_REG_SSH) {
@@ -3089,10 +3091,10 @@ static void emit_nonparallel(Tr *t, const Insn *in, int kind)
             } else {
                 emit_read_reg(t, reg, V1);
             }
-            h_mov_ri(e, EA1, 0xFFFFC0 + (inst & 0x3F));
+            h_mov_ri(e, EA1, address);
             emit_write_mem(t, space, EA1, V1);
         } else {
-            h_mov_ri(e, EA1, 0xFFFFC0 + (inst & 0x3F));
+            h_mov_ri(e, EA1, address);
             emit_read_mem(t, space, EA1, V1);
             if (kind == NP_MOVEP_SPECIAL) {
                 h_mov_rr(e, 0, H_ARG2, V1);

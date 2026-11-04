@@ -689,6 +689,124 @@ static void qq_test_write(dsp_core_t *core, uint32_t address, uint32_t value)
     qq_written_value = qq_callback_value = value;
 }
 
+static void check_qq_register_moves(Machine *a, Machine *b, unsigned mode)
+{
+    static const uint32_t values[] = {0, 0xffffff, 0xaaaaaa, 0x555555};
+    static const uint32_t status_inputs[] = {0, 0xff, 0x1234, 0x3100bf};
+    static const int64_t accum[] = {-(INT64_C(1) << 55), -(INT64_C(1) << 47), -1, 0,
+                                  1, INT64_C(1) << 46, (INT64_C(1) << 47) - 1, (INT64_C(1) << 55) - 1};
+    for (unsigned reg = DSP_REG_X0; reg <= DSP_REG_LC; reg++) {
+        if (reg > DSP_REG_M7 && reg < DSP_REG_SR) continue;
+        bool full_acc = reg == DSP_REG_A || reg == DSP_REG_B;
+        for (unsigned port = 0; port < 64; port++) {
+            for (unsigned out = 0; out < 2; out++) {
+                uint32_t op = 0x044080 | (out << 15) | (reg << 8) | (port & 31) | ((port & 32) << 1);
+                for (unsigned v = 0; v < (full_acc && out ? ARRAY_SIZE(accum) : ARRAY_SIZE(values)); v++) {
+                    for (unsigned profile = 0; profile < 2; profile++) {
+                        uint32_t input = reg == DSP_REG_SR ? status_inputs[v] : reg == DSP_REG_SP ? (v & 1 ? 14 : 2) : values[v & 3];
+                        Machine *machines[] = {a, b};
+                        dspjit_test_reset_fallback_count();
+                        for (unsigned engine = 0; engine < 2; engine++) {
+                            Machine *m = machines[engine];
+                            prepare(m, op, 0x30, 1, mode, false);
+                            dsp_core_t *c = m->dsp->backend;
+                            c->exception_debugging = false;
+                            c->registers[DSP_REG_SR] = (mode << DSP_SR_S0) | (profile ? 0x3100bf : 0);
+                            unsigned sp = reg == DSP_REG_SP && out && (v & 1) ? 14 : 2;
+                            c->registers[DSP_REG_SP] = sp;
+                            for (unsigned slot = 0; slot < 16; slot++) {
+                                c->stack[0][slot] = slot ? 0x1100 + slot : 0;
+                                c->stack[1][slot] = slot ? 0x2200 + slot : 0;
+                            }
+                            c->registers[DSP_REG_SSH] = c->stack[0][sp];
+                            c->registers[DSP_REG_SSL] = c->stack[1][sp];
+                            uint32_t written = 0, extra_flags = 0;
+                            if (out && full_acc) {
+                                int64_t raw = accum[v]; unsigned d = reg & 1;
+                                c->registers[DSP_REG_A0 + d] = (uint64_t)raw & 0xffffff;
+                                c->registers[DSP_REG_A1 + d] = ((uint64_t)raw >> 24) & 0xffffff;
+                                c->registers[DSP_REG_A2 + d] = ((uint64_t)raw >> 48) & 255;
+                                int64_t scaled = mode == 1 ? raw >> 25 : mode == 2 ? raw >> 23 : raw >> 24;
+                                if (scaled > 0x7fffff) { written = 0x7fffff; extra_flags = 1u << DSP_SR_L; }
+                                else if (scaled < -0x800000) { written = 0x800000; extra_flags = 1u << DSP_SR_L; }
+                                else written = scaled & 0xffffff;
+                            } else if (out) {
+                                if (reg != DSP_REG_SR && reg != DSP_REG_SP) {
+                                    uint32_t mask = reg == DSP_REG_A2 || reg == DSP_REG_B2 || reg == DSP_REG_OMR ? 255 :
+                                                    reg >= DSP_REG_R0 ? 0xffff : 0xffffff;
+                                    c->registers[reg] = values[v] & mask;
+                                }
+                                if (reg == DSP_REG_SSH) c->stack[0][sp] = c->registers[reg];
+                                if (reg == DSP_REG_SSL) c->stack[1][sp] = c->registers[reg];
+                                written = c->registers[reg];
+                            }
+                            uint32_t expected[DSP_REG_MAX], stack[2][16];
+                            memcpy(expected, c->registers, sizeof(expected));
+                            memcpy(stack, c->stack, sizeof(stack));
+                            expected[DSP_REG_SR] |= extra_flags;
+                            if (out && reg == DSP_REG_SSH) {
+                                expected[DSP_REG_SP] = sp - 1;
+                                expected[DSP_REG_SSH] = stack[0][sp - 1];
+                                expected[DSP_REG_SSL] = stack[1][sp - 1];
+                            } else if (!out) {
+                                if (full_acc) {
+                                    unsigned d = reg & 1;
+                                    expected[DSP_REG_A0 + d] = 0;
+                                    expected[DSP_REG_A1 + d] = input;
+                                    expected[DSP_REG_A2 + d] = input & 0x800000 ? 255 : 0;
+                                } else if (reg == DSP_REG_SR) expected[reg] = input & 0xaf7f;
+                                else if (reg == DSP_REG_OMR) expected[reg] = input & 0xc7;
+                                else if (reg == DSP_REG_SP) {
+                                    expected[reg] = input;
+                                    expected[DSP_REG_SSH] = stack[0][input];
+                                    expected[DSP_REG_SSL] = stack[1][input];
+                                } else if (reg == DSP_REG_SSH) {
+                                    expected[DSP_REG_SP] = sp + 1;
+                                    expected[reg] = stack[0][sp + 1] = input & 0xffff;
+                                    expected[DSP_REG_SSL] = stack[1][sp + 1];
+                                } else if (reg == DSP_REG_SSL) expected[reg] = stack[1][sp] = input & 0xffff;
+                                else expected[reg] = input & ((reg == DSP_REG_A2 || reg == DSP_REG_B2 || reg == DSP_REG_OMR) ? 255 :
+                                                              reg >= DSP_REG_R0 ? 0xffff : 0xffffff);
+                            }
+                            uint32_t (*saved_read)(dsp_core_t *, uint32_t) = c->read_peripheral;
+                            void (*saved_write)(dsp_core_t *, uint32_t, uint32_t) = c->write_peripheral;
+                            c->read_peripheral = qq_test_read; c->write_peripheral = qq_test_write;
+                            qq_callback_value = input; qq_reads = qq_writes = 0;
+                            qq_read_address = qq_write_address = 0; qq_written_value = UINT32_MAX;
+                            if (!engine) { m->dsp->ops->step(m->dsp); c->cycle_count += c->instr_cycle; }
+                            else m->dsp->ops->run(m->dsp, 1);
+                            c->read_peripheral = saved_read; c->write_peripheral = saved_write;
+                            if (c->pc != 1 || c->cycle_count != 4 || memcmp(expected, c->registers, sizeof(expected)) ||
+                                memcmp(stack, c->stack, sizeof(stack)) || qq_reads != !out || qq_writes != out ||
+                                (out ? qq_write_address != 0xffff80 + port || qq_written_value != written : qq_read_address != 0xffff80 + port)) {
+                                fprintf(stderr, "X:qq MOVEP engine=%u reg=%u port=%u out=%u v=%u profile=%u PC=%x SP=%x SR=%x/%x regval=%x/%x\n",
+                                        engine, reg, port, out, v, profile, c->pc, c->registers[DSP_REG_SP], c->registers[DSP_REG_SR], expected[DSP_REG_SR], c->registers[reg], expected[reg]);
+                                exit(1);
+                            }
+                        }
+                        if (dspjit_test_fallback_count() || compare_machines(a, b)) exit(1);
+                        cases++;
+                    }
+                }
+            }
+        }
+    }
+    static const unsigned ports[] = {0, 1, 31, 32, 0x33, 63};
+    static const unsigned contexts[] = {0x20000000, 0x40000, 0x80000, 0x40000000};
+    for (unsigned reg = DSP_REG_X0; reg <= DSP_REG_LC; reg++) {
+        if (reg > DSP_REG_M7 && reg < DSP_REG_SR) continue;
+        for (unsigned p = 0; p < ARRAY_SIZE(ports); p++) {
+            for (unsigned out = 0; out < 2; out++) {
+                for (unsigned ctx = 0; ctx < ARRAY_SIZE(contexts); ctx++) {
+                    for (unsigned seed = 0; seed < 2; seed++)
+                        check(a, b, 0x044080 | (out << 15) | (reg << 8) | (ports[p] & 31) | ((ports[p] & 32) << 1),
+                              0x30, 0x400000 | 0x10000 | 0x1000000 | contexts[ctx] | seed, mode, seed != 0);
+                }
+            }
+        }
+    }
+}
+
 static void check_memory_bitbranches(Machine *a, Machine *b, unsigned mode, unsigned form)
 {
     bool short_memory = form != 0;
@@ -4372,6 +4490,7 @@ int main(int argc, char **argv)
         puts("native DSP: 32768 bit-call decode probes agree");
         return 0;
     }
+    bool qq_register_moves_only = argc == 2 && !strcmp(argv[1], "--qq-register-movep");
     bool control_bitbranches_only = argc == 2 && !strcmp(argv[1], "--control-bitbranches");
     bool register_relative_calls_only = argc == 2 && !strcmp(argv[1], "--register-relative-calls");
     bool indirect_relative_calls_only = argc == 2 && !strcmp(argv[1], "--indirect-relative-calls");
@@ -4424,8 +4543,8 @@ int main(int argc, char **argv)
     bool effective_only = argc == 2 && !strcmp(argv[1], "--effective-control");
     bool startup_only = argc == 2 && !strcmp(argv[1], "--startup");
     bool program_only = argc == 2 && !strcmp(argv[1], "--program");
-    if (argc != 1 && !control_bitbranches_only && !register_relative_calls_only && !indirect_relative_calls_only && !short_relative_calls_only && !pp_relative_calls_only && !indirect_bitbranches_only && !short_bitbranches_only && !indirect_bitcalls_only && !short_bitcalls_only && !register_bitcalls_only && !pp_calls_only && !qq_relative_calls_only && !qq_calls_only && !qq_jumps_only && !qq_branches_only && !qq_bits_only && !register_logical_only && !merge_only && !insert_only && !extract_only && !extractu_only && !leading_bits_only && !register_shifts_only && !indirect_memory_loops_only && !short_memory_loops_only && !relative_calls_only && !register_branches_only && !pc_relative_only && !rounded_multiply_only && !y_long_only && !logical_shifts_only && !immediate_logic_only && !relative_only && !loops_only && !program_only && !compare_only && !startup_only && !effective_only && !register_only && !program_control_only && !peripheral_only && !program_peripheral_only && !multiply_only && !normalize_only && !divide_only && !byte_logic_only && !memory_bits_only && !control_bits_only && !offset_control_only && !shifts_only && !signed_right_only && !left_flags_only) {
-        fputs("usage: dspnative [--control-bitbranches|--register-relative-calls|--indirect-relative-calls|--short-relative-calls|--pp-relative-calls|--indirect-memory-bitbranches|--short-memory-bitbranches|--bitcall-decode|--indirect-memory-bitcalls|--short-memory-bitcalls|--register-bitcalls|--pp-calls|--qq-relative-calls|--qq-calls|--qq-jumps|--qq-branches|--qq-bits|--register-logical-shifts|--merge|--insert|--extract|--extractu|--leading-bits|--register-shifts|--indirect-memory-loops|--short-memory-loops|--relative-calls|--register-branches|--pc-relative-loads|--rounded-multiply|--y-long-offset|--logical-shifts|--immediate-logic|--relative|--loops|--program|--compare|--startup|--effective-control|--register-control|--program-control|--peripheral-control|--program-peripheral|--multiply|--normalize|--divide|--status-byte|--memory-bits|--control-bits|--offset-control|--shift-boundaries|--signed-right|--left-flags]\n", stderr);
+    if (argc != 1 && !qq_register_moves_only && !control_bitbranches_only && !register_relative_calls_only && !indirect_relative_calls_only && !short_relative_calls_only && !pp_relative_calls_only && !indirect_bitbranches_only && !short_bitbranches_only && !indirect_bitcalls_only && !short_bitcalls_only && !register_bitcalls_only && !pp_calls_only && !qq_relative_calls_only && !qq_calls_only && !qq_jumps_only && !qq_branches_only && !qq_bits_only && !register_logical_only && !merge_only && !insert_only && !extract_only && !extractu_only && !leading_bits_only && !register_shifts_only && !indirect_memory_loops_only && !short_memory_loops_only && !relative_calls_only && !register_branches_only && !pc_relative_only && !rounded_multiply_only && !y_long_only && !logical_shifts_only && !immediate_logic_only && !relative_only && !loops_only && !program_only && !compare_only && !startup_only && !effective_only && !register_only && !program_control_only && !peripheral_only && !program_peripheral_only && !multiply_only && !normalize_only && !divide_only && !byte_logic_only && !memory_bits_only && !control_bits_only && !offset_control_only && !shifts_only && !signed_right_only && !left_flags_only) {
+        fputs("usage: dspnative [--qq-register-movep|--control-bitbranches|--register-relative-calls|--indirect-relative-calls|--short-relative-calls|--pp-relative-calls|--indirect-memory-bitbranches|--short-memory-bitbranches|--bitcall-decode|--indirect-memory-bitcalls|--short-memory-bitcalls|--register-bitcalls|--pp-calls|--qq-relative-calls|--qq-calls|--qq-jumps|--qq-branches|--qq-bits|--register-logical-shifts|--merge|--insert|--extract|--extractu|--leading-bits|--register-shifts|--indirect-memory-loops|--short-memory-loops|--relative-calls|--register-branches|--pc-relative-loads|--rounded-multiply|--y-long-offset|--logical-shifts|--immediate-logic|--relative|--loops|--program|--compare|--startup|--effective-control|--register-control|--program-control|--peripheral-control|--program-peripheral|--multiply|--normalize|--divide|--status-byte|--memory-bits|--control-bits|--offset-control|--shift-boundaries|--signed-right|--left-flags]\n", stderr);
         return 2;
     }
     Machine *a = machine_new(false), *b = machine_new(true);
@@ -4441,8 +4560,9 @@ int main(int argc, char **argv)
 #endif
     check_speculative_decode();
     check_bitcall_decode();
-    if (control_bitbranches_only || register_relative_calls_only || indirect_relative_calls_only || short_relative_calls_only || pp_relative_calls_only || indirect_bitbranches_only || short_bitbranches_only || indirect_bitcalls_only || short_bitcalls_only || register_bitcalls_only || pp_calls_only || qq_relative_calls_only || qq_calls_only || qq_jumps_only || qq_branches_only || qq_bits_only || register_logical_only || merge_only || insert_only || extract_only || extractu_only || leading_bits_only || register_shifts_only || indirect_memory_loops_only || short_memory_loops_only || relative_calls_only || register_branches_only || pc_relative_only || rounded_multiply_only || y_long_only || logical_shifts_only || immediate_logic_only || relative_only || loops_only || program_only || compare_only || startup_only || effective_only || register_only || program_control_only || peripheral_only || program_peripheral_only || multiply_only || normalize_only || divide_only || byte_logic_only || memory_bits_only || control_bits_only || offset_control_only || shifts_only || signed_right_only || left_flags_only) {
+    if (qq_register_moves_only || control_bitbranches_only || register_relative_calls_only || indirect_relative_calls_only || short_relative_calls_only || pp_relative_calls_only || indirect_bitbranches_only || short_bitbranches_only || indirect_bitcalls_only || short_bitcalls_only || register_bitcalls_only || pp_calls_only || qq_relative_calls_only || qq_calls_only || qq_jumps_only || qq_branches_only || qq_bits_only || register_logical_only || merge_only || insert_only || extract_only || extractu_only || leading_bits_only || register_shifts_only || indirect_memory_loops_only || short_memory_loops_only || relative_calls_only || register_branches_only || pc_relative_only || rounded_multiply_only || y_long_only || logical_shifts_only || immediate_logic_only || relative_only || loops_only || program_only || compare_only || startup_only || effective_only || register_only || program_control_only || peripheral_only || program_peripheral_only || multiply_only || normalize_only || divide_only || byte_logic_only || memory_bits_only || control_bits_only || offset_control_only || shifts_only || signed_right_only || left_flags_only) {
         for (unsigned mode = 0; mode < 4; mode++) {
+            if (qq_register_moves_only) check_qq_register_moves(a, b, mode);
             if (control_bitbranches_only) check_control_register_bitbranches(a, b, mode);
             if (register_relative_calls_only) check_register_relative_calls(a, b, mode);
             if (indirect_relative_calls_only) check_indirect_relative_calls(a, b, mode);
@@ -4527,6 +4647,7 @@ int main(int argc, char **argv)
     }
     check_status_restore_chains(a, b);
     check_logical_immediates(a, b);
+    for (unsigned mode = 0; mode < 4; mode++) check_qq_register_moves(a, b, mode);
     for (unsigned mode = 0; mode < 4; mode++) check_control_register_bitbranches(a, b, mode);
     for (unsigned mode = 0; mode < 4; mode++) check_register_relative_calls(a, b, mode);
     for (unsigned mode = 0; mode < 4; mode++) check_indirect_relative_calls(a, b, mode);

@@ -354,7 +354,7 @@ static const OpcodeEntry nonparallel_opcodes[] = {
     { "0000100sW1MMMRRR01pppppp", "movep [X or Y]:pp <-> P:ea", dis_movep_1, emu_movep_1, match_MMMRRR },
     { "000000001WMMMRRR0sqqqqqq", "movep [X or Y]:qq <-> P:ea", NULL, NULL, match_MMMRRR },
     { "0000100sW1dddddd00pppppp", "movep [X or Y]:pp <-> R", dis_movep_0, emu_movep_0 },
-    { "00000100W1dddddd1q0qqqqq", "movep X:qq <-> R", NULL, NULL },
+    { "00000100W1dddddd1q0qqqqq", "movep X:qq <-> R", dis_movep_x_qq_reg, emu_movep_x_qq_reg },
     { "00000100W1dddddd0q1qqqqq", "movep Y:qq <-> R", NULL, NULL },
     { "00000001000sssss11QQdk00", "mpy S, #n, D", NULL, NULL },
     { "00000001001001111sdkQQQQ", "mpy_s_u S1, S2, D", NULL, NULL },

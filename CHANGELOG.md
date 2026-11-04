@@ -39,6 +39,8 @@
 
 ## Unreleased
 
+- DSP: execute X:qq register MOVEP transfers natively, including split peripheral ports, register masks, accumulator limiting and SSH stack effects.
+
 - DSP: branch natively on control-register bits, preserving current status, stack-pointer flags and raw SSH reads without popping.
 
 - DSP: execute register relative bit-test calls natively, preserving accumulator limiting, current status, wrapped targets and conditional stack saves.
