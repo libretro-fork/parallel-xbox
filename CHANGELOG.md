@@ -51,6 +51,8 @@
 
 ## Unreleased
 
+- DSP ILL, WAIT, STOP and RESET now execute natively with regression coverage for exception delivery, loop boundaries and cycles, preserving the existing MCPX sleep/reset behavior.
+
 - DSP repeats that write SR with MOVEC now execute natively, preserving scaling-mode changes, loop retirement and interrupt deferral between iterations.
 
 - DSP repeats with X/Y memory counts now start natively, including peripheral reads and all accepted address modes. Repeat cycle accounting also handles raw memory counts with upper bits correctly across pause/resume.

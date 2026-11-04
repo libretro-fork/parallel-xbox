@@ -802,6 +802,14 @@ void dsp56k_add_interrupt(dsp_core_t* dsp, uint16_t inter)
     }
 }
 
+void dsp56k_raise_illegal(dsp_core_t *dsp)
+{
+    dsp56k_add_interrupt(dsp, DSP_INTER_ILLEGAL);
+    if (dsp->exception_debugging) {
+        assert(!"Illegal dsp instruction - interrupt 0x003e raised");
+    }
+}
+
 static void dsp_postexecute_interrupts(dsp_core_t* dsp)
 {
     uint32_t index, instr, i;
@@ -1490,7 +1498,7 @@ static bool dsp56k_name_is_control(const char *name)
     static const char *const heads[] = {
         "bcc", "bra", "brclr", "brset", "bscc", "bsclr", "bsr", "bsset",
         "do", "dor", "do_f", "dor_f", "brkcc", "enddo", "jcc", "jclr", "jmp", "jscc", "jsclr", "jset",
-        "jsr", "jsset", "rep", "rts", "rti", "illegal", "trap", "wait",
+        "jsr", "jsset", "rep", "rts", "rti", "ill", "illegal", "trap", "wait",
         "stop", "debug", "debugcc", "trapcc", "pflush", "pflushun", "pfree", "plock", "plockr", "punlock", "punlockr", "reset",
     };
     for (size_t i = 0; i < ARRAY_SIZE(heads); i++) {
