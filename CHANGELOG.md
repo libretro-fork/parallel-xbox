@@ -31,7 +31,10 @@
 
 ## Unreleased
 
+- Replace the Vulkan dynamic-sibling ShaderState clone with a borrowed 2304-byte prefix and a 316-byte canonical fragment tail. Hash spans directly, compare views against owned cache entries and publish complete queue records once; preserve exact state bytes, worker decisions and module ownership. Align the generated state and keep uncommon sibling work outside the resident binding path.
+
 - DSP: execute X:qq absolute bit-test jumps natively, retaining single peripheral reads and correct loop-end handling.
+
 
 - DSP: execute X:qq bit-test relative branches natively, preserving flags and reading peripherals once on taken, untaken and loop-end paths.
 
@@ -161,6 +164,7 @@
 - DSP: complete native register MOVEC coverage and fix read-direction copies into SR, which could read the wrong source and apply write-direction semantics. Preserve raw width-masked copies and SSH pops, with 98,304 new regression boundaries and a production program.
 
 - DSP: compile effective-address X/Y MOVEC control stores without interpreter fallback. Preserve address updates and SSH stack pops, including the destination across helper calls. Add 89,088 regression boundaries and a repeated-store program.
+
 
 - Add an all-or-nothing two-span SPSC write as the queue prerequisite for borrowed shader states. Copy spans directly into plain or mirrored rings and publish once after both are complete; reject oversized or non-fitting records without a partial write. Existing queue callers and renderer behavior are unchanged.
 
