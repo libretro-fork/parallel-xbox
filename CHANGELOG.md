@@ -39,6 +39,8 @@
 
 ## Unreleased
 
+- DSP: branch natively on control-register bits, preserving current status, stack-pointer flags and raw SSH reads without popping.
+
 - DSP: execute register relative bit-test calls natively, preserving accumulator limiting, current status, wrapped targets and conditional stack saves.
 
 - DSP: execute register-indirect X/Y relative bit-test calls natively, preserving address updates, wrapped targets and conditional stack saves.

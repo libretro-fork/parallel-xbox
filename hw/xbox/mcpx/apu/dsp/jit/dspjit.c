@@ -3587,9 +3587,10 @@ static bool emit_control(Tr *t, const Insn *in)
         uint32_t next = in->next;
         size_t taken;
         if (!strcmp(name + 9, "S, xxxx")) {
-            if (!reg_supported(reg)) {
+            if (!reg_supported(reg) && (reg < DSP_REG_SR || reg > DSP_REG_LC)) {
                 return false;
             }
+            if (reg == DSP_REG_SR) emit_flags_flush(t);
             emit_read_reg(t, reg, V1);
             acc_spill_all(t, false);
         } else {
@@ -3671,9 +3672,10 @@ static bool emit_control(Tr *t, const Insn *in)
         int numbit = inst & 0x1F;
         uint32_t target = (at + in->ext) & 0xFFFFFF;
         size_t j;
-        if (!reg_supported(numreg)) {
+        if (!reg_supported(numreg) && (numreg < DSP_REG_SR || numreg > DSP_REG_LC)) {
             return false;
         }
+        if (numreg == DSP_REG_SR) emit_flags_flush(t);
         emit_read_reg(t, numreg, V1);
         acc_spill_all(t, false);
         h_test_ri(e, 0, V1, 1u << numbit);
