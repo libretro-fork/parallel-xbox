@@ -25,9 +25,10 @@
  * for LF: without an active DO loop they omit instruction-level LA checks.
  * SR-changing control paths select the matching table or return through
  * dispatch when that identity changes. A REP repeats its instruction in a loop of its own
- * (rep_blocks); the interpreter steps the rest (an interrupt in its
- * pipeline, a REP's own instruction). A block charges its cycles when it
- * ends, so a run may go a block past its budget; the budget carries over,
+ * (rep_blocks). Interrupt pipelines use native single-instruction retirement
+ * for data instructions; control instructions and REP setup still step. A
+ * block charges its cycles when it ends, so a run may go a block past its
+ * budget; the budget carries over,
  * as the interpreter's does.
  *
  * Every write to P drops the blocks made from the word (dspjit_invalidate):
@@ -93,11 +94,12 @@ typedef struct Tr Tr;
 typedef void (*dspjit_enter_fn)(dsp_core_t *core, dspjit_block_fn fn);
 
 /* One persistent allocation per used scaling mode. Both loop identities
- * share its REP translations, which inspect loop state dynamically. */
+ * share REP and interrupt translations, which inspect loop state dynamically. */
 typedef struct DspJitModeCache {
     dspjit_block_fn blocks[2][DSP_PRAM_SIZE];
     uint16_t block_end[2][DSP_PRAM_SIZE];
     dspjit_block_fn rep[DSP_PRAM_SIZE];
+    dspjit_block_fn interrupt[DSP_PRAM_SIZE];
 } DspJitModeCache;
 
 struct DspJit {
@@ -116,6 +118,7 @@ struct DspJit {
     DspJitModeCache *modes[4];
     dspjit_block_fn *blocks[DSPJIT_MODES];
     uint16_t *block_end[DSPJIT_MODES];
+    dspjit_block_fn *interrupt_blocks[4]; /* single-instruction retirement */
     dspjit_block_fn *rep_blocks[4]; /* REP checks loop state dynamically */
     /* Conservative coverage since the last flush. Stale bits cost only
      * another scan; data words never translated need no cache walk. */
@@ -195,6 +198,7 @@ static void dspjit_prepare_mode(DspJit *jit, int mode)
         jit->block_end[scale] = cache->block_end[0];
         jit->block_end[scale | 4] = cache->block_end[1];
         jit->rep_blocks[scale] = cache->rep;
+        jit->interrupt_blocks[scale] = cache->interrupt;
     }
 }
 
@@ -4533,6 +4537,36 @@ retry:
     return fn;
 }
 
+/* Interrupt pipelines require retirement after every instruction. These
+ * translations share the arithmetic emitters but never chain or specialize
+ * for LF: post-processing handles loops and interrupt redirection dynamically.
+ * Control instructions still use their existing interpreter retirement path. */
+static dspjit_block_fn dspjit_translate_interrupt(DspJit *jit, int mode, uint32_t pc)
+{
+    Insn in;
+    Tr *t = jit->tr;
+    if (!decode_insn(jit->core, pc, &in) || !insn_native(&in)) {
+        return NULL;
+    }
+retry:
+    translate_begin(jit, mode);
+    emit_native(t, &in);
+    acc_spill_all(t, false);
+    h_st32_imm(&t->e, REG_CORE, OFF(pc), in.at);
+    h_st32_imm(&t->e, REG_CORE, OFF(cur_inst), in.inst);
+    h_st32_imm(&t->e, REG_CORE, OFF(cur_inst_len), in.len);
+    h_st16_imm(&t->e, REG_CORE, OFF(instr_cycle), t->cyc);
+    h_mov_rr(&t->e, 1, H_ARG0, REG_CORE);
+    h_call(&t->e, (const void *)dsp56k_post);
+    emit_jump_to_epilogue(t);
+    dspjit_block_fn fn = translate_end(jit);
+    if (!fn && t->e.overflow && jit->cache_committed < jit->cache_len &&
+        dspjit_commit_exec(jit, jit->cache_committed + DSPJIT_COMMIT_BYTES)) {
+        goto retry;
+    }
+    return fn;
+}
+
 /* a REP's repeats done so far (the count at the start less the count
  * left in REG_LC), less `less` of them, charged to the cycle counters
  * (not the budget: the loop does that as it goes); uses rax */
@@ -4721,6 +4755,9 @@ void dspjit_flush(DspJit *jit)
         }
     }
     for (int mode = 0; mode < 4; mode++) {
+        if (jit->interrupt_blocks[mode]) {
+            memset(jit->interrupt_blocks[mode], 0, DSP_PRAM_SIZE * sizeof(*jit->interrupt_blocks[mode]));
+        }
         if (jit->rep_blocks[mode]) {
             memset(jit->rep_blocks[mode], 0, DSP_PRAM_SIZE * sizeof(*jit->rep_blocks[mode]));
         }
@@ -4753,6 +4790,12 @@ void dspjit_invalidate(DspJit *jit, uint32_t address)
         }
     }
     for (int m = 0; m < 4; m++) {
+        if (jit->interrupt_blocks[m]) {
+            jit->interrupt_blocks[m][address] = NULL;
+            if (address > 0) {
+                jit->interrupt_blocks[m][address - 1] = NULL;
+            }
+        }
         if (!jit->rep_blocks[m]) {
             continue;
         }
@@ -4795,13 +4838,38 @@ void dspjit_run(DspJit *jit, int cycles)
                    (((sr >> DSP_SR_LF) & 1) << 2);
         dspjit_prepare_mode(jit, mode);
 
-        /* what the blocks' code is not made for: an interrupt in its
-         * pipeline, a REP's own instruction: the interpreter's step */
+        /* Pending interrupts and pipeline stages retire one instruction at
+         * a time. REP setup/body and control instructions retain their step. */
         if (core->interrupt_state == DSP_INTERRUPT_DISABLED ||
             core->interrupt_counter != 0 || core->pc_on_rep) {
-            interpret_one(core);
-            core->cycle_count += core->instr_cycle;
-            core->jit_cycles -= core->instr_cycle;
+            fn = NULL;
+#if DSPJIT_HOST
+            if (!core->pc_on_rep && !core->loop_rep) {
+                fn = jit->interrupt_blocks[mode & 3][pc];
+                if (!fn) {
+                    fn = dspjit_translate_interrupt(jit, mode, pc);
+                    if (!fn && jit->tr->e.overflow) {
+                        dspjit_flush(jit);
+                        fn = dspjit_translate_interrupt(jit, mode, pc);
+                    }
+                    if (fn) {
+                        jit->interrupt_blocks[mode & 3][pc] = fn;
+                        dspjit_cover_words(jit, pc, pc + 2);
+                    }
+                }
+            }
+#endif
+            if (fn) {
+#ifdef DSPJIT_TEST
+                test_entry_count++;
+#endif
+                core->jit_code_changed = false;
+                jit->enter(core, fn);
+            } else {
+                interpret_one(core);
+                core->cycle_count += core->instr_cycle;
+                core->jit_cycles -= core->instr_cycle;
+            }
             continue;
         }
         if (core->loop_rep) {
