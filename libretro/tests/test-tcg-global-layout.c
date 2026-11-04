@@ -78,6 +78,7 @@ gpointer g_malloc0(gsize size)
 }
 /* Record only the host-specific capability/expansion boundary. The operand
  * decoding and direct IR emission below use the production implementation. */
+static bool vector_cmpsel;
 static bool vector_condition;
 static bool vector_immediate;
 static int vector_capability;
@@ -85,12 +86,16 @@ static unsigned vector_queries, vector_expansions, vector_arity;
 static TCGOpcode vector_expected_op;
 static TCGType vector_expected_type;
 static unsigned vector_expected_vece;
-static TCGArg vector_expected_args[4];
+static TCGArg vector_expected_args[6];
 static int fixture_vec_capability(TCGOpcode opc, TCGType type, unsigned vece)
 {
-    assert(opc == vector_expected_op && type == vector_expected_type);
-    assert(vece == vector_expected_vece);
+    assert(type == vector_expected_type && vece == vector_expected_vece);
     ++vector_queries;
+    if (vector_cmpsel && opc == INDEX_op_cmp_vec) {
+        assert(vector_capability == 0);
+        return 1;
+    }
+    assert(opc == vector_expected_op);
     return vector_capability;
 }
 static void fixture_vec_expand(TCGOpcode opc, TCGType type, unsigned vece, ...)
@@ -101,7 +106,7 @@ static void fixture_vec_expand(TCGOpcode opc, TCGType type, unsigned vece, ...)
     va_list ap;
     va_start(ap, vece);
     for (unsigned i = 0; i < vector_arity; ++i) {
-        if (vector_condition && i == 3) {
+        if (vector_condition && i == vector_arity - 1) {
             assert(va_arg(ap, int) == (int)vector_expected_args[i]);
         } else if (vector_immediate && i == 2) {
             assert(va_arg(ap, int64_t) == (int64_t)vector_expected_args[i]);
@@ -136,6 +141,7 @@ static void fixture_cmp_temp_free(TCGTemp *temp)
 /* COMPARISON */
 static bool fixture_has_bitsel;
 /* SELECTION */
+/* COMPARE-SELECTION */
 
 static void check_ops(TCGContext *owner, bool current)
 {
@@ -854,6 +860,97 @@ static void check_vector_bitsel(TCGContext *owner)
     printf("TCG vector bit-selection: %u native/fallback, width and alias cases PASS\n", cases);
 }
 
+static void check_vector_cmpsel(TCGContext *owner)
+{
+    static unsigned char arena[8192] QEMU_ALIGNED(16);
+    static const TCGCond conds[] = { TCG_COND_EQ, TCG_COND_NE,
+        TCG_COND_LT, TCG_COND_LE, TCG_COND_GT, TCG_COND_GE,
+        TCG_COND_LTU, TCG_COND_LEU, TCG_COND_GTU, TCG_COND_GEU,
+        TCG_COND_TSTEQ, TCG_COND_TSTNE };
+    unsigned cases = 0;
+    vector_cmpsel = vector_condition = true;
+    fixture_has_tst = true; /* Test-condition lowering is covered separately. */
+    vector_arity = 6;
+    vector_expected_op = INDEX_op_cmpsel_vec;
+    for (TCGType type = TCG_TYPE_V64; type <= TCG_TYPE_V256; ++type)
+    for (unsigned vece = 0; vece < 4; ++vece)
+    for (unsigned ci = 0; ci < ARRAY_SIZE(conds); ++ci)
+    for (unsigned host = 0; host < 2; ++host)
+    for (unsigned alias = 0; alias < 5; ++alias)
+    for (unsigned wider = 0; wider < 2; ++wider)
+    for (int cap = -1; cap <= 1; ++cap) {
+        reset_new_temps(owner);
+        TCGv_vec r = tcg_temp_new_vec(type), h[4];
+        vector_expected_args[0] = tcgv_vec_arg(r);
+        for (unsigned j = 0; j < 4; ++j) {
+            h[j] = alias == j + 1 ? r : tcg_temp_new_vec(wider ? TCG_TYPE_V256 : type);
+            vector_expected_args[j + 1] = tcgv_vec_arg(h[j]);
+        }
+        vector_expected_args[5] = conds[ci];
+        vector_expected_type = type;
+        vector_expected_vece = vece;
+        vector_capability = cap;
+        vector_queries = vector_expansions = 0;
+        fixture_has_bitsel = host;
+        owner->pool_cur = (uintptr_t)arena;
+        owner->pool_end = owner->pool_cur + sizeof(arena);
+        owner->nb_ops = 0;
+        owner->emit_before_op = NULL;
+        QTAILQ_INIT(&owner->ops);
+        QTAILQ_INIT(&owner->free_ops);
+        int used = owner->nb_temps;
+        tcg_gen_cmpsel_vec(conds[ci], vece, r, h[0], h[1], h[2], h[3]);
+        assert(vector_queries == (cap == 0 ? 2u : 1u));
+        assert(vector_expansions == (unsigned)(cap < 0));
+        TCGOp *op = QTAILQ_FIRST(&owner->ops);
+        if (cap > 0) {
+            assert(owner->nb_ops == 1 && op && op->opc == INDEX_op_cmpsel_vec);
+            assert(TCGOP_TYPE(op) == type && TCGOP_VECE(op) == vece);
+            for (unsigned j = 0; j < 6; ++j) assert(op->args[j] == vector_expected_args[j]);
+            assert(!QTAILQ_NEXT(op, link) && owner->nb_temps == used);
+        } else if (cap < 0) {
+            assert(!op && !owner->nb_ops && owner->nb_temps == used);
+        } else {
+            TCGArg mask = temp_arg(&owner->temps[used]);
+            assert(op && op->opc == INDEX_op_cmp_vec);
+            assert(TCGOP_TYPE(op) == type && TCGOP_VECE(op) == vece);
+            assert(op->args[0] == mask && op->args[1] == vector_expected_args[1]);
+            assert(op->args[2] == vector_expected_args[2] && op->args[3] == (TCGArg)conds[ci]);
+            op = QTAILQ_NEXT(op, link);
+            TCGArg ri = vector_expected_args[0], yes = vector_expected_args[3];
+            TCGArg no = vector_expected_args[4];
+            assert(op && TCGOP_TYPE(op) == type && TCGOP_VECE(op) == 0);
+            if (host) {
+                assert(owner->nb_ops == 2 && owner->nb_temps == used + 1);
+                assert(op->opc == INDEX_op_bitsel_vec);
+                assert(op->args[0] == ri && op->args[1] == mask);
+                assert(op->args[2] == yes && op->args[3] == no);
+            } else {
+                assert(owner->nb_ops == 4 && owner->nb_temps == used + 2);
+                TCGArg t = temp_arg(&owner->temps[used + 1]);
+                assert(op->opc == INDEX_op_and_vec && op->args[0] == t);
+                assert(op->args[1] == mask && op->args[2] == yes);
+                op = QTAILQ_NEXT(op, link);
+                assert(op && op->opc == INDEX_op_andc_vec);
+                assert(TCGOP_TYPE(op) == type && TCGOP_VECE(op) == 0);
+                assert(op->args[0] == ri && op->args[1] == no && op->args[2] == mask);
+                op = QTAILQ_NEXT(op, link);
+                assert(op && op->opc == INDEX_op_or_vec);
+                assert(TCGOP_TYPE(op) == type && TCGOP_VECE(op) == 0);
+                assert(op->args[0] == ri && op->args[1] == ri && op->args[2] == t);
+                assert(!owner->temps[used + 1].temp_allocated);
+                assert(test_bit(used + 1, owner->free_temps[type].l));
+            }
+            assert(!QTAILQ_NEXT(op, link));
+            assert(!owner->temps[used].temp_allocated);
+            assert(test_bit(used, owner->free_temps[type].l));
+        }
+        ++cases;
+    }
+    vector_cmpsel = vector_condition = false;
+    printf("TCG vector compare-selection: %u capability, fallback and alias cases PASS\n", cases);
+}
+
 int main(void)
 {
     static TCGContext context;
@@ -987,6 +1084,7 @@ int main(void)
     check_vector_shifts(&context);
     check_vector_comparison(&context);
     check_vector_bitsel(&context);
+    check_vector_cmpsel(&context);
     puts("TCG rollback: suffix/full/empty removal, branch uses and reuse PASS");
     puts("TCG ops: owners, allocation/reuse, insertion order and epilogues PASS");
     printf("TCG global layout: %d-bit direct/indirect globals, %shandles and frame PASS\n",

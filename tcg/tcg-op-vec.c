@@ -616,11 +616,12 @@ void tcg_gen_bitsel_vec(unsigned vece, TCGv_vec r, TCGv_vec a,
 void tcg_gen_cmpsel_vec(TCGCond cond, unsigned vece, TCGv_vec r,
                         TCGv_vec a, TCGv_vec b, TCGv_vec c, TCGv_vec d)
 {
-    TCGTemp *rt = tcgv_vec_temp(r);
-    TCGTemp *at = tcgv_vec_temp(a);
-    TCGTemp *bt = tcgv_vec_temp(b);
-    TCGTemp *ct = tcgv_vec_temp(c);
-    TCGTemp *dt = tcgv_vec_temp(d);
+    TCGContext *s = tcg_ctx;
+    TCGTemp *rt = tcgv_vec_temp_context(s, r);
+    TCGTemp *at = tcgv_vec_temp_context(s, a);
+    TCGTemp *bt = tcgv_vec_temp_context(s, b);
+    TCGTemp *ct = tcgv_vec_temp_context(s, c);
+    TCGTemp *dt = tcgv_vec_temp_context(s, d);
     TCGArg ri = temp_arg(rt);
     TCGArg ai = temp_arg(at);
     TCGArg bi = temp_arg(bt);

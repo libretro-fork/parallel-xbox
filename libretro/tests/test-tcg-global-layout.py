@@ -55,7 +55,7 @@ code = code.replace('/* PRODUCTION */', '\n'.join(function(key) for key in keys)
                     function('uint64_t (dup_const)(',
                              (r / 'tcg/tcg-op-gvec.c').read_text()) + '\n' +
                     '\n'.join(function(key, (r / 'tcg/tcg-op-vec.c').read_text())
-                              for key in ['void vec_gen_2(', 'void vec_gen_3(', 'void vec_gen_4(',
+                              for key in ['void vec_gen_2(', 'void vec_gen_3(', 'void vec_gen_4(', 'void vec_gen_6(',
                                           'static void vec_gen_op2(', 'static void vec_gen_op3(',
                                           'void tcg_gen_mov_vec(']) + '\n' +
                     '\n'.join(function(key, (r / 'tcg/tcg-op-vec.c').read_text())
@@ -78,6 +78,10 @@ selection = '\n'.join(function(key, (r / 'tcg/tcg-op-vec.c').read_text())
 selection = selection.replace('TCG_TARGET_HAS_andc_vec', '1').replace(
     'TCG_TARGET_HAS_bitsel_vec', 'fixture_has_bitsel')
 code = code.replace('/* SELECTION */', selection)
+cmpsel = function('void tcg_gen_cmpsel_vec(', (r / 'tcg/tcg-op-vec.c').read_text())
+cmpsel = cmpsel.replace('tcg_can_emit_vec_op(', 'fixture_vec_capability(').replace(
+    'tcg_expand_vec_op(', 'fixture_vec_expand(')
+code = code.replace('/* COMPARE-SELECTION */', cmpsel)
 with tempfile.TemporaryDirectory(prefix='tcg-global-layout-') as temporary:
     folder = Path(temporary)
     (folder / 'test.c').write_text(code)
