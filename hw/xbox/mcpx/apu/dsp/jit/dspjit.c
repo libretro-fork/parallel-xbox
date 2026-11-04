@@ -3618,8 +3618,8 @@ static bool emit_control(Tr *t, const Insn *in)
         }
         if (conditional) h_patch(e, untaken, e->len);
         /* Halt and exception state must be observed before any cached chain. */
-        h_st32_imm(e, REG_CORE, OFF(pc), in->next);
-        h_st32_imm(e, REG_CORE, OFF(cur_inst_len), 0);
+        h_st32_imm(e, REG_CORE, OFF(pc), in->at);
+        h_st32_imm(e, REG_CORE, OFF(cur_inst_len), in->len);
         h_st16_imm(e, REG_CORE, OFF(instr_cycle), cycles);
         h_mov_rr(e, 1, H_ARG0, REG_CORE);
         h_call(e, (const void *)dsp56k_post);
@@ -4699,7 +4699,10 @@ static dspjit_block_fn dspjit_translate_rep(DspJit *jit, int mode, uint32_t pc)
     }
     if (!decode_insn(core, pc, &in)) return NULL;
     if (in.d.control && (!strcmp(in.d.name, "ill") || !strcmp(in.d.name, "wait") ||
-                         !strcmp(in.d.name, "stop") || !strcmp(in.d.name, "reset"))) {
+                         !strcmp(in.d.name, "stop") || !strcmp(in.d.name, "reset") ||
+                         !strncmp(in.d.name, "debug", 5) || !strncmp(in.d.name, "trap", 4) ||
+                         !strncmp(in.d.name, "pflush", 6) || !strcmp(in.d.name, "pfree") ||
+                         !strncmp(in.d.name, "plock", 5) || !strncmp(in.d.name, "punlock", 7))) {
         /* These emitters retire at the original PC with the decoded length.
          * Post must perform REP's decrement, deferring interrupts until the
          * last body iteration. Other controls have different PC semantics. */

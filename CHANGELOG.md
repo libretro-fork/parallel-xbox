@@ -55,6 +55,8 @@
 
 ## Unreleased
 
+- DSP repeats containing debug, trap and cache-control instructions now execute natively with correct partial-repeat PC, halt state and deferred exceptions. Their retirement also preserves the interpreter's PC value at the end of program RAM.
+
 - DSP repeats containing ILL, WAIT, STOP or RESET now remain native, preserving the current interpreter model for loop counts, exception deferral and instruction cycles.
 
 - DSP JSCLR/JSSET calls on Y:pp peripheral operands now execute natively, preserving independent X/Y bus reads, stack behavior and the existing no-device Y read policy.
