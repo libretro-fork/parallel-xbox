@@ -340,8 +340,9 @@ void tcg_gen_abs_vec(unsigned vece, TCGv_vec r, TCGv_vec a)
 static void do_shifti(TCGOpcode opc, unsigned vece,
                       TCGv_vec r, TCGv_vec a, int64_t i)
 {
-    TCGTemp *rt = tcgv_vec_temp(r);
-    TCGTemp *at = tcgv_vec_temp(a);
+    TCGContext *ctx = tcg_ctx;
+    TCGTemp *rt = tcgv_vec_temp_context(ctx, r);
+    TCGTemp *at = tcgv_vec_temp_context(ctx, a);
     TCGArg ri = temp_arg(rt);
     TCGArg ai = temp_arg(at);
     TCGType type = rt->base_type;
@@ -554,9 +555,10 @@ void tcg_gen_rotlv_vec(unsigned vece, TCGv_vec r, TCGv_vec a, TCGv_vec b)
 static void do_shifts(unsigned vece, TCGv_vec r, TCGv_vec a,
                       TCGv_i32 s, TCGOpcode opc)
 {
-    TCGTemp *rt = tcgv_vec_temp(r);
-    TCGTemp *at = tcgv_vec_temp(a);
-    TCGTemp *st = tcgv_i32_temp(s);
+    TCGContext *ctx = tcg_ctx;
+    TCGTemp *rt = tcgv_vec_temp_context(ctx, r);
+    TCGTemp *at = tcgv_vec_temp_context(ctx, a);
+    TCGTemp *st = tcgv_i32_temp_context(ctx, s);
     TCGArg ri = temp_arg(rt);
     TCGArg ai = temp_arg(at);
     TCGArg si = temp_arg(st);

@@ -57,6 +57,8 @@
 
 ## Unreleased
 
+- Reuse the TCG context when decoding immediate and scalar-count vector shift operands, avoiding repeated Windows TLS lookups while retaining zero-shift moves and host expansion paths.
+
 - Reuse the TCG context when decoding optional vector arithmetic operands, avoiding repeated Windows TLS lookups while preserving direct, expanded and unsupported capability paths.
 - The DSP 0x1xxxxx parallel ALU/memory/register move group now executes natively, preserving pre-ALU snapshots, limiter flags, repeat feedback and peripheral callback ordering, including halt handling on either bus.
 

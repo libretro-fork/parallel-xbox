@@ -77,6 +77,7 @@ gpointer g_malloc0(gsize size)
 }
 /* Record only the host-specific capability/expansion boundary. The operand
  * decoding and direct IR emission below use the production implementation. */
+static bool vector_immediate;
 static int vector_capability;
 static unsigned vector_queries, vector_expansions, vector_arity;
 static TCGOpcode vector_expected_op;
@@ -98,7 +99,11 @@ static void fixture_vec_expand(TCGOpcode opc, TCGType type, unsigned vece, ...)
     va_list ap;
     va_start(ap, vece);
     for (unsigned i = 0; i < vector_arity; ++i) {
-        assert(va_arg(ap, TCGArg) == vector_expected_args[i]);
+        if (vector_immediate && i == 2) {
+            assert(va_arg(ap, int64_t) == (int64_t)vector_expected_args[i]);
+        } else {
+            assert(va_arg(ap, TCGArg) == vector_expected_args[i]);
+        }
     }
     va_end(ap);
 }
@@ -232,6 +237,75 @@ static void check_vector_operands(TCGContext *owner, TCGContext *other)
     }
     puts("TCG optional vector operands: 432 direct/expanded/unsupported cases PASS");
     printf("TCG vector operands: %u emission cases, widths, aliasing and owners PASS\n", cases);
+}
+
+static void check_vector_shifts(TCGContext *owner)
+{
+    static unsigned char arena[4096] QEMU_ALIGNED(16);
+    unsigned cases = 0;
+    for (TCGType type = TCG_TYPE_V64; type <= TCG_TYPE_V256; ++type) {
+        for (unsigned vece = 0; vece < 4; ++vece) {
+            for (unsigned alias = 0; alias < 2; ++alias) {
+                TCGv_vec r = (TCGv_vec)((uintptr_t)&owner->temps[5] - (uintptr_t)owner);
+                TCGv_vec a = alias ? r :
+                    (TCGv_vec)((uintptr_t)&owner->temps[19] - (uintptr_t)owner);
+                TCGv_i32 count = (TCGv_i32)((uintptr_t)&owner->temps[37] - (uintptr_t)owner);
+                owner->temps[5].base_type = owner->temps[19].base_type = type;
+                owner->temps[37].base_type = TCG_TYPE_I32;
+                vector_expected_type = type;
+                vector_expected_vece = vece;
+                vector_arity = 3;
+                vector_expected_args[0] = temp_arg(&owner->temps[5]);
+                vector_expected_args[1] = temp_arg(&owner->temps[alias ? 5 : 19]);
+                for (unsigned kind = 0; kind < 5; ++kind) {
+                    static const TCGOpcode ops[] = { INDEX_op_shli_vec, INDEX_op_shri_vec,
+                        INDEX_op_sari_vec, INDEX_op_shls_vec, INDEX_op_shrs_vec };
+                    vector_expected_op = ops[kind];
+                    vector_immediate = kind < 3;
+                    for (unsigned amount = 0; amount < (vector_immediate ? 3u : 1u); ++amount) {
+                        int64_t shift = amount == 0 ? 0 : amount == 1 ? 1 : (8 << vece) - 1;
+                        vector_expected_args[2] = vector_immediate ? (TCGArg)shift :
+                            temp_arg(&owner->temps[37]);
+                        for (int cap = -1; cap <= 1; cap += 2) {
+                            owner->pool_cur = (uintptr_t)arena;
+                            owner->pool_end = owner->pool_cur + sizeof(arena);
+                            owner->nb_ops = 0;
+                            owner->emit_before_op = NULL;
+                            QTAILQ_INIT(&owner->ops);
+                            QTAILQ_INIT(&owner->free_ops);
+                            vector_capability = cap;
+                            vector_queries = vector_expansions = 0;
+                            bool zero = vector_immediate && shift == 0;
+                            if (vector_immediate) {
+                                do_shifti(ops[kind], vece, r, a, shift);
+                            } else {
+                                do_shifts(vece, r, a, count, ops[kind]);
+                            }
+                            assert(vector_queries == (unsigned)!zero);
+                            assert(vector_expansions == (unsigned)(!zero && cap < 0));
+                            bool emitted = zero ? !alias : cap > 0;
+                            assert(owner->nb_ops == (int)emitted);
+                            TCGOp *op = QTAILQ_FIRST(&owner->ops);
+                            if (emitted) {
+                                assert(op && !QTAILQ_NEXT(op, link));
+                                assert(op->opc == (zero ? INDEX_op_mov_vec : ops[kind]));
+                                assert(TCGOP_TYPE(op) == type);
+                                assert(TCGOP_VECE(op) == (zero ? 0 : vece));
+                                for (unsigned j = 0; j < (zero ? 2u : 3u); ++j) {
+                                    assert(op->args[j] == vector_expected_args[j]);
+                                }
+                            } else {
+                                assert(!op);
+                            }
+                            ++cases;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    vector_immediate = false;
+    printf("TCG vector shifts: %u immediate/scalar, zero, edge and alias cases PASS\n", cases);
 }
 
 static void check_rollback(TCGContext *owner)
@@ -757,6 +831,7 @@ int main(void)
     check_rollback(&context);
     check_count_operands(&context);
     check_vector_operands(&context, &other);
+    check_vector_shifts(&context);
     puts("TCG rollback: suffix/full/empty removal, branch uses and reuse PASS");
     puts("TCG ops: owners, allocation/reuse, insertion order and epilogues PASS");
     printf("TCG global layout: %d-bit direct/indirect globals, %shandles and frame PASS\n",

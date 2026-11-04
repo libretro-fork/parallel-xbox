@@ -56,11 +56,13 @@ code = code.replace('/* PRODUCTION */', '\n'.join(function(key) for key in keys)
                              (r / 'tcg/tcg-op-gvec.c').read_text()) + '\n' +
                     '\n'.join(function(key, (r / 'tcg/tcg-op-vec.c').read_text())
                               for key in ['void vec_gen_2(', 'void vec_gen_3(',
-                                          'static void vec_gen_op2(', 'static void vec_gen_op3(']) + '\n' +
+                                          'static void vec_gen_op2(', 'static void vec_gen_op3(',
+                                          'void tcg_gen_mov_vec(']) + '\n' +
                     '\n'.join(function(key, (r / 'tcg/tcg-op-vec.c').read_text())
                               .replace('tcg_can_emit_vec_op(', 'fixture_vec_capability(')
                               .replace('tcg_expand_vec_op(', 'fixture_vec_expand(')
-                              for key in ['static bool do_op2(', 'static bool do_op3(']))
+                              for key in ['static bool do_op2(', 'static bool do_op3(',
+                                          'static void do_shifti(', 'static void do_shifts(']))
 with tempfile.TemporaryDirectory(prefix='tcg-global-layout-') as temporary:
     folder = Path(temporary)
     (folder / 'test.c').write_text(code)
