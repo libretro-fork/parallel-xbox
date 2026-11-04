@@ -55,7 +55,7 @@ code = code.replace('/* PRODUCTION */', '\n'.join(function(key) for key in keys)
                     function('uint64_t (dup_const)(',
                              (r / 'tcg/tcg-op-gvec.c').read_text()) + '\n' +
                     '\n'.join(function(key, (r / 'tcg/tcg-op-vec.c').read_text())
-                              for key in ['void vec_gen_2(', 'void vec_gen_3(',
+                              for key in ['void vec_gen_2(', 'void vec_gen_3(', 'void vec_gen_4(',
                                           'static void vec_gen_op2(', 'static void vec_gen_op3(',
                                           'void tcg_gen_mov_vec(']) + '\n' +
                     '\n'.join(function(key, (r / 'tcg/tcg-op-vec.c').read_text())
@@ -63,6 +63,15 @@ code = code.replace('/* PRODUCTION */', '\n'.join(function(key) for key in keys)
                               .replace('tcg_expand_vec_op(', 'fixture_vec_expand(')
                               for key in ['static bool do_op2(', 'static bool do_op3(',
                                           'static void do_shifti(', 'static void do_shifts(']))
+comparison = function('void tcg_gen_cmp_vec(', (r / 'tcg/tcg-op-vec.c').read_text())
+for original, replacement in [('tcg_can_emit_vec_op', 'fixture_vec_capability'),
+                              ('tcg_expand_vec_op', 'fixture_vec_expand'),
+                              ('TCG_TARGET_HAS_tst_vec', 'fixture_has_tst'),
+                              ('tcg_temp_new_internal', 'fixture_cmp_temp_new'),
+                              ('tcg_constant_internal', 'fixture_cmp_zero'),
+                              ('tcg_temp_free_internal', 'fixture_cmp_temp_free')]:
+    comparison = comparison.replace(original, replacement)
+code = code.replace('/* COMPARISON */', comparison)
 with tempfile.TemporaryDirectory(prefix='tcg-global-layout-') as temporary:
     folder = Path(temporary)
     (folder / 'test.c').write_text(code)

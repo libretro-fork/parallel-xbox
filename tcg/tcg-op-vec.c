@@ -386,9 +386,10 @@ void tcg_gen_sari_vec(unsigned vece, TCGv_vec r, TCGv_vec a, int64_t i)
 void tcg_gen_cmp_vec(TCGCond cond, unsigned vece,
                      TCGv_vec r, TCGv_vec a, TCGv_vec b)
 {
-    TCGTemp *rt = tcgv_vec_temp(r);
-    TCGTemp *at = tcgv_vec_temp(a);
-    TCGTemp *bt = tcgv_vec_temp(b);
+    TCGContext *s = tcg_ctx;
+    TCGTemp *rt = tcgv_vec_temp_context(s, r);
+    TCGTemp *at = tcgv_vec_temp_context(s, a);
+    TCGTemp *bt = tcgv_vec_temp_context(s, b);
     TCGTemp *tt = NULL;
     TCGArg ri = temp_arg(rt);
     TCGArg ai = temp_arg(at);

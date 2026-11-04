@@ -77,13 +77,14 @@ gpointer g_malloc0(gsize size)
 }
 /* Record only the host-specific capability/expansion boundary. The operand
  * decoding and direct IR emission below use the production implementation. */
+static bool vector_condition;
 static bool vector_immediate;
 static int vector_capability;
 static unsigned vector_queries, vector_expansions, vector_arity;
 static TCGOpcode vector_expected_op;
 static TCGType vector_expected_type;
 static unsigned vector_expected_vece;
-static TCGArg vector_expected_args[3];
+static TCGArg vector_expected_args[4];
 static int fixture_vec_capability(TCGOpcode opc, TCGType type, unsigned vece)
 {
     assert(opc == vector_expected_op && type == vector_expected_type);
@@ -99,7 +100,9 @@ static void fixture_vec_expand(TCGOpcode opc, TCGType type, unsigned vece, ...)
     va_list ap;
     va_start(ap, vece);
     for (unsigned i = 0; i < vector_arity; ++i) {
-        if (vector_immediate && i == 2) {
+        if (vector_condition && i == 3) {
+            assert(va_arg(ap, int) == (int)vector_expected_args[i]);
+        } else if (vector_immediate && i == 2) {
             assert(va_arg(ap, int64_t) == (int64_t)vector_expected_args[i]);
         } else {
             assert(va_arg(ap, TCGArg) == vector_expected_args[i]);
@@ -107,7 +110,29 @@ static void fixture_vec_expand(TCGOpcode opc, TCGType type, unsigned vece, ...)
     }
     va_end(ap);
 }
+static bool fixture_has_tst;
+static TCGContext *cmp_owner;
+static unsigned cmp_allocations, cmp_frees;
+static TCGTemp *fixture_cmp_temp_new(TCGType type, TCGTempKind kind)
+{
+    assert(kind == TEMP_EBB);
+    ++cmp_allocations;
+    cmp_owner->temps[100].base_type = type;
+    return &cmp_owner->temps[100];
+}
+static TCGTemp *fixture_cmp_zero(TCGType type, int64_t value)
+{
+    assert(value == 0 && cmp_allocations == 1);
+    cmp_owner->temps[101].base_type = type;
+    return &cmp_owner->temps[101];
+}
+static void fixture_cmp_temp_free(TCGTemp *temp)
+{
+    assert(temp == &cmp_owner->temps[100]);
+    ++cmp_frees;
+}
 /* PRODUCTION */
+/* COMPARISON */
 
 static void check_ops(TCGContext *owner, bool current)
 {
@@ -306,6 +331,75 @@ static void check_vector_shifts(TCGContext *owner)
     }
     vector_immediate = false;
     printf("TCG vector shifts: %u immediate/scalar, zero, edge and alias cases PASS\n", cases);
+}
+
+static void check_vector_comparison(TCGContext *owner)
+{
+    static unsigned char arena[4096] QEMU_ALIGNED(16);
+    static const TCGCond conds[] = { TCG_COND_EQ, TCG_COND_NE,
+        TCG_COND_LT, TCG_COND_LE, TCG_COND_GT, TCG_COND_GE,
+        TCG_COND_LTU, TCG_COND_LEU, TCG_COND_GTU, TCG_COND_GEU,
+        TCG_COND_TSTEQ, TCG_COND_TSTNE };
+    cmp_owner = owner;
+    vector_condition = true;
+    vector_arity = 4;
+    vector_expected_op = INDEX_op_cmp_vec;
+    unsigned cases = 0;
+    for (TCGType type = TCG_TYPE_V64; type <= TCG_TYPE_V256; ++type)
+    for (unsigned vece = 0; vece < 4; ++vece)
+    for (unsigned ci = 0; ci < ARRAY_SIZE(conds); ++ci)
+    for (unsigned host = 0; host < 2; ++host)
+    for (unsigned alias = 0; alias < 3; ++alias)
+    for (int cap = -1; cap <= 1; cap += 2) {
+        unsigned ai = alias == 1 ? 5 : 19, bi = alias == 2 ? 5 : 37;
+        TCGv_vec r = (TCGv_vec)((uintptr_t)&owner->temps[5] - (uintptr_t)owner);
+        TCGv_vec a = (TCGv_vec)((uintptr_t)&owner->temps[ai] - (uintptr_t)owner);
+        TCGv_vec b = (TCGv_vec)((uintptr_t)&owner->temps[bi] - (uintptr_t)owner);
+        owner->temps[5].base_type = type;
+        owner->temps[ai].base_type = ai == 5 ? type : TCG_TYPE_V256;
+        owner->temps[bi].base_type = bi == 5 ? type : TCG_TYPE_V256;
+        fixture_has_tst = host;
+        bool lowered = !host && (ci >= 10);
+        TCGCond cond = conds[ci];
+        TCGCond output_cond = lowered ? (ci == 10 ? TCG_COND_EQ : TCG_COND_NE) : cond;
+        vector_expected_type = type;
+        vector_expected_vece = vece;
+        vector_expected_args[0] = temp_arg(&owner->temps[5]);
+        vector_expected_args[1] = temp_arg(&owner->temps[lowered ? 100 : ai]);
+        vector_expected_args[2] = temp_arg(&owner->temps[lowered ? 101 : bi]);
+        vector_expected_args[3] = output_cond;
+        vector_capability = cap;
+        vector_queries = vector_expansions = cmp_allocations = cmp_frees = 0;
+        owner->pool_cur = (uintptr_t)arena;
+        owner->pool_end = owner->pool_cur + sizeof(arena);
+        owner->nb_ops = 0;
+        owner->emit_before_op = NULL;
+        QTAILQ_INIT(&owner->ops);
+        QTAILQ_INIT(&owner->free_ops);
+        tcg_gen_cmp_vec(cond, vece, r, a, b);
+        assert(vector_queries == 1 && vector_expansions == (unsigned)(cap < 0));
+        assert(cmp_allocations == (unsigned)lowered && cmp_frees == cmp_allocations);
+        assert(owner->nb_ops == (int)lowered + (cap > 0));
+        TCGOp *op = QTAILQ_FIRST(&owner->ops);
+        if (lowered) {
+            assert(op && op->opc == INDEX_op_and_vec);
+            assert(TCGOP_TYPE(op) == type && TCGOP_VECE(op) == 0);
+            assert(op->args[0] == temp_arg(&owner->temps[100]));
+            assert(op->args[1] == temp_arg(&owner->temps[ai]));
+            assert(op->args[2] == temp_arg(&owner->temps[bi]));
+            op = QTAILQ_NEXT(op, link);
+        }
+        if (cap > 0) {
+            assert(op && op->opc == INDEX_op_cmp_vec);
+            assert(TCGOP_TYPE(op) == type && TCGOP_VECE(op) == vece);
+            for (unsigned j = 0; j < 4; ++j) assert(op->args[j] == vector_expected_args[j]);
+            op = QTAILQ_NEXT(op, link);
+        }
+        assert(!op);
+        ++cases;
+    }
+    vector_condition = false;
+    printf("TCG vector comparisons: %u conditions, test-lowering, host and alias cases PASS\n", cases);
 }
 
 static void check_rollback(TCGContext *owner)
@@ -832,6 +926,7 @@ int main(void)
     check_count_operands(&context);
     check_vector_operands(&context, &other);
     check_vector_shifts(&context);
+    check_vector_comparison(&context);
     puts("TCG rollback: suffix/full/empty removal, branch uses and reuse PASS");
     puts("TCG ops: owners, allocation/reuse, insertion order and epilogues PASS");
     printf("TCG global layout: %d-bit direct/indirect globals, %shandles and frame PASS\n",

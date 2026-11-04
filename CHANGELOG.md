@@ -57,6 +57,8 @@
 
 ## Unreleased
 
+- Reuse the TCG context when decoding vector comparison operands, avoiding repeated Windows TLS lookups while preserving test-condition lowering and host expansion paths.
+
 - Reuse the TCG context when decoding immediate and scalar-count vector shift operands, avoiding repeated Windows TLS lookups while retaining zero-shift moves and host expansion paths.
 
 - Reuse the TCG context when decoding optional vector arithmetic operands, avoiding repeated Windows TLS lookups while preserving direct, expanded and unsupported capability paths.
