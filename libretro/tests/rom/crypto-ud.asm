@@ -59,7 +59,7 @@ start:
  mov cr0,eax
  mov eax,1
  cpuid
- test ecx,0x02000002
+ test ecx,0x42000002
  jnz fail
  movups xmm0,[pattern]
  movups xmm1,[pattern]
@@ -81,6 +81,33 @@ start:
  trap vaesenc ymm0,ymm1,[0x1000000]
  trap vpclmulqdq xmm0,xmm1,[0x1000000],0x11
  trap vaesimc xmm0,[0x1000000]
+ ; Random instructions are absent too, with no destination writes.
+ mov eax,0x76543210
+ trap rdrand ax
+ check eax,0x76543210
+ trap rdrand eax
+ check eax,0x76543210
+ trap rdseed ax
+ check eax,0x76543210
+ trap rdseed eax
+ check eax,0x76543210
+ trap db 0x0f,0xc7,0x35,0,0,0,1 ; invalid memory RDRAND [0x1000000]
+ trap db 0x0f,0xc7,0x3d,0,0,0,1 ; invalid memory RDSEED [0x1000000]
+ trap db 0xf3,0x0f,0xc7,0xf0   ; invalid REP RDRAND
+ trap db 0xf2,0x0f,0xc7,0xf0   ; invalid REPNZ RDRAND
+ trap db 0xf3,0x0f,0xc7,0xf8   ; RDPID remains independently unsupported
+ check eax,0x76543210
+ ; Preserve the supported CMPXCHG8B neighbor in the same opcode group.
+ mov dword [R+128],0x11223344
+ mov dword [R+132],0x55667788
+ mov eax,0x11223344
+ mov edx,0x55667788
+ mov ebx,0xaabbccdd
+ mov ecx,0xeeff0011
+ lock cmpxchg8b [R+128]
+ jnz fail
+ check dword [R+128],0xaabbccdd
+ check dword [R+132],0xeeff0011
  mov eax,cr0
  or eax,8
  mov cr0,eax
@@ -111,7 +138,7 @@ start:
  jmp 0x3ffffe
 after_fetch:
  check dword [R+12],1
- check ebp,20
+ check ebp,29
  mov dword [R],0x43525950
 .halt:
  cli

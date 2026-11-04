@@ -18,12 +18,9 @@
  */
 
 #include "qemu/osdep.h"
-#include "qemu/log.h"
 #include "cpu.h"
 #include "qemu/host-utils.h"
 #include "exec/helper-proto.h"
-#include "qapi/error.h"
-#include "qemu/guest-random.h"
 #include "helper-tcg.h"
 
 //#define DEBUG_MULDIV
@@ -439,24 +436,4 @@ void helper_cr4_testbit(CPUX86State *env, uint32_t bit)
     if (unlikely((env->cr[4] & bit) == 0)) {
         raise_exception_ra(env, EXCP06_ILLOP, GETPC());
     }
-}
-
-target_ulong HELPER(rdrand)(CPUX86State *env)
-{
-    Error *err = NULL;
-    target_ulong ret;
-
-    if (qemu_guest_getrandom(&ret, sizeof(ret), &err) < 0) {
-        qemu_log_mask(LOG_UNIMP, "rdrand: Crypto failure: %s",
-                      error_get_pretty(err));
-        error_free(err);
-        /* Failure clears CF and all other flags, and returns 0.  */
-        env->cc_src = 0;
-        ret = 0;
-    } else {
-        /* Success sets CF and clears all others.  */
-        env->cc_src = CC_C;
-    }
-    env->cc_op = CC_OP_EFLAGS;
-    return ret;
 }

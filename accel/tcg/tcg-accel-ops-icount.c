@@ -26,7 +26,6 @@
 #include "qemu/osdep.h"
 #include "exec/icount.h"
 #include "qemu/main-loop.h"
-#include "qemu/guest-random.h"
 #include "hw/core/cpu.h"
 
 #include "tcg-accel-ops.h"

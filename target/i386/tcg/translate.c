@@ -3770,12 +3770,8 @@ static void gen_multi0F(DisasContext *s, X86DecodedInsn *decode)
                 goto illegal_op;
             }
         do_rdrand:
-            translator_io_start(&s->base);
-            gen_helper_rdrand(s->T0, tcg_env);
-            rm = (modrm & 7) | REX_B(s);
-            gen_op_mov_reg_v(s, dflag, rm, s->T0);
-            assume_cc_op(s, CC_OP_EFLAGS);
-            break;
+            /* Neither random instruction exists on the fixed Xbox CPU. */
+            goto illegal_op;
 
         default:
             goto illegal_op;

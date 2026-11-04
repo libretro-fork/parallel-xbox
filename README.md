@@ -375,3 +375,9 @@ decoder feature checks. Their emitters share the illegal-opcode path and
 the unused engines/helpers are removed. A synthetic ROM checks 20 traps,
 unchanged XMM/flags, inaccessible operands, CR0 modes and fetch-page faults.
 Host libretro-common hash acceleration and OS entropy are unaffected.
+
+Unsupported RDRAND/RDSEED instructions retain the decoder illegal-opcode
+path without guest random helpers, seed hooks or RNG TLS. EEPROM creation
+still initializes and uses OS entropy directly. Libslirp keeps its per-instance
+GRand for existing NAT behavior; this is separate from the removed guest RNG.
+The CPU seed field was private host state, not serialized guest state.

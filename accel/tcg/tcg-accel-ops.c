@@ -32,7 +32,6 @@
 #include "system/tcg.h"
 #include "exec/icount.h"
 #include "qemu/main-loop.h"
-#include "qemu/guest-random.h"
 #include "qemu/timer.h"
 #include "exec/cputlb.h"
 #include "exec/hwaddr.h"

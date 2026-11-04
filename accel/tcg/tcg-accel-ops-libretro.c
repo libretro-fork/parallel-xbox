@@ -14,7 +14,6 @@
 
 #include "qemu/osdep.h"
 #include "qemu/main-loop.h"
-#include "qemu/guest-random.h"
 #include "qemu/rcu.h"
 #include "system/tcg.h"
 #include "system/cpus.h"
@@ -54,7 +53,6 @@ void lr_start_vcpu(CPUState *cpu)
         rcu_add_force_rcu_notifier(&lr_force_rcu);
         lr_tcg_registered = true;
     }
-    qemu_guest_random_seed_thread_part2(cpu->random_seed);
     cpu_thread_signal_created(cpu);
 }
 

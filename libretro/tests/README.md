@@ -3869,8 +3869,13 @@ shutdown drain, 32 reinitializations and startup failure fallback.
 `test-pipeline-cache-export.py` retains the direct scratch/growth, incomplete
 data, write retry and teardown byte oracle with the immutable cache path.
 
-`rom/crypto-ud.asm` checks twenty unsupported AES/PCLMUL legacy/VEX forms,
+`rom/crypto-ud.asm` checks twenty-nine unsupported crypto/random forms,
 register and unmapped-memory operands, exact fault EIP, carry/XMM preservation
 and CR0 EM/TS modes. An instruction spanning an unmapped page must raise
 fetch #PF rather than #UD, with the original EIP and CR2. It checks feature
-bits remain absent and reports CRYP, twenty #UD traps and one #PF.
+bits remain absent and reports CRYP, twenty-nine #UD traps and one #PF.
+
+The crypto ROM includes 16/32-bit RDRAND/RDSEED, invalid memory/prefix
+encodings, neighboring unsupported RDPID and supported CMPXCHG8B. Random
+instruction traps preserve the destination register. No OS entropy is
+substituted with a deterministic generator in production.

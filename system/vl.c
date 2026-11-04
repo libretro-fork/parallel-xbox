@@ -114,7 +114,7 @@
 #include "qapi/clone-visitor.h"
 #include "qom/object_interfaces.h"
 #include "semihosting/semihost.h"
-#include "crypto/init.h"
+#include "crypto/random.h"
 #include "qapi/qapi-events-run-state.h"
 #include "qapi/qapi-visit-block-core.h"
 #include "qapi/qapi-visit-compat.h"
@@ -128,7 +128,6 @@
 #include "qapi/qapi-commands-ui.h"
 #include "block/qdict.h"
 #include "qapi/qmp/qerror.h"
-#include "qemu/guest-random.h"
 #include "qemu/keyval.h"
 
 #include <glib/gstdio.h>
@@ -1719,7 +1718,7 @@ void qemu_init(void)
 /*****************************************************************************/
 
     // init earlier because it's needed for eeprom generation
-    qcrypto_init(&error_fatal);
+    qcrypto_random_init(&error_fatal);
 
     /*
      * The machine standalone xemu's launcher puts on QEMU's command line,

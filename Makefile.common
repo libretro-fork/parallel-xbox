@@ -89,7 +89,6 @@ SOURCES_DATA_ASM := $(CORE_DIR)/libretro/data.S
 # QEMU's utility library and the generated QAPI code
 SOURCES_UTIL := \
 	$(CORE_DIR)/util/libretro-jit.c \
-	$(CORE_DIR)/crypto/init.c \
 	$(CORE_DIR)/crypto/random-platform.c \
 	$(CORE_DIR)/libretro/gen/qapi/qapi-builtin-types.c \
 	$(CORE_DIR)/libretro/gen/qapi/qapi-builtin-visit.c \
@@ -195,7 +194,6 @@ SOURCES_UTIL := \
 	$(CORE_DIR)/util/file-map.c \
 	$(CORE_DIR)/util/fifo8.c \
 	$(CORE_DIR)/util/getauxval.c \
-	$(CORE_DIR)/util/guest-random.c \
 	$(CORE_DIR)/util/id.c \
 	$(CORE_DIR)/util/int128.c \
 	$(CORE_DIR)/util/interval-tree.c \
