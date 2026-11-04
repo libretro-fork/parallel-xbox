@@ -31,6 +31,8 @@
 
 ## Unreleased
 
+- DSP: execute X:qq absolute bit-test jumps natively, retaining single peripheral reads and correct loop-end handling.
+
 - DSP: execute X:qq bit-test relative branches natively, preserving flags and reading peripherals once on taken, untaken and loop-end paths.
 
 - DSP: execute X:qq peripheral bit operations natively, with exact read/modify/write side effects, carry and status regression coverage.

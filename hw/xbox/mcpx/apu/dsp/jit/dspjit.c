@@ -3537,7 +3537,9 @@ static bool emit_control(Tr *t, const Insn *in)
             acc_spill_all(t, false);
         } else {
             acc_spill_all(t, false);
-            if (strstr(name, ":pp")) {
+            if (strstr(name, ":qq")) {
+                h_mov_ri(e, EA1, 0xffff80 + reg);
+            } else if (strstr(name, ":pp")) {
                 h_mov_ri(e, EA1, 0xFFFFC0 + reg);
             } else if (strstr(name, ":aa")) {
                 h_mov_ri(e, EA1, reg);

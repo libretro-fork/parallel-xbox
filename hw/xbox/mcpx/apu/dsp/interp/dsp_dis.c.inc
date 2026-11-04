@@ -1171,6 +1171,18 @@ static void dis_jclr_ea(dsp_core_t* dsp)
     );
 }
 
+static void dis_jump_qq(dsp_core_t* dsp, const char *name)
+{
+    dsp->disasm_cur_inst_len++;
+    sprintf(dsp->disasm_str_instr, "%s #%u,x:$%06x,p:$%06x", name,
+            dsp->disasm_cur_inst & 15,
+            0xffff80 + ((dsp->disasm_cur_inst >> 8) & 63),
+            read_memory_p(dsp, dsp->pc + 1));
+}
+
+static void dis_jclr_qq(dsp_core_t* dsp) { dis_jump_qq(dsp, "jclr"); }
+static void dis_jset_qq(dsp_core_t* dsp) { dis_jump_qq(dsp, "jset"); }
+
 static void dis_jclr_pp(dsp_core_t* dsp)
 {
     /* jclr #n,x:pp,p:xx */
