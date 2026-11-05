@@ -59,6 +59,8 @@
 
 ## Unreleased
 
+- Audio: direct interleaved DSP output advances a channel cursor instead of dividing every sample, including across scatter-gather boundaries.
+
 - Audio: sequential DSP RAM DMA conversions avoid per-sample callback and channel dispatch while preserving masking and overlap order.
 
 - Audio: contiguous outbound DSP DMA words now use bulk copies, preserving conversion and overlapping-transfer ordering.

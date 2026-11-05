@@ -92,21 +92,52 @@ int main(void)
             }
         }
     }
+    /* All hardware channel counts, including non-powers of two. Start and
+     * split on every item so a callback can resume within a channel group. */
+    for (unsigned channels = 1; channels <= 16; channels++) {
+        for (unsigned blocks = 1; blocks <= 7; blocks++) {
+            unsigned total = channels * blocks;
+            for (unsigned start = 0; start <= total; start++) {
+                for (unsigned size = 2; size <= 4; size += 2) {
+                    uint8_t out[512], ref[512];
+                    memset(out, 0xa5, sizeof(out));
+                    memset(ref, 0xa5, sizeof(ref));
+                    for (unsigned i = 0; i < 128; i++) words[i] = 0xfedcba98u ^ (i * 0x1234567u);
+                    DmaTransfer t = { .mem = words, .item_size = size, .to_host = true,
+                        .interleave = true, .channels = channels, .blocks = blocks, .n = start };
+                    DmaTransfer r = t;
+                    scalar(&r, ref + 1, (total - start) * size);
+                    for (unsigned n = start; n < total; n++) {
+                        dma_run(&t, out + 1 + (n - start) * size, size);
+                        dma_run(&t, out + 1 + (n - start + 1) * size, 0);
+                    }
+                    if (memcmp(out, ref, sizeof(out)) || t.n != r.n) return 1;
+                    /* Also execute the entire span without splitting. */
+                    t.n = start;
+                    memset(out, 0xa5, sizeof(out));
+                    dma_run(&t, out + 1, (total - start) * size);
+                    if (memcmp(out, ref, sizeof(out)) || t.n != r.n) return 1;
+                    cases++;
+                }
+            }
+        }
+    }
     /* Aliasing must retain the scalar read/write order in either direction,
      * including host addresses unaligned to DSP words and partial spans. */
-    for (unsigned direction = 0; direction < 2; direction++) {
+    for (unsigned mode = 0; mode < 4; mode++) {
         for (unsigned size = 2; size <= 4; size += 2) {
             for (unsigned dst = 0; dst < 192; dst++) {
                 uint32_t actual[128], expected[128];
                 for (unsigned i = 0; i < 128; i++) actual[i] = expected[i] = 0xffa50000 | i;
                 DmaTransfer t = { .mem = actual + 8, .item_size = size,
-                    .item_mask = 0xffffff, .to_host = direction, .n = 2 };
+                    .item_mask = 0xffffff, .to_host = mode & 1, .n = 2,
+                    .interleave = !!(mode & 2), .channels = 4, .blocks = 24 };
                 DmaTransfer r = t;
                 r.mem = expected + 8;
                 scalar(&r, (uint8_t *)expected + dst, 32 * size);
                 dma_run(&t, (uint8_t *)actual + dst, 32 * size);
                 if (memcmp(actual, expected, sizeof(actual)) || t.n != r.n) {
-                    fprintf(stderr, "DMA overlap mismatch dir=%u size=%u offset=%u\n", direction, size, dst);
+                    fprintf(stderr, "DMA overlap mismatch dir=%u size=%u offset=%u\n", mode, size, dst);
                     return 1;
                 }
                 cases++;

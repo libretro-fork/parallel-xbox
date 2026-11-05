@@ -129,6 +129,37 @@ static void dma_run(void *user, uint8_t *host, size_t bytes)
             return;
         }
     }
+    /* Start at the current scatter-gather item, then walk channels without
+     * dividing every sample. Read and publish each word in the original order
+     * so even overlapping host/DSP spans retain their scalar semantics. */
+    if (t->mem && t->to_host && t->interleave && items) {
+        uint32_t channel = t->n % t->channels;
+        uint32_t block = t->n / t->channels;
+        uint32_t idx = channel * t->blocks + block;
+        if (t->item_size == 2) {
+            for (size_t i = 0; i < items; i++) {
+                uint16_t v = t->mem[idx] >> 8;
+                memcpy(host + i * 2, &v, 2);
+                idx += t->blocks;
+                if (++channel == t->channels) {
+                    channel = 0;
+                    idx = ++block;
+                }
+            }
+        } else {
+            for (size_t i = 0; i < items; i++) {
+                uint32_t v = t->mem[idx];
+                memcpy(host + i * 4, &v, 4);
+                idx += t->blocks;
+                if (++channel == t->channels) {
+                    channel = 0;
+                    idx = ++block;
+                }
+            }
+        }
+        t->n += items;
+        return;
+    }
     /* Plain sequential RAM needs neither callback dispatch nor channel
      * indexing per item. Keep aliasing legal: overlapping runs must retain
      * scalar ordering, and unaligned host words still use memcpy. */
