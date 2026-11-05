@@ -4604,7 +4604,7 @@ memory must match the scalar oracle, along with exact ordered callback
 addresses, spaces, values, counts, complete host/DSP buffers and cursors.
 
 `make dspdmaspans` checks read-only P-memory borrowing through both actual C
-backend operation tables: 131116 range/direction/raw-word/cache checks.
+backend operation tables: 442412 range/direction/raw-word/cache checks.
 The DMA mem_ptr callback now receives write=true for DSP destinations and
 write=false for sources. A validated P read span can use direct transfer;
 P writes always return NULL and retain per-word invalidation callbacks.
@@ -4629,3 +4629,16 @@ that cost. Borrowing the source removes per-word P read callbacks, not the
 required copy/conversion into host storage.
 Big-endian hosts retain byte-order-aware P callbacks rather than borrowing
 raw program words. The direct-span tests above ran on little-endian hosts.
+
+P-source validation combines four independent OR lanes, then reduces the
+remaining 0-3 words and tests the forbidden upper byte once. This permits
+SIMD generation without architecture-specific intrinsics and shortens the
+valid-span branch/dependency chains. Invalid sources still return NULL for
+strict ordered reads; they are not normalized or exposed directly. The scan
+stays within count, including zero and one-past-end empty spans.
+
+The expanded 442412-check matrix poisons every bit 24-31 at every PRAM word,
+checking full spans, a single poisoned word, odd/short prefix tails, empty
+spans and valid prefixes ending immediately before the poison. Direction,
+range/overflow and actual DMA code-invalidation checks remain. This is a
+validation-cost optimization; the source is still scanned and transferred.

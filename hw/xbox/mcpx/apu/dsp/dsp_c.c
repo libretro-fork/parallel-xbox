@@ -58,9 +58,18 @@ static uint32_t *c_dma_mem_ptr(void *opaque, int space, uint32_t addr,
      * read_memory_p's rejection of uninitialized/out-of-width words: fall
      * back to ordered callbacks rather than bypassing their strict check. */
     if (mem && space == DSP_SPACE_P) {
-        for (uint32_t i = 0; i < count; i++) {
-            if (mem[i] & 0xff000000) return NULL;
+        /* A reduction avoids a branch per valid program word and permits
+         * vectorization. Invalid spans still use the strict read callbacks. */
+        uint32_t a = 0, b = 0, c = 0, d = 0, i = 0;
+        for (; count - i >= 4; i += 4) {
+            a |= mem[i];
+            b |= mem[i + 1];
+            c |= mem[i + 2];
+            d |= mem[i + 3];
         }
+        uint32_t combined = a | b | c | d;
+        for (; i < count; i++) combined |= mem[i];
+        if (combined & 0xff000000) return NULL;
     }
     return mem;
 }

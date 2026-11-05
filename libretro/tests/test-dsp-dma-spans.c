@@ -53,12 +53,19 @@ int main(void)
             }
         }
         REQUIRE(!dma->mem_ptr(c, DSP_SPACE_P, UINT32_MAX - 1, 3, false));
-        for (unsigned i = 0; i < DSP_PRAM_SIZE; i++) {
-            uint32_t old = c->pram[i];
-            c->pram[i] |= 0x80000000;
-            REQUIRE(!dma->mem_ptr(c, DSP_SPACE_P, 0, DSP_PRAM_SIZE, false));
-            REQUIRE(dma->mem_ptr(c, DSP_SPACE_P, i, 0, false) == c->pram + i);
-            c->pram[i] = old;
+        /* Every forbidden bit at every position, including reduction tails
+         * and valid prefixes immediately before the poisoned word. */
+        for (unsigned bit = 24; bit < 32; bit++) {
+            for (unsigned i = 0; i < DSP_PRAM_SIZE; i++) {
+                uint32_t old = c->pram[i];
+                c->pram[i] |= UINT32_C(1) << bit;
+                REQUIRE(!dma->mem_ptr(c, DSP_SPACE_P, 0, DSP_PRAM_SIZE, false));
+                REQUIRE(dma->mem_ptr(c, DSP_SPACE_P, i, 0, false) == c->pram + i);
+                REQUIRE(!dma->mem_ptr(c, DSP_SPACE_P, i, 1, false));
+                REQUIRE(!dma->mem_ptr(c, DSP_SPACE_P, 0, i + 1, false));
+                REQUIRE(dma->mem_ptr(c, DSP_SPACE_P, 0, i, false) == c->pram);
+                c->pram[i] = old;
+            }
         }
         /* Prime CLR A in both execution engines, then replace it through
          * incoming DMA. Bypassing P write callbacks would leave stale code. */
