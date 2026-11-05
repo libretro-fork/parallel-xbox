@@ -59,6 +59,8 @@
 
 ## Unreleased
 
+- Add real-queue Vulkan completion-drain regression coverage for ready-table bytes, eviction/adoption ownership, FIFO order and state markers. Cross-cache concurrent controls rejected the first render-side copy-removal candidates, so the rendering path is unchanged.
+
 - Add a tested two-span queue reader for future Vulkan completion copy removal. It can borrow wrapped records without moving them or refreshing a producer cursor that already covers the requested bytes; renderer behavior is unchanged until integration.
 
 - Build Vulkan worker completion records directly in available queue storage, avoiding the intermediate full-record copy. Preserve exact record bytes, reference ownership and publication order, with the existing copy/drop behavior at ring boundaries or when space is unavailable.

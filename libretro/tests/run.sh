@@ -305,6 +305,7 @@ python3 "$here/test-vk-vertex-copies.py" "$here/../.." "$cc"
 python3 "$here/test-vk-vertex-formats.py" "$here/../.." "$cc"
 python3 "$here/test-vk-worker-modules.py" "$here/../.." "$cc"
 python3 "$here/test-worker-direct.py" "$here/../.." "$cc"
+python3 "$here/test-worker-drain.py" "$here/../.." "$cc"
 python3 "$here/test-worker-key-hash.py" "$here/../.." "$cc" --clear-baseline --check-only
 python3 "$here/test-pre-module-keys.py" "$here/../.." "$cc" --fragment-clear-baseline --check-only
 python3 "$here/test-prepare-xiso.py"
