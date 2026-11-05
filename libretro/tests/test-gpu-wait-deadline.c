@@ -76,8 +76,8 @@ int main(void){
   assert(timers==1);cases++;
  }
  /* Disk completions make progress on either dispatch path and must not park. */
- for(unsigned path=0;path<3;path++) {
-  reset();disk_progress=true;lr_disk_pending=1;
+ for(unsigned path=0;path<3;path++)for(unsigned hint=0;hint<2;hint++) {
+  reset();disk_progress=true;lr_disk_pending=hint;
   if(path==1)ioctx.fds=true;
   if(path==2)main_loop_poll_notifiers.notifiers.empty=false;
   main_loop_wait(false);assert(!disk_progress && !prepared && !committed && !timed);

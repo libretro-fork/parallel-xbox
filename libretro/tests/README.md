@@ -4551,3 +4551,24 @@ allocations; the legacy initializer must retain its previous behavior. This
 checks rejection before construction, rather than accepting a mutex fallback
 and discovering it after a worker starts. `EC_INIT_BINARY`, `EC_INIT_CFLAGS`
 and `EC_INIT_SKIP_RUN` support cross-compiled native execution.
+
+### Deferred disk providers
+
+`python3 libretro/tests/test-block-completion.py . [cc] provider` compiles the
+actual disk slot, readiness, cancellation and drain functions. A held provider
+survives 10,000 owner polls without an early callback or frame-busy hint. Drain
+checks once and returns without waiting. Mixed ordinary/provider completion,
+synchronous/asynchronous cancellation, slot reuse and callback-started requests
+check ready/waiting/in-flight accounting and snapshot ordering. The full suite
+also retains the ordinary 100,000-schedule regression (38,562 callbacks).
+Linux runs with ASan/UBSan; existing BLOCK_COMPLETION_TEST_OUTPUT/NO_RUN support
+native cross-builds. IDE TRIM and completion benchmark extraction use the same
+provider helpers and keep support for older benchmark source snapshots.
+
+The actual main-loop wait fixture now covers a provider becoming ready while
+lr_disk_pending is zero, across its no-FD, descriptor and notifier paths. Polling
+must discover the completion before the coordinator considers parking. The
+frame-busy hint counts ready callbacks, not unfinished storage work. No CHD
+medium calls the deferred API yet: pending IDE/DMA state must be made replayable
+before that connection is enabled. In particular, a drain that made no progress
+is not proof that an external provider has finished.

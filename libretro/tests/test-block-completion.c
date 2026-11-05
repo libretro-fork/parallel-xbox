@@ -1,3 +1,4 @@
+#include "block/libretro-disk-provider.h"
 /* Real request/completion/drain code with the fixed-slot owner dispatcher.
  * SPDX-License-Identifier: GPL-2.0-or-later */
 #include <assert.h>
@@ -38,7 +39,7 @@ struct BlockBackend {
 };
 static const AIOCBInfo lr_disk_aiocb_info = {sizeof(LRDiskReq), NULL};
 static QTAILQ_HEAD(, BlockBackend) lr_disks = QTAILQ_HEAD_INITIALIZER(lr_disks);
-static int lr_disk_pending;
+static int lr_disk_pending, lr_disk_waiting;
 static unsigned kicks, slot_visits, bh_polls;
 static void (*bh_work)(void);
 static void *first_cpu=(void *)(uintptr_t)1;
@@ -149,6 +150,62 @@ static void empty_progress(void)
     printf("empty block progress: slot visits=%u, BH fallback and deferred enqueue/callback PASS\n",empty_visits);
 }
 
+typedef struct Gate {
+    LRDiskProvider provider;
+    bool ready; int result, checks, abandons, calls, received;
+    struct Gate *chain;
+} Gate;
+static bool provider_ready(LRDiskProvider *opaque, int *ret)
+{
+    Gate *g=(Gate *)opaque; g->checks++;
+    if(!g->ready)return false;
+    *ret=g->result;return true;
+}
+static void provider_abandon(LRDiskProvider *opaque)
+{
+    Gate *g=(Gate *)opaque;assert(!g->abandons);g->abandons++;
+}
+static void provider_complete(void *opaque,int ret)
+{
+    Gate *g=opaque;assert(!g->calls);g->calls++;g->received=ret;
+    if(g->chain)lr_disk_submit_deferred(&backends[1],&g->chain->provider,provider_complete,g->chain);
+}
+static void provider_test(void)
+{
+    Gate g={.provider={provider_ready,provider_abandon},.result=-EIO};
+    BlockAIOCB *a=lr_disk_submit_deferred(&backends[0],&g.provider,provider_complete,&g);
+    assert(a && !lr_disk_pending && lr_disk_waiting==1);
+    for(unsigned i=0;i<10000;i++)assert(!lr_disk_poll());
+    assert(g.checks==10000 && !g.calls && backends[0].in_flight==1);
+    blk_drain(&backends[0]);assert(g.checks==10001 && !g.calls);
+    bdrv_drain_all();assert(g.checks==10002 && !g.calls);
+    Gate ordinary={0};
+    lr_disk_submit(&backends[1],0,provider_complete,&ordinary);
+    assert(lr_disk_pending==1 && lr_disk_waiting==1);
+    assert(lr_disk_poll() && ordinary.calls==1 && !g.calls);
+    assert(!lr_disk_pending && lr_disk_waiting==1);
+    g.ready=true;assert(lr_disk_poll());
+    assert(g.calls==1 && g.received==-EIO && !g.abandons);
+    assert(!lr_disk_pending && !lr_disk_waiting && !backends[0].in_flight);
+    for(unsigned async=0;async<2;async++){
+        g=(Gate){.provider={provider_ready,provider_abandon}};a=lr_disk_submit_deferred(&backends[0],&g.provider,provider_complete,&g);
+        if(async)blk_aio_cancel_async(a);else blk_aio_cancel(a);
+        assert(g.calls==1 && g.received==-ECANCELED && g.abandons==1 && !g.checks);
+        assert(!lr_disk_pending && !lr_disk_waiting && !backends[0].in_flight);
+        g.ready=true;assert(!lr_disk_poll());blk_aio_cancel(a);
+        assert(g.calls==1 && g.abandons==1);
+    }
+    Gate next={.provider={provider_ready,provider_abandon}};
+    g=(Gate){.provider={provider_ready,provider_abandon},.ready=true,.chain=&next};
+    lr_disk_submit_deferred(&backends[0],&g.provider,provider_complete,&g);
+    assert(lr_disk_poll() && g.calls==1 && !next.calls && !next.checks);
+    assert(!lr_disk_pending && lr_disk_waiting==1 && !lr_disk_poll());
+    assert(next.checks==1 && !next.calls);
+    next.ready=true;assert(lr_disk_poll() && next.calls==1);
+    assert(!lr_disk_pending && !lr_disk_waiting && !backends[1].in_flight);
+    puts("block provider: bounded readiness, no frame-busy hint, nonwaiting drain, cancellation and callback snapshots PASS");
+}
+
 int main(int argc, char **argv)
 {
     assert(argc == 2);
@@ -164,6 +221,7 @@ int main(int argc, char **argv)
         }
         QTAILQ_INSERT_TAIL(&lr_disks, blk, link);
     }
+    if(!strcmp(mode,"provider")) {provider_test();return 0;}
     if(!strcmp(mode,"empty-progress")) { empty_progress(); return 0; }
     if(!strcmp(mode,"stress")) {
         bool live[2*LR_DISK_REQS+8]={0};unsigned rng=42,submitted=0,finished=0;

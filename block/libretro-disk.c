@@ -12,7 +12,7 @@
  * hw/block, system/dma-helpers.c) is the part of QEMU's BlockBackend API
  * implemented here.
  *
- * A request is done when it is made, on the emulator thread: a read or a
+ * An ordinary file request is done when made, on the emulator thread: a read or a
  * write is one positional system call into the guest's own memory (the
  * request's I/O vector), and its completion runs from its fixed slot at the
  * next pass of the frame loop, as QEMU's callers expect (never inside the
@@ -23,6 +23,13 @@
  * waits for a completion as for the GPU (lr_disk_pending,
  * ui/libretro.c), so a guest idling on its disk does not skip ahead to its
  * next timer first.
+ *
+ * A deferred provider reserves the same owner slot, but its private result
+ * may be unfinished across frames. Poll checks readiness once per pass; its
+ * work is not a device-busy wait reason. Only the serialized owner publishes
+ * a completion. Cancellation abandons the provider without waiting or copying
+ * into guest memory. Devices must snapshot/replay unfinished commands before
+ * mounting asynchronous media; generic drain only makes ready progress.
  *
  * A guest's flush (ATA FLUSH CACHE) completes at once on a raw image: a
  * write is in the host's page cache when it returns, which a crash of the
@@ -53,6 +60,7 @@
 #include "block/block_int-io.h"
 #include "block/snapshot.h"
 #include "block/libretro-disk.h"
+#include "block/libretro-disk-deferred.h"
 #include "block/libretro-file.h"
 #include "block/libretro-read-view.h"
 #include "block/libretro-vfs-read.h"
@@ -98,8 +106,11 @@ typedef struct LRMedium {
 typedef struct LRDiskReq {
     BlockAIOCB common;
     BlockBackend *blk;
-    bool dispatch;     /* included in this owner dispatch snapshot */
+    /* Keep the optional provider and flags packed inside the existing
+     * Win64 slot footprint; ordinary hot metadata still fits in 64 bytes. */
+    LRDiskProvider *provider;
     int ret;
+    bool dispatch;      /* included in this owner dispatch snapshot */
     bool busy;          /* reserve the slot until its callback returns */
     bool completing;    /* no longer queued for cancellation/draining */
 } LRDiskReq;
@@ -128,7 +139,8 @@ static const AIOCBInfo lr_disk_aiocb_info = {
 static QTAILQ_HEAD(, BlockBackend) lr_disks =
     QTAILQ_HEAD_INITIALIZER(lr_disks);
 
-int lr_disk_pending;
+int lr_disk_pending; /* ready callbacks only: may keep a guest device busy */
+static int lr_disk_waiting; /* provider work: never a frame-loop wait reason */
 
 /* Set by the media-open owner from its existing partition probe, before
  * guest commands resume. Closing/replacing LRMedium clears this with it. */
@@ -459,12 +471,37 @@ bool lr_disk_change(BlockBackend *blk, const char *path, uint64_t offset,
 
 /* ---- requests ----------------------------------------------------------- */
 
+/* Provider predicates only observe/publish owned results. They must not
+ * perform I/O, wait, copy into guest memory or reenter dispatch. */
+static bool lr_disk_try_ready(LRDiskReq *r)
+{
+    LRDiskProvider *provider = r->provider;
+    if (!provider) return true;
+    if (!provider->ready(provider, &r->ret)) return false;
+    r->provider = NULL;
+    lr_disk_waiting--;
+    lr_disk_pending++;
+    return true;
+}
+
+static void lr_disk_abandon_deferred(LRDiskReq *r)
+{
+    LRDiskProvider *provider = r->provider;
+    if (provider) {
+        r->provider = NULL;
+        lr_disk_waiting--;
+        lr_disk_pending++;
+        r->ret = -ECANCELED;
+        provider->abandon(provider);
+    }
+}
+
 static void lr_disk_req_done(void *opaque)
 {
     LRDiskReq *r = opaque;
     BlockBackend *blk = r->blk;
 
-    assert(r->busy && !r->completing);
+    assert(r->busy && !r->completing && !r->provider);
     r->dispatch = false;
     r->completing = true;
     lr_disk_pending--;
@@ -499,6 +536,20 @@ static BlockAIOCB *lr_disk_submit(BlockBackend *blk, int ret,
     abort();
 }
 
+BlockAIOCB *lr_disk_submit_deferred(BlockBackend *blk,
+                                    LRDiskProvider *provider,
+                                    BlockCompletionFunc *cb, void *opaque)
+{
+    assert(provider && provider->ready && provider->abandon);
+    BlockAIOCB *acb = lr_disk_submit(blk, 0, cb, opaque);
+    LRDiskReq *r = container_of(acb, LRDiskReq, common);
+    /* The owner cannot dispatch between reserving and arming this slot. */
+    r->provider = provider;
+    lr_disk_pending--;
+    lr_disk_waiting++;
+    return acb;
+}
+
 /* The completions of every request done, now: what a cancel or a drain
  * waits for. Whether there were any. */
 static bool lr_disk_run_pending(void)
@@ -508,13 +559,14 @@ static bool lr_disk_run_pending(void)
 
     /* Completing callbacks are not queued work. Leave generic BH progress
      * to the caller when no disk completion can run. */
-    if (!lr_disk_pending) {
+    if (!lr_disk_pending && !lr_disk_waiting) {
         return false;
     }
 
     QTAILQ_FOREACH(blk, &lr_disks, link) {
         for (int i = 0; i < LR_DISK_REQS; i++) {
-            if (blk->req[i].busy && !blk->req[i].completing) {
+            if (blk->req[i].busy && !blk->req[i].completing &&
+                lr_disk_try_ready(&blk->req[i])) {
                 lr_disk_req_done(&blk->req[i]);
                 ran = true;
             }
@@ -530,13 +582,13 @@ bool lr_disk_poll(void)
     BlockBackend *blk;
     bool ran = false;
 
-    if (!lr_disk_pending) {
+    if (!lr_disk_pending && !lr_disk_waiting) {
         return false;
     }
     QTAILQ_FOREACH(blk, &lr_disks, link) {
         for (int i = 0; i < LR_DISK_REQS; i++) {
             LRDiskReq *r = &blk->req[i];
-            r->dispatch = r->busy && !r->completing;
+            r->dispatch = r->busy && !r->completing && lr_disk_try_ready(r);
         }
     }
     QTAILQ_FOREACH(blk, &lr_disks, link) {
@@ -650,7 +702,14 @@ void *blk_aio_get(const AIOCBInfo *aiocb_info, BlockBackend *blk,
 
 void blk_aio_cancel_async(BlockAIOCB *acb)
 {
-    /* one of these is done already; its completion comes as it would */
+    if (acb->aiocb_info == &lr_disk_aiocb_info) {
+        LRDiskReq *r = container_of(acb, LRDiskReq, common);
+        if (r->busy && !r->completing && r->provider) {
+            lr_disk_abandon_deferred(r);
+            lr_disk_req_done(r);
+        }
+        return;
+    }
     if (acb->aiocb_info->cancel_async) {
         acb->aiocb_info->cancel_async(acb);
     }
@@ -661,6 +720,7 @@ void blk_aio_cancel(BlockAIOCB *acb)
     if (acb->aiocb_info == &lr_disk_aiocb_info) {
         LRDiskReq *r = container_of(acb, LRDiskReq, common);
         if (r->busy && !r->completing) {
+            lr_disk_abandon_deferred(r);
             lr_disk_req_done(r);
         }
         return;

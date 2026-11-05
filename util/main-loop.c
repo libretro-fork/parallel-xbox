@@ -578,7 +578,7 @@ static bool main_loop_dispatch(AioContext *io)
 static void main_loop_wait_internal(int nonblocking)
 {
     AioContext *io = iohandler_get_aio_context();
-    bool disk_progress = lr_disk_pending > 0 && lr_disk_poll();
+    bool disk_progress = lr_disk_poll();
 
     if (!QLIST_EMPTY(&main_loop_poll_notifiers.notifiers) ||
         aio_has_fd_handlers(qemu_aio_context) || aio_has_fd_handlers(io)) {

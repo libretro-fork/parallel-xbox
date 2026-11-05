@@ -1,3 +1,4 @@
+#include "block/libretro-disk-provider.h"
 /* SPDX-License-Identifier: GPL-2.0-or-later */
 #include <assert.h>
 #include <stdbool.h>
@@ -53,6 +54,9 @@ typedef void BlockCompletionFunc(void *,int);
 struct BlockBackend {int in_flight;LRDiskReq req[LR_DISK_REQS];QTAILQ_ENTRY(BlockBackend) link;};
 static QTAILQ_HEAD(,BlockBackend) lr_disks=QTAILQ_HEAD_INITIALIZER(lr_disks);
 static int lr_disk_pending;
+#ifdef HAVE_DISK_PROVIDER
+static int lr_disk_waiting;
+#endif
 static const AIOCBInfo lr_disk_aiocb_info={.aiocb_size=sizeof(LRDiskReq)};
 static const char *blk_name(BlockBackend *b){(void)b;return "bench";}
 #define error_report(...) fprintf(stderr,__VA_ARGS__)

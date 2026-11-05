@@ -31,7 +31,8 @@ ATAPI PIO now prepares complete phases asynchronously and retains sector tails,
 while preserving the announced byte count and DRQ burst. The current disk
 provider still completes its file reads synchronously at submission; the CHD
 worker is implemented in block/libretro-chd.c and validated independently, but
-readiness-aware disk dispatch and logical media probing are still required
+readiness-aware disk dispatch is available through lr_disk_submit_deferred.
+Pending-command state/replay and logical media probing are still required
 before mounting media.
 
 Core-owned threading adaptation: retro_eventcount_init_lock_free() rejects the
