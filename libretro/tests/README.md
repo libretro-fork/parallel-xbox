@@ -4512,13 +4512,19 @@ spans do not overlap; this still copies, rather than aliasing buffers. DSP
 state snapshots copy only on VM stop/start, not once per audio frame; sharing
 those arrays would change snapshot ownership and is not a hot-path win.
 
-`make dspdma` compares DMA runs against the scalar ordering across 33,344
+`make dspdma` compares DMA runs against the scalar ordering across 34,048
 cases: both directions, 16/32-bit slots, raw upper bits, inbound masking,
 interleaving, direct/callback memory, zero/discard aperture, counts 0-64,
 unaligned host spans, nonzero item cursors, split callbacks and overlapping
 source/destination bytes. Complete buffers, item cursors and callback counts
 must match. Only outbound direct, non-interleaved, disjoint 32-bit spans use
 bulk copies. Inbound words retain masks and per-word program invalidation;
-converted/interleaved/callback/overlap cases keep the scalar path. Walkers
+sequential direct RAM conversions use dedicated loops; interleaved and
+callback cases retain the generic path. Overlapping spans retain scalar order. Walkers
 still fence ownership and mark guest RAM dirty after the callback. Both native
 CI steps run this standalone test; DSP_PROGRAM_RUNNER supports cross-host runs.
+
+The alias matrix covers both directions and both slot widths over 192 host
+byte offsets, including unaligned, exact and partially overlapping spans.
+Direct inbound conversions still mask 32-bit slots or shift 16-bit samples;
+program memory remains callback-backed so writes invalidate native code.

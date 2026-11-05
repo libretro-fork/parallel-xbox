@@ -129,6 +129,40 @@ static void dma_run(void *user, uint8_t *host, size_t bytes)
             return;
         }
     }
+    /* Plain sequential RAM needs neither callback dispatch nor channel
+     * indexing per item. Keep aliasing legal: overlapping runs must retain
+     * scalar ordering, and unaligned host words still use memcpy. */
+    if (t->mem && !t->interleave) {
+        uint32_t *mem = t->mem + t->n;
+        if (t->to_host) {
+            if (t->item_size == 2) {
+                for (size_t i = 0; i < items; i++) {
+                    uint16_t v = mem[i] >> 8;
+                    memcpy(host + i * 2, &v, 2);
+                }
+            } else {
+                for (size_t i = 0; i < items; i++) {
+                    uint32_t v = mem[i];
+                    memcpy(host + i * 4, &v, 4);
+                }
+            }
+        } else if (t->item_size == 2) {
+            for (size_t i = 0; i < items; i++) {
+                uint16_t v;
+                memcpy(&v, host + i * 2, 2);
+                mem[i] = (uint32_t)v << 8;
+            }
+        } else {
+            uint32_t mask = t->item_mask;
+            for (size_t i = 0; i < items; i++) {
+                uint32_t v;
+                memcpy(&v, host + i * 4, 4);
+                mem[i] = v & mask;
+            }
+        }
+        t->n += items;
+        return;
+    }
     if (t->to_host) {
         if (t->item_size == 2) {
             for (size_t i = 0; i < items; i++) {

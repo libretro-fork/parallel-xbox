@@ -59,6 +59,8 @@
 
 ## Unreleased
 
+- Audio: sequential DSP RAM DMA conversions avoid per-sample callback and channel dispatch while preserving masking and overlap order.
+
 - Audio: contiguous outbound DSP DMA words now use bulk copies, preserving conversion and overlapping-transfer ordering.
 
 - DSP: CI now rejects interpreter fallback in production-size DSP regression blocks, including a deliberate negative control.

@@ -92,18 +92,26 @@ int main(void)
             }
         }
     }
-    /* An overlapping forward store propagates writes into later source words;
-     * memcpy/memmove would violate that legacy ordering. */
-    for (unsigned dst = 0; dst < 64; dst++) {
-        uint32_t actual[128], expected[128];
-        for (unsigned i = 0; i < 128; i++) actual[i] = expected[i] = 0xff000000 | i;
-        DmaTransfer t = { .mem = actual + 8, .item_size = 4, .to_host = true, .n = 2 };
-        DmaTransfer r = t;
-        r.mem = expected + 8;
-        scalar(&r, (uint8_t *)expected + dst, 128);
-        dma_run(&t, (uint8_t *)actual + dst, 128);
-        if (memcmp(actual, expected, sizeof(actual)) || t.n != r.n) return 1;
-        cases++;
+    /* Aliasing must retain the scalar read/write order in either direction,
+     * including host addresses unaligned to DSP words and partial spans. */
+    for (unsigned direction = 0; direction < 2; direction++) {
+        for (unsigned size = 2; size <= 4; size += 2) {
+            for (unsigned dst = 0; dst < 192; dst++) {
+                uint32_t actual[128], expected[128];
+                for (unsigned i = 0; i < 128; i++) actual[i] = expected[i] = 0xffa50000 | i;
+                DmaTransfer t = { .mem = actual + 8, .item_size = size,
+                    .item_mask = 0xffffff, .to_host = direction, .n = 2 };
+                DmaTransfer r = t;
+                r.mem = expected + 8;
+                scalar(&r, (uint8_t *)expected + dst, 32 * size);
+                dma_run(&t, (uint8_t *)actual + dst, 32 * size);
+                if (memcmp(actual, expected, sizeof(actual)) || t.n != r.n) {
+                    fprintf(stderr, "DMA overlap mismatch dir=%u size=%u offset=%u\n", direction, size, dst);
+                    return 1;
+                }
+                cases++;
+            }
+        }
     }
     printf("DMA: %u scalar differential cases agree\n", cases);
     return 0;
