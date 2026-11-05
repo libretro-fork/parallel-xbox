@@ -4512,7 +4512,7 @@ spans do not overlap; this still copies, rather than aliasing buffers. DSP
 state snapshots copy only on VM stop/start, not once per audio frame; sharing
 those arrays would change snapshot ownership and is not a hot-path win.
 
-`make dspdma` compares DMA runs against the scalar ordering across 42,656
+`make dspdma` compares DMA runs against the scalar ordering across 58,336
 cases: both directions, 16/32-bit slots, raw upper bits, inbound masking,
 interleaving, direct/callback memory, zero/discard aperture, counts 0-64,
 unaligned host spans, nonzero item cursors, split callbacks and overlapping
@@ -4520,7 +4520,8 @@ source/destination bytes. Complete buffers, item cursors and callback counts
 must match. Only outbound direct, non-interleaved, disjoint 32-bit spans use
 bulk copies. Inbound words retain masks and per-word program invalidation;
 sequential direct RAM conversions use dedicated loops; direct outbound
-interleaving advances a channel cursor. Callback cases retain the generic path. Overlapping spans retain scalar order. Walkers
+interleaving advances a channel cursor. Callback-backed interleaved output
+also advances a cursor, while issuing every original read callback in order. Overlapping spans retain scalar order. Walkers
 still fence ownership and mark guest RAM dirty after the callback. Both native
 CI steps run this standalone test; DSP_PROGRAM_RUNNER supports cross-host runs.
 
@@ -4582,3 +4583,12 @@ the complete opcode cache. A primed CLR A block replaced by NOP must execute
 the replacement on both interpreter and JIT engines. Both native CI steps
 run the target; DSP_PROGRAM_RUNNER supports cross-host checks. This is a
 bootstrap memory-pass reduction, not a per-frame or game-startup timing claim.
+
+The channel/resume matrix additionally runs callback-backed reads with both
+static and read-mutated source memory. It compares complete source/output
+buffers, cursors, callback counts and exact ordered address/space/value traces
+for full spans versus one-item callback splits. No callback is skipped or
+prefetched. The optimization applies only to outbound interleaving; callback
+writes and P-memory invalidation retain their existing paths. Zero-length
+callbacks do no cursor division. The scalar oracle still computes each item
+index independently with division/remainder.

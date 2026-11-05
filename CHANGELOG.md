@@ -59,6 +59,8 @@
 
 ## Unreleased
 
+- Audio: callback-backed interleaved DSP output now advances a channel cursor, retaining per-word callback order without repeated sample-index division.
+
 - Add an exact-size SPSC write reservation as a prerequisite for direct worker record construction. Refresh the consumer cursor only when cached room cannot cover the requested record; reject physical wraps and non-fitting records without publication. Existing queue callers and renderer behavior are unchanged.
 
 - DSP: bootstrap now masks program words while loading them, removing a second pass over destination program RAM.

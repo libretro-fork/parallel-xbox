@@ -160,6 +160,37 @@ static void dma_run(void *user, uint8_t *host, size_t bytes)
         t->n += items;
         return;
     }
+    /* Callback-backed spans cannot be borrowed, but their channel indexing
+     * can still advance without per-item division. Keep each device/mapped
+     * read immediately before its corresponding host store. */
+    if (!t->mem && t->to_host && t->interleave && items) {
+        uint32_t channel = t->n % t->channels;
+        uint32_t block = t->n / t->channels;
+        uint32_t idx = channel * t->blocks + block;
+        if (t->item_size == 2) {
+            for (size_t i = 0; i < items; i++) {
+                uint16_t v = t->s->mem_read(t->s->mem_opaque, t->space, t->addr + idx) >> 8;
+                memcpy(host + i * 2, &v, 2);
+                idx += t->blocks;
+                if (++channel == t->channels) {
+                    channel = 0;
+                    idx = ++block;
+                }
+            }
+        } else {
+            for (size_t i = 0; i < items; i++) {
+                uint32_t v = t->s->mem_read(t->s->mem_opaque, t->space, t->addr + idx);
+                memcpy(host + i * 4, &v, 4);
+                idx += t->blocks;
+                if (++channel == t->channels) {
+                    channel = 0;
+                    idx = ++block;
+                }
+            }
+        }
+        t->n += items;
+        return;
+    }
     /* Plain sequential RAM needs neither callback dispatch nor channel
      * indexing per item. Keep aliasing legal: overlapping runs must retain
      * scalar ordering, and unaligned host words still use memcpy. */

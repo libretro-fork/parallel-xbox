@@ -11,15 +11,30 @@ void g_assertion_message_expr(const char *domain, const char *file, int line,
 
 static uint32_t words[128];
 static unsigned reads, writes;
+static bool mutate_reads;
+static uint32_t callback_addr[128], callback_value[128];
+static int callback_space[128];
+static void note_callback(int space, uint32_t addr, uint32_t value)
+{
+    unsigned n = reads + writes;
+    assert(n < 128);
+    callback_addr[n] = addr;
+    callback_value[n] = value;
+    callback_space[n] = space;
+}
 static uint32_t read_word(void *opaque, int space, uint32_t addr)
 {
     (void)opaque; (void)space;
+    uint32_t value = words[addr];
+    note_callback(space, addr, value);
     reads++;
-    return words[addr];
+    if (mutate_reads) words[(addr + 1) % 128] ^= value >> 3;
+    return value;
 }
 static void write_word(void *opaque, int space, uint32_t addr, uint32_t value)
 {
     (void)opaque; (void)space;
+    note_callback(space, addr, value);
     writes++;
     words[addr] = value;
 }
@@ -92,32 +107,54 @@ int main(void)
             }
         }
     }
-    /* All hardware channel counts, including non-powers of two. Start and
-     * split on every item so a callback can resume within a channel group. */
-    for (unsigned channels = 1; channels <= 16; channels++) {
-        for (unsigned blocks = 1; blocks <= 7; blocks++) {
-            unsigned total = channels * blocks;
-            for (unsigned start = 0; start <= total; start++) {
-                for (unsigned size = 2; size <= 4; size += 2) {
-                    uint8_t out[512], ref[512];
-                    memset(out, 0xa5, sizeof(out));
-                    memset(ref, 0xa5, sizeof(ref));
-                    for (unsigned i = 0; i < 128; i++) words[i] = 0xfedcba98u ^ (i * 0x1234567u);
-                    DmaTransfer t = { .mem = words, .item_size = size, .to_host = true,
-                        .interleave = true, .channels = channels, .blocks = blocks, .n = start };
-                    DmaTransfer r = t;
-                    scalar(&r, ref + 1, (total - start) * size);
-                    for (unsigned n = start; n < total; n++) {
-                        dma_run(&t, out + 1 + (n - start) * size, size);
-                        dma_run(&t, out + 1 + (n - start + 1) * size, 0);
+    /* Every channel count and resume point, for direct and callback memory.
+     * Callback addresses, spaces, values and order must exactly match. */
+    for (unsigned callback = 0; callback < 3; callback++) {
+        mutate_reads = callback == 2;
+        for (unsigned channels = 1; channels <= 16; channels++) {
+            for (unsigned blocks = 1; blocks <= 7; blocks++) {
+                unsigned total = channels * blocks;
+                for (unsigned start = 0; start <= total; start++) {
+                    for (unsigned size = 2; size <= 4; size += 2) {
+                        uint8_t out[512], ref[512];
+                        uint32_t expected_addr[128], expected_value[128], expected_memory[128];
+                        int expected_space[128];
+                        memset(ref, 0xa5, sizeof(ref));
+                        for (unsigned i = 0; i < 128; i++) words[i] = 0xfedcba98u ^ (i * 0x1234567u);
+                        DmaTransfer t = { .s = &s, .space = DSP_SPACE_P, .addr = 3,
+                            .mem = callback ? NULL : words + 3, .item_size = size, .to_host = true,
+                            .interleave = true, .channels = channels, .blocks = blocks, .n = start };
+                        DmaTransfer r = t;
+                        reads = writes = 0;
+                        scalar(&r, ref + 1, (total - start) * size);
+                        unsigned expected_reads = reads;
+                        memcpy(expected_memory, words, sizeof(words));
+                        memcpy(expected_addr, callback_addr, sizeof(expected_addr));
+                        memcpy(expected_value, callback_value, sizeof(expected_value));
+                        memcpy(expected_space, callback_space, sizeof(expected_space));
+                        for (unsigned split = 0; split < 2; split++) {
+                            t.n = start;
+                            for (unsigned i = 0; i < 128; i++) words[i] = 0xfedcba98u ^ (i * 0x1234567u);
+                            reads = writes = 0;
+                            memset(out, 0xa5, sizeof(out));
+                            if (split) {
+                                for (unsigned n = start; n < total; n++) {
+                                    dma_run(&t, out + 1 + (n - start) * size, size);
+                                    dma_run(&t, out + 1 + (n - start + 1) * size, 0);
+                                }
+                            } else dma_run(&t, out + 1, (total - start) * size);
+                            if (memcmp(out, ref, sizeof(out)) || memcmp(words, expected_memory, sizeof(words)) ||
+                                t.n != r.n || reads != expected_reads || writes ||
+                                memcmp(callback_addr, expected_addr, reads * sizeof(*callback_addr)) ||
+                                memcmp(callback_value, expected_value, reads * sizeof(*callback_value)) ||
+                                memcmp(callback_space, expected_space, reads * sizeof(*callback_space))) {
+                                fprintf(stderr, "DMA channel mismatch callback=%u channels=%u blocks=%u start=%u split=%u\n",
+                                        callback, channels, blocks, start, split);
+                                return 1;
+                            }
+                        }
+                        cases++;
                     }
-                    if (memcmp(out, ref, sizeof(out)) || t.n != r.n) return 1;
-                    /* Also execute the entire span without splitting. */
-                    t.n = start;
-                    memset(out, 0xa5, sizeof(out));
-                    dma_run(&t, out + 1, (total - start) * size);
-                    if (memcmp(out, ref, sizeof(out)) || t.n != r.n) return 1;
-                    cases++;
                 }
             }
         }
