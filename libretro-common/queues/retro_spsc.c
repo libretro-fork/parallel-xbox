@@ -646,6 +646,38 @@ void retro_spsc_write_end(retro_spsc_t *q, size_t bytes)
          retro_atomic_load_relaxed_size(&q->head) + bytes);
 }
 
+size_t retro_spsc_read_begin_pair(retro_spsc_t *q, const void **first,
+      size_t *first_bytes, const void **second, size_t bytes)
+{
+   size_t tail, avail, index, span;
+   *first       = NULL;
+   *second      = NULL;
+   *first_bytes = 0;
+   if (!bytes)
+      return 0;
+   tail  = retro_atomic_load_relaxed_size(&q->tail);
+   avail = q->cached_head - tail;
+   /* A record-sized query need not refresh a cursor that already covers it. */
+   if (avail < bytes)
+   {
+      q->cached_head = retro_atomic_load_acquire_size(&q->head);
+      avail         = q->cached_head - tail;
+   }
+   if (bytes > avail)
+      bytes = avail;
+   if (!bytes)
+      return 0;
+   index = tail & q->mask;
+   span  = spsc_contig(q, index);
+   if (span > bytes)
+      span = bytes;
+   *first       = q->buffer + index;
+   *first_bytes = span;
+   if (span < bytes)
+      *second = q->buffer;
+   return bytes;
+}
+
 size_t retro_spsc_read_begin(retro_spsc_t *q, const void **ptr)
 {
    size_t tail_idx, span;

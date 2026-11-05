@@ -59,6 +59,8 @@
 
 ## Unreleased
 
+- Add a tested two-span queue reader for future Vulkan completion copy removal. It can borrow wrapped records without moving them or refreshing a producer cursor that already covers the requested bytes; renderer behavior is unchanged until integration.
+
 - Build Vulkan worker completion records directly in available queue storage, avoiding the intermediate full-record copy. Preserve exact record bytes, reference ownership and publication order, with the existing copy/drop behavior at ring boundaries or when space is unavailable.
 
 - DSP: validate borrowed program-RAM sources with a vectorizable reduction instead of branching on every word.
