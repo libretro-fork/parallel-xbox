@@ -40,6 +40,7 @@ int dspjit_test_single_ram_address(int space, uint32_t address);
 /* Test builds count actual execution through either interpreter path. */
 uint64_t dspjit_test_fallback_count(void);
 uint64_t dspjit_test_invalidation_scans(void);
+uint64_t dspjit_test_flush_resets(void);
 /* Pure coverage helper; caller provides the complete PRAM coverage bitmap. */
 void dspjit_test_cover_span(uint64_t *covered, uint32_t start, uint32_t end);
 uint64_t dspjit_test_entry_count(void);

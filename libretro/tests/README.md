@@ -4696,3 +4696,27 @@ updates. This isolates bookkeeping; it does not measure total JIT compile
 time, games or Rust performance. The preceding full native sweep is not a
 result of this batch; exhaustive bitmap equivalence plus stateful and program
 regressions are the validation for this range-publication specialization.
+
+`make dspflush` verifies the JIT's conservative cache-entry marker. All normal,
+REP and interrupt table publications mark the cache nonempty through the
+shared coverage wrapper, including REP fallback entries with no native arena
+allocation. A flush always rewinds the arena, then clears coverage and tables
+only if a publication occurred since the last full clear. Per-word
+invalidation does not reset this conservative marker. No saved state changes.
+
+The 238 focused checks cover initially empty flushes, populated/repeated
+empty flushes, all eight normal scaling/LF identities, direct CLR-to-NOP code
+replacement after flush, REP fallback-to-native replacement, and interrupt-only
+publication/replacement through all four scales and six pipeline stages.
+The intentional legacy REP negative path makes one interpreter call; its
+replacement must run natively without an additional fallback. Normal and
+interrupt paths add no fallbacks. Both native CI steps run this target.
+
+With every mode allocated, skipping an empty table reset avoids 512 KiB of
+pointer writes plus the coverage bitmap. The C interpreter opcode-cache
+clear in the outer backend API is separate and remains unchanged. The
+standalone --bench isolates 100000 repeated direct JIT flush calls after one
+populated flush; it reports actual table-reset count and high-resolution time.
+It excludes the outer backend clear, compilation and games. A conservative
+marker can cause one unnecessary clear after all entries were individually
+invalidated, but never skips a required clear.

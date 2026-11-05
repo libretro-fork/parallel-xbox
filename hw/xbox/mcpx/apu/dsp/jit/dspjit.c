@@ -65,6 +65,8 @@
 #ifdef DSPJIT_TEST
 static uint64_t test_invalidation_scans;
 uint64_t dspjit_test_invalidation_scans(void) { return test_invalidation_scans; }
+static uint64_t test_flush_resets;
+uint64_t dspjit_test_flush_resets(void) { return test_flush_resets; }
 static uint64_t test_fallback_count;
 static uint64_t test_entry_count;
 uint64_t dspjit_test_entry_count(void) { return test_entry_count; }
@@ -105,6 +107,7 @@ typedef struct DspJitModeCache {
 struct DspJit {
     dsp_core_t *core;
     bool run_until_halt;
+    bool cache_has_entries; /* conservative until a full table clear */
     uint8_t *cache;
     size_t cache_len;
     size_t cache_committed;
@@ -4996,6 +4999,12 @@ void dspjit_destroy(DspJit *jit)
 void dspjit_flush(DspJit *jit)
 {
     jit->cache_used = jit->cache_base;
+    /* Even an unsuccessful translation can consume arena space. Rewind it
+     * above, but do not rewrite already-empty coverage and pointer tables. */
+    if (!jit->cache_has_entries) return;
+#ifdef DSPJIT_TEST
+    test_flush_resets++;
+#endif
     memset(jit->covered, 0, sizeof(jit->covered));
     for (int mode = 0; mode < DSPJIT_MODES; mode++) {
         if (jit->blocks[mode]) {
@@ -5010,6 +5019,7 @@ void dspjit_flush(DspJit *jit)
             memset(jit->rep_blocks[mode], 0, DSP_PRAM_SIZE * sizeof(*jit->rep_blocks[mode]));
         }
     }
+    jit->cache_has_entries = false;
 }
 
 void dspjit_invalidate(DspJit *jit, uint32_t address)
@@ -5091,6 +5101,9 @@ void dspjit_test_cover_span(uint64_t *covered, uint32_t start, uint32_t end)
 
 static void dspjit_cover_words(DspJit *jit, uint32_t start, uint32_t end)
 {
+    /* Every normal/interrupt/REP cache publication comes through here,
+     * including rep_step entries that emit no native code in the arena. */
+    jit->cache_has_entries = true;
     dspjit_cover_span(jit->covered, start, end);
 }
 
