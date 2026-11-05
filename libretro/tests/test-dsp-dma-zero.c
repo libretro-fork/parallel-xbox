@@ -42,10 +42,11 @@ static void mem_write(void *opaque,int space,uint32_t address,uint32_t value)
  if(m.zero) REQUIRE(space==(int)m.descriptor_space && address==0x104);
  m.writes++;m.memory[space][address]=value;
 }
-static uint32_t *mem_ptr(void *opaque,int space,uint32_t address,uint32_t count)
+static uint32_t *mem_ptr(void *opaque,int space,uint32_t address,uint32_t count,bool write)
 {
  REQUIRE(opaque==&m && !m.zero && space>=0 && space<3 && address+count<0x800);
- m.maps++; return m.direct && space!=DSP_SPACE_P ? &m.memory[space][address] : NULL;
+ REQUIRE(write==!m.to_host);
+ m.maps++; return m.direct && (space!=DSP_SPACE_P || !write) ? &m.memory[space][address] : NULL;
 }
 static void span(unsigned address,size_t len,bool dir,dsp_dma_run_func fn,void *user)
 {
@@ -115,7 +116,7 @@ static void transfer(unsigned dsp_offset,unsigned descriptor_space,bool direct,u
  if(buf<4)REQUIRE(m.cursor==(3*size+words*size)%(16*size));
  REQUIRE(!memcmp(m.host,m.gold,sizeof(m.host)));
  REQUIRE(!memcmp(m.memory,m.expected,sizeof(m.memory)));
- bool mapped=direct&&space!=DSP_SPACE_P;
+ bool mapped=direct&&(space!=DSP_SPACE_P || direction);
  REQUIRE(m.maps==(m.zero?0:1));
  REQUIRE(m.reads==7+(direction&&!m.zero&&!mapped?words:0));
  REQUIRE(m.writes==1+(!direction&&!m.zero&&!mapped?words:0));

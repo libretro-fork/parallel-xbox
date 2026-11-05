@@ -46,12 +46,23 @@ static void c_dma_mem_write(void *opaque, int space, uint32_t addr,
 }
 
 static uint32_t *c_dma_mem_ptr(void *opaque, int space, uint32_t addr,
-                               uint32_t count)
+                               uint32_t count, bool write)
 {
-    /* the DMA reads to the host or writes from it; a write to P is by
-     * the word (dsp56k_write_memory drops the JIT's code for it) */
-    return dsp56k_memory_ptr((dsp_core_t *)opaque, space, addr, count,
-                             space == DSP_SPACE_P);
+#if HOST_BIG_ENDIAN
+    /* Program words use little-endian storage; retain byte-order-aware
+     * callbacks on hosts where a raw word pointer would change the result. */
+    if (space == DSP_SPACE_P) return NULL;
+#endif
+    uint32_t *mem = dsp56k_memory_ptr((dsp_core_t *)opaque, space, addr, count, write);
+    /* P writes must invalidate code through the callback. For reads, retain
+     * read_memory_p's rejection of uninitialized/out-of-width words: fall
+     * back to ordered callbacks rather than bypassing their strict check. */
+    if (mem && space == DSP_SPACE_P) {
+        for (uint32_t i = 0; i < count; i++) {
+            if (mem[i] & 0xff000000) return NULL;
+        }
+    }
+    return mem;
 }
 
 static uint32_t c_read_peripheral(dsp_core_t *core, uint32_t address)

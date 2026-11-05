@@ -4602,3 +4602,30 @@ widths, zero/nonzero cursors, every count 0-64 and host alignment 0-7, with
 full spans versus one-item splits. Both static and read/write-mutated backing
 memory must match the scalar oracle, along with exact ordered callback
 addresses, spaces, values, counts, complete host/DSP buffers and cursors.
+
+`make dspdmaspans` checks read-only P-memory borrowing through both actual C
+backend operation tables: 131116 range/direction/raw-word/cache checks.
+The DMA mem_ptr callback now receives write=true for DSP destinations and
+write=false for sources. A validated P read span can use direct transfer;
+P writes always return NULL and retain per-word invalidation callbacks.
+A P read span containing out-of-width/uninitialized words returns NULL so
+ordered strict reads still reject it. This validation scans P sources once;
+it does not normalize them or remove their strict read behavior.
+
+Tests cover every P address including one-past-end, zero and overflow counts,
+read/write direction, raw high bits at every P word and outbound data with
+zero payload callbacks. A primed CLR A program replaced through incoming DMA
+must invoke all three P writes and execute NOP afterward, proving interpreter
+and compiled-code invalidation. Existing descriptor/zero-aperture tests also
+check the exact direction flag and updated direct-read callback counts.
+Neither the saved-state layout nor scratch/FIFO ownership/dirty tracking
+changes. Both native CI steps run dspdmaspans.
+
+The revision DMA benchmark snapshots each module with its matching public
+headers and records their hashes, allowing comparisons across this internal
+callback-signature change. Its loop-only cases do not measure the P-span
+validation scan or descriptor work; use an actual DMA transfer benchmark for
+that cost. Borrowing the source removes per-word P read callbacks, not the
+required copy/conversion into host storage.
+Big-endian hosts retain byte-order-aware P callbacks rather than borrowing
+raw program words. The direct-span tests above ran on little-endian hosts.

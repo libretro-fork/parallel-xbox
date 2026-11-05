@@ -36,13 +36,26 @@ def main():
     module_hashes = {"baseline": hashlib.sha256(git("show", f"{baseline}:{path}")).hexdigest(),
                      "current": hashlib.sha256((root / path).read_bytes()).hexdigest()}
     compiler_version = subprocess.check_output(shlex.split(args.cc) + ["--version"], text=True).splitlines()[0]
+    header_hashes = {"baseline": {}, "current": {}}
     results = []
     with tempfile.TemporaryDirectory(prefix="dsp-dma-bench-") as tmp:
         tmp = Path(tmp)
-        before = tmp / "before.c"
+        before_dir, current_dir = tmp / "before", tmp / "current"
+        before_dir.mkdir()
+        current_dir.mkdir()
+        before, current = before_dir / "module.c", current_dir / "module.c"
         before.write_bytes(git("show", f"{baseline}:{path}"))
-        current = tmp / "current.c"
         current.write_bytes((root / path).read_bytes())
+        # The callback ABI can change between revisions; pair each module
+        # with its own public headers rather than mixing old code/new ABI.
+        for header in ("dsp_dma.h", "dsp_dma_regs.h"):
+            relative = "hw/xbox/mcpx/apu/dsp/" + header
+            old_header = git("show", f"{baseline}:{relative}")
+            new_header = (root / relative).read_bytes()
+            (before_dir / header).write_bytes(old_header)
+            (current_dir / header).write_bytes(new_header)
+            header_hashes["baseline"][header] = hashlib.sha256(old_header).hexdigest()
+            header_hashes["current"][header] = hashlib.sha256(new_header).hexdigest()
         # Reuse the real target's include paths, platform and architecture flags.
         dry = subprocess.check_output(["make", "-B", "-n", "dspdma", "CC=" + args.cc,
                                        "DSPDMATEST=" + (tmp / "unused").as_posix()], cwd=root, text=True)
@@ -79,7 +92,7 @@ def main():
                 print(f"{label:24s} {count:4d}: {old:.6f} -> {new:.6f}s ({change:+.2f}%) state agrees")
     report = dict(baseline=baseline, head=head, compiler=args.cc, iterations=args.iterations,
                   runs=args.runs, counts=args.counts, results=results,
-                  module_sha256=module_hashes, driver_sha256=hashlib.sha256(source.read_bytes()).hexdigest(),
+                  module_sha256=module_hashes, header_sha256=header_hashes, driver_sha256=hashlib.sha256(source.read_bytes()).hexdigest(),
                   compiler_version=compiler_version,
                   scope="isolated warm conversion loops; excludes guest walkers, fencing, dirty tracking and game execution")
     if args.json:

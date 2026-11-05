@@ -453,10 +453,10 @@ static void dsp_dma_run(DSPDMAState *s)
             transfer_size = block_count * item_size * channel_count;
             words = block_count * channel_count;
         }
-        /* the DSP's words in place where they are plain memory; a
-         * write to P goes through the callback (its code is dropped) */
+        /* Borrow read-only sources as well as writable plain RAM. P
+         * destinations retain callbacks so compiled code is invalidated. */
         if (!zero_aperture) {
-            t.mem = s->mem_ptr(s->mem_opaque, mem_space, mem_address, words);
+            t.mem = s->mem_ptr(s->mem_opaque, mem_space, mem_address, words, !direction);
         }
 
         if (direction) {
