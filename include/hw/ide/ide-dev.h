@@ -106,6 +106,7 @@ struct IDEState {
     /* An ATAPI DMA read of 2048-byte sectors in flight straight into the
      * guest's memory (atapi.c ide_atapi_cmd_read_dma_direct_cb) */
     bool atapi_dma_direct;
+    bool atapi_pio_pending; /* owned phase read, not yet exposed through DRQ */
     int atapi_dma; /* true if dma is requested for the packet cmd */
     BlockAIOCB *pio_aiocb;
     QEMUIOVector qiov;
@@ -119,7 +120,7 @@ struct IDEState {
     ScatterGatherEntry *sg_spare;
     int sg_spare_alloc;
     /* PIO transfer handling */
-    int req_nb_sectors; /* number of sectors per interrupt */
+    int req_nb_sectors; /* ATA sectors/IRQ, or pending ATAPI PIO sectors */
     EndTransferFunc *end_transfer_func;
     uint8_t *data_ptr;
     uint8_t *data_end;

@@ -10,6 +10,7 @@
 #include <rthreads/retro_eventcount.h>
 #include "qemu/rcu_queue.h"
 #define LR_DISK_REQS 8
+#define MAX_IDE_DEVS 2
 #define unlikely(x) (x)
 #define g_free free
 #define g_malloc(n) malloc(n)
@@ -55,8 +56,8 @@ typedef struct IDEBus IDEBus;
 typedef struct IDEState IDEState;
 typedef struct IDEDMA IDEDMA;
 struct IDEDMA {struct {void (*restart)(IDEDMA *);} *ops;};
-struct IDEState {IDEBus *bus;void (*end_transfer_func)(IDEState *);};
-struct IDEBus {QEMUBH *bh;int error_status;IDEDMA *dma;IDEState s;};
+struct IDEState {bool atapi_pio_pending;void *pio_aiocb;IDEBus *bus;void (*end_transfer_func)(IDEState *);};
+struct IDEBus {QEMUBH *bh;int error_status;IDEDMA *dma;IDEState s;IDEState ifs[2];};
 typedef int RunState;
 enum {IDE_DMA_READ,IDE_DMA_WRITE,IDE_DMA_TRIM};
 static unsigned calls;static int operation;static bool fail_again;
@@ -70,6 +71,10 @@ static void ide_sector_write(IDEState *s){(void)s;operation_done(4);}
 static void ide_flush_cache(IDEState *s){(void)s;operation_done(5);}
 static void ide_atapi_dma_restart(IDEState *s){(void)s;operation_done(6);}
 static void restart_hba(IDEDMA *d){(void)d;operation_done(7);}
+static unsigned pio_resumes;
+static void ide_atapi_pio_resume(IDEState *s){
+ assert(s->atapi_pio_pending && !s->pio_aiocb);s->pio_aiocb=s;pio_resumes++;
+}
 /* RESTART FUNCTIONS */
 static void (*volatile resume_cb)(void *,bool,RunState)=ide_restart_cb;
 static void poll_all(void){unsigned n=0;do{assert(n++<8);aio_notify_accept(&context);aio_bh_poll(&context);}while(!QSLIST_EMPTY_RCU(&context.bh_list));}
@@ -82,6 +87,12 @@ static double now(void){struct timespec t;clock_gettime(CLOCK_MONOTONIC,&t);retu
 int main(int argc,char **argv){
  assert(retro_eventcount_init(&wake_ec));QSLIST_INIT_RCU(&context.bh_list);QSIMPLEQ_INIT(&context.bh_slice_list);
  typeof(*((IDEDMA *)0)->ops) ops={restart_hba};IDEDMA dma={&ops};IDEBus b={.dma=&dma};b.s.bus=&b;b.s.end_transfer_func=ide_atapi_cmd;current=&b;
+ b.ifs[0].atapi_pio_pending=b.ifs[1].atapi_pio_pending=true;b.ifs[1].pio_aiocb=&b;
+ resume_cb(&b,false,0);assert(!pio_resumes && !b.ifs[0].pio_aiocb);
+ resume_cb(&b,true,0);assert(pio_resumes==1 && b.ifs[0].pio_aiocb && !b.bh);
+ resume_cb(&b,true,0);assert(pio_resumes==1);
+ b.ifs[0].atapi_pio_pending=b.ifs[1].atapi_pio_pending=false;
+ b.ifs[0].pio_aiocb=b.ifs[1].pio_aiocb=NULL;
  if(argc>1&&!strcmp(argv[1],"--bench")){
   for(unsigned mode=0;mode<3;mode++){
    unsigned loops=500000;calls=allocations=0;double start=now();

@@ -4572,3 +4572,33 @@ frame-busy hint counts ready callbacks, not unfinished storage work. No CHD
 medium calls the deferred API yet: pending IDE/DMA state must be made replayable
 before that connection is enabled. In particular, a drain that made no progress
 is not proof that an external provider has finished.
+
+### Pending PIO state and replay
+
+The PIO phase fixture now exercises the production save/load hooks as well as
+its data path. Pending reads are saved before DRQ, canceled, restored and resumed
+three times per read, across cooked/raw sectors and 65534/4094 byte limits.
+Replay submits only when the VM-running handler runs; repeated resume leaves a
+live read alone. A changed byte-count register cannot alter the already-submitted
+extent, which uses the existing serialized req_nb_sectors field. Thirteen bad
+state cases clear the replay flag and submit nothing; changing a future phase
+limit to zero produces its normal protocol error after the current read finishes.
+The generic cancellation fixture isolates request-list behavior; the phase
+fixture executes the real PIO cancel path with pending and already-ready results.
+
+PIO subsection version three adds the pending flag and includes BUSY reads even
+without DRQ. Version-two exposed phases still reconstruct normally. Load reset
+retires the old fixed disk request before restoring its cursor; the new request
+is submitted on VM resume, after all device/RAM state has loaded. The new bool
+uses existing Win64 IDEState padding (976 bytes and existing offsets unchanged).
+No decoded payload or host request pointer is added to a saved pending command.
+
+Native validation also used a private provider that holds DVD completions for
+four guest frames, without a host sleep. A one-frame run returns its video/audio
+while the ROM records BUSY and zero consumed phases. Save at frame 1 and loads
+at 5 and 10 then finish all 0x11200 words in five phases with identical restored
+RAM. Removing the BUSY-read needed predicate in a negative control leaves zero
+words/phases after 160 frames, while frame/audio cadence and load APIs still
+succeed. This validates the pending command rather than only a completed DRQ
+buffer. The private fixture uses synthetic owned results, not a mounted CHD;
+CHD/DMA integration remains separate work.

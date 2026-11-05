@@ -1,5 +1,6 @@
 # Changelog of the libretro core
 
+- Preserve an unfinished ATAPI PIO read across savestates, including its submitted sector count and retained tail. Loads restart it only after VM state is installed; reset/load cancellation retires the old read without a spurious guest error or stale completion. This prepares asynchronous media support; CHD mounting is still disabled while DMA replay and media integration remain unfinished.
 - Prepare disk dispatch for asynchronous CHD reads: check provider readiness once per owner pass, exclude unfinished provider work from the frame-busy hint, and abandon canceled results without waiting. Ordinary read completions retain their fixed-slot ordering; CHD mounting remains disabled until pending commands can be saved and replayed.
 - Add a bounded CHD decoder worker on the CHD feature branch, with nonwaiting submission/completion checks, retained decoded views, safe abandonment and teardown, and lock-free-only eventcount initialization. Media mounting is still disabled pending disk dispatch, logical partition probing and frontend integration.
 - Buffer each complete ATAPI PIO data phase before announcing it to the guest. Multi-sector bursts no longer refill synchronously between sectors; partial-sector tails are retained, raw CD framing expands in place, and active PIO savestates retain their sector cursor and buffer bounds.

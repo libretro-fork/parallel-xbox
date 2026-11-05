@@ -802,6 +802,7 @@ BlockAIOCB *ide_buffered_readv(IDEState *s, int64_t sector_num,
 void ide_cancel_dma_sync(IDEState *s)
 {
     IDEBufferedRequest *req;
+    ide_atapi_pio_cancel(s);
     /* Submission accepts MAX_BUFFERED_REQS existing entries plus the new one. */
     struct {
         BlockCompletionFunc *cb;
@@ -1455,6 +1456,7 @@ static void ide_reset(IDEState *s)
 {
     trace_ide_reset(s);
 
+    ide_atapi_pio_cancel(s);
     if (s->pio_aiocb) {
         blk_aio_cancel(s->pio_aiocb);
         s->pio_aiocb = NULL;
@@ -1496,6 +1498,7 @@ static void ide_reset(IDEState *s)
     s->packet_transfer_size = 0;
     s->elementary_transfer_size = 0;
     s->atapi_dma_direct = false;
+    s->atapi_pio_pending = false;
     s->io_buffer_index = 0;
     s->cd_sector_size = 0;
     s->atapi_dma = 0;
@@ -2928,11 +2931,16 @@ static void ide_restart_cb(void *opaque, bool running, RunState state)
 {
     IDEBus *bus = opaque;
 
-    /* The libretro backend normally reports errors without stopping the VM.
-     * Resume/save-state housekeeping needs no deferred work without a retry. */
-    if (!running || !bus->error_status) {
-        return;
+    /* Rebuild restored PIO requests only after the whole VM load completes.
+     * Live requests already have an owner handle; idle resumes need no work.
+     * Error retries retain their existing coalesced bottom-half dispatch. */
+    if (!running) return;
+    for (int i = 0; i < MAX_IDE_DEVS; i++) {
+        if (bus->ifs[i].atapi_pio_pending && !bus->ifs[i].pio_aiocb) {
+            ide_atapi_pio_resume(&bus->ifs[i]);
+        }
     }
+    if (!bus->error_status) return;
 
     if (!bus->bh) {
         bus->bh = qemu_bh_new(ide_restart_bh, bus);
@@ -2942,9 +2950,7 @@ static void ide_restart_cb(void *opaque, bool running, RunState state)
 
 void ide_bus_register_restart_cb(IDEBus *bus)
 {
-    if (bus->dma->ops->restart_dma) {
-        bus->vmstate = qemu_add_vm_change_state_handler(ide_restart_cb, bus);
-    }
+    bus->vmstate = qemu_add_vm_change_state_handler(ide_restart_cb, bus);
 }
 
 static IDEDMA ide_dma_nop = {
@@ -3012,6 +3018,12 @@ static int ide_drive_post_load(void *opaque, int version_id)
 static int ide_drive_pio_post_load(void *opaque, int version_id)
 {
     IDEState *s = opaque;
+    bool pending = version_id >= 3 && s->atapi_pio_pending;
+    int ret;
+
+    /* Any rejected stream must leave no replay armed when the failed load
+     * resumes the already-reset machine. Restore the flag only after bounds. */
+    s->atapi_pio_pending = false;
 
     if (s->end_transfer_fn_idx >= ARRAY_SIZE(transfer_end_table)) {
         return -EINVAL;
@@ -3044,7 +3056,11 @@ static int ide_drive_pio_post_load(void *opaque, int version_id)
     }
     s->atapi_dma = s->feature & 1; /* as per cmd_packet */
 
-    return 0;
+    if (!pending) return 0;
+    s->atapi_pio_pending = true;
+    ret = ide_atapi_pio_state_validate(s);
+    if (ret < 0) s->atapi_pio_pending = false;
+    return ret;
 }
 
 static int ide_drive_pio_pre_save(void *opaque)
@@ -3071,7 +3087,7 @@ static bool ide_drive_pio_state_needed(void *opaque)
 {
     IDEState *s = opaque;
 
-    return ((s->status & DRQ_STAT) != 0)
+    return s->atapi_pio_pending || ((s->status & DRQ_STAT) != 0)
         || (s->bus->error_status & IDE_RETRY_PIO);
 }
 
@@ -3123,7 +3139,7 @@ static const VMStateDescription vmstate_ide_tray_state = {
 
 static const VMStateDescription vmstate_ide_drive_pio_state = {
     .name = "ide_drive/pio_state",
-    .version_id = 2,
+    .version_id = 3,
     .minimum_version_id = 1,
     .pre_save = ide_drive_pio_pre_save,
     .post_load = ide_drive_pio_post_load,
@@ -3141,6 +3157,7 @@ static const VMStateDescription vmstate_ide_drive_pio_state = {
         VMSTATE_INT32_V(cd_sector_size, IDEState, 2),
         VMSTATE_INT32_V(io_buffer_index, IDEState, 2),
         VMSTATE_INT32_V(io_buffer_size, IDEState, 2),
+        VMSTATE_BOOL_V(atapi_pio_pending, IDEState, 3),
         VMSTATE_END_OF_LIST()
     }
 };

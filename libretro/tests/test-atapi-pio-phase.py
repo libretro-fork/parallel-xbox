@@ -11,12 +11,15 @@ code = (between('static void lba_to_msf(', 'static inline int media_present') +
         between('static void ide_atapi_cmd_read_pio(', 'static void ide_atapi_cmd_check_status('))
 core = (root/'hw/ide/core.c').read_text()
 a = core.index('static int ide_drive_pio_post_load(')
-b = core.index('static int ide_drive_pio_pre_save(', a)
-code += core[a:b]
+b = core.index('static bool ide_drive_pio_state_needed(', a)
+idx = core.index('static int transfer_end_table_idx(')
+idx_end = core.index('static int ide_drive_post_load(',idx)
+code += core[idx:idx_end] + core[a:b]
 state=core[core.index('static const VMStateDescription vmstate_ide_drive_pio_state'):]
 state=state[:state.index('const VMStateDescription vmstate_ide_drive =')]
 for field in ['lba','cd_sector_size','io_buffer_index','io_buffer_size']:
     assert 'VMSTATE_INT32_V('+field+', IDEState, 2)' in state, field
+assert "VMSTATE_BOOL_V(atapi_pio_pending, IDEState, 3)" in state
 code = Path(__file__).with_suffix('.c').read_text().replace('/* PRODUCTION */',code)
 with tempfile.TemporaryDirectory(prefix='atapi-pio-') as tmp:
     p=Path(tmp); (p/'test.c').write_text(code)

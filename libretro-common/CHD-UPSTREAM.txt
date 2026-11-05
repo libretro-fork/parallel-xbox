@@ -32,8 +32,9 @@ while preserving the announced byte count and DRQ burst. The current disk
 provider still completes its file reads synchronously at submission; the CHD
 worker is implemented in block/libretro-chd.c and validated independently, but
 readiness-aware disk dispatch is available through lr_disk_submit_deferred.
-Pending-command state/replay and logical media probing are still required
-before mounting media.
+Pending PIO command state/replay is implemented in the IDE phase path; pending
+DMA state/replay and logical media probing are still required before mounting
+media.
 
 Core-owned threading adaptation: retro_eventcount_init_lock_free() rejects the
 slock/scond fallback before allocating it; existing init behavior is preserved.
