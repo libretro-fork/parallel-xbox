@@ -59,7 +59,10 @@
 
 ## Unreleased
 
+- Strengthen Vulkan completion-drain tests to distinguish idle polling from pending-but-empty work, verify state credits through final markers and quiesce, and reject shortcuts that skip unfinished states. Renderer behavior is unchanged.
+
 - DSP: repeated writes to an invalidated program word skip redundant block-cache scans until recompilation covers the word again.
+
 
 - Add real-queue Vulkan completion-drain regression coverage for ready-table bytes, eviction/adoption ownership, FIFO order and state markers. Cross-cache concurrent controls rejected the first render-side copy-removal candidates, so the rendering path is unchanged.
 

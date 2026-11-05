@@ -4,6 +4,7 @@
 --benchmark adds timings; --copy-control compares identical copying drains.
 WORKER_BENCH_PRODUCER_CPU / WORKER_BENCH_CONSUMER_CPU optionally pin Windows CPUs.
 WORKER_DRAIN_SOURCE optionally extracts a local candidate renderer source file.
+WORKER_DRAIN_ASM optionally saves the optimized fixture assembly.
 """
 from pathlib import Path
 import os,re,subprocess,sys,tempfile
@@ -43,9 +44,14 @@ with tempfile.TemporaryDirectory(prefix='worker-drain-') as tmp:
  p=Path(tmp);(p/'qemu').mkdir();(p/'qemu/osdep.h').write_bytes(b'#include <stdint.h>\n#include <stdbool.h>\n#include <stddef.h>\n');(p/'qemu/mstring.h').write_bytes(b'typedef struct MString MString;\n');(p/'test.c').write_bytes(code.encode());exe=p/('test.exe' if os.name=='nt' else 'test')
  command=[cc,'-O2','-std=gnu11','-Wall','-Wextra','-Werror','-pthread','-I'+str(p),'-I'+str(repo),'-I'+str(repo/'include'),'-I'+str(repo/'libretro-common/include'),'-I'+str(repo/'deps/vulkan-headers'),str(p/'test.c'),str(repo/'libretro-common/queues/retro_spsc.c'),'-o',str(exe)]
  if view_drain: command.append('-DVIEW_DRAIN')
+ if '--copy-control' in sys.argv[3:] or 'vk_spec_undrained == 0' not in current: command.append('-DNO_IDLE_GUARD')
  for checked in (True,False):
   flags=['-DCHECKED','-fsanitize=undefined','-fsanitize-undefined-trap-on-error'] if checked else (['-DBENCHMARK'] if '--benchmark' in sys.argv[3:] else [])
   subprocess.run(command+flags,env=env,check=True);print('UBSan' if checked else 'optimized',flush=True)
+  if not checked and os.environ.get('WORKER_DRAIN_ASM'):
+   queue_index=command.index(str(repo/'libretro-common/queues/retro_spsc.c'))
+   asm_command=command[:queue_index]+command[queue_index+3:]
+   subprocess.run(asm_command+flags+['-S','-o',os.environ['WORKER_DRAIN_ASM']],env=env,check=True)
   subprocess.run([str(exe)],env=env,check=True,timeout=120)
  if '--copy-control' not in sys.argv[3:]:
   if view_drain:
@@ -61,9 +67,11 @@ with tempfile.TemporaryDirectory(prefix='worker-drain-') as tmp:
     ('leaked eviction',free_target,free,'/* leaked eviction */')]
   else:
    controls=[
+    ('skipping pending work',current,'vk_spec_undrained == 0','vk_spec_undrained <= 1'),
     ('missing ready copy',slot,'vk_spec_ready[slot] = *done;','(void)done;'),
     ('missing state marker',current,'if (d.state_hash)', 'if (false)'),
     ('leaked eviction',slot,'pgraph_vk_shader_source_unref(vk_spec_ready[slot].spirv);','/* leaked eviction */')]
+  controls=[c for c in controls if c[0]!='skipping pending work' or 'vk_spec_undrained == 0' in current]
   for label,target,old,new in controls:
    assert old in target,label
    mutant=code.replace(target,target.replace(old,new,1),1);assert mutant!=code,label

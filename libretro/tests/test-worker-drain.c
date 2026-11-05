@@ -18,7 +18,8 @@
 #endif
 #define ARRAY_SIZE(a) (sizeof(a)/sizeof((a)[0]))
 /* TYPES */
-#define VK_SPEC_READY 768
+#define VK_SPEC_RING 256
+#define VK_SPEC_READY (3 * VK_SPEC_RING)
 #define VK_SPEC_ADOPTED 2
 static retro_spsc_t vk_spec_out;
 static bool vk_spec_started;
@@ -33,12 +34,21 @@ static void pgraph_vk_shader_source_unref(ShaderSource *source)
     assert(retro_atomic_fetch_sub_int(&source->refs,1)>1);
 }
 /* GLOBALS */
+#ifdef CHECKED
+static unsigned read_calls;
+static size_t observed_read(retro_spsc_t *q,void *data,size_t bytes)
+{
+    read_calls++;return retro_spsc_read(q,data,bytes);
+}
+#define retro_spsc_read observed_read
+#endif
 #if defined(CHECKED) && defined(VIEW_DRAIN)
 static VkSpecDone borrowed_record;
 static bool borrowed;
 static size_t observed_begin(retro_spsc_t *q,const void **first,size_t *first_bytes,const void **second,size_t bytes)
 {
     assert(!borrowed);
+    read_calls++;
     size_t n=retro_spsc_read_begin_pair(q,first,first_bytes,second,bytes);
     if(n==sizeof(borrowed_record)) {
         memcpy(&borrowed_record,*first,*first_bytes);
@@ -63,6 +73,7 @@ static void observed_end(retro_spsc_t *q,size_t bytes)
 /* FUNCTIONS */
 #undef retro_spsc_read_begin_pair
 #undef retro_spsc_read_end
+#undef retro_spsc_read
 static void (*drain[2])(void)={reference_drain,vk_spec_drain};
 
 static void position_queue(size_t position)
@@ -127,10 +138,12 @@ static void run_case(unsigned which,unsigned trial,Snapshot *snap)
     memset(&d,0xa5,sizeof(d));
     assert(retro_spsc_write(&vk_spec_out,&d,partial)==partial);
     if(trial%11==0) {
-        vk_spec_started=false;unsigned n=vk_spec_ready_n;
+        /* Production cannot have a positive credit before startup. */
+        vk_spec_started=false;unsigned saved=vk_spec_undrained;vk_spec_undrained=0;
+        unsigned n=vk_spec_ready_n;
         drain[which]();
         assert(vk_spec_ready_n==n&&retro_atomic_load_relaxed_size(&vk_spec_out.tail)==position);
-        vk_spec_started=true;
+        vk_spec_started=true;vk_spec_undrained=saved;
     }
     drain[which]();
     assert(!retro_spsc_read_avail(&vk_spec_out));
@@ -154,6 +167,95 @@ static void run_case(unsigned which,unsigned trial,Snapshot *snap)
     for(unsigned i=0;i<ARRAY_SIZE(sources);i++)snap->refs[i]=retro_atomic_load_relaxed_int(&sources[i].refs);
     for(unsigned i=0;i<ARRAY_SIZE(vk_spec_track);i++)snap->phases[i]=vk_spec_track[i].phase;
     clear_ready();
+}
+/* State credits are render-owned. Zero is possible only before queueing or
+ * after consuming all final markers (or after quiescing cancelled work). */
+static void credit_cases(void)
+{
+    for(unsigned which=0;which<2;which++) {
+#ifdef CHECKED
+        bool guarded=which!=0;
+#ifdef NO_IDLE_GUARD
+        guarded=false;
+#endif
+#endif
+        reset(SIZE_MAX-79);vk_spec_undrained=0;vk_spec_started=false;
+#ifdef CHECKED
+        read_calls=0;
+#endif
+        drain[which]();
+#ifdef CHECKED
+        assert(!read_calls);
+#endif
+        vk_spec_started=true;
+#ifdef CHECKED
+        read_calls=0;
+#endif
+        for(unsigned i=0;i<1000;i++)drain[which]();
+        assert(!vk_spec_ready_n&&retro_atomic_load_relaxed_size(&vk_spec_out.tail)==SIZE_MAX-79);
+#ifdef CHECKED
+        assert(read_calls==(guarded?0:1000));
+#endif
+        /* A queued or cancelled-but-not-quiesced state remains nonzero,
+         * even while no worker record is available. */
+        vk_spec_undrained=1;
+#ifdef CHECKED
+        read_calls=0;
+#endif
+        drain[which]();
+        assert(vk_spec_undrained==1&&!vk_spec_ready_n);
+#ifdef CHECKED
+        assert(read_calls==1);
+#endif
+        for(unsigned modules=2;modules<=3;modules++) {
+            VkSpecDone d;
+            for(unsigned j=0;j<modules;j++) {
+                fill_record(&d,j);d.state_hash=j==modules-1?1:0;
+                own(d.spirv);assert(retro_spsc_write(&vk_spec_out,&d,sizeof(d))==sizeof(d));
+            }
+            drain[which]();
+            assert(vk_spec_undrained==0&&vk_spec_ready_n==modules);
+            assert(vk_spec_track[0].phase==VK_SPEC_ADOPTED&&!retro_spsc_read_avail(&vk_spec_out));
+            clear_ready();
+            /* A subsequent queue publication can precede its render-owned
+             * credit update; this render thread cannot drain in between. */
+            vk_spec_undrained=1;
+        }
+        /* The maximum valid admission still polls and lands every marker. */
+        vk_spec_undrained=VK_SPEC_RING;
+        unsigned records=0;
+        for(unsigned state=0;state<VK_SPEC_RING;state++) {
+            unsigned modules=2+(state&1);
+            for(unsigned j=0;j<modules;j++) {
+                VkSpecDone d;fill_record(&d,state*3+j);
+                d.state_hash=j==modules-1?state+1:0;
+                own(d.spirv);assert(retro_spsc_write(&vk_spec_out,&d,sizeof(d))==sizeof(d));
+                records++;
+            }
+        }
+        drain[which]();
+        assert(vk_spec_undrained==0&&vk_spec_ready_n==records);
+        for(unsigned state=0;state<VK_SPEC_RING;state++)
+            assert(vk_spec_track[state].phase==VK_SPEC_ADOPTED);
+        clear_ready();
+        vk_spec_undrained=1;drain[which]();
+        assert(vk_spec_undrained==1&&!vk_spec_ready_n);
+        /* After quiescing a cancelled state there is no producer left to
+         * publish; resetting its credit makes later empty drains idle. */
+        vk_spec_undrained=0;
+#ifdef CHECKED
+        read_calls=0;
+#endif
+        drain[which]();
+#ifdef CHECKED
+        assert(read_calls==(guarded?0:1));
+#endif
+    }
+#ifdef NO_IDLE_GUARD
+    puts("State-credit copying control: legacy polls retained; pending, final markers and quiesced reset pass");
+#else
+    puts("State-credit checks: idle skips all queue reads; one pending/cancelled credit still polls; two/three-module final markers re-enable idle skipping");
+#endif
 }
 static void correctness(void)
 {
@@ -216,8 +318,10 @@ static double concurrent(unsigned which)
 #ifdef BENCHMARK
 static double sequential(unsigned which,unsigned records)
 {
-    reset(0);unsigned count=records?65536:10000000;
-    vk_spec_undrained=count*(records/3);
+    reset(0);bool pending=records==(unsigned)-1;
+    if(pending)records=0;
+    unsigned count=records?65536:10000000;
+    vk_spec_undrained=pending?1:count*(records/3);
     double a=monotonic_ns();
     for(unsigned i=0;i<count;i++) {
         for(unsigned j=0;j<records;j++) {
@@ -234,18 +338,18 @@ int main(void)
     pin_thread("WORKER_BENCH_PRODUCER_CPU");
     assert(retro_spsc_init(&vk_spec_out,3*256*sizeof(VkSpecDone)));
     for(unsigned i=0;i<ARRAY_SIZE(prepared);i++)fill_record(&prepared[i],i);
-    correctness();
+    credit_cases();correctness();
 #ifndef BENCHMARK
     concurrent(0);concurrent(1);
     puts("393216 concurrent records: complete ready bytes and ownership/markers passed; checked views also verify release-after-copy");
 #else
     puts("CPU-only fixture: production/frozen drains, actual layouts and queue; source refs modeled; real marker lookup; final record validation included");
     for(unsigned round=0;round<7;round++) {
-        double empty[2],three[2],con[2];
+        double empty[2],pending[2],three[2],con[2];
         for(unsigned k=0;k<2;k++) {
-            unsigned w=k^(round&1);empty[w]=sequential(w,0);three[w]=sequential(w,3);con[w]=concurrent(w);
+            unsigned w=k^(round&1);empty[w]=sequential(w,0);pending[w]=sequential(w,(unsigned)-1);three[w]=sequential(w,3);con[w]=concurrent(w);
         }
-        printf("round=%u empty old=%.3f current=%.3f ns/drain; three old=%.3f current=%.3f ns/drain; concurrent old=%.3f current=%.3f ns/record\n",round,empty[0],empty[1],three[0],three[1],con[0],con[1]);
+        printf("round=%u empty old=%.3f current=%.3f ns/drain; pending-empty old=%.3f current=%.3f ns/drain; three old=%.3f current=%.3f ns/drain; concurrent old=%.3f current=%.3f ns/record\n",round,empty[0],empty[1],pending[0],pending[1],three[0],three[1],con[0],con[1]);
     }
 #endif
     retro_spsc_free(&vk_spec_out);
