@@ -57,3 +57,5 @@ libretro/tests/fileiotest.exe
 /libretro/tests/dspbootstrap.exe
 /libretro/tests/dspdmaspans
 /libretro/tests/dspdmaspans.exe
+/libretro/tests/dspinvalidate
+/libretro/tests/dspinvalidate.exe

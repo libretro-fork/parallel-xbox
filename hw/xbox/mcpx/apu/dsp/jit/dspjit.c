@@ -5052,6 +5052,10 @@ void dspjit_invalidate(DspJit *jit, uint32_t address)
             jit->rep_blocks[m][address - 1] = NULL;
         }
     }
+    /* No cached entry still covers this word. Repeated writes need no new
+     * scan until translation publishes coverage for it again. The active
+     * stale block is still stopped by jit_code_changed above. */
+    jit->covered[address >> 6] &= ~(UINT64_C(1) << (address & 63));
 }
 
 /* a repeat of an instruction the translator has no code for */

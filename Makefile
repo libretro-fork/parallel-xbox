@@ -278,7 +278,7 @@ ALL_OBJECTS := $(OBJECTS) $(OBJS_UTIL) $(DEP_OBJECTS)
 
 clean:
 	rm -f $(TARGET) $(LIBQEMUUTIL) $(VERSION_H) $(filter %.a,$(DEPS_LIBS))
-	rm -f $(ALL_OBJECTS) $(ALL_OBJECTS:.o=.d) $(DSPDIFF) $(DSPDIFF).exe $(DSPAUDIT) $(DSPDMATEST) $(DSPBOOTSTRAP) $(DSPDMASPANS) $(DSPNATIVE) $(SEEDSHADERS) $(S3TCTEST) $(S3TCTEST).exe $(FILEIOTEST)
+	rm -f $(ALL_OBJECTS) $(ALL_OBJECTS:.o=.d) $(DSPDIFF) $(DSPDIFF).exe $(DSPAUDIT) $(DSPDMATEST) $(DSPBOOTSTRAP) $(DSPDMASPANS) $(DSPINVALIDATE) $(DSPNATIVE) $(SEEDSHADERS) $(S3TCTEST) $(S3TCTEST).exe $(FILEIOTEST)
 
 # The DSP JIT against the interpreter (libretro/tests/dspdiff.c), built
 # from the DSP's own sources, nothing else of the core: a plain program,
@@ -298,6 +298,13 @@ $(DSPDIFF): $(DSPDIFF_SRC) $(DSP_TEST_HEADERS)
 	$(CC) -O2 $(QEMU_CFLAGS) $(ARCH_CFLAGS) -I$(CORE_DIR)/hw/xbox/mcpx/apu/dsp \
 		-I$(CORE_DIR)/hw/xbox/mcpx/apu/dsp/interp -o $@ $(DSPDIFF_SRC)
 dspdiff: $(DSPDIFF)
+
+DSPINVALIDATE := $(CORE_DIR)/libretro/tests/dspinvalidate$(if $(filter win,$(platform)),.exe,)
+$(DSPINVALIDATE): $(CORE_DIR)/libretro/tests/test-dsp-invalidation.c $(DSPDIFF_SRC) $(DSP_TEST_HEADERS)
+	$(CC) -O2 $(QEMU_CFLAGS) $(ARCH_CFLAGS) -DDSPJIT_TEST -I$(CORE_DIR)/hw/xbox/mcpx/apu/dsp -I$(CORE_DIR)/hw/xbox/mcpx/apu/dsp/interp -o $@ $(filter-out $(CORE_DIR)/libretro/tests/dspdiff.c,$(DSPDIFF_SRC)) $<
+dspinvalidate: $(DSPINVALIDATE)
+	$(DSP_PROGRAM_RUNNER) $(DSPINVALIDATE)
+.PHONY: dspinvalidate
 
 DSPDMASPANS := $(CORE_DIR)/libretro/tests/dspdmaspans$(if $(filter win,$(platform)),.exe,)
 $(DSPDMASPANS): $(CORE_DIR)/libretro/tests/test-dsp-dma-spans.c $(DSPDIFF_SRC) $(DSP_TEST_HEADERS)

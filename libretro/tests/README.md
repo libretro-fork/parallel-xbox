@@ -4648,3 +4648,27 @@ checking full spans, a single poisoned word, odd/short prefix tails, empty
 spans and valid prefixes ending immediately before the poison. Direction,
 range/overflow and actual DMA code-invalidation checks remain. This is a
 validation-cost optimization; the source is still scanned and transferred.
+
+`make dspinvalidate` checks invalidation with normal production-size blocks,
+not the single-instruction native matrix. Once all normal, REP and interrupt
+cache entries covering a changed P word have been removed, its coverage bit
+is cleared. Repeated writes skip redundant scans until translation publishes
+coverage for that word again. The first covered write still sets the active
+code-changed flag so a callback cannot resume stale native code. Other words'
+conservative coverage is left intact; this is not range-wide cache pruning.
+
+The 2528 focused checks prime overlapping entries at PCs 0/1/16/32/63/64/65/127 across
+all eight scaling/LF identities, replace words at 1/16/32/63/64/65/127 in 17-write
+bursts, execute replacement CLR/NOP instructions through every covering entry,
+and require invalidation to rearm after recompilation. Exact scan counts and
+the code-changed flag must hold, with zero interpreter fallbacks. Existing
+native and production fixtures cover extension words, REP/interrupt caches,
+self-modifying DMA and post-write guards. Both native CI steps include this
+target. DSP_PROGRAM_RUNNER supports cross-host checks.
+
+The standalone test accepts --bench for one million changed writes to a
+previously compiled P word without intervening execution. It reports elapsed
+time and exact scan count (old 1000000, new 1), with the same final word and
+code-changed flag. It uses QueryPerformanceCounter or CLOCK_MONOTONIC. This
+instrumented synthetic loop excludes recompilation and is not a game timing
+or a C/Rust comparison; report the counter overhead with elapsed results.
