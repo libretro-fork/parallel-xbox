@@ -4487,3 +4487,27 @@ previous state publication and mapped/device accesses. Extension cycles and
 raw-word shift/mask semantics are unchanged. A production fixture places
 multiple ADD/VSL pairs in native blocks, consumes flags between groups, and
 covers all modes/accumulators/insert bits, RAM limits, DO and REP across frames.
+
+`make dspnativeprograms` audits production-size JIT blocks (the normal 64-instruction
+limit, rather than the single-instruction native matrix). An instrumented
+`dspaudit` driver runs every GP fixture with two seeds against the interpreter
+and chunked JIT, requiring zero actual interpreter fallback calls. The current
+102 fixtures yield 408 comparisons, each spanning 100 frames. Both native-suite
+CI steps run this target. `--require-native` rejects uninstrumented builds,
+non-JIT hosts and nonpositive frame counts instead of silently passing.
+
+The separate `native-audit-fallback.inc` negative control deliberately uses the
+legacy out-of-width BSET #24 accumulator form. Ordinary comparison must pass,
+then the strict audit must reject its actual fallback with exit status 1. If
+that legacy form becomes native, update this control to exercise a real
+fallback again. It is not a missing valid guest instruction family.
+
+Zero-copy review: scratch/FIFO walkers lend bounded guest RAM spans directly
+to DMA conversion; VP mixing writes directly into GP memory; GP/EP output
+converts directly into the frontend queue. Do not retain borrowed pointers
+past the callback or bypass ownership fences/dirty tracking. DMA sample-width
+conversion, masks and interleaving prevent general buffer aliasing. A bounded
+bulk-copy fast path for identical contiguous formats could reduce loop work,
+but would still copy and needs overlap, invalidation and format tests. DSP
+state snapshots copy only on VM stop/start, not once per audio frame; sharing
+those arrays would change snapshot ownership and is not a hot-path win.

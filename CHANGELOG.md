@@ -59,6 +59,8 @@
 
 ## Unreleased
 
+- DSP: CI now rejects interpreter fallback in production-size DSP regression blocks, including a deliberate negative control.
+
 - DSP: keep VSL sources in the native accumulator cache for constant paired-RAM stores, avoiding unnecessary state spills and device checks.
 
 - DSP: specialize constant RAM addresses in memory bit operations while preserving mapped aliases, peripheral side effects and extension timing.

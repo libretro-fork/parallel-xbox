@@ -278,7 +278,7 @@ ALL_OBJECTS := $(OBJECTS) $(OBJS_UTIL) $(DEP_OBJECTS)
 
 clean:
 	rm -f $(TARGET) $(LIBQEMUUTIL) $(VERSION_H) $(filter %.a,$(DEPS_LIBS))
-	rm -f $(ALL_OBJECTS) $(ALL_OBJECTS:.o=.d) $(DSPDIFF) $(DSPDIFF).exe $(DSPNATIVE) $(SEEDSHADERS) $(S3TCTEST) $(S3TCTEST).exe $(FILEIOTEST)
+	rm -f $(ALL_OBJECTS) $(ALL_OBJECTS:.o=.d) $(DSPDIFF) $(DSPDIFF).exe $(DSPAUDIT) $(DSPNATIVE) $(SEEDSHADERS) $(S3TCTEST) $(S3TCTEST).exe $(FILEIOTEST)
 
 # The DSP JIT against the interpreter (libretro/tests/dspdiff.c), built
 # from the DSP's own sources, nothing else of the core: a plain program,
@@ -298,6 +298,24 @@ $(DSPDIFF): $(DSPDIFF_SRC) $(DSP_TEST_HEADERS)
 	$(CC) -O2 $(QEMU_CFLAGS) $(ARCH_CFLAGS) -I$(CORE_DIR)/hw/xbox/mcpx/apu/dsp \
 		-I$(CORE_DIR)/hw/xbox/mcpx/apu/dsp/interp -o $@ $(DSPDIFF_SRC)
 dspdiff: $(DSPDIFF)
+
+# Production-size blocks must not hide execution through the interpreter.
+DSPAUDIT := $(CORE_DIR)/libretro/tests/dspaudit$(if $(filter win,$(platform)),.exe,)
+$(DSPAUDIT): $(DSPDIFF_SRC) $(DSP_TEST_HEADERS)
+	$(CC) -O2 $(QEMU_CFLAGS) $(ARCH_CFLAGS) -DDSPJIT_TEST -I$(CORE_DIR)/hw/xbox/mcpx/apu/dsp \
+		-I$(CORE_DIR)/hw/xbox/mcpx/apu/dsp/interp -o $@ $(DSPDIFF_SRC)
+dspnativeprograms: $(DSPAUDIT)
+	$(DSP_PROGRAM_RUNNER) $(DSPAUDIT) --frames 1 $(CORE_DIR)/libretro/tests/rom/native-audit-fallback.inc
+	@status=0; $(DSP_PROGRAM_RUNNER) $(DSPAUDIT) --require-native --frames 1 $(CORE_DIR)/libretro/tests/rom/native-audit-fallback.inc || status=$$?; \
+		test "$$status" -eq 1 || { echo "native audit failed to reject fallback"; exit 1; }
+	@for rom in $(CORE_DIR)/libretro/tests/rom/gp*.inc; do \
+		case "$$rom" in */gpu.inc) continue;; esac; \
+		for seed in 1 2; do \
+			$(DSP_PROGRAM_RUNNER) $(DSPAUDIT) --require-native --until-halt --frames 100 --seed $$seed --x 0=4 "$$rom" || exit $$?; \
+			$(DSP_PROGRAM_RUNNER) $(DSPAUDIT) --require-native --until-halt --baseline-jit --frames 100 --seed $$seed --x 0=4 "$$rom" || exit $$?; \
+		done; \
+	done
+.PHONY: dspnativeprograms
 
 # Production-size blocks and REP must preserve arithmetic flags through MAX.
 dspmax: $(DSPDIFF)

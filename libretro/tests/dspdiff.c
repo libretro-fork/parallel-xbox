@@ -32,6 +32,7 @@
 #include "hw/xbox/mcpx/apu/dsp/dsp.h"
 #include "hw/xbox/mcpx/apu/dsp/dsp_internal.h"
 #include "hw/xbox/mcpx/apu/dsp/interp/dsp_cpu.h"
+#include "hw/xbox/mcpx/apu/dsp/jit/dspjit.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -400,11 +401,14 @@ int main(int argc, char **argv)
     bool has_xy;
     bool until_halt = false;
     bool baseline_jit = false;
+    bool require_native = false;
     Machine *a, *b;
 
     for (int i = 1; i < argc; i++) {
         if (!strcmp(argv[i], "--frames") && i + 1 < argc) {
             frames = atoi(argv[++i]);
+        } else if (!strcmp(argv[i], "--require-native")) {
+            require_native = true;
         } else if (!strcmp(argv[i], "--baseline-jit")) {
             baseline_jit = true;
         } else if (!strcmp(argv[i], "--until-halt")) {
@@ -428,9 +432,19 @@ int main(int argc, char **argv)
         }
     }
     if (!path) {
-        fprintf(stderr, "usage: dspdiff [--frames N] [--seed S] [--x ADDR=VALUE] [--y ADDR=VALUE] [--max-cycles C] [--until-halt] [--baseline-jit] program\n");
+        fprintf(stderr, "usage: dspdiff [--frames N] [--seed S] [--x ADDR=VALUE] [--y ADDR=VALUE] [--max-cycles C] [--until-halt] [--baseline-jit] [--require-native] program\n");
         return 1;
     }
+    if (require_native && frames <= 0) {
+        fputs("dspdiff: native audit requires positive frame count\n", stderr);
+        return 2;
+    }
+#if !defined(DSPJIT_TEST) || !DSPJIT_HOST
+    if (require_native) {
+        fputs("dspdiff: native audit requires DSPJIT_TEST on a JIT host\n", stderr);
+        return 2;
+    }
+#endif
     if (load_program(path, p, x, y, &has_xy)) {
         return 1;
     }
@@ -490,6 +504,9 @@ int main(int argc, char **argv)
         }
     }
 
+#ifdef DSPJIT_TEST
+    if (require_native) dspjit_test_reset_fallback_count();
+#endif
     for (int frame = 0; frame < frames; frame++) {
         int ra = run_frame(a, max_cycles, false);
         int rb = run_frame(b, max_cycles, until_halt);
@@ -498,6 +515,13 @@ int main(int argc, char **argv)
                     frame, max_cycles, ra ? "running" : "halted", rb ? "running" : "halted");
             return 1;
         }
+#ifdef DSPJIT_TEST
+        if (require_native && dspjit_test_fallback_count()) {
+            fprintf(stderr, "dspdiff: frame %d used %" PRIu64 " interpreter fallback calls\n",
+                    frame, dspjit_test_fallback_count());
+            return 1;
+        }
+#endif
         if (baseline_jit && a->dsp->save_cycles != b->dsp->save_cycles) {
             fprintf(stderr, "dspdiff: frame %d budget remainder differs: %d versus %d\n",
                     frame, a->dsp->save_cycles, b->dsp->save_cycles);
@@ -508,6 +532,7 @@ int main(int argc, char **argv)
             return 1;
         }
     }
+    if (require_native) puts("dspdiff: native audit passed; zero interpreter fallbacks");
     printf("dspdiff: %d frames, %s: the JIT and the %s agree\n", frames, path,
            baseline_jit ? "chunked JIT (including budget carry)" : "interpreter");
     return 0;
