@@ -4,16 +4,13 @@ Needs the reference zstd CLI to generate fixtures; no MAME/ROM input required.
 """
 from pathlib import Path
 import binascii, lzma, os, random, shlex, struct, subprocess, sys, tempfile, zlib
-root = Path(sys.argv[1]).resolve()
-cc = sys.argv[2] if len(sys.argv) > 2 else 'cc'
-with tempfile.TemporaryDirectory(prefix='chd-codecs-') as temporary:
-    work = Path(os.environ.get('CHD_CODEC_WORK', temporary)).resolve()
+def generate(work, trim=713):
     work.mkdir(parents=True, exist_ok=True)
     rng = random.Random(749); hb = 4096
     chunks = [bytes(hb), bytes(range(256)) * 16,
               rng.randbytes(hb), b'Xbox CHD ownership\0' * 215 + b'x' * 11]
     chunks[3] = (chunks[3] * 2)[:hb]
-    raw = b''.join(chunks[i % 4] for i in range(32))[:-713]
+    raw = b''.join(chunks[i % 4] for i in range(32))[:32*hb-trim]
     (work/'raw.bin').write_bytes(raw)
     padded = raw + bytes((-len(raw)) % hb)
     count = len(padded) // hb
@@ -75,20 +72,30 @@ with tempfile.TemporaryDirectory(prefix='chd-codecs-') as temporary:
         (work/f'z{i}.raw').write_bytes(data)
         subprocess.run(['zstd', '-q', '-f', '--check', '-'+str(1+i%9),
                         str(work/f'z{i}.raw'), '-o', str(work/f'z{i}.zst')], check=True)
-    sources = ['formats/chd/rchd.c','formats/flac/rflac.c','formats/7z/r7z_lzma.c',
-               'encodings/encoding_rzstd.c','encodings/encoding_huffman.c',
-               'encodings/encoding_xxh64.c','encodings/encoding_deflate.c',
-               'encodings/encoding_crc32.c','features/features_cpu.c']
-    binary = os.environ.get('CHD_CODEC_BINARY', str(work/'test'))
-    flags = shlex.split(os.environ.get('CHD_CODEC_CFLAGS',
-                        '-static' if 'mingw' in cc else '-fsanitize=address,undefined'))
-    subprocess.run([cc, '-O2', '-std=gnu11', '-g', '-ffunction-sections',
-                    '-Wl,--gc-sections', *flags,
-                    '-DHAVE_RCHD_DEFLATE', '-DHAVE_RCHD_LZMA',
-                    '-DHAVE_RCHD_FLAC', '-DHAVE_RCHD_ZSTD',
-                    '-I'+str(root/'libretro-common/include'),
-                    str(root/'libretro/tests/test-chd-codecs.c'),
-                    *[str(root/'libretro-common'/s) for s in sources],
-                    '-lm', '-o', binary], check=True)
-    if not os.environ.get('CHD_CODEC_SKIP_RUN'):
-        subprocess.run([binary, str(work)], check=True, timeout=60)
+
+def main():
+    root = Path(sys.argv[1]).resolve()
+    cc = sys.argv[2] if len(sys.argv) > 2 else 'cc'
+    with tempfile.TemporaryDirectory(prefix='chd-codecs-') as temporary:
+        work = Path(os.environ.get('CHD_CODEC_WORK', temporary)).resolve()
+        generate(work)
+        sources = ['formats/chd/rchd.c','formats/flac/rflac.c','formats/7z/r7z_lzma.c',
+                   'encodings/encoding_rzstd.c','encodings/encoding_huffman.c',
+                   'encodings/encoding_xxh64.c','encodings/encoding_deflate.c',
+                   'encodings/encoding_crc32.c','features/features_cpu.c']
+        binary = os.environ.get('CHD_CODEC_BINARY', str(work/'test'))
+        flags = shlex.split(os.environ.get('CHD_CODEC_CFLAGS',
+                            '-static' if 'mingw' in cc else '-fsanitize=address,undefined'))
+        subprocess.run([cc, '-O2', '-std=gnu11', '-g', '-ffunction-sections',
+                        '-Wl,--gc-sections', *flags,
+                        '-DHAVE_RCHD_DEFLATE', '-DHAVE_RCHD_LZMA',
+                        '-DHAVE_RCHD_FLAC', '-DHAVE_RCHD_ZSTD',
+                        '-I'+str(root/'libretro-common/include'),
+                        str(root/'libretro/tests/test-chd-codecs.c'),
+                        *[str(root/'libretro-common'/s) for s in sources],
+                        '-lm', '-o', binary], check=True)
+        if not os.environ.get('CHD_CODEC_SKIP_RUN'):
+            subprocess.run([binary, str(work)], check=True, timeout=60)
+
+if __name__ == '__main__':
+    main()

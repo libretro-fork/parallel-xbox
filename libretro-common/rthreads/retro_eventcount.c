@@ -1406,7 +1406,7 @@ static bool ec_sem_park(retro_eventcount_t *ec, int key, bool bounded,
 }
 #endif
 
-bool retro_eventcount_init(retro_eventcount_t *ec)
+static bool ec_init(retro_eventcount_t *ec, bool require_lock_free)
 {
    int lockless = 0;
 
@@ -1454,6 +1454,9 @@ bool retro_eventcount_init(retro_eventcount_t *ec)
    if (lockless)
       return true;
 
+   if (require_lock_free)
+      return false;
+
    if (!(ec->lock = slock_new()))
       return false;
 
@@ -1465,6 +1468,16 @@ bool retro_eventcount_init(retro_eventcount_t *ec)
    }
 
    return true;
+}
+
+bool retro_eventcount_init(retro_eventcount_t *ec)
+{
+   return ec_init(ec, false);
+}
+
+bool retro_eventcount_init_lock_free(retro_eventcount_t *ec)
+{
+   return ec_init(ec, true);
 }
 
 void retro_eventcount_free(retro_eventcount_t *ec)

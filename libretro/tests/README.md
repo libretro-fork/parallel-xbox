@@ -4527,3 +4527,27 @@ then use 160 harness frames with `--save 5 --load 10 --load-again 20
 live across the save. Both loads must restore identical RAM and the read must
 still finish with the word/phase results above. This is a guest instruction
 loop for the fixture, not a host wait in the core.
+
+### CHD decoder worker
+
+`python3 libretro/tests/test-chd-worker.py . [cc]` generates aligned raw,
+Zstandard and LZMA DVD CHD fixtures using the independent codec fixture generator
+(requires the zstd CLI). It builds the production worker with real libretro-common
+SPSC, eventcount, atomics and threads. A gated provider holds the worker while
+400,000 completion checks return pending and a full queue refuses another read;
+pending abandonment cannot recycle the payload early. Byte oracles cover mapped
+and positional providers, 500 subsequent reads while retaining an older result,
+provider errors/recovery, source close with retained and queued requests,
+unsupported/truncated input and 128 immediate-stop cycles. Linux defaults to
+ASan/UBSan. `CHD_WORKER_WORK`, `CHD_WORKER_BINARY`, `CHD_WORKER_CFLAGS` and
+`CHD_WORKER_SKIP_RUN` support native cross-compiled tests. Scheduler sleeps and
+waits in the fixture drive the independent test threads; the production submit,
+poll and release APIs contain none. No CHD backend is connected to the core yet.
+
+`python3 libretro/tests/test-eventcount-lock-free-init.py . [cc]` compiles the
+production eventcount with its forced fallback backend and instrumented rthread
+constructors. The new lock-free-only initializer must fail with zero lock/cond
+allocations; the legacy initializer must retain its previous behavior. This
+checks rejection before construction, rather than accepting a mutex fallback
+and discovering it after a worker starts. `EC_INIT_BINARY`, `EC_INIT_CFLAGS`
+and `EC_INIT_SKIP_RUN` support cross-compiled native execution.

@@ -30,4 +30,23 @@ not on retro_run. Do not add a guest-visible wait for a worker completion.
 ATAPI PIO now prepares complete phases asynchronously and retains sector tails,
 while preserving the announced byte count and DRQ burst. The current disk
 provider still completes its file reads synchronously at submission; the CHD
-worker and readiness-aware disk dispatch are required before mounting media.
+worker is implemented in block/libretro-chd.c and validated independently, but
+readiness-aware disk dispatch and logical media probing are still required
+before mounting media.
+
+Core-owned threading adaptation: retro_eventcount_init_lock_free() rejects the
+slock/scond fallback before allocating it; existing init behavior is preserved.
+The CHD worker requires that initializer and lock-free retro_atomic/retro_spsc.
+Its source and fixed request payloads are allocated at open; retained payloads
+are aligned to 64 bytes independently of the allocator base. Inputs are borrowed
+from stable mappings or reusable worker scratch. rchd still copies its decoded
+hunk cache into the retained result; the adapter adds no further result copy.
+The frame owner must split requests above 1 MiB and handle -EAGAIN without a
+wait. Eight pending/retained requests bound the decoded-result storage to 8 MiB.
+Initial mount policy is cooked DVD units of 2048 bytes without CD track tables
+or external parents. Other layouts fail explicitly, rather than being decoded
+as if they had that geometry. Lifecycle open/close may perform I/O/join; submit,
+poll and release may not. The worker's stop check cancels queued work and a
+held decoded result remains independent of the closed source/decoder.
+Abandonment publishes cancellation for the next worker decode boundary;
+accepted storage calls already in progress finish on their storage owner.

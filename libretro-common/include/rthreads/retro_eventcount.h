@@ -205,6 +205,12 @@ typedef struct retro_eventcount
  */
 bool retro_eventcount_init(retro_eventcount_t *ec);
 
+/* As init, but fail before allocating a mutex/condition-variable fallback.
+ * Required by owners whose threading contract permits lock-free parking only.
+ * On failure the object must not be used or passed to free. */
+bool retro_eventcount_init_lock_free(retro_eventcount_t *ec);
+
+
 /**
  * retro_eventcount_free:
  * @ec : object to release.
