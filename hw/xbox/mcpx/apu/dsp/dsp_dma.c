@@ -117,6 +117,18 @@ static void dma_run(void *user, uint8_t *host, size_t bytes)
         t->n += items;
         return;
     }
+    /* Outbound 32-bit slots preserve raw DSP words, including upper bits.
+     * Keep conversion/callback/interleaved paths and overlapping transfers
+     * ordered word by word. The walker still owns fencing and dirty tracking. */
+    if (t->to_host && t->item_size == 4 && t->mem && !t->interleave) {
+        const uint32_t *src = t->mem + t->n;
+        uintptr_t a = (uintptr_t)host, b = (uintptr_t)src;
+        if (a >= b ? a - b >= bytes : b - a >= bytes) {
+            memcpy(host, src, bytes);
+            t->n += items;
+            return;
+        }
+    }
     if (t->to_host) {
         if (t->item_size == 2) {
             for (size_t i = 0; i < items; i++) {

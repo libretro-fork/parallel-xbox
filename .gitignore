@@ -50,3 +50,6 @@ libretro/tests/fileiotest.exe
 
 /libretro/tests/dspdecode
 /libretro/tests/dspdecode.exe
+
+/libretro/tests/dspdma
+/libretro/tests/dspdma.exe

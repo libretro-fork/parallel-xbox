@@ -59,6 +59,8 @@
 
 ## Unreleased
 
+- Audio: contiguous outbound DSP DMA words now use bulk copies, preserving conversion and overlapping-transfer ordering.
+
 - DSP: CI now rejects interpreter fallback in production-size DSP regression blocks, including a deliberate negative control.
 
 - DSP: keep VSL sources in the native accumulator cache for constant paired-RAM stores, avoiding unnecessary state spills and device checks.

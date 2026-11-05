@@ -4506,8 +4506,19 @@ Zero-copy review: scratch/FIFO walkers lend bounded guest RAM spans directly
 to DMA conversion; VP mixing writes directly into GP memory; GP/EP output
 converts directly into the frontend queue. Do not retain borrowed pointers
 past the callback or bypass ownership fences/dirty tracking. DMA sample-width
-conversion, masks and interleaving prevent general buffer aliasing. A bounded
-bulk-copy fast path for identical contiguous formats could reduce loop work,
-but would still copy and needs overlap, invalidation and format tests. DSP
+conversion, masks and interleaving prevent general buffer aliasing. Contiguous
+outbound 32-bit slots now use a bounded bulk copy when the host and DSP
+spans do not overlap; this still copies, rather than aliasing buffers. DSP
 state snapshots copy only on VM stop/start, not once per audio frame; sharing
 those arrays would change snapshot ownership and is not a hot-path win.
+
+`make dspdma` compares DMA runs against the scalar ordering across 33,344
+cases: both directions, 16/32-bit slots, raw upper bits, inbound masking,
+interleaving, direct/callback memory, zero/discard aperture, counts 0-64,
+unaligned host spans, nonzero item cursors, split callbacks and overlapping
+source/destination bytes. Complete buffers, item cursors and callback counts
+must match. Only outbound direct, non-interleaved, disjoint 32-bit spans use
+bulk copies. Inbound words retain masks and per-word program invalidation;
+converted/interleaved/callback/overlap cases keep the scalar path. Walkers
+still fence ownership and mark guest RAM dirty after the callback. Both native
+CI steps run this standalone test; DSP_PROGRAM_RUNNER supports cross-host runs.
