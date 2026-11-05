@@ -59,9 +59,12 @@
 
 ## Unreleased
 
+- Add real-queue Vulkan worker completion regression coverage for exact record bytes, wrapping, queue drops and transferred reference ownership. This is test coverage for copy-removal work; renderer behavior is unchanged.
+
 - Audio: sequential callback-backed DSP DMA skips repeated memory-path and channel-index dispatch while retaining every per-word callback.
 
 - Audio: callback-backed interleaved DSP output now advances a channel cursor, retaining per-word callback order without repeated sample-index division.
+
 
 - Add an exact-size SPSC write reservation as a prerequisite for direct worker record construction. Refresh the consumer cursor only when cached room cannot cover the requested record; reject physical wraps and non-fitting records without publication. Existing queue callers and renderer behavior are unchanged.
 
