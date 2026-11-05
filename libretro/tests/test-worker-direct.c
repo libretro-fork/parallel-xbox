@@ -16,10 +16,44 @@
 #include "hw/xbox/nv2a/pgraph/glsl/shaders.h"
 #include "qemu/fast-hash.h"
 #include <libretro.h>
+#ifdef _WIN32
+#include <windows.h>
+#endif
+/* Opt-in placement for benchmarks; correctness runs stay unpinned by default. */
+static void pin_thread(const char *name){
+ const char *value=getenv(name);if(!value)return;
+#ifdef _WIN32
+ char *end;unsigned long index=strtoul(value,&end,10);
+ assert(value[0]&&!*end&&index<8*sizeof(DWORD_PTR));
+ DWORD_PTR process_mask,system_mask,mask=(DWORD_PTR)1<<index;
+ assert(GetProcessAffinityMask(GetCurrentProcess(),&process_mask,&system_mask));
+ assert(process_mask&mask);
+ assert(SetThreadAffinityMask(GetCurrentThread(),mask));
+ assert(GetCurrentProcessorNumber()==index);
+#else
+ fprintf(stderr,"Explicit CPU placement currently requires Windows: %s\n",name);_Exit(1);
+#endif
+}
+static double monotonic_ns(void){
+#ifdef _WIN32
+ LARGE_INTEGER counter,frequency;
+ assert(QueryPerformanceFrequency(&frequency)&&QueryPerformanceCounter(&counter));
+ return (double)counter.QuadPart*1e9/(double)frequency.QuadPart;
+#else
+ struct timespec t;assert(!clock_gettime(CLOCK_MONOTONIC,&t));
+ return (double)t.tv_sec*1e9+t.tv_nsec;
+#endif
+}
+static retro_atomic_int_t started,start_gate;
+static void wait_for_start(const char *placement){
+ pin_thread(placement);
+ retro_atomic_fetch_add_int(&started,1);
+ while(!retro_atomic_load_acquire_int(&start_gate))sched_yield();
+}
 static uint64_t fixture_simd;
 uint64_t cpu_features_get(void){return fixture_simd;}
 /* KEY */
-typedef struct {retro_atomic_int_t refs;} ShaderSource;
+/* SOURCE */
 /* RECORD */
 static ShaderSource sources[3];
 static ShaderModuleCacheKey prepared[3];
@@ -64,12 +98,16 @@ static void correctness(void){
  free(expected);
  puts("20000 real-queue states: full buffer bytes, partial/full drops, reference counts, unaligned/wrapped cursors and size_t rollover match frozen builder");
 }
+#ifdef BENCHMARK
+enum {STATES=131072};
+#else
 enum {STATES=32768};
+#endif
 static unsigned mode;
 static void (*builder[2])(const ShaderState *)={reference_state,vk_spec_compile_state};
 static void state_for(ShaderState *s,unsigned serial){memset(s,0,sizeof(*s));memcpy(s,&serial,sizeof(serial));}
 static void *produce(void *unused){
- (void)unused;ShaderState s;
+ (void)unused;ShaderState s;wait_for_start("WORKER_BENCH_PRODUCER_CPU");
  for(unsigned i=0;i<STATES;i++){
   while(retro_spsc_write_avail(&vk_spec_out)<3*sizeof(VkSpecDone))sched_yield();
   state_for(&s,i);builder[mode](&s);
@@ -77,7 +115,7 @@ static void *produce(void *unused){
  return NULL;
 }
 static void *consume(void *unused){
- (void)unused;VkSpecDone actual,expected;ShaderState s;
+ (void)unused;VkSpecDone actual,expected;ShaderState s;wait_for_start("WORKER_BENCH_CONSUMER_CPU");
  for(unsigned i=0;i<STATES;i++)for(unsigned j=0;j<3;j++){
   while(retro_spsc_read_avail(&vk_spec_out)<sizeof(actual))sched_yield();
   assert(retro_spsc_read(&vk_spec_out,&actual,sizeof(actual))==sizeof(actual));
@@ -91,24 +129,30 @@ static void *consume(void *unused){
 }
 static double concurrent(unsigned which){
  reset(SIZE_MAX-12345,0);mode=which;pthread_t producer,consumer;
- struct timespec a,b;timespec_get(&a,TIME_UTC);
+ retro_atomic_int_init(&started,0);retro_atomic_int_init(&start_gate,0);
  assert(!pthread_create(&consumer,NULL,consume,NULL));assert(!pthread_create(&producer,NULL,produce,NULL));
+ while(retro_atomic_load_acquire_int(&started)!=2)sched_yield();
+ double a=monotonic_ns();retro_atomic_store_release_int(&start_gate,1);
  assert(!pthread_join(producer,NULL));assert(!pthread_join(consumer,NULL));
- timespec_get(&b,TIME_UTC);assert(!retro_spsc_read_avail(&vk_spec_out));
+ double b=monotonic_ns();assert(!retro_spsc_read_avail(&vk_spec_out));
  for(unsigned i=0;i<3;i++)assert(retro_atomic_load_relaxed_int(&sources[i].refs)==1);
- return ((b.tv_sec-a.tv_sec)*1e9+b.tv_nsec-a.tv_nsec)/STATES;
+ return (b-a)/STATES;
 }
 #ifdef BENCHMARK
 static double sequential(unsigned which){
- reset(0,0);ShaderState s;VkSpecDone d;struct timespec a,b;timespec_get(&a,TIME_UTC);
+ reset(0,0);ShaderState s;VkSpecDone d;double a=monotonic_ns();
  for(unsigned i=0;i<STATES*4;i++){
   state_for(&s,i);builder[which](&s);
   for(unsigned j=0;j<3;j++){assert(retro_spsc_read(&vk_spec_out,&d,sizeof(d))==sizeof(d));pgraph_vk_shader_source_unref(d.spirv);}
  }
- timespec_get(&b,TIME_UTC);return ((b.tv_sec-a.tv_sec)*1e9+b.tv_nsec-a.tv_nsec)/(STATES*4);
+ double b=monotonic_ns();return (b-a)/(STATES*4);
 }
 #endif
 int main(void){
+ pin_thread("WORKER_BENCH_PRODUCER_CPU");
+ printf("Placement: producer=%s consumer=%s; monotonic timer; gated thread start\n",
+        getenv("WORKER_BENCH_PRODUCER_CPU")?getenv("WORKER_BENCH_PRODUCER_CPU"):"scheduler",
+        getenv("WORKER_BENCH_CONSUMER_CPU")?getenv("WORKER_BENCH_CONSUMER_CPU"):"scheduler");
 #if defined(__x86_64__) || defined(__i386__)
  __builtin_cpu_init();
  if(__builtin_cpu_supports("sse2"))fixture_simd|=RETRO_SIMD_SSE2;

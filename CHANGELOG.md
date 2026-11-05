@@ -59,9 +59,12 @@
 
 ## Unreleased
 
+- Build Vulkan worker completion records directly in available queue storage, avoiding the intermediate full-record copy. Preserve exact record bytes, reference ownership and publication order, with the existing copy/drop behavior at ring boundaries or when space is unavailable.
+
 - DSP: validate borrowed program-RAM sources with a vectorizable reduction instead of branching on every word.
 
 - Audio: outbound DSP DMA borrows validated program-RAM spans directly; incoming program writes still use invalidating callbacks.
+
 
 - Add real-queue Vulkan worker completion regression coverage for exact record bytes, wrapping, queue drops and transferred reference ownership. This is test coverage for copy-removal work; renderer behavior is unchanged.
 

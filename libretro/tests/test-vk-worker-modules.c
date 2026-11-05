@@ -61,8 +61,15 @@ static int vk_state_module_keys(const ShaderState *st,bool push,ShaderModuleCach
 /* RECORD */
 static int vk_spec_out;
 static VkSpecDone emitted[3];
-static unsigned emitted_n,queue_limit=3;
+static unsigned emitted_n,queue_limit=3,reservations;
 static size_t retro_spsc_write(void *ring,const void *data,size_t n){assert(ring==&vk_spec_out&&n==sizeof(VkSpecDone));if(emitted_n==queue_limit)return 0;emitted[emitted_n++]=*(const VkSpecDone *)data;return n;}
+/* Model both direct reservation and the unchanged copy/drop fallback. */
+static bool retro_spsc_write_reserve(void *ring,void **out,size_t n){
+ assert(ring==&vk_spec_out&&n==sizeof(VkSpecDone));*out=NULL;
+ if(!vk_spec_push_constants||emitted_n==queue_limit)return false;
+ *out=&emitted[emitted_n];reservations++;return true;
+}
+static void retro_spsc_write_end(void *ring,size_t n){assert(ring==&vk_spec_out&&n==sizeof(VkSpecDone)&&emitted_n<queue_limit);emitted_n++;}
 #define VK_SPEC_READY 768
 /* READY STATE */
 /* PRODUCTION */
@@ -99,6 +106,7 @@ int main(void)
  k.len=VK_SPEC_MODULE_BYTES-sizeof(ShaderSource);a=compile_for_test(&k);b=compile_for_test(&k);assert(a!=b&&a->len>VK_SPEC_MODULE_BYTES&&!vk_spec_module_bytes);pgraph_vk_shader_source_unref(a);pgraph_vk_shader_source_unref(b);
  /* Every state's end marker must still be emitted on module cache hits. */
  for(unsigned trial=0;trial<100;trial++){
+  vk_spec_push_constants=(trial&1)!=0;
   ShaderState st={trial};emitted_n=0;unsigned before_hashes=key_hash_calls;vk_spec_compile_state(&st);assert(emitted_n==3&&key_hash_calls-before_hashes==3);
   uint64_t h=fast_hash((const uint8_t *)&st,sizeof(st));assert(!emitted[0].state_hash&&!emitted[1].state_hash&&emitted[2].state_hash==h);
   for(unsigned i=0;i<3;i++)vk_spec_ready_push(&emitted[i]);
@@ -148,5 +156,6 @@ int main(void)
  assert(!strcmp(two->uniforms.uniforms[0].name,"value"));
  pgraph_vk_destroy_shader_module(&renderer,two);
  assert(!retro_atomic_load_relaxed_int(&live_sources));
+ assert(reservations>0);
  puts("PASS: immutable module sharing, exact keys/collisions, SPIR-V versions, byte cap, oversize bypass, eviction, queue drops, state markers, adoption and 800000 concurrent ref/unref pairs; no leaked sources/layouts; shared layouts outlive words and module destruction");
 }
