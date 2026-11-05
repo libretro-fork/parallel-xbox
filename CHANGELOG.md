@@ -59,9 +59,12 @@
 
 ## Unreleased
 
+- Strengthen Vulkan module-key optimization checks with a frozen geometry baseline, pinned monotonic CPU comparisons, identical-code controls and required failures for missing state copies or clears. The geometry-clear candidates remain disabled; rendering behavior is unchanged.
+
 - DSP: repeated empty JIT flushes rewind the arena without clearing already-empty coverage and block tables again.
 
 - DSP: compiled-block coverage is published with bitmap range masks instead of one update per program word.
+
 
 - Strengthen Vulkan completion-drain tests to distinguish idle polling from pending-but-empty work, verify state credits through final markers and quiesce, and reject shortcuts that skip unfinished states. Renderer behavior is unchanged.
 
