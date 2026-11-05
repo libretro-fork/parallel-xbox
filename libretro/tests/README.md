@@ -4568,3 +4568,17 @@ elapsed-time threshold runs in CI; regression correctness remains separate.
 Sanitizer timings are for diagnostics and must not be compared with release
 numbers. Repeated processes may introduce noise; report spread and regressions
 as well as wins, and measure representative games separately when authorized.
+
+`make dspbootstrap` checks the fused bootstrap loader through both C engine
+operation tables. Each complete borrowed scratch word is loaded, masked to
+24 bits and stored once; the old full destination normalization pass is gone.
+Sub-word fragments are assembled before masking, without retaining a host
+pointer. Opcode-cache reset and JIT flush still happen after the entire load.
+
+The 65564-case matrix covers all 8193 split positions across the 8192-byte
+load, four unaligned host offsets, repeated 1-9-byte fragments and empty
+callbacks. It independently checks every PRAM word, untouched upper PRAM and
+the complete opcode cache. A primed CLR A block replaced by NOP must execute
+the replacement on both interpreter and JIT engines. Both native CI steps
+run the target; DSP_PROGRAM_RUNNER supports cross-host checks. This is a
+bootstrap memory-pass reduction, not a per-frame or game-startup timing claim.

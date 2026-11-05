@@ -59,6 +59,8 @@
 
 ## Unreleased
 
+- DSP: bootstrap now masks program words while loading them, removing a second pass over destination program RAM.
+
 - DSP development: add a reproducible revision-to-revision DMA benchmark with output fingerprints, alternating runs and recorded compiler/source identities.
 
 - Audio: direct interleaved DSP output advances a channel cursor instead of dividing every sample, including across scatter-gather boundaries.

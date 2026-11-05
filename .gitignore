@@ -53,3 +53,5 @@ libretro/tests/fileiotest.exe
 
 /libretro/tests/dspdma
 /libretro/tests/dspdma.exe
+/libretro/tests/dspbootstrap
+/libretro/tests/dspbootstrap.exe
