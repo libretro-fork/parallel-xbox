@@ -4536,3 +4536,35 @@ order, including overlap. Additional tests cover all 1-16 channel counts,
 1-7 blocks, every starting item, full runs versus one-item callback splits,
 empty callbacks between samples, unaligned output and interleaved aliasing.
 The scalar oracle retains the original per-item division/remainder formula.
+
+`python libretro/tests/bench-dsp-dma.py . --baseline 7b081ba --json dma.json`
+builds the same isolated driver against the selected Git revision's DMA
+module and a snapshot of the working-tree module. It reuses the dspdma
+Makefile target's compiler/include/architecture flags; --cc accepts the
+compiler command (including optional sanitizer flags). The checkout must
+provide the current dspdma target. Temporary binaries are removed on exit.
+
+Ten cases cover direct 16/32-bit input/output, direct interleaved output,
+callback 32-bit input/output and callback interleaved 16/32-bit output. Each
+uses raw upper bits, unaligned host spans and a nonzero item cursor; six
+channels exercise non-power-of-two interleaving. Default sizes are 32, 128,
+512 and 2048 words. Five alternating old/current process runs per case use
+100000 transfers after warmup. --counts, --runs and --iterations override
+these settings; choose enough iterations for stable timings. The timer is
+QueryPerformanceCounter on Windows and CLOCK_MONOTONIC on POSIX.
+
+Every sample must match the other samples' complete-memory FNV fingerprint
+and final item cursor before timing is reported as comparable. Fingerprints
+are an inexpensive mismatch check, not independent correctness proof; run
+`make dspdma` for scalar oracles, overlap coverage and callback-count checks.
+Optional JSON records all timings, medians, source/driver SHA256 identities,
+Git revision IDs and compiler version. Current source may be uncommitted;
+use its recorded hash rather than assuming HEAD describes those bytes.
+
+These are warm conversion-loop measurements, including mock callback costs.
+They exclude guest walkers, ownership fences, dirty tracking, native-block
+execution and games. This compares two C revisions, not C against Rust. No
+elapsed-time threshold runs in CI; regression correctness remains separate.
+Sanitizer timings are for diagnostics and must not be compared with release
+numbers. Repeated processes may introduce noise; report spread and regressions
+as well as wins, and measure representative games separately when authorized.
