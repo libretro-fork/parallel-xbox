@@ -586,6 +586,29 @@ size_t retro_spsc_peek(const retro_spsc_t *q, void *data, size_t bytes)
    return bytes;
 }
 
+bool retro_spsc_write_reserve(retro_spsc_t *q, void **ptr, size_t bytes)
+{
+   size_t head, index, avail;
+   *ptr = NULL;
+   if (!bytes || bytes > q->capacity)
+      return false;
+   head = retro_atomic_load_relaxed_size(&q->head);
+   index = head & q->mask;
+   /* A wrapped record needs the copying path, regardless of available room. */
+   if (bytes > spsc_contig(q, index))
+      return false;
+   avail = q->capacity - (head - q->cached_tail);
+   if (avail < bytes)
+   {
+      q->cached_tail = retro_atomic_load_acquire_size(&q->tail);
+      avail = q->capacity - (head - q->cached_tail);
+   }
+   if (avail < bytes)
+      return false;
+   *ptr = q->buffer + index;
+   return true;
+}
+
 size_t retro_spsc_write_begin(retro_spsc_t *q, void **ptr)
 {
    size_t head_idx, span;

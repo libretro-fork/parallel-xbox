@@ -59,6 +59,8 @@
 
 ## Unreleased
 
+- Add an exact-size SPSC write reservation as a prerequisite for direct worker record construction. Refresh the consumer cursor only when cached room cannot cover the requested record; reject physical wraps and non-fitting records without publication. Existing queue callers and renderer behavior are unchanged.
+
 - DSP: bootstrap now masks program words while loading them, removing a second pass over destination program RAM.
 
 - DSP development: add a reproducible revision-to-revision DMA benchmark with output fingerprints, alternating runs and recorded compiler/source identities.
@@ -187,6 +189,7 @@
 - DSP: execute register-indirect X/Y bit-test calls natively, preserving address updates, cycle charges and conditional stack saves.
 
 - Remove AES/PCLMUL execution helpers and crypto engines unused by the fixed Xbox Pentium III. Keep opcode decoding and feature checks, including illegal-instruction and instruction-fetch fault ordering.
+
 
 - Strengthen speculative pipeline handoff coverage with the real shader-state/render-pass/key layouts and XXH3. Check poisoned slot reuse, complete owned key bytes and a full ring becoming available during completion draining before attempting further copy removal. Renderer behavior is unchanged.
 

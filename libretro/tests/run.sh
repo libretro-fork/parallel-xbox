@@ -133,6 +133,7 @@ python3 "$here/test-vk-depth-reuse.py" "$here/../.." "$cc"
 python3 "$here/test-lru-visit.py" "$here/../.." "$cc"
 python3 "$here/test-lru-promote.py" "$here/../.." "$cc"
 python3 "$here/test-spsc-pair.py" "$here/../.." "$cc"
+python3 "$here/test-spsc-reserve.py" "$here/../.." "$cc"
 python3 "$here/test-sibling-queue.py" "$here/../.." "$cc"
 python3 "$here/test-binding-state-hash.py" "$here/../.." "$cc" --copy-baseline --real-canonical --check-only
 python3 "$here/test-block-memory.py" "$here/../.." "$cc"

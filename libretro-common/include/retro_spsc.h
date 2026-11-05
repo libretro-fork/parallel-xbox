@@ -373,6 +373,18 @@ size_t retro_spsc_read(retro_spsc_t *q, void *data, size_t bytes);
  */
 size_t retro_spsc_peek(const retro_spsc_t *q, void *data, size_t bytes);
 
+/* Producer-only reservation of exactly bytes contiguous writable bytes.
+ * Unlike write_begin(), this refreshes the consumer cursor only when its
+ * cached value does not cover the requested record. No cursor is published.
+ * Returns false and sets *ptr to NULL for zero/oversized requests, insufficient
+ * free space, or a physical wrap on a non-mirrored ring. A failed reservation
+ * writes no payload; the caller may fall back to write() for a wrapped record.
+ * On success, write at most bytes to *ptr and publish with write_end(), or
+ * abandon with write_end(q, 0). Only one reservation may be outstanding;
+ * complete it before another producer data operation. Alignment and lifetime
+ * follow write_begin(). The queue must be initialized and ptr must be valid. */
+bool retro_spsc_write_reserve(retro_spsc_t *q, void **ptr, size_t bytes);
+
 /**
  * retro_spsc_write_begin:
  * @q   : The queue.
