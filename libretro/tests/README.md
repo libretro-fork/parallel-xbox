@@ -4672,3 +4672,27 @@ time and exact scan count (old 1000000, new 1), with the same final word and
 code-changed flag. It uses QueryPerformanceCounter or CLOCK_MONOTONIC. This
 instrumented synthetic loop excludes recompilation and is not a game timing
 or a C/Rust comparison; report the counter overhead with elapsed results.
+
+`make dspcoverage` compares the production coverage helper with a scalar
+bit-setting oracle in 17322216 cases. Every start/end pair within 0..4096,
+including inverted/empty ranges, is checked from an empty bitmap. Additional
+cases preserve deterministic existing bits across every short-block alignment,
+lengths 0-129, clipped endpoints and UINT32_MAX inputs. Guard words before
+and after the bitmap must remain untouched. The oracle advances one bit at
+a time independently of the production range-mask formula.
+
+Coverage publication clips the end to PRAM, skips empty/reversed ranges,
+ORs the head/tail masks and fills only fully enclosed bitmap words. It never
+shifts by 64 and preserves bits outside the span. A normal block's maximum
+128 program words therefore need at most three bitmap updates; REP/interrupt
+coverage uses the same helper. Stateful invalidation/rearm tests and normal
+production programs still verify the helper in execution. Both native CI
+steps include dspcoverage; DSP_PROGRAM_RUNNER supports cross-host checks.
+
+The standalone test's --bench alternates seven scalar/mask trials, each
+publishing one million 128-word spans with varied alignment. It requires
+identical final bitmaps and uses a volatile function dispatch to retain all
+updates. This isolates bookkeeping; it does not measure total JIT compile
+time, games or Rust performance. The preceding full native sweep is not a
+result of this batch; exhaustive bitmap equivalence plus stateful and program
+regressions are the validation for this range-publication specialization.

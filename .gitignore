@@ -59,3 +59,5 @@ libretro/tests/fileiotest.exe
 /libretro/tests/dspdmaspans.exe
 /libretro/tests/dspinvalidate
 /libretro/tests/dspinvalidate.exe
+/libretro/tests/dspcoverage
+/libretro/tests/dspcoverage.exe

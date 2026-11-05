@@ -59,6 +59,8 @@
 
 ## Unreleased
 
+- DSP: compiled-block coverage is published with bitmap range masks instead of one update per program word.
+
 - Strengthen Vulkan completion-drain tests to distinguish idle polling from pending-but-empty work, verify state credits through final markers and quiesce, and reject shortcuts that skip unfinished states. Renderer behavior is unchanged.
 
 - DSP: repeated writes to an invalidated program word skip redundant block-cache scans until recompilation covers the word again.

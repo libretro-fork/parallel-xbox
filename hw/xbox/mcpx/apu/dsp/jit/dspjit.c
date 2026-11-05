@@ -5066,11 +5066,32 @@ static void rep_step(dsp_core_t *core)
     core->jit_cycles -= core->instr_cycle;
 }
 
+static void dspjit_cover_span(uint64_t *covered, uint32_t start, uint32_t end)
+{
+    end = MIN(end, DSP_PRAM_SIZE);
+    if (start >= end) return;
+    uint32_t first = start >> 6, last = (end - 1) >> 6;
+    uint64_t head = UINT64_MAX << (start & 63);
+    uint64_t tail = UINT64_MAX >> (63 - ((end - 1) & 63));
+    if (first == last) {
+        covered[first] |= head & tail;
+        return;
+    }
+    covered[first] |= head;
+    for (uint32_t word = first + 1; word < last; word++) covered[word] = UINT64_MAX;
+    covered[last] |= tail;
+}
+
+#ifdef DSPJIT_TEST
+void dspjit_test_cover_span(uint64_t *covered, uint32_t start, uint32_t end)
+{
+    dspjit_cover_span(covered, start, end);
+}
+#endif
+
 static void dspjit_cover_words(DspJit *jit, uint32_t start, uint32_t end)
 {
-    for (uint32_t pc = start; pc < MIN(end, DSP_PRAM_SIZE); pc++) {
-        jit->covered[pc >> 6] |= UINT64_C(1) << (pc & 63);
-    }
+    dspjit_cover_span(jit->covered, start, end);
 }
 
 void dspjit_run(DspJit *jit, int cycles)
