@@ -225,6 +225,39 @@ static void dma_run(void *user, uint8_t *host, size_t bytes)
         t->n += items;
         return;
     }
+    /* The earlier paths consumed plain RAM and interleaved output. A
+     * sequential callback span needs no direct-memory test or channel-index
+     * calculation per item; keep the actual read/write callbacks per word. */
+    if (!t->interleave) {
+        uint32_t addr = t->addr + t->n;
+        if (t->to_host) {
+            if (t->item_size == 2) {
+                for (size_t i = 0; i < items; i++) {
+                    uint16_t v = t->s->mem_read(t->s->mem_opaque, t->space, addr + i) >> 8;
+                    memcpy(host + i * 2, &v, 2);
+                }
+            } else {
+                for (size_t i = 0; i < items; i++) {
+                    uint32_t v = t->s->mem_read(t->s->mem_opaque, t->space, addr + i);
+                    memcpy(host + i * 4, &v, 4);
+                }
+            }
+        } else if (t->item_size == 2) {
+            for (size_t i = 0; i < items; i++) {
+                uint16_t v;
+                memcpy(&v, host + i * 2, 2);
+                t->s->mem_write(t->s->mem_opaque, t->space, addr + i, (uint32_t)v << 8);
+            }
+        } else {
+            for (size_t i = 0; i < items; i++) {
+                uint32_t v;
+                memcpy(&v, host + i * 4, 4);
+                t->s->mem_write(t->s->mem_opaque, t->space, addr + i, v & t->item_mask);
+            }
+        }
+        t->n += items;
+        return;
+    }
     if (t->to_host) {
         if (t->item_size == 2) {
             for (size_t i = 0; i < items; i++) {

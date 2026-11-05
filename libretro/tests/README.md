@@ -4512,7 +4512,7 @@ spans do not overlap; this still copies, rather than aliasing buffers. DSP
 state snapshots copy only on VM stop/start, not once per audio frame; sharing
 those arrays would change snapshot ownership and is not a hot-path win.
 
-`make dspdma` compares DMA runs against the scalar ordering across 58,336
+`make dspdma` compares DMA runs against the scalar ordering across 83,296
 cases: both directions, 16/32-bit slots, raw upper bits, inbound masking,
 interleaving, direct/callback memory, zero/discard aperture, counts 0-64,
 unaligned host spans, nonzero item cursors, split callbacks and overlapping
@@ -4592,3 +4592,13 @@ prefetched. The optimization applies only to outbound interleaving; callback
 writes and P-memory invalidation retain their existing paths. Zero-length
 callbacks do no cursor division. The scalar oracle still computes each item
 index independently with division/remainder.
+
+Sequential callback-backed transfers use dedicated loops after the direct
+RAM cases, avoiding per-item direct-memory and channel-index selection.
+Every read/write remains a backend callback; 16-bit shifts and 32-bit inbound
+masks are unchanged, and program writes still invalidate native code.
+An additional 24960 cases exercise all X/Y/P space IDs, both directions and
+widths, zero/nonzero cursors, every count 0-64 and host alignment 0-7, with
+full spans versus one-item splits. Both static and read/write-mutated backing
+memory must match the scalar oracle, along with exact ordered callback
+addresses, spaces, values, counts, complete host/DSP buffers and cursors.

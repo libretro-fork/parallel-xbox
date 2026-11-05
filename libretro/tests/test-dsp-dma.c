@@ -11,7 +11,7 @@ void g_assertion_message_expr(const char *domain, const char *file, int line,
 
 static uint32_t words[128];
 static unsigned reads, writes;
-static bool mutate_reads;
+static bool mutate_reads, mutate_writes;
 static uint32_t callback_addr[128], callback_value[128];
 static int callback_space[128];
 static void note_callback(int space, uint32_t addr, uint32_t value)
@@ -37,6 +37,7 @@ static void write_word(void *opaque, int space, uint32_t addr, uint32_t value)
     note_callback(space, addr, value);
     writes++;
     words[addr] = value;
+    if (mutate_writes) words[(addr + 1) % 128] ^= value >> 1;
 }
 
 static void scalar(DmaTransfer *t, uint8_t *host, size_t bytes)
@@ -154,6 +155,59 @@ int main(void)
                             }
                         }
                         cases++;
+                    }
+                }
+            }
+        }
+    }
+    /* Sequential device/program callbacks: exact trace, masks, shifts and
+     * side effects must survive full versus per-item host runs. */
+    for (unsigned space = 0; space < 3; space++) {
+        for (unsigned direction = 0; direction < 2; direction++) {
+            for (unsigned size = 2; size <= 4; size += 2) {
+                for (unsigned effects = 0; effects < 2; effects++) {
+                    mutate_reads = mutate_writes = effects;
+                    for (unsigned start = 0; start <= 7; start += 7) {
+                        for (unsigned offset = 0; offset < 8; offset++) {
+                            for (unsigned count = 0; count <= 64; count++) {
+                                uint32_t expected_memory[128], expected_addr[128], expected_value[128];
+                                int expected_space[128];
+                                uint8_t out[512], ref[512];
+                                for (unsigned i = 0; i < 128; i++) words[i] = 0xfedcba98u ^ (i * 0x1234567u);
+                                for (unsigned i = 0; i < sizeof(ref); i++) ref[i] = (i * 37) ^ 0xa5;
+                                DmaTransfer t = { .s = &s, .space = space, .addr = 3, .item_size = size,
+                                    .item_mask = 0xffffff, .to_host = direction, .n = start };
+                                DmaTransfer r = t;
+                                reads = writes = 0;
+                                scalar(&r, ref + offset, count * size);
+                                unsigned expected_reads = reads, expected_writes = writes;
+                                memcpy(expected_memory, words, sizeof(words));
+                                memcpy(expected_addr, callback_addr, sizeof(expected_addr));
+                                memcpy(expected_value, callback_value, sizeof(expected_value));
+                                memcpy(expected_space, callback_space, sizeof(expected_space));
+                                for (unsigned split = 0; split < 2; split++) {
+                                    for (unsigned i = 0; i < 128; i++) words[i] = 0xfedcba98u ^ (i * 0x1234567u);
+                                    for (unsigned i = 0; i < sizeof(out); i++) out[i] = (i * 37) ^ 0xa5;
+                                    t.n = start;
+                                    reads = writes = 0;
+                                    if (split) {
+                                        for (unsigned i = 0; i < count; i++) dma_run(&t, out + offset + i * size, size);
+                                        dma_run(&t, out + offset + count * size, 0);
+                                    } else dma_run(&t, out + offset, count * size);
+                                    unsigned events = reads + writes;
+                                    if (memcmp(out, ref, sizeof(out)) || memcmp(words, expected_memory, sizeof(words)) ||
+                                        t.n != r.n || reads != expected_reads || writes != expected_writes ||
+                                        memcmp(callback_addr, expected_addr, events * sizeof(*callback_addr)) ||
+                                        memcmp(callback_value, expected_value, events * sizeof(*callback_value)) ||
+                                        memcmp(callback_space, expected_space, events * sizeof(*callback_space))) {
+                                        fprintf(stderr, "DMA sequential callback mismatch space=%u direction=%u size=%u start=%u count=%u\n",
+                                                space, direction, size, start, count);
+                                        return 1;
+                                    }
+                                }
+                                cases++;
+                            }
+                        }
                     }
                 }
             }
