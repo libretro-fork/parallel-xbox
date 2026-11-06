@@ -1555,6 +1555,11 @@ static void update_variables(void)
 
     /* Texture caches use these settings for the lifetime of the machine. */
     if (!emu_initialized) {
+        var.key = "xemu_high_resolution_depth_textures";
+        var.value = NULL;
+        nv2a_set_high_resolution_depth_textures(environ_cb &&
+            environ_cb(RETRO_ENVIRONMENT_GET_VARIABLE, &var) && var.value &&
+            !strcmp(var.value, "enabled"));
         var.key = "xemu_force_texture_lod0";
         var.value = NULL;
         nv2a_set_force_texture_lod0(environ_cb &&

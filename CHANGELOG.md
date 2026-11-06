@@ -59,6 +59,8 @@
 
 ## Unreleased
 
+- Add High Resolution Depth Textures (Restart), disabled by default and Vulkan-only. Preserve rendered depth detail when sampling GPU depth textures, improving Ninja Gaiden Black's character-shadow outline above 1x. Some games rely on native depth comparisons; enabling can change those effects and increase conversion work/memory. The disabled draw paths and shader/pipeline keys are unchanged; the policy is selected only at startup.
+
 - DSP: nonempty JIT flushes clear only cache tables populated since the previous flush, avoiding writes to untouched mode/REP/interrupt tables.
 
 - Strengthen Vulkan module-key optimization checks with a frozen geometry baseline, pinned monotonic CPU comparisons, identical-code controls and required failures for missing state copies or clears. The geometry-clear candidates remain disabled; rendering behavior is unchanged.

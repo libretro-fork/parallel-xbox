@@ -1023,7 +1023,7 @@ static void upload_texture_image(PGRAPHState *pg, int texture_idx,
 
 /* The spec does not promise depth blits: RADV has no BLIT_DST for
  * D32_SFLOAT_S8_UINT and crashes when asked. Asked once per format. */
-static bool format_blit_supported(PGRAPHVkState *r, VkFormat format)
+static bool format_native_blit_enabled(PGRAPHVkState *r, VkFormat format)
 {
     for (int i = 0; i < r->blit_formats_n; i++) {
         if (r->blit_formats[i].format == format) {
@@ -1053,7 +1053,7 @@ static VkImage native_get_scratch(PGRAPHState *pg, VkFormat format,
                                    unsigned int width, unsigned int height)
 {
     PGRAPHVkState *r = pg->vk_renderer_state;
-    if (!format_blit_supported(r, format)) {
+    if (!format_native_blit_enabled(r, format)) {
         return VK_NULL_HANDLE; /* caller falls back to the scaled path */
     }
     int free_slot = -1;
@@ -2677,7 +2677,7 @@ static void create_texture(PGRAPHState *pg, int texture_idx)
                   r->device_props.limits.maxImageDimensionCube &&
               (uint64_t)state.height * pg->surface_scale_factor <=
                   r->device_props.limits.maxImageDimensionCube &&
-              format_blit_supported(r, texture_vkf(r, state.color_format).vk_format)));
+              format_native_blit_enabled(r, texture_vkf(r, state.color_format).vk_format)));
         if (safe_mixed) {
             SurfaceBinding *other;
             QTAILQ_FOREACH(other, &r->surfaces, entry) {
@@ -3225,6 +3225,22 @@ void pgraph_vk_trim_texture_cache(PGRAPHState *pg)
 void pgraph_vk_init_textures(PGRAPHState *pg)
 {
     PGRAPHVkState *r = pg->vk_renderer_state;
+
+    /* Select the existing scaled-depth fallback once. Disabled leaves the
+     * capability cache and every draw/copy path unchanged. Color aliases and
+     * cubemap expansion still query their actual format capabilities. */
+    if (nv2a_get_high_resolution_depth_textures()) {
+        static const VkFormat depth_formats[] = {
+            VK_FORMAT_D16_UNORM, VK_FORMAT_D24_UNORM_S8_UINT,
+            VK_FORMAT_D32_SFLOAT_S8_UINT,
+        };
+        assert(r->blit_formats_n == 0);
+        for (unsigned i = 0; i < ARRAY_SIZE(depth_formats); i++) {
+            r->blit_formats[i].format = depth_formats[i];
+            r->blit_formats[i].ok = false;
+        }
+        r->blit_formats_n = ARRAY_SIZE(depth_formats);
+    }
 
     texture_cache_init(r);
 

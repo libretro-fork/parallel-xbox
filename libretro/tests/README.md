@@ -4739,3 +4739,8 @@ with selective clears on 64-bit hosts. The code, state setup and assertions
 are common to both versions; reference builds add only the same test byte
 counter. This is a synthetic cycle including compilation, not gameplay or
 a C/Rust comparison. The existing --bench empty-flush mode remains available.
+
+
+## High resolution depth texture policy
+
+`test-high-resolution-depth.py CHECKOUT [CC] [BASELINE_REV]` compiles the production startup policy and native-blit cache lookup. It checks all three host depth formats, unchanged color/cubemap format capabilities, initialization without device queries, and cached repeated lookups. Optional BASELINE_REV additionally requires that removing the initialization block and normalizing the helper name restores the entire previous texture recording source. The depth-transfer-capacity and depth-transfer-gpu fixtures cover the existing scaled fallback, buffer spans and packed-depth dependencies. Slot-8 1x/8x and slot-10 menu captures provide guest-scene checks; these are not compatibility proof for every depth effect.

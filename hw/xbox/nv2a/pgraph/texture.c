@@ -27,6 +27,17 @@
 /* Core option, fixed for the lifetime of the running machine. */
 static bool force_texture_lod0;
 static bool force_quality_filtering;
+static bool high_resolution_depth_textures;
+
+void nv2a_set_high_resolution_depth_textures(bool enabled)
+{
+    high_resolution_depth_textures = enabled;
+}
+
+bool nv2a_get_high_resolution_depth_textures(void)
+{
+    return high_resolution_depth_textures;
+}
 
 void nv2a_set_force_texture_lod0(bool enabled)
 {
