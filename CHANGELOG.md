@@ -59,6 +59,8 @@
 
 ## Unreleased
 
+- DSP: nonempty JIT flushes clear only cache tables populated since the previous flush, avoiding writes to untouched mode/REP/interrupt tables.
+
 - Strengthen Vulkan module-key optimization checks with a frozen geometry baseline, pinned monotonic CPU comparisons, identical-code controls and required failures for missing state copies or clears. The geometry-clear candidates remain disabled; rendering behavior is unchanged.
 
 - DSP: repeated empty JIT flushes rewind the arena without clearing already-empty coverage and block tables again.

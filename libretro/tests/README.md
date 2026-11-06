@@ -4699,18 +4699,19 @@ time, games or Rust performance. The preceding full native sweep is not a
 result of this batch; exhaustive bitmap equivalence plus stateful and program
 regressions are the validation for this range-publication specialization.
 
-`make dspflush` verifies the JIT's conservative cache-entry marker. All normal,
-REP and interrupt table publications mark the cache nonempty through the
-shared coverage wrapper, including REP fallback entries with no native arena
-allocation. A flush always rewinds the arena, then clears coverage and tables
-only if a publication occurred since the last full clear. Per-word
-invalidation does not reset this conservative marker. No saved state changes.
+`make dspflush` verifies the JIT's conservative 16-bit cache-table dirty mask:
+normal identities use bits 0-7, interrupt scales 8-11 and REP scales 12-15.
+Every publication marks its table through the shared coverage wrapper,
+including REP fallback entries with no native arena allocation. A flush always
+rewinds the arena, then clears coverage and only the marked pointer tables.
+Untouched allocated tables are already empty. Per-word invalidation does not
+reset dirty bits. No saved state changes.
 
-The 238 focused checks cover initially empty flushes, populated/repeated
+The 358 focused checks cover initially empty flushes, populated/repeated
 empty flushes, all eight normal scaling/LF identities, direct CLR-to-NOP code
 replacement after flush, REP fallback-to-native replacement, and interrupt-only
 publication/replacement through all four scales and six pipeline stages.
-The intentional legacy REP negative path makes one interpreter call; its
+The intentional legacy REP negative path makes one call per scaling mode; its
 replacement must run natively without an additional fallback. Normal and
 interrupt paths add no fallbacks. Both native CI steps run this target.
 
@@ -4722,3 +4723,19 @@ populated flush; it reports actual table-reset count and high-resolution time.
 It excludes the outer backend clear, compilation and games. A conservative
 marker can cause one unnecessary clear after all entries were individually
 invalidated, but never skips a required clear.
+
+Selective flush adds exact pointer-byte assertions for all eight normal
+identities, all four REP scales and all four interrupt scales through six
+pipeline stages. After all modes have been allocated, a single normal
+identity's flush must write one 32 KiB table, not 512 KiB of pointer tables;
+a second empty flush must add zero bytes. Individual REP and interrupt
+publications likewise clear only their own table. Dirty bits are enumerated
+with a nonzero-input bit scan, not by iterating all sixteen possible tables.
+
+`dspflush --bench-single` primes all modes, then times 10000 compile/run/flush
+cycles using only scale-zero normal execution. It prints resets and pointer
+bytes; the old all-table policy writes 5242880000 bytes versus 327680000
+with selective clears on 64-bit hosts. The code, state setup and assertions
+are common to both versions; reference builds add only the same test byte
+counter. This is a synthetic cycle including compilation, not gameplay or
+a C/Rust comparison. The existing --bench empty-flush mode remains available.

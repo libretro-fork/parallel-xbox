@@ -67,6 +67,8 @@ static uint64_t test_invalidation_scans;
 uint64_t dspjit_test_invalidation_scans(void) { return test_invalidation_scans; }
 static uint64_t test_flush_resets;
 uint64_t dspjit_test_flush_resets(void) { return test_flush_resets; }
+static uint64_t test_flush_pointer_bytes;
+uint64_t dspjit_test_flush_pointer_bytes(void) { return test_flush_pointer_bytes; }
 static uint64_t test_fallback_count;
 static uint64_t test_entry_count;
 uint64_t dspjit_test_entry_count(void) { return test_entry_count; }
@@ -107,7 +109,7 @@ typedef struct DspJitModeCache {
 struct DspJit {
     dsp_core_t *core;
     bool run_until_halt;
-    bool cache_has_entries; /* conservative until a full table clear */
+    uint16_t dirty_tables; /* normal 0-7, interrupt 8-11, REP 12-15 */
     uint8_t *cache;
     size_t cache_len;
     size_t cache_committed;
@@ -5001,25 +5003,27 @@ void dspjit_flush(DspJit *jit)
     jit->cache_used = jit->cache_base;
     /* Even an unsuccessful translation can consume arena space. Rewind it
      * above, but do not rewrite already-empty coverage and pointer tables. */
-    if (!jit->cache_has_entries) return;
+    if (!jit->dirty_tables) return;
 #ifdef DSPJIT_TEST
     test_flush_resets++;
 #endif
     memset(jit->covered, 0, sizeof(jit->covered));
-    for (int mode = 0; mode < DSPJIT_MODES; mode++) {
-        if (jit->blocks[mode]) {
-            memset(jit->blocks[mode], 0, DSP_PRAM_SIZE * sizeof(*jit->blocks[mode]));
+    /* Only tables published since the previous flush need to be cleared.
+     * Allocated but untouched tables are already empty. */
+    unsigned dirty = jit->dirty_tables;
+    while (dirty) {
+        unsigned bit = __builtin_ctz(dirty);
+        dspjit_block_fn *table = bit < 8 ? jit->blocks[bit] :
+            bit < 12 ? jit->interrupt_blocks[bit - 8] : jit->rep_blocks[bit - 12];
+        if (table) {
+            memset(table, 0, DSP_PRAM_SIZE * sizeof(*table));
+#ifdef DSPJIT_TEST
+            test_flush_pointer_bytes += DSP_PRAM_SIZE * sizeof(*table);
+#endif
         }
+        dirty &= dirty - 1;
     }
-    for (int mode = 0; mode < 4; mode++) {
-        if (jit->interrupt_blocks[mode]) {
-            memset(jit->interrupt_blocks[mode], 0, DSP_PRAM_SIZE * sizeof(*jit->interrupt_blocks[mode]));
-        }
-        if (jit->rep_blocks[mode]) {
-            memset(jit->rep_blocks[mode], 0, DSP_PRAM_SIZE * sizeof(*jit->rep_blocks[mode]));
-        }
-    }
-    jit->cache_has_entries = false;
+    jit->dirty_tables = 0;
 }
 
 void dspjit_invalidate(DspJit *jit, uint32_t address)
@@ -5099,11 +5103,11 @@ void dspjit_test_cover_span(uint64_t *covered, uint32_t start, uint32_t end)
 }
 #endif
 
-static void dspjit_cover_words(DspJit *jit, uint32_t start, uint32_t end)
+static void dspjit_cover_words(DspJit *jit, uint32_t start, uint32_t end, unsigned table)
 {
     /* Every normal/interrupt/REP cache publication comes through here,
      * including rep_step entries that emit no native code in the arena. */
-    jit->cache_has_entries = true;
+    jit->dirty_tables |= 1u << table;
     dspjit_cover_span(jit->covered, start, end);
 }
 
@@ -5142,7 +5146,7 @@ void dspjit_run(DspJit *jit, int cycles)
                     }
                     if (fn) {
                         jit->interrupt_blocks[mode & 3][pc] = fn;
-                        dspjit_cover_words(jit, pc, pc + 2);
+                        dspjit_cover_words(jit, pc, pc + 2, 8 + (mode & 3));
                     }
                 }
             }
@@ -5176,7 +5180,7 @@ void dspjit_run(DspJit *jit, int cycles)
                 }
                 /* Include extension words and fallback REP decodes too.
                  * A changed instruction must reconsider native eligibility. */
-                dspjit_cover_words(jit, pc, pc + 2);
+                dspjit_cover_words(jit, pc, pc + 2, 12 + (mode & 3));
                 jit->rep_blocks[mode & 3][pc] = fn;
             }
             if (fn == rep_step) {
@@ -5201,7 +5205,7 @@ void dspjit_run(DspJit *jit, int cycles)
             jit->blocks[mode][pc] = fn;
             jit->block_end[mode][pc] = jit->tr->end;
             if (fn) {
-                dspjit_cover_words(jit, pc, jit->tr->end);
+                dspjit_cover_words(jit, pc, jit->tr->end, mode);
             }
 #endif
             if (!fn) {
