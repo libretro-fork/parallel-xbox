@@ -4703,11 +4703,11 @@ regressions are the validation for this range-publication specialization.
 normal identities use bits 0-7, interrupt scales 8-11 and REP scales 12-15.
 Every publication marks its table through the shared coverage wrapper,
 including REP fallback entries with no native arena allocation. A flush always
-rewinds the arena, then clears coverage and only the marked pointer tables.
-Untouched allocated tables are already empty. Per-word invalidation does not
-reset dirty bits. No saved state changes.
+rewinds the arena, then clears coverage and retires published entries in
+marked pointer tables. Untouched slots are already empty. Per-word
+invalidation does not reset dirty bits. No saved state changes.
 
-The 358 focused checks cover initially empty flushes, populated/repeated
+The 671 focused checks cover initially empty flushes, populated/repeated
 empty flushes, all eight normal scaling/LF identities, direct CLR-to-NOP code
 replacement after flush, REP fallback-to-native replacement, and interrupt-only
 publication/replacement through all four scales and six pipeline stages.
@@ -4715,30 +4715,49 @@ The intentional legacy REP negative path makes one call per scaling mode; its
 replacement must run natively without an additional fallback. Normal and
 interrupt paths add no fallbacks. Both native CI steps run this target.
 
-With every mode allocated, skipping an empty table reset avoids 512 KiB of
-pointer writes plus the coverage bitmap. The C interpreter opcode-cache
-clear in the outer backend API is separate and remains unchanged. The
+Empty flushes perform no pointer retirement or coverage clearing. The C
+interpreter opcode-cache clear in the outer backend API is separate and
+remains unchanged. The
 standalone --bench isolates 100000 repeated direct JIT flush calls after one
 populated flush; it reports actual table-reset count and high-resolution time.
 It excludes the outer backend clear, compilation and games. A conservative
-marker can cause one unnecessary clear after all entries were individually
-invalidated, but never skips a required clear.
+publication bit may cause a NULL store for an already-invalidated entry,
+but never skips a required retirement.
 
 Selective flush adds exact pointer-byte assertions for all eight normal
 identities, all four REP scales and all four interrupt scales through six
 pipeline stages. After all modes have been allocated, a single normal
-identity's flush must write one 32 KiB table, not 512 KiB of pointer tables;
-a second empty flush must add zero bytes. Individual REP and interrupt
-publications likewise clear only their own table. Dirty bits are enumerated
+identity's two-instruction fixture publishes one entry, so flush writes one
+8-byte pointer rather than a 32 KiB table on 64-bit hosts; a second empty
+flush must add zero bytes. REP/interrupt publications retire their own slots.
+Dirty bits are enumerated
 with a nonzero-input bit scan, not by iterating all sixteen possible tables.
 
 `dspflush --bench-single` primes all modes, then times 10000 compile/run/flush
 cycles using only scale-zero normal execution. It prints resets and pointer
-bytes; the old all-table policy writes 5242880000 bytes versus 327680000
-with selective clears on 64-bit hosts. The code, state setup and assertions
-are common to both versions; reference builds add only the same test byte
-counter. This is a synthetic cycle including compilation, not gameplay or
+bytes; the prior whole-marked-table policy writes 327680000 bytes versus
+80000 with sparse retirement on 64-bit hosts. Code, state setup, assertions
+and test instrumentation are common to both revisions. This is a synthetic
+cycle including compilation, not gameplay or
 a C/Rust comparison. The existing --bench empty-flush mode remains available.
+
+Each allocated scaling-mode cache adds four 512-byte publication bitmaps
+(2 KiB per used scale, at most 8 KiB per DSP). Normal LF-clear/LF-set,
+interrupt and REP tables have independent bitmaps. Publication ORs the PC bit,
+so invalidation/republication deduplicates naturally without a growable list.
+Flush enumerates set PC bits, stores NULL only to those slots and clears only
+nonzero metadata words. Fully occupied 64-entry groups use a bulk clear;
+partially occupied groups retain per-entry retirement. The byte counter covers
+pointer writes, not metadata writes, coverage clearing or hardware cache-line
+traffic. This trades small metadata storage and publication work for less
+flush traffic; the warm benchmark is not an end-to-end game measurement.
+
+Additional cases cover PCs across 64-bit boundaries and near PRAM's end,
+invalidated/recompiled and invalidated-only entries, disjoint publication
+sets after flush, mixed normal/REP/interrupt entries in one context, and
+fully occupied first/last groups including PC4095. Exact byte counts and
+CLR/NOP replacement results must agree. The complete test permits exactly
+four intentional legacy fallback calls, with no unexpected interpreter use.
 
 
 ## High resolution depth texture policy

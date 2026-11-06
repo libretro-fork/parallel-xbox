@@ -104,6 +104,8 @@ typedef struct DspJitModeCache {
     uint16_t block_end[2][DSP_PRAM_SIZE];
     dspjit_block_fn rep[DSP_PRAM_SIZE];
     dspjit_block_fn interrupt[DSP_PRAM_SIZE];
+    /* Normal LF-clear/LF-set, interrupt and REP entry indices. */
+    uint64_t published[4][(DSP_PRAM_SIZE + 63) / 64];
 } DspJitModeCache;
 
 struct DspJit {
@@ -4998,6 +5000,14 @@ void dspjit_destroy(DspJit *jit)
     g_free(jit);
 }
 
+/* Mode storage is allocated before any entry in its tables is published. */
+static uint64_t *dspjit_published_entries(DspJit *jit, unsigned table)
+{
+    if (table < 8) return jit->modes[table & 3]->published[table >> 2];
+    if (table < 12) return jit->modes[table - 8]->published[2];
+    return jit->modes[table - 12]->published[3];
+}
+
 void dspjit_flush(DspJit *jit)
 {
     jit->cache_used = jit->cache_base;
@@ -5016,10 +5026,29 @@ void dspjit_flush(DspJit *jit)
         dspjit_block_fn *table = bit < 8 ? jit->blocks[bit] :
             bit < 12 ? jit->interrupt_blocks[bit - 8] : jit->rep_blocks[bit - 12];
         if (table) {
-            memset(table, 0, DSP_PRAM_SIZE * sizeof(*table));
+            uint64_t *published = dspjit_published_entries(jit, bit);
+            for (unsigned word = 0; word < (DSP_PRAM_SIZE + 63) / 64; word++) {
+                uint64_t entries = published[word];
+                if (!entries) continue;
+                if (entries == UINT64_MAX) {
+                    /* Dense groups need no individual bit scans. Every
+                     * pointer in this group has been published. */
+                    memset(table + (word << 6), 0, 64 * sizeof(*table));
 #ifdef DSPJIT_TEST
-            test_flush_pointer_bytes += DSP_PRAM_SIZE * sizeof(*table);
+                    test_flush_pointer_bytes += 64 * sizeof(*table);
 #endif
+                } else {
+                    while (entries) {
+                        unsigned pc = (word << 6) + __builtin_ctzll(entries);
+                        table[pc] = NULL;
+#ifdef DSPJIT_TEST
+                        test_flush_pointer_bytes += sizeof(*table);
+#endif
+                        entries &= entries - 1;
+                    }
+                }
+                published[word] = 0;
+            }
         }
         dirty &= dirty - 1;
     }
@@ -5108,6 +5137,9 @@ static void dspjit_cover_words(DspJit *jit, uint32_t start, uint32_t end, unsign
     /* Every normal/interrupt/REP cache publication comes through here,
      * including rep_step entries that emit no native code in the arena. */
     jit->dirty_tables |= 1u << table;
+    assert(start < DSP_PRAM_SIZE);
+    uint64_t *published = dspjit_published_entries(jit, table);
+    published[start >> 6] |= UINT64_C(1) << (start & 63);
     dspjit_cover_span(jit->covered, start, end);
 }
 

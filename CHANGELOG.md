@@ -59,6 +59,8 @@
 
 ## Unreleased
 
+- DSP: JIT flushes retire only published entry slots, avoiding full pointer-table clearing for sparse caches while keeping a dense-group bulk path.
+
 - Remove the redundant depth clear before native OpenGL depth-texture snapshots when High Resolution Depth Textures is disabled. The fullscreen copy overwrites every texel with depth testing set to ALWAYS and depth writes enabled. This saves one driver clear per snapshot without changing sampling or shader variants. High-resolution snapshots retain their clear because it helps large copies on software renderers.
 
 - Extend High Resolution Depth Textures to OpenGL. Keep sampled depth at internal resolution using the existing copy shader, with finer Ninja Gaiden Black character shadows above 1x. Startup selects compiled draw/bind/copy paths, so disabled draws do not check the option. Disabled and 1x captures match the prior behavior; no new shader variants, copy passes or CPU readbacks are added.
