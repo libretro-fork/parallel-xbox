@@ -1,5 +1,11 @@
 # Changelog of the libretro core
 
+## Unreleased
+
+- CPU: allow the translator to retain integer CPU state across SSE arithmetic and shuffle helper calls, preserving SIMD results and floating-point status.
+
+## Previous changes
+
 - Enable cooked Xbox DVD CHDs using the pinned libretro-common rchd/rzstd codecs and a bounded lock-free decoder worker, including native files and short-read frontend VFS streams. Guest reads never wait for decoding; DMA consumes retained chunks without a staging iovec array. Pending cooked/raw DMA saves its parsed destinations and committed byte progress, then resumes only after RAM/controller load; PIO prepares complete announced phases before DRQ and retains sector tails across replay. Logical partition/XBE probes run during attachment, unsupported layouts fail explicitly, and stop/reset/eject retire old reads before source teardown.
 
 - Memory ownership callback lists now use lock-free RCU publication and deferred node reclamation. DMA readers can finish using an unlinked callback without racing an immediate free; removals do not wait for a grace period or force direct mappings through bounce buffers.

@@ -93,30 +93,40 @@ DEF_HELPER_3(glue(pshufhw, SUFFIX), void, Reg, Reg, int)
 /* FPU ops */
 /* XXX: not accurate */
 
-#define SSE_HELPER_P4(name)                                             \
-    DEF_HELPER_4(glue(name ## ps, SUFFIX), void, env, Reg, Reg, Reg)    \
-    DEF_HELPER_4(glue(name ## pd, SUFFIX), void, env, Reg, Reg, Reg)
+/* These arithmetic/shuffle helpers access SIMD operands and SSE status,
+ * neither of which is a TCG global. They do not access GPRs, lazy integer
+ * flags, EIP, segment bases, bounds registers or fpstt, and cannot raise a
+ * CPU exception. Keep their side effects: SIMD results, SSE exception flags
+ * and host-FP tracking must still be written even when no value is returned. */
+#define SSE_HELPER_P4(name)                                              \
+    DEF_HELPER_FLAGS_4(glue(name ## ps, SUFFIX), TCG_CALL_NO_RWG,        \
+                       void, env, Reg, Reg, Reg)                         \
+    DEF_HELPER_FLAGS_4(glue(name ## pd, SUFFIX), TCG_CALL_NO_RWG,        \
+                       void, env, Reg, Reg, Reg)
 
-#define SSE_HELPER_P3(name, ...)                                        \
-    DEF_HELPER_3(glue(name ## ps, SUFFIX), void, env, Reg, Reg)         \
-    DEF_HELPER_3(glue(name ## pd, SUFFIX), void, env, Reg, Reg)
+#define SSE_HELPER_P3(name, ...)                                         \
+    DEF_HELPER_FLAGS_3(glue(name ## ps, SUFFIX), TCG_CALL_NO_RWG,        \
+                       void, env, Reg, Reg)                              \
+    DEF_HELPER_FLAGS_3(glue(name ## pd, SUFFIX), TCG_CALL_NO_RWG, void, env, Reg, Reg)
 
 #if SHIFT == 1
-#define SSE_HELPER_S4(name)                                             \
-    SSE_HELPER_P4(name)                                                 \
-    DEF_HELPER_4(name ## ss, void, env, Reg, Reg, Reg)                  \
-    DEF_HELPER_4(name ## sd, void, env, Reg, Reg, Reg)
-#define SSE_HELPER_S3(name)                                             \
-    SSE_HELPER_P3(name)                                                 \
-    DEF_HELPER_4(name ## ss, void, env, Reg, Reg, Reg)                  \
-    DEF_HELPER_4(name ## sd, void, env, Reg, Reg, Reg)
+#define SSE_HELPER_S4(name)                                              \
+    SSE_HELPER_P4(name)                                                  \
+    DEF_HELPER_FLAGS_4(name ## ss, TCG_CALL_NO_RWG,                      \
+                       void, env, Reg, Reg, Reg)                         \
+    DEF_HELPER_FLAGS_4(name ## sd, TCG_CALL_NO_RWG, void, env, Reg, Reg, Reg)
+#define SSE_HELPER_S3(name)                                              \
+    SSE_HELPER_P3(name)                                                  \
+    DEF_HELPER_FLAGS_4(name ## ss, TCG_CALL_NO_RWG,                      \
+                       void, env, Reg, Reg, Reg)                         \
+    DEF_HELPER_FLAGS_4(name ## sd, TCG_CALL_NO_RWG, void, env, Reg, Reg, Reg)
 #else
 #define SSE_HELPER_S4(name, ...) SSE_HELPER_P4(name)
 #define SSE_HELPER_S3(name, ...) SSE_HELPER_P3(name)
 #endif
 
-DEF_HELPER_4(glue(shufps, SUFFIX), void, Reg, Reg, Reg, int)
-DEF_HELPER_4(glue(shufpd, SUFFIX), void, Reg, Reg, Reg, int)
+DEF_HELPER_FLAGS_4(glue(shufps, SUFFIX), TCG_CALL_NO_RWG, void, Reg, Reg, Reg, int)
+DEF_HELPER_FLAGS_4(glue(shufpd, SUFFIX), TCG_CALL_NO_RWG, void, Reg, Reg, Reg, int)
 
 SSE_HELPER_S4(add)
 SSE_HELPER_S4(sub)
