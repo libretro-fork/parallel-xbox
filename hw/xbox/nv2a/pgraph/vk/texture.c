@@ -1255,9 +1255,10 @@ static void copy_zeta_surface_to_texture(PGRAPHState *pg, SurfaceBinding *surfac
     VkCommandBuffer cmd = pgraph_vk_begin_nondraw_commands(pg);
     pgraph_vk_begin_debug_marker(r, cmd, RGBA_GREEN, __func__);
 
+    VkImageLayout source_layout = pgraph_vk_surface_base_layout(surface);
     pgraph_vk_transition_image_layout(
         pg, cmd, surface->image, surface->host_fmt.vk_format,
-        VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+        source_layout,
         VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
 
     VkImage copy_src_image = surface->image;
@@ -1308,7 +1309,12 @@ static void copy_zeta_surface_to_texture(PGRAPHState *pg, SurfaceBinding *surfac
     pgraph_vk_transition_image_layout(
         pg, cmd, surface->image, surface->host_fmt.vk_format,
         VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-        VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
+        source_layout);
+    if (surface->in_shader_read) {
+        /* A second unit can need a private copy of the same depth image.
+         * Restore its sampled layout for units already bound in place. */
+        surface->borrow_submit = r->submit_count;
+    }
 
     VkBuffer texture_source_buffer;
 
@@ -1446,7 +1452,7 @@ static void s2t_borrow_sync(PGRAPHState *pg, SurfaceBinding *surface)
     VkCommandBuffer cmd = pgraph_vk_begin_nondraw_commands(pg);
     pgraph_vk_transition_image_layout(
         pg, cmd, surface->image, surface->host_fmt.vk_format,
-        VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+        pgraph_vk_surface_base_layout(surface),
         VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
     pgraph_vk_end_nondraw_commands(pg, cmd);
     surface->in_shader_read = true;
@@ -2062,7 +2068,8 @@ static void create_texture_view(PGRAPHVkState *r, TextureBinding *snode,
             VK_IMAGE_VIEW_TYPE_CUBE :
             dimensionality_to_vk_image_view_type[state->dimensionality],
         .format = snode->image_ci.format,
-        .subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+        .subresourceRange.aspectMask = snode->image_ci.format == VK_FORMAT_D16_UNORM ?
+            VK_IMAGE_ASPECT_DEPTH_BIT : VK_IMAGE_ASPECT_COLOR_BIT,
         .subresourceRange.baseMipLevel = 0,
         .subresourceRange.levelCount = snode->image_ci.mipLevels,
         .subresourceRange.baseArrayLayer = 0,
@@ -2568,6 +2575,35 @@ static VkSampler create_sampler_for_state(PGRAPHState *pg,
     return sampler;
 }
 
+/* D16 and R16 UNORM have the same sampled values. Keep native downsampling,
+ * feedback, anisotropy and other representations on their snapshot paths. */
+static bool d16_surface_can_borrow(const PGRAPHVkState *r,
+                                   const SurfaceBinding *surface,
+                                   const TextureShape *shape,
+                                   bool native_depth, uint32_t filter,
+                                   uint32_t max_anisotropy)
+{
+    if (surface->host_fmt.vk_format != VK_FORMAT_D16_UNORM ||
+        surface->color || !surface->draw_dirty || native_depth || !r->d16_sampling ||
+        surface == r->zeta_binding || surface == r->color_binding ||
+        surface->native_resolution || !surface->width || !surface->height ||
+        surface->shape.anti_aliasing !=
+            NV097_SET_SURFACE_FORMAT_ANTI_ALIASING_CENTER_1 ||
+        shape->dimensionality != 2 || shape->cubemap || shape->border ||
+        shape->levels != 1 || max_anisotropy != 1) {
+        return false;
+    }
+    if (shape->color_format != NV097_SET_TEXTURE_FORMAT_COLOR_SZ_DEPTH_Y16_FIXED &&
+        shape->color_format != NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_DEPTH_Y16_FIXED) {
+        return false;
+    }
+    unsigned min_filter = GET_MASK(filter, NV_PGRAPH_TEXFILTER0_MIN);
+    unsigned mag_filter = GET_MASK(filter, NV_PGRAPH_TEXFILTER0_MAG);
+    return min_filter >= NV_PGRAPH_TEXFILTER0_MIN_BOX_LOD0 &&
+           min_filter <= NV_PGRAPH_TEXFILTER0_MIN_TENT_TENT_LOD &&
+           (mag_filter == 1 || mag_filter == 2);
+}
+
 static void create_texture(PGRAPHState *pg, int texture_idx)
 {
     NV2A_VK_DGROUP_BEGIN("Creating texture %d", texture_idx);
@@ -2745,8 +2781,10 @@ static void create_texture(PGRAPHState *pg, int texture_idx)
         surface_to_texture && !surface_to_texture_bytes &&
         surface != r->color_binding &&
         state.dimensionality == 2 && !state.cubemap &&
-        texture_vkf(r, state.color_format).vk_format ==
-            surface->host_fmt.vk_format;
+        (texture_vkf(r, state.color_format).vk_format ==
+            surface->host_fmt.vk_format ||
+         d16_surface_can_borrow(r, surface, &state, znative_zeta, filter,
+                                max_anisotropy));
 
     uint64_t key_hash = fast_hash((void*)&key, sizeof(key));
     LruNode *node = lru_lookup(&r->texture_cache, key_hash, &key);
@@ -2754,7 +2792,7 @@ static void create_texture(PGRAPHState *pg, int texture_idx)
     bool binding_found = snode->image != VK_NULL_HANDLE;
 
     /* In-place sampling: a borrowed node holds only while it aliases the
-     * live surface here, not bound as the color target; else rebuilt.
+     * live eligible surface here, not an active attachment; else rebuilt.
      * A private image can in turn become an alias when it is eligible. */
     if (binding_found &&
         ((snode->s2t_borrowed &&
@@ -2953,6 +2991,8 @@ static void create_texture(PGRAPHState *pg, int texture_idx)
         snode->image = surface->image;
         snode->allocation = VK_NULL_HANDLE;
         snode->s2t_borrowed = true;
+        snode->depth_source_copy = !surface->color;
+        image_create_info.format = surface->host_fmt.vk_format;
         snode->current_layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
     } else {
         XemuVkMemoryRequest alloc_create_info = {
@@ -3243,6 +3283,15 @@ void pgraph_vk_init_textures(PGRAPHState *pg)
     }
 
     texture_cache_init(r);
+
+    VkFormatProperties d16_properties;
+    vkGetPhysicalDeviceFormatProperties(r->physical_device, VK_FORMAT_D16_UNORM,
+                                        &d16_properties);
+    const VkFormatFeatureFlags d16_sampling_features =
+        VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT |
+        VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT;
+    r->d16_sampling = (d16_properties.optimalTilingFeatures &
+                       d16_sampling_features) == d16_sampling_features;
 
     /* BC where the device has it for all three formats */
     r->bc_native = r->enabled_physical_device_features.textureCompressionBC;

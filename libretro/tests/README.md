@@ -4978,3 +4978,21 @@ uses a 112-byte stack frame; epoch checking raises the source callback from
 compiler/layout observations, not measured L1/L2 misses or game frame rates.
 The merged core also passes the 485-frame Vulkan pixel/RAM oracle and PCM
 control/split hashes plus reset/state frame/audio cadence checks.
+
+`test-vk-d16-borrow.py CHECKOUT [CC] [--gpu]` checks 36,876 production D16
+borrowing selection/exclusion cases against an independent oracle, including a
+negative control for active-depth feedback. The optional GPU test extracts the
+production image-view, barrier and attachment-restoration functions. It compares
+D16 and private R16 sampling bit for bit over all 65,536 source values, nearest
+and linear filters, address/border modes, and every bilinear weight pair
+(648 batches, 42,467,328 sample pairs per device). It exercises three GPU writer
+generations, existing color borrowing, and private-copy restoration while
+another unit still borrows the depth image. A wrong-swizzle negative control
+must fail. Synchronization validation is requested when the layer is available.
+
+`--gpu --benchmark [--size 32|128|256|512|1024]` instead measures alternating
+GPU depth-write/copy-or-borrow/sample batches with timestamps. The consumer
+pipeline is identical; CPU fences/readback are outside each measured batch.
+Treat this as an isolated workload, not an emulator FPS prediction. NGB slot-8
+and slot-10 parent/candidate captures at 1x/8x and both option values are
+regression controls; they do not establish that those scenes use D16 borrowing.

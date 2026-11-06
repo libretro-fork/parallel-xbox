@@ -61,6 +61,7 @@
 
 ## Unreleased
 
+- Vulkan samples eligible GPU-rendered D16 depth surfaces directly, avoiding the intermediate depth-to-texture copy and allocation. This also applies at 1x with High Resolution Depth Textures disabled. Native downsampling, active attachments, anisotropy, mipmaps and other depth representations retain their existing paths. No shader/pipeline variants or CPU readbacks are added.
 - DSP: JIT flushes retire only published entry slots, avoiding full pointer-table clearing for sparse caches while keeping a dense-group bulk path.
 
 - Remove the redundant depth clear before native OpenGL depth-texture snapshots when High Resolution Depth Textures is disabled. The fullscreen copy overwrites every texel with depth testing set to ALWAYS and depth writes enabled. This saves one driver clear per snapshot without changing sampling or shader variants. High-resolution snapshots retain their clear because it helps large copies on software renderers.

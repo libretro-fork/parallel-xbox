@@ -21,6 +21,7 @@ for name in ('pre_pack_src_barrier','post_pack_src_barrier','pre_pack_dst_barrie
     b=source.index('};', a)+2
     input_barriers.append(source[a:b])
 tail = """
+    assert(source_layout == VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
     assert(copied_image_size <= input_size && input_size <= requested);
     size_t packed_image_size=(size_t)cw*ch*4;
     VkBuffer texture_source_buffer=r->storage_buffers[use_compute_to_convert_depth_stencil?BUFFER_COMPUTE_SRC:BUFFER_COMPUTE_DST].buffer;

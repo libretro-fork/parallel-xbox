@@ -26,6 +26,8 @@ typedef struct { VkDeviceSize buffer_size; VkBuffer buffer; } StorageBuffer;
 typedef struct { StorageBuffer storage_buffers[2]; VkPhysicalDeviceProperties device_props; } PGRAPHVkState;
 typedef struct { PGRAPHVkState *vk_renderer_state; unsigned surface_scale_factor; } PGRAPHState;
 static bool scratch_available, ensured, recording, grown;
+static VkImageLayout pgraph_vk_surface_base_layout(const SurfaceBinding *s)
+{ (void)s; return VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL; }
 static VkDeviceSize requested;
 static size_t planned_pixels;
 static VkColorFormatInfo texture_vkf(PGRAPHVkState *r, unsigned format)
