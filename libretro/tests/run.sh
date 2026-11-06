@@ -95,6 +95,10 @@ python3 "$here/test-g8b8-sampler-views.py" "$here/../.." "$cc"
 python3 "$here/test-g8b8-higher-lod.py" "$here/../.." "$cc"
 python3 "$here/test-ide-cancel.py" "$here/../.." "$cc"
 python3 "$here/test-ide-buffer-cache.py" "$here/../.." "$cc"
+python3 "$here/test-atapi-pio-phase.py" "$here/../.." "$cc"
+python3 "$here/test-dma-read-view.py" "$here/../.." "$cc"
+python3 "$here/test-atapi-dma-replay.py" "$here/../.." "$cc"
+python3 "$here/test-eventcount-lock-free-init.py" "$here/../.." "$cc"
 python3 "$here/test-ide-restart.py" "$here/../.." "$cc"
 python3 "$here/test-ide-trim.py" "$here/../.." "$cc"
 python3 "$here/test-ide-write-generation.py" "$here/../.." "$cc"
@@ -601,6 +605,10 @@ nasm -f bin -I"$here/rom/" -o "$work/sysfsw/xemu/Complex_4627v1.03.bin" "$here/r
 mkdir -p "$work/sysdvdprofile/xemu"
 cp "$work/sys/xemu/mcpx_1.0.bin" "$work/sysdvdprofile/xemu/"
 nasm -f bin -I"$here/rom/" -o "$work/sysdvdprofile/xemu/Complex_4627v1.03.bin" "$here/rom/dvd-profile.asm"
+mkdir -p "$work/sysdvdpio/xemu"
+cp "$work/sys/xemu/mcpx_1.0.bin" "$work/sysdvdpio/xemu/"
+nasm -f bin -I"$here/rom/" -o "$work/sysdvdpio/xemu/Complex_4627v1.03.bin" "$here/rom/dvd-pio-phase.asm"
+
 mkdir -p "$work/sysfpload/xemu"
 cp "$work/sys/xemu/mcpx_1.0.bin" "$work/sysfpload/xemu/"
 nasm -f bin -I"$here/rom/" -o "$work/sysfpload/xemu/Complex_4627v1.03.bin" "$here/rom/x87-load-precision.asm"
@@ -1726,6 +1734,16 @@ HARNESS_VFS_READ_LIMIT=7 t "small Xbox disc DVD profile: ${dvd_prefix:-native}" 
 for want in "peek_0x300000=0x4b4f5044" "peek_0x300004=0x00000000" "peek_0x300008=0x00000010"; do
   grep -q "^$want$" "$work/dvd-profile.txt" || {
     cat "$work/dvd-profile.txt"; echo "FAIL: small Xbox disc profile"; exit 1;
+  }
+done
+
+HARNESS_VFS_READ_LIMIT=7 t "whole-phase DVD PIO: ${dvd_prefix:-native}" $h "$(path "$core")" "$(path "$work/sysdvdpio")" "${dvd_prefix}$(path "$work/disc.iso")" $vp \
+  --frames 120 --strict --peek 0x300000 --peek 0x300004 --peek 0x30000c --peek 0x300010 --peek 0x300014 >"$work/dvd-pio.txt" || {
+    cat "$work/dvd-pio.txt"; exit 1;
+  }
+for want in "peek_0x300000=0x4b4f5044" "peek_0x300004=0x00000000" "peek_0x30000c=0x00011200" "peek_0x300010=0x00000000" "peek_0x300014=0x00000005"; do
+  grep -q "^$want$" "$work/dvd-pio.txt" || {
+    cat "$work/dvd-pio.txt"; echo "FAIL: whole-phase DVD PIO"; exit 1;
   }
 done
 

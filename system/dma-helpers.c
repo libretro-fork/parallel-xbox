@@ -14,6 +14,8 @@
 #include <rthreads/rthreads.h>
 #include "exec/icount.h"
 #include "qemu/range.h"
+#include "block/libretro-disk-view.h"
+#include "system/dma-read-view.h"
 
 /* #define DEBUG_IOMMU */
 
@@ -288,10 +290,14 @@ BlockAIOCB *dma_blk_read_io_func(int64_t offset, QEMUIOVector *iov,
     return blk_aio_preadv(blk, offset, iov, 0, cb, cb_opaque);
 }
 
+#include "dma-read-view.inc"
+
 BlockAIOCB *dma_blk_read(BlockBackend *blk,
                          QEMUSGList *sg, uint64_t offset, uint32_t align,
                          void (*cb)(void *opaque, int ret), void *opaque)
 {
+    BlockAIOCB *view = dma_read_view_start(blk, sg, offset, align, cb, opaque);
+    if (view) return view;
     return dma_blk_io(sg, offset, align,
                       dma_blk_read_io_func, blk, cb, opaque,
                       DMA_DIRECTION_FROM_DEVICE);

@@ -18,19 +18,24 @@ def function(signature):
     return source[start:end]
 
 limit = re.search(r"^#define LR_DISK_REQS \d+", source, re.M).group()
-signatures = ["static void lr_disk_req_done(", "static BlockAIOCB *lr_disk_submit(",
-              "static bool lr_disk_run_pending(", "bool lr_disk_poll(", "static bool lr_disk_progress(",
+signatures = ["static bool lr_disk_try_ready(", "static void lr_disk_abandon_deferred(",
+              "static void lr_disk_req_done(", "static BlockAIOCB *lr_disk_submit(",
+              "BlockAIOCB *lr_disk_submit_deferred(", "static bool lr_disk_run_pending(",
+              "bool lr_disk_poll(", "static bool lr_disk_progress(",
               "void blk_aio_cancel_async(", "void blk_aio_cancel(", "void blk_drain(",
               "static int lr_disk_in_flight(", "void bdrv_drain_all("]
 parts = [function(s) for s in signatures]
 scan = signatures.index("static bool lr_disk_run_pending(")
 needle = "        for (int i = 0; i < LR_DISK_REQS; i++) {"
 assert parts[scan].count(needle) == 1
-fast = "if (!lr_disk_pending)" in parts[scan]
+fast = "if (!lr_disk_pending" in parts[scan]
 parts[scan] = parts[scan].replace(needle, needle + "\n            slot_visits++;")
 production = "\n".join(parts)
 limit += "\n#define DISK_EMPTY_FASTPATH 1" if fast else ""
-code = limit + "\n" + Path(__file__).with_suffix(".c").read_text().replace("/* PRODUCTION */", production)
+shape=re.search(r'typedef struct LRDiskReq \{.*?\} LRDiskReq;',source,re.S).group()
+fixture=Path(__file__).with_suffix(".c").read_text()
+fixture=re.sub(r'typedef struct \{\n    BlockAIOCB common;.*?\} LRDiskReq;',lambda _:shape,fixture,flags=re.S)
+code = limit + "\n" + fixture.replace("/* PRODUCTION */", production)
 with tempfile.TemporaryDirectory(prefix="block-completion-") as tmp:
     work = Path(tmp)
     unit = work / "test.c"
@@ -41,6 +46,6 @@ with tempfile.TemporaryDirectory(prefix="block-completion-") as tmp:
     flags += ["-fsanitize=address,undefined"] if os.name != "nt" and "mingw" not in cc else ["-static"]
     subprocess.run([cc, *flags, str(unit), "-o", str(exe)], check=True)
     if not os.environ.get("BLOCK_COMPLETION_TEST_NO_RUN"):
-        modes = sys.argv[3:] or ["empty-progress", "ordinary", "self-drain", "self-cancel", "drain-others", "submit-drain", "global-drain", "cancel-other", "slot-hold", "nested-drain", "poll-nested", "poll-deferred", "poll-cross", "poll-reuse", "stress"]
+        modes = sys.argv[3:] or ["provider", "empty-progress", "ordinary", "self-drain", "self-cancel", "drain-others", "submit-drain", "global-drain", "cancel-other", "slot-hold", "nested-drain", "poll-nested", "poll-deferred", "poll-cross", "poll-reuse", "stress"]
         for mode in modes:
             subprocess.run([str(exe), mode], check=True, timeout=15)

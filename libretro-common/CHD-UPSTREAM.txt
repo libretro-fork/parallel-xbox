@@ -1,0 +1,64 @@
+CHD codec sources imported from libretro/RetroArch
+Commit: 86d9bbc6c0f872397a07e5950e4ef6d58db12195
+
+formats/chd/rchd.c
+formats/chd/FORMAT.md
+include/formats/rchd.h
+encodings/encoding_rzstd.c
+include/encodings/rzstd.h
+encodings/encoding_xxh64.c
+include/encodings/xxh64.h
+formats/flac/rflac.c
+include/formats/rflac.h
+formats/flac/rflac_internal.h
+formats/7z/r7z_lzma.c
+include/7z/r7z_lzma.h
+encodings/encoding_huffman.c
+include/encodings/huffman.h
+
+The core Makefile now builds these codecs with all four
+HAVE_RCHD_{DEFLATE,LZMA,FLAC,ZSTD} definitions. Existing deflate, CRC32,
+CPU-feature and compatibility facilities are reused.
+
+block/libretro-chd.c owns one decoder and storage source on one worker.
+The pinned rchd API accepts pipeline depth one only. Decoding/file/VFS calls
+never run from guest submission, owner polling, cancellation or savestates.
+retro_eventcount_init_lock_free() rejects mutex/condition-variable fallback;
+completion only publishes a retained result and signals the main owner.
+
+Eight fixed result slots bound decoded payloads to 8 MiB. Each result is
+64-byte aligned independently of allocator alignment, with descriptor-only
+libretro-common SPSC publication. Worker scratch is reserved from the parsed
+compressed map (compressed blobs may exceed decoded hunk size). Mapped source
+input is borrowed; VFS short reads fill reusable worker scratch. rchd still
+copies its decoded hunk cache into the retained result. There is no claim of
+end-to-end zero-copy: DMA performs the final scatter into guest RAM, and PIO/
+raw-sector framing requires the device buffer. No extra DMA staging payload
+or per-request disk iovec array is introduced.
+
+Initial mount policy: self-contained cooked Xbox DVD data, unit 2048,
+sector-aligned logical size, hunk at most 1 MiB, no CD tracks or parent.
+Native files and frontend content/saf VFS URIs are detected by container bytes.
+The four Xbox partition candidates are checked in decoded logical space.
+A validated preflight medium transfers directly into the mounted drive;
+classification/configuration does not create a second decoder. Partition and
+XBE metadata use an explicit lifecycle-only read API. Ordinary blk_pread of a
+CHD fails rather than silently waiting on a frame.
+
+Disk readiness is checked once per owner pass. Unfinished work is excluded
+from frame-busy hints; slot exhaustion stays pending without I/O or a wait.
+Retained-source DMA maps only after completion, keeps at most one guest map,
+and releases it before provider/map-client waits. A medium epoch prevents
+later chunks or callbacks from accepting a replaced source. Only owner-side
+copies/callbacks touch guest state.
+
+DMA states save the parsed PRDs, exact committed byte progress, original
+source offset and ATAPI extent (no host pointers or decoded payloads). Replay
+skips committed bytes and restores the controller callback/SG without reading
+possibly changed PRDs. Buffered raw-sector DMA restarts its outstanding source
+read before framing/copying. PIO retains its submitted sector count and tail.
+All replay waits until the whole VM/RAM load has completed. Reset, load, early
+stop and affected-drive eject retire old command ownership without waiting.
+Content shutdown/eject closes and joins the worker only after device retirement;
+reset and state load retain the mounted source. Lifecycle metadata and teardown
+may perform I/O/wait; this is not a claim that all existing core waits are gone.

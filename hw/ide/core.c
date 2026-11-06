@@ -24,6 +24,7 @@
  */
 
 #include "qemu/osdep.h"
+#include "system/dma-read-view.h"
 #include "hw/irq.h"
 #include "hw/isa/isa.h"
 #include "migration/vmstate.h"
@@ -794,14 +795,33 @@ BlockAIOCB *ide_buffered_readv(IDEState *s, int64_t sector_num,
     return aioreq;
 }
 
+/* Detach an owned-source read without running a completion against reset
+ * device state. Its copy owner keeps no guest map across provider/map waits. */
+static bool ide_abandon_dma_view(IDEBus *bus)
+{
+    int unit = bus->retry_unit < MAX_IDE_DEVS ? bus->retry_unit :
+               bus->unit < MAX_IDE_DEVS ? bus->unit : 0;
+    IDEState *s = &bus->ifs[unit];
+    if (!dma_abandon_read_view(bus->dma->aiocb)) return false;
+    bus->dma->aiocb = NULL;
+    s->atapi_dma_direct = false;
+    s->atapi_dma_buffered = false;
+    ide_dma_buf_commit(s, 0);
+    ide_abort_command(s);
+    ide_set_inactive(s, false);
+    return true;
+}
+
 /**
  * Cancel all pending DMA requests.
- * Any buffered DMA requests are instantly canceled,
- * but any pending unbuffered DMA requests must be waited on.
+ * Buffered requests and owned-source reads can be abandoned immediately.
+ * Other unbuffered transfers retain their existing drain policy.
  */
 void ide_cancel_dma_sync(IDEState *s)
 {
     IDEBufferedRequest *req;
+    ide_atapi_pio_cancel(s);
+    s->atapi_dma_buffered = false;
     /* Submission accepts MAX_BUFFERED_REQS existing entries plus the new one. */
     struct {
         BlockCompletionFunc *cb;
@@ -826,20 +846,12 @@ void ide_cancel_dma_sync(IDEState *s)
         cancelled[i].cb(cancelled[i].opaque, -ECANCELED);
     }
 
-    /*
-     * We can't cancel Scatter Gather DMA in the middle of the
-     * operation or a partial (not full) DMA transfer would reach
-     * the storage so we wait for completion instead (we behave
-     * like if the DMA was completed by the time the guest trying
-     * to cancel dma with bmdma_cmd_writeb with BM_CMD_START not
-     * set).
-     *
-     * In the future we'll be able to safely cancel the I/O if the
-     * whole DMA operation will be submitted to disk with a single
-     * aio operation with preadv/pwritev.
-     */
+    /* Owned-source reads have no guest map held during provider/map waits
+     * and can retire without a completion or host wait. Other transfers,
+     * including storage writes, retain the existing drain behavior. */
     if (s->bus->dma->aiocb) {
         trace_ide_cancel_dma_sync_remaining();
+        if (ide_abandon_dma_view(s->bus)) return;
         blk_drain(s->blk);
         assert(s->bus->dma->aiocb == NULL);
     }
@@ -1300,6 +1312,20 @@ static void ide_cd_change_cb(void *opaque, bool load, Error **errp)
     IDEState *s = opaque;
     uint64_t nb_sectors;
 
+    if (!load) {
+        /* Retire this drive before replacement closes its source. Other
+         * devices on the bus keep their own active command. */
+        bool pio_pending = s->atapi_pio_pending;
+        ide_atapi_pio_cancel(s);
+        if (pio_pending) ide_abort_command(s);
+        if (s->bus->retry_unit == s->unit) {
+            if (s->atapi_dma_buffered) {
+                ide_cancel_dma_sync(s);
+                ide_abort_command(s);
+                ide_set_inactive(s, false);
+            } else ide_abandon_dma_view(s->bus);
+        }
+    }
     s->tray_open = !load;
     blk_get_geometry(s->blk, &nb_sectors);
     s->nb_sectors = nb_sectors;
@@ -1453,8 +1479,10 @@ void ide_ioport_write(void *opaque, uint32_t addr, uint32_t val)
 
 static void ide_reset(IDEState *s)
 {
+    g_clear_pointer(&s->dma_replay, g_free);
     trace_ide_reset(s);
 
+    ide_atapi_pio_cancel(s);
     if (s->pio_aiocb) {
         blk_aio_cancel(s->pio_aiocb);
         s->pio_aiocb = NULL;
@@ -1496,6 +1524,8 @@ static void ide_reset(IDEState *s)
     s->packet_transfer_size = 0;
     s->elementary_transfer_size = 0;
     s->atapi_dma_direct = false;
+    s->atapi_dma_buffered = false;
+    s->atapi_pio_pending = false;
     s->io_buffer_index = 0;
     s->cd_sector_size = 0;
     s->atapi_dma = 0;
@@ -2697,7 +2727,7 @@ void ide_bus_reset(IDEBus *bus)
     /* pending async DMA - needs the IDEState before it is reset */
     if (bus->dma->aiocb) {
         trace_ide_bus_reset_aio();
-        blk_aio_cancel(bus->dma->aiocb);
+        if (!ide_abandon_dma_view(bus)) blk_aio_cancel(bus->dma->aiocb);
         bus->dma->aiocb = NULL;
     }
 
@@ -2928,11 +2958,17 @@ static void ide_restart_cb(void *opaque, bool running, RunState state)
 {
     IDEBus *bus = opaque;
 
-    /* The libretro backend normally reports errors without stopping the VM.
-     * Resume/save-state housekeeping needs no deferred work without a retry. */
-    if (!running || !bus->error_status) {
-        return;
+    /* Rebuild restored PIO requests only after the whole VM load completes.
+     * Live requests already have an owner handle; idle resumes need no work.
+     * Error retries retain their existing coalesced bottom-half dispatch. */
+    if (!running) return;
+    for (int i = 0; i < MAX_IDE_DEVS; i++) {
+        ide_atapi_dma_resume(&bus->ifs[i]);
+        if (bus->ifs[i].atapi_pio_pending && !bus->ifs[i].pio_aiocb) {
+            ide_atapi_pio_resume(&bus->ifs[i]);
+        }
     }
+    if (!bus->error_status) return;
 
     if (!bus->bh) {
         bus->bh = qemu_bh_new(ide_restart_bh, bus);
@@ -2942,9 +2978,7 @@ static void ide_restart_cb(void *opaque, bool running, RunState state)
 
 void ide_bus_register_restart_cb(IDEBus *bus)
 {
-    if (bus->dma->ops->restart_dma) {
-        bus->vmstate = qemu_add_vm_change_state_handler(ide_restart_cb, bus);
-    }
+    bus->vmstate = qemu_add_vm_change_state_handler(ide_restart_cb, bus);
 }
 
 static IDEDMA ide_dma_nop = {
@@ -3012,16 +3046,49 @@ static int ide_drive_post_load(void *opaque, int version_id)
 static int ide_drive_pio_post_load(void *opaque, int version_id)
 {
     IDEState *s = opaque;
+    bool pending = version_id >= 3 && s->atapi_pio_pending;
+    int ret;
+
+    /* Any rejected stream must leave no replay armed when the failed load
+     * resumes the already-reset machine. Restore the flag only after bounds. */
+    s->atapi_pio_pending = false;
 
     if (s->end_transfer_fn_idx >= ARRAY_SIZE(transfer_end_table)) {
         return -EINVAL;
     }
+    if (s->cur_io_buffer_offset < 0 || s->cur_io_buffer_len < 0 ||
+        s->cur_io_buffer_offset > s->io_buffer_total_len ||
+        s->cur_io_buffer_len > s->io_buffer_total_len - s->cur_io_buffer_offset) {
+        return -EINVAL;
+    }
     s->end_transfer_func = transfer_end_table[s->end_transfer_fn_idx];
+    if (version_id >= 2 && s->end_transfer_func == ide_atapi_cmd_reply_end &&
+        (s->packet_transfer_size < 0 || s->io_buffer_index < 0 ||
+         s->io_buffer_index > s->io_buffer_total_len ||
+         (s->lba != -1 &&
+          ((s->cd_sector_size != 2048 && s->cd_sector_size != 2352) ||
+           s->io_buffer_size < s->io_buffer_index ||
+           s->io_buffer_size > s->io_buffer_total_len || s->lba < 0)))) {
+        return -EINVAL;
+    }
     s->data_ptr = s->io_buffer + s->cur_io_buffer_offset;
     s->data_end = s->data_ptr + s->cur_io_buffer_len;
+    /* Version one never saved the sector cursor/buffer bounds, so a
+     * multi-phase ATAPI read from that format cannot resume correctly. */
+    if (version_id < 2 && s->end_transfer_func == ide_atapi_cmd_reply_end) {
+        if (s->packet_transfer_size > 0) {
+            return -EINVAL;
+        }
+        s->lba = -1;
+        s->io_buffer_index = s->cur_io_buffer_offset + s->cur_io_buffer_len;
+    }
     s->atapi_dma = s->feature & 1; /* as per cmd_packet */
 
-    return 0;
+    if (!pending) return 0;
+    s->atapi_pio_pending = true;
+    ret = ide_atapi_pio_state_validate(s);
+    if (ret < 0) s->atapi_pio_pending = false;
+    return ret;
 }
 
 static int ide_drive_pio_pre_save(void *opaque)
@@ -3048,7 +3115,9 @@ static bool ide_drive_pio_state_needed(void *opaque)
 {
     IDEState *s = opaque;
 
-    return ((s->status & DRQ_STAT) != 0)
+    if (s->atapi_dma_direct || s->atapi_dma_buffered ||
+        (s->dma_replay && s->dma_replay->pending)) return false;
+    return s->atapi_pio_pending || ((s->status & DRQ_STAT) != 0)
         || (s->bus->error_status & IDE_RETRY_PIO);
 }
 
@@ -3072,6 +3141,102 @@ static bool ide_error_needed(void *opaque)
 
     return (bus->error_status != 0);
 }
+
+/* No payload is serialized: committed bytes are already in guest RAM. */
+static bool ide_dma_replay_needed(void *opaque)
+{
+    IDEState *s = opaque;
+    uint64_t offset, done;
+    return s->atapi_dma_buffered || (s->atapi_dma_direct &&
+        dma_read_view_progress(s->bus->dma->aiocb, &offset, &done));
+}
+
+static int ide_dma_replay_alloc(void *opaque)
+{
+    IDEState *s = opaque;
+    if (!s->dma_replay) s->dma_replay = g_new0(IDEDMAReplay, 1);
+    else memset(s->dma_replay, 0, sizeof(*s->dma_replay));
+    return 0;
+}
+
+static int ide_dma_replay_pre_save(void *opaque)
+{
+    IDEState *s = opaque;
+    IDEDMAReplay *r;
+    ide_dma_replay_alloc(s);
+    r = s->dma_replay;
+    r->buffered = s->atapi_dma_buffered;
+    r->lba = s->lba;
+    r->packet = s->packet_transfer_size;
+    r->sector_size = s->cd_sector_size;
+    r->buffer_size = s->io_buffer_size;
+    if (!r->buffered) {
+        if (!dma_read_view_progress(s->bus->dma->aiocb, &r->offset, &r->done) ||
+            s->sg.nsg < 1 || s->sg.nsg > IDE_DMA_REPLAY_SG) return -EINVAL;
+        r->count = s->sg.nsg;
+        for (unsigned i = 0; i < r->count; i++) {
+            r->base[i] = s->sg.sg[i].base;
+            r->length[i] = s->sg.sg[i].len;
+        }
+    }
+    return 0;
+}
+
+static int ide_dma_replay_post_load(void *opaque, int version_id)
+{
+    IDEState *s = opaque;
+    IDEDMAReplay *r = s->dma_replay;
+    uint64_t total = 0;
+    if (!r || s->drive_kind != IDE_CD || !s->bus->dma->ops->restore_dma ||
+        !(s->status & BUSY_STAT) || r->lba < 0 || r->packet <= 0 ||
+        (r->sector_size != 2048 && r->sector_size != 2352) ||
+        r->packet % r->sector_size ||
+        (uint64_t)r->lba + r->packet / r->sector_size > (uint64_t)s->nb_sectors / 4)
+        return -EINVAL;
+    if (r->buffered) {
+        if (r->count || r->done || r->offset || r->buffer_size <= 0 ||
+            r->buffer_size > r->packet || r->buffer_size > s->io_buffer_total_len ||
+            r->buffer_size % r->sector_size ||
+            (r->sector_size == 2352 && r->buffer_size != 2352)) return -EINVAL;
+    } else {
+        if (!r->count || r->count > IDE_DMA_REPLAY_SG || r->sector_size != 2048 ||
+            r->offset != (uint64_t)r->lba * 2048) return -EINVAL;
+        for (unsigned i = 0; i < r->count; i++) {
+            if (!r->length[i] || r->length[i] > 65536 ||
+                r->base[i] > UINT64_MAX - r->length[i]) return -EINVAL;
+            total += r->length[i];
+        }
+        if (total != (uint64_t)r->packet || r->done >= total) return -EINVAL;
+    }
+    r->pending = true;
+    return 0;
+}
+
+static const VMStateDescription vmstate_ide_dma_replay_data = {
+    .name = "ide_drive/dma_read/data", .version_id = 1, .minimum_version_id = 1,
+    .fields = (const VMStateField[]) {
+        VMSTATE_UINT64(offset, IDEDMAReplay),
+        VMSTATE_UINT64(done, IDEDMAReplay),
+        VMSTATE_UINT32(count, IDEDMAReplay),
+        VMSTATE_UINT64_ARRAY(base, IDEDMAReplay, IDE_DMA_REPLAY_SG),
+        VMSTATE_UINT64_ARRAY(length, IDEDMAReplay, IDE_DMA_REPLAY_SG),
+        VMSTATE_INT32(lba, IDEDMAReplay),
+        VMSTATE_INT32(packet, IDEDMAReplay),
+        VMSTATE_INT32(sector_size, IDEDMAReplay),
+        VMSTATE_INT32(buffer_size, IDEDMAReplay),
+        VMSTATE_BOOL(buffered, IDEDMAReplay),
+        VMSTATE_END_OF_LIST()
+    }
+};
+static const VMStateDescription vmstate_ide_dma_replay = {
+    .name = "ide_drive/dma_read", .version_id = 1, .minimum_version_id = 1,
+    .needed = ide_dma_replay_needed, .pre_save = ide_dma_replay_pre_save,
+    .pre_load = ide_dma_replay_alloc, .post_load = ide_dma_replay_post_load,
+    .fields = (const VMStateField[]) {
+        VMSTATE_STRUCT_POINTER(dma_replay, IDEState, vmstate_ide_dma_replay_data, IDEDMAReplay),
+        VMSTATE_END_OF_LIST()
+    }
+};
 
 /* Fields for GET_EVENT_STATUS_NOTIFICATION ATAPI command */
 static const VMStateDescription vmstate_ide_atapi_gesn_state = {
@@ -3100,7 +3265,7 @@ static const VMStateDescription vmstate_ide_tray_state = {
 
 static const VMStateDescription vmstate_ide_drive_pio_state = {
     .name = "ide_drive/pio_state",
-    .version_id = 1,
+    .version_id = 3,
     .minimum_version_id = 1,
     .pre_save = ide_drive_pio_pre_save,
     .post_load = ide_drive_pio_post_load,
@@ -3114,6 +3279,11 @@ static const VMStateDescription vmstate_ide_drive_pio_state = {
         VMSTATE_UINT8(end_transfer_fn_idx, IDEState),
         VMSTATE_INT32(elementary_transfer_size, IDEState),
         VMSTATE_INT32(packet_transfer_size, IDEState),
+        VMSTATE_INT32_V(lba, IDEState, 2),
+        VMSTATE_INT32_V(cd_sector_size, IDEState, 2),
+        VMSTATE_INT32_V(io_buffer_index, IDEState, 2),
+        VMSTATE_INT32_V(io_buffer_size, IDEState, 2),
+        VMSTATE_BOOL_V(atapi_pio_pending, IDEState, 3),
         VMSTATE_END_OF_LIST()
     }
 };
@@ -3147,6 +3317,7 @@ const VMStateDescription vmstate_ide_drive = {
         VMSTATE_END_OF_LIST()
     },
     .subsections = (const VMStateDescription * const []) {
+        &vmstate_ide_dma_replay,
         &vmstate_ide_drive_pio_state,
         &vmstate_ide_tray_state,
         &vmstate_ide_atapi_gesn_state,

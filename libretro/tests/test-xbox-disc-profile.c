@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-or-later */
 #include <assert.h>
+#include <stdlib.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -33,10 +34,13 @@ static struct retro_vfs_file_handle *vfs_open(const char *p,unsigned access,unsi
 static int vfs_close(struct retro_vfs_file_handle *h){closes++;return 0;}
 static struct {struct retro_vfs_file_handle *(*open)(const char *,unsigned,unsigned);int(*close)(struct retro_vfs_file_handle *);}vfs_interface={vfs_open,vfs_close},*xemu_libretro_vfs=&vfs_interface;
 static int lr_vfs_readv(void *v,struct retro_vfs_file_handle *h,int64_t *cursor,int64_t off,LRFileIOV *iov,int n){assert(n==1);return lr_file_pread(NULL,off,iov->data,iov->size);}
+typedef void LRCHD;
+static void lr_chd_close(LRCHD*c){(void)c;abort();}
+static int lr_disk_probe_chd(const char*p,Error**e){(void)p;(void)e;return 0;}
 /* TYPES */
 typedef struct {bool open,locked;} Tray;
 typedef struct {bool(*is_tray_open)(void*);bool(*is_medium_locked)(void*);void(*eject_request_cb)(void*,bool);void(*change_media_cb)(void*,bool,Error**);} Ops;
-typedef struct {LRMedium m;bool error_logged;Ops *dev_ops;void *dev_opaque;} BlockBackend;
+typedef struct {uint64_t media_id;LRMedium m;bool error_logged;Ops *dev_ops;void *dev_opaque;} BlockBackend;
 static Error *error_abort;
 static void error_propagate(Error **e,Error *x){assert(!x);}
 static void lr_qcow2_flush(void *q){}

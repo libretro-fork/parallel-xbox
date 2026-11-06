@@ -1,5 +1,7 @@
 # Changelog of the libretro core
 
+- Enable cooked Xbox DVD CHDs using the pinned libretro-common rchd/rzstd codecs and a bounded lock-free decoder worker, including native files and short-read frontend VFS streams. Guest reads never wait for decoding; DMA consumes retained chunks without a staging iovec array. Pending cooked/raw DMA saves its parsed destinations and committed byte progress, then resumes only after RAM/controller load; PIO prepares complete announced phases before DRQ and retains sector tails across replay. Logical partition/XBE probes run during attachment, unsupported layouts fail explicitly, and stop/reset/eject retire old reads before source teardown.
+
 - Memory ownership callback lists now use lock-free RCU publication and deferred node reclamation. DMA readers can finish using an unlinked callback without racing an immediate free; removals do not wait for a grace period or force direct mappings through bounce buffers.
 - CPU/DMA memory callbacks now receive only the bytes that overlap their watched range. Accesses starting before a watch no longer extend the callback past the real access, and empty or final-address spans are matched without end-address wraparound.
 - Remove inert TCG vector diagnostic-list tracking and its save/restore scaffolding. Keep actual host-capability lists and vector fallbacks; make the ABS fallback support sanity query debug-only.

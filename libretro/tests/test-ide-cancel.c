@@ -30,6 +30,7 @@ typedef struct { DMA *dma; } IDEBus;
 typedef struct IDEState {
     QLIST_HEAD(, IDEBufferedRequest) buffered_requests;
     IDEBus *bus;
+    bool atapi_dma_buffered;
     void *blk;
 } IDEState;
 
@@ -58,6 +59,8 @@ static void tracked_free(void *p) { frees++; free(p); }
 #define trace_ide_cancel_dma_sync_remaining() ((void)0)
 
 static void lr_disk_release_read_view(void *owner){assert(!owner);}
+static bool ide_abandon_dma_view(IDEBus *b) {(void)b;return false;}
+static void ide_atapi_pio_cancel(IDEState *s) {(void)s;}
 /* PRODUCTION */
 
 typedef struct {

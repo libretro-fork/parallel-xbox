@@ -24,6 +24,7 @@
  */
 
 #include "qemu/osdep.h"
+#include "system/dma-read-view.h"
 #include "qemu/cutils.h"
 #include "hw/scsi/scsi.h"
 #include "system/block-backend.h"
@@ -92,77 +93,85 @@ static void cd_data_to_raw(uint8_t *buf, int lba)
     memset(buf, 0, 288);
 }
 
-static int
-cd_read_sector_sync(IDEState *s)
-{
-    int ret;
-
-    trace_cd_read_sector_sync(s->lba);
-
-    switch (s->cd_sector_size) {
-    case 2048:
-        ret = blk_pread(s->blk, (int64_t)s->lba << ATAPI_SECTOR_BITS,
-                        ATAPI_SECTOR_SIZE, s->io_buffer, 0);
-        break;
-    case 2352:
-        ret = blk_pread(s->blk, (int64_t)s->lba << ATAPI_SECTOR_BITS,
-                        ATAPI_SECTOR_SIZE, s->io_buffer + 16, 0);
-        if (ret >= 0) {
-            cd_data_to_raw(s->io_buffer, s->lba);
-        }
-        break;
-    default:
-        return -EIO;
-    }
-
-    if (ret >= 0) {
-        s->lba++;
-        s->io_buffer_index = 0;
-    }
-
-    return ret;
-}
-
+/* A PIO phase is advertised only after all its bytes are resident. A guest
+ * may consume the whole byte count without polling status at sector edges.
+ * Retain at most one sector's unused tail between phases; no disk refill is
+ * permitted after DRQ has exposed a phase. */
 static void cd_read_sector_cb(void *opaque, int ret)
 {
     IDEState *s = opaque;
+    int n, tail;
 
+    /* Reset/load retires the logical read before canceling its provider.
+     * A completion reached during that cancellation must not start another
+     * phase or change guest-visible state. Buffered orphans never call us. */
+    if (!s->atapi_pio_pending) return;
+    s->atapi_pio_pending = false;
+    s->pio_aiocb = NULL;
+    if (ret == -ECANCELED) return;
+    n = s->qiov.size / ATAPI_SECTOR_SIZE;
+    tail = s->io_buffer_size;
     trace_cd_read_sector_cb(s->lba, ret);
-
     if (ret < 0) {
         ide_atapi_io_error(s, ret);
         return;
     }
-
     if (s->cd_sector_size == 2352) {
-        cd_data_to_raw(s->io_buffer, s->lba);
+        /* Expand backwards so framed sectors never overwrite input that
+         * has yet to move. Cooked DVD reads need no payload rearrangement. */
+        for (int i = n - 1; i >= 0; i--) {
+            uint8_t *dst = s->io_buffer + tail + i * 2352;
+            memmove(dst + 16, s->io_buffer + tail + i * 2048, 2048);
+            cd_data_to_raw(dst, s->lba + i);
+        }
     }
-
-    s->lba++;
-    s->io_buffer_index = 0;
+    s->lba += n;
+    s->io_buffer_size = tail + n * s->cd_sector_size;
     s->status &= ~BUSY_STAT;
-
     ide_atapi_cmd_reply_end(s);
 }
 
-static int cd_read_sector(IDEState *s)
+static int cd_read_sector(IDEState *s, int phase_size)
 {
-    void *buf;
+    int tail = s->io_buffer_size - s->io_buffer_index;
+    int n;
 
-    if (s->cd_sector_size != 2048 && s->cd_sector_size != 2352) {
+    if ((s->cd_sector_size != 2048 && s->cd_sector_size != 2352) ||
+        tail < 0 || tail >= s->cd_sector_size || phase_size <= tail) {
         return -EINVAL;
     }
-
-    buf = (s->cd_sector_size == 2352) ? s->io_buffer + 16 : s->io_buffer;
-    qemu_iovec_init_buf(&s->qiov, buf, ATAPI_SECTOR_SIZE);
-
+    n = DIV_ROUND_UP(phase_size - tail, s->cd_sector_size);
+    if (tail + n * s->cd_sector_size > s->io_buffer_total_len) {
+        return -EINVAL;
+    }
+    if (tail) {
+        memmove(s->io_buffer, s->io_buffer + s->io_buffer_index, tail);
+    }
+    s->io_buffer_index = 0;
+    s->io_buffer_size = tail;
+    s->req_nb_sectors = n;
+    qemu_iovec_init_buf(&s->qiov, s->io_buffer + tail,
+                        n * ATAPI_SECTOR_SIZE);
     trace_cd_read_sector(s->lba);
-
-    ide_buffered_readv(s, (int64_t)s->lba << 2, &s->qiov, 4,
-                       cd_read_sector_cb, s);
-
-    s->status |= BUSY_STAT;
+    s->status = (s->status & ~DRQ_STAT) | BUSY_STAT;
+    s->end_transfer_func = ide_atapi_cmd_reply_end;
+    s->data_ptr = s->data_end = s->io_buffer;
+    s->atapi_pio_pending = true;
+    s->pio_aiocb = ide_buffered_readv(s, (int64_t)s->lba << 2, &s->qiov,
+                                     n * 4, cd_read_sector_cb, s);
     return 0;
+}
+
+void ide_atapi_pio_cancel(IDEState *s)
+{
+    if (s->atapi_pio_pending) {
+        BlockAIOCB *acb = s->pio_aiocb;
+        s->atapi_pio_pending = false;
+        s->pio_aiocb = NULL;
+        /* All core PIO reads use the fixed disk owner slots: cancellation
+         * abandons pending results or retires ready work, without waiting. */
+        if (acb) blk_aio_cancel(acb);
+    }
 }
 
 void ide_atapi_cmd_ok(IDEState *s)
@@ -218,54 +227,30 @@ void ide_atapi_cmd_reply_end(IDEState *s)
                                       s->elementary_transfer_size,
                                       s->io_buffer_index);
 
-        /* see if a new sector must be read */
-        if (s->lba != -1 && s->io_buffer_index >= s->cd_sector_size) {
-            if (!s->elementary_transfer_size) {
-                ret = cd_read_sector(s);
-                if (ret < 0) {
-                    ide_atapi_io_error(s, ret);
-                }
-                return;
-            } else {
-                /* rebuffering within an elementary transfer is
-                 * only possible with a sync request because we
-                 * end up with a race condition otherwise */
-                ret = cd_read_sector_sync(s);
-                if (ret < 0) {
-                    ide_atapi_io_error(s, ret);
-                    return;
-                }
-            }
+        byte_count_limit = atapi_byte_count_limit(s);
+        trace_ide_atapi_cmd_reply_end_bcl(s, byte_count_limit);
+        size = s->packet_transfer_size;
+        if (size > byte_count_limit) {
+            size = byte_count_limit & ~1;
         }
-        if (s->elementary_transfer_size > 0) {
-            /* there are some data left to transmit in this elementary
-               transfer */
-            size = s->cd_sector_size - s->io_buffer_index;
-            if (size > s->elementary_transfer_size)
-                size = s->elementary_transfer_size;
-        } else {
-            /* a new transfer is needed */
-            s->nsector = (s->nsector & ~7) | ATAPI_INT_REASON_IO;
-            ide_bus_set_irq(s->bus);
-            byte_count_limit = atapi_byte_count_limit(s);
-            trace_ide_atapi_cmd_reply_end_bcl(s, byte_count_limit);
-            size = s->packet_transfer_size;
-            if (size > byte_count_limit) {
-                /* byte count limit must be even if this case */
-                if (byte_count_limit & 1)
-                    byte_count_limit--;
-                size = byte_count_limit;
-            }
-            s->lcyl = size & 0xff;
-            s->hcyl = size >> 8;
-            s->elementary_transfer_size = size;
-            /* we cannot transmit more than one sector at a time */
-            if (s->lba != -1) {
-                if (size > (s->cd_sector_size - s->io_buffer_index))
-                    size = (s->cd_sector_size - s->io_buffer_index);
-            }
-            trace_ide_atapi_cmd_reply_end_new(s, s->status);
+        if (size <= 0) {
+            ide_atapi_io_error(s, -EINVAL);
+            return;
         }
+        if (s->lba != -1 &&
+            size > s->io_buffer_size - s->io_buffer_index) {
+            ret = cd_read_sector(s, size);
+            if (ret < 0) {
+                ide_atapi_io_error(s, ret);
+            }
+            return;
+        }
+        s->nsector = (s->nsector & ~7) | ATAPI_INT_REASON_IO;
+        ide_bus_set_irq(s->bus);
+        s->lcyl = size & 0xff;
+        s->hcyl = size >> 8;
+        s->elementary_transfer_size = size;
+        trace_ide_atapi_cmd_reply_end_new(s, s->status);
         s->packet_transfer_size -= size;
         s->elementary_transfer_size -= size;
         s->io_buffer_index += size;
@@ -318,10 +303,47 @@ static void ide_atapi_cmd_read_pio(IDEState *s, int lba, int nb_sectors,
     s->lba = lba;
     s->packet_transfer_size = nb_sectors * sector_size;
     s->elementary_transfer_size = 0;
-    s->io_buffer_index = sector_size;
+    s->io_buffer_index = 0;
+    s->io_buffer_size = 0;
     s->cd_sector_size = sector_size;
 
     ide_atapi_cmd_reply_end(s);
+}
+
+int ide_atapi_pio_state_validate(const IDEState *s)
+{
+    int n = s->req_nb_sectors;
+    int64_t sectors = s->nb_sectors >> 2;
+    if (!s->atapi_pio_pending) return 0;
+    if (s->atapi_dma || s->pio_aiocb || !(s->status & BUSY_STAT) ||
+        (s->status & (DRQ_STAT | ERR_STAT)) ||
+        s->end_transfer_func != ide_atapi_cmd_reply_end ||
+        s->cur_io_buffer_offset || s->cur_io_buffer_len ||
+        s->lba < 0 || s->lba >= sectors ||
+        (s->cd_sector_size != 2048 && s->cd_sector_size != 2352) ||
+        s->io_buffer_index != 0 || s->io_buffer_size < 0 ||
+        s->io_buffer_size >= s->cd_sector_size ||
+        s->packet_transfer_size <= s->io_buffer_size || n <= 0) return -EINVAL;
+    /* The already-submitted extent is immutable even if the guest changes
+     * byte-count registers while BUSY. req_nb_sectors is saved by PIO state;
+     * do not derive the old request from the current register contents. */
+    if (n > DIV_ROUND_UP(0xfffe, s->cd_sector_size) ||
+        n > sectors - s->lba ||
+        n > (s->io_buffer_total_len - s->io_buffer_size) / s->cd_sector_size ||
+        n > 1 + (s->packet_transfer_size - s->io_buffer_size - 1) /
+                  s->cd_sector_size) return -EINVAL;
+    return 0;
+}
+
+void ide_atapi_pio_resume(IDEState *s)
+{
+    if (!s->atapi_pio_pending || s->pio_aiocb) return;
+    /* Called by the VM-running handler, after the whole load is complete.
+     * Only the saved guest cursor/tail survives; no host request is revived. */
+    s->atapi_pio_pending = false;
+    int ret = cd_read_sector(s, s->io_buffer_size +
+                               s->req_nb_sectors * s->cd_sector_size);
+    if (ret < 0) ide_atapi_io_error(s, ret);
 }
 
 static void ide_atapi_cmd_check_status(IDEState *s)
@@ -338,7 +360,10 @@ static void ide_atapi_cmd_check_status(IDEState *s)
  * A DVD read of 2048-byte sectors, the whole transfer at once from the
  * image straight into the guest's memory through the PRD table's
  * scatter-gather list (dma_blk_read), as the hard disk's reads go
- * (core.c ide_dma_cb). The reads in 128 KB pieces went through a bounce
+ * (core.c ide_dma_cb). Immutable mapped sources are retained before the
+ * guest is mapped; each destination loan covers only its owner-side copy.
+ * Other sources retain the direct positional-I/O path.
+ * The reads in 128 KB pieces went through a bounce
  * buffer allocated for each (ide_buffered_readv), a copy into io_buffer
  * and a copy into the guest's memory (rw_buf). Raw 2352-byte sectors,
  * whose headers are made up in io_buffer, and the replies to the other
@@ -397,6 +422,7 @@ static void ide_atapi_cmd_read_dma_cb(void *opaque, int ret)
     IDEState *s = opaque;
     int data_offset, n;
 
+    s->atapi_dma_buffered = false;
     if (ret < 0) {
         if (ide_handle_rw_error(s, -ret, ide_dma_cmd_to_retry(s->dma_cmd))) {
             if (s->bus->error_status) {
@@ -452,6 +478,7 @@ static void ide_atapi_cmd_read_dma_cb(void *opaque, int ret)
     qemu_iovec_init_buf(&s->bus->dma->qiov, s->io_buffer + data_offset,
                         n * ATAPI_SECTOR_SIZE);
 
+    s->atapi_dma_buffered = true;
     s->bus->dma->aiocb = ide_buffered_readv(s, (int64_t)s->lba << 2,
                                             &s->bus->dma->qiov, n * 4,
                                             ide_atapi_cmd_read_dma_cb, s);
@@ -493,6 +520,36 @@ static void ide_atapi_cmd_read(IDEState *s, int lba, int nb_sectors,
         ide_atapi_cmd_read_dma(s, lba, nb_sectors, sector_size);
     } else {
         ide_atapi_cmd_read_pio(s, lba, nb_sectors, sector_size);
+    }
+}
+
+/* Re-submit only after RAM and controller state have both loaded. */
+void ide_atapi_dma_resume(IDEState *s)
+{
+    IDEDMAReplay *r = s->dma_replay;
+    if (!r || !r->pending || s->bus->dma->aiocb) return;
+    r->pending = false;
+    s->atapi_dma = 1;
+    s->dma_cmd = IDE_DMA_ATAPI;
+    s->lba = r->lba;
+    s->packet_transfer_size = r->packet;
+    s->cd_sector_size = r->sector_size;
+    s->io_buffer_size = r->buffer_size;
+    s->io_buffer_index = 0;
+    s->bus->dma->ops->restore_dma(s->bus->dma, s,
+        r->buffered ? ide_atapi_cmd_read_dma_cb : ide_atapi_cmd_read_dma_direct_cb);
+    if (r->buffered) {
+        int offset = r->sector_size == 2352 ? 16 : 0;
+        int sectors = r->sector_size == 2352 ? 1 : r->buffer_size / 2048;
+        qemu_iovec_init_buf(&s->bus->dma->qiov, s->io_buffer + offset, sectors * 2048);
+        s->atapi_dma_buffered = true;
+        s->bus->dma->aiocb = ide_buffered_readv(s, (int64_t)s->lba << 2,
+            &s->bus->dma->qiov, sectors * 4, ide_atapi_cmd_read_dma_cb, s);
+    } else {
+        s->atapi_dma_direct = true;
+        s->bus->dma->aiocb = dma_read_view_resume(s->blk, &s->sg, r->offset,
+            r->done, ide_atapi_cmd_read_dma_direct_cb, s);
+        if (!s->bus->dma->aiocb) ide_dma_error(s);
     }
 }
 

@@ -4496,6 +4496,192 @@ raw-word shift/mask semantics are unchanged. A production fixture places
 multiple ADD/VSL pairs in native blocks, consumes flags between groups, and
 covers all modes/accumulators/insert bits, RAM limits, DO and REP across frames.
 
+### CHD codec groundwork
+
+`python3 libretro/tests/test-chd-codecs.py . [cc]` compiles the pinned
+libretro-common decoder stack independently of the core. It requires the
+reference `zstd` CLI and Python's standard `lzma` module to generate fixtures.
+No game files are needed. It checks 16,000 raw-byte oracle reads across v3
+DEFLATE and v5 raw/Zstandard/LZMA layouts, seven-byte and borrowed supplies,
+output guards, and reference Zstandard checksum/truncation error recovery.
+Linux defaults to ASan/UBSan. `CHD_CODEC_CFLAGS`, `CHD_CODEC_WORK`,
+`CHD_CODEC_BINARY` and `CHD_CODEC_SKIP_RUN` support cross-compiled native tests.
+FLAC and Huffman dependencies are linked; FLAC audio/CD layouts are not covered
+by this fixture. Cooked DVD CHD mounting is covered separately below. See
+`libretro-common/CHD-UPSTREAM.txt` for the pin and remaining integration rules.
+
+### Whole-phase ATAPI PIO
+
+`python3 libretro/tests/test-atapi-pio-phase.py . [cc]` exercises the production
+PIO functions with delayed completion, raw/cooked byte oracles, ten byte-count
+limits (including non-sector divisors), immediate-transfer adapters, IRQ counts,
+load-pointer reconstruction after partial phase consumption and malformed-state
+bounds. Linux defaults to ASan/UBSan; `ATAPI_PIO_CFLAGS`, `ATAPI_PIO_BINARY` and
+`ATAPI_PIO_SKIP_RUN` support native cross-build tests. Existing IDE cancellation
+fixtures cover the buffered request owner used by this path.
+
+`rom/dvd-pio-phase.asm` reads 137 DVD sectors in five 65534-byte-limited phases,
+using REP INSW for the entire announced phase without sector-boundary status
+polls. It checks all 0x11200 words and runs against native, content and SAF image
+paths in run.sh. RAM 0x300000 is DPOK, 0x300004 is zero on success, 0x30000c is
+0x11200, 0x300010 is zero (no bad address), and 0x300014 is five phases. `BCL`
+can select another byte limit for private runs. PIO subsection version two saves
+sector cursor/bounds; unfinished version-one ATAPI replies are rejected because
+the old format omitted the cursor needed to resume them correctly.
+
+For an active-phase native state run, assemble with `-DPIO_DELAY=100000000`,
+then use 160 harness frames with `--save 5 --load 10 --load-again 20
+--verify-load`. The guest delays consumption after DRQ, leaving its PIO buffer
+live across the save. Both loads must restore identical RAM and the read must
+still finish with the word/phase results above. This is a guest instruction
+loop for the fixture, not a host wait in the core.
+
+### CHD decoder worker
+
+`python3 libretro/tests/test-chd-worker.py . [cc]` generates aligned raw,
+Zstandard and LZMA DVD CHD fixtures using the independent codec fixture generator
+(requires the zstd CLI). It builds the production worker with real libretro-common
+SPSC, eventcount, atomics and threads. A gated provider holds the worker while
+400,000 completion checks return pending and a full queue refuses another read;
+pending abandonment cannot recycle the payload early. Byte oracles cover mapped
+and positional providers, 500 subsequent reads while retaining an older result,
+provider errors/recovery, source close with retained and queued requests,
+unsupported/truncated input and 128 immediate-stop cycles. Linux defaults to
+ASan/UBSan. `CHD_WORKER_WORK`, `CHD_WORKER_BINARY`, `CHD_WORKER_CFLAGS` and
+`CHD_WORKER_SKIP_RUN` support native cross-compiled tests. Scheduler sleeps and
+waits in the fixture drive the independent test threads; the production submit,
+poll and release APIs contain none. Mounted CHDs use the deferred backend below.
+
+`python3 libretro/tests/test-eventcount-lock-free-init.py . [cc]` compiles the
+production eventcount with its forced fallback backend and instrumented rthread
+constructors. The new lock-free-only initializer must fail with zero lock/cond
+allocations; the legacy initializer must retain its previous behavior. This
+checks rejection before construction, rather than accepting a mutex fallback
+and discovering it after a worker starts. `EC_INIT_BINARY`, `EC_INIT_CFLAGS`
+and `EC_INIT_SKIP_RUN` support cross-compiled native execution.
+
+### Deferred disk providers
+
+`python3 libretro/tests/test-block-completion.py . [cc] provider` compiles the
+actual disk slot, readiness, cancellation and drain functions. A held provider
+survives 10,000 owner polls without an early callback or frame-busy hint. Drain
+checks once and returns without waiting. Mixed ordinary/provider completion,
+synchronous/asynchronous cancellation, slot reuse and callback-started requests
+check ready/waiting/in-flight accounting and snapshot ordering. The full suite
+also retains the ordinary 100,000-schedule regression (38,562 callbacks).
+Linux runs with ASan/UBSan; existing BLOCK_COMPLETION_TEST_OUTPUT/NO_RUN support
+native cross-builds. IDE TRIM and completion benchmark extraction use the same
+provider helpers and keep support for older benchmark source snapshots.
+
+The actual main-loop wait fixture now covers a provider becoming ready while
+lr_disk_pending is zero, across its no-FD, descriptor and notifier paths. Polling
+must discover the completion before the coordinator considers parking. The
+frame-busy hint counts ready callbacks, not unfinished storage work. Mounted
+CHDs use this deferred API with replayable IDE PIO/DMA commands. A drain that
+made no progress is not proof that an external provider has finished.
+
+### Pending PIO state and replay
+
+The PIO phase fixture now exercises the production save/load hooks as well as
+its data path. Pending reads are saved before DRQ, canceled, restored and resumed
+three times per read, across cooked/raw sectors and 65534/4094 byte limits.
+Replay submits only when the VM-running handler runs; repeated resume leaves a
+live read alone. A changed byte-count register cannot alter the already-submitted
+extent, which uses the existing serialized req_nb_sectors field. Thirteen bad
+state cases clear the replay flag and submit nothing; changing a future phase
+limit to zero produces its normal protocol error after the current read finishes.
+The generic cancellation fixture isolates request-list behavior; the phase
+fixture executes the real PIO cancel path with pending and already-ready results.
+
+PIO subsection version three adds the pending flag and includes BUSY reads even
+without DRQ. Version-two exposed phases still reconstruct normally. Load reset
+retires the old fixed disk request before restoring its cursor; the new request
+is submitted on VM resume, after all device/RAM state has loaded. The new bool
+originally used Win64 IDEState padding (976 bytes at that stage). DMA replay
+adds a cold metadata pointer rather than embedding its SG arrays.
+No decoded payload or host request pointer is added to a saved pending command.
+
+Native validation also used a private provider that holds DVD completions for
+four guest frames, without a host sleep. A one-frame run returns its video/audio
+while the ROM records BUSY and zero consumed phases. Save at frame 1 and loads
+at 5 and 10 then finish all 0x11200 words in five phases with identical restored
+RAM. Removing the BUSY-read needed predicate in a negative control leaves zero
+words/phases after 160 frames, while frame/audio cadence and load APIs still
+succeed. This validates the pending command rather than only a completed DRQ
+buffer. That initial fixture used synthetic owned results; the mounted CHD
+integration below repeats the pending-state check with actual decoding.
+
+### Owned-source DMA reads
+
+`python3 libretro/tests/test-dma-read-view.py . [cc]` compiles the production
+source-first DMA state machine, backend range query and IDE abandonment helper.
+It checks no mapping before provider completion, a maximum of one live mapping,
+ordered overlapping destinations, zero/partial SG spans, chunk boundaries,
+map-client retries (including inline retry), exact unmap access lengths, errors,
+initial fallback and cancellation. Reentry tests retire the SG during map,
+unmap and source release, including release during completion; no old device
+callback may run after abandonment. A seeded 1,000-case SG byte oracle varies
+even PRD lengths, overlaps, zero entries, source chunks and mapping boundaries.
+Linux defaults to ASan/UBSan; DMA_VIEW_BINARY/CFLAGS/SKIP_RUN support native builds.
+The existing DMA transfer and map tests continue to exercise the classic path.
+
+Native read-only mapped files advertise complete retained ranges; CHDs advertise
+chunks of at most 1 MiB. Writable HDD and ordinary raw VFS retain their prior path. One native
+retained mapping pins the complete immutable source through replacement; future
+worker-backed chunks check the mounted-medium epoch before accepting another
+source request or completion. No guest map or disk iovec array is held
+while this path waits for a provider or a map retry. Device command retirement
+suppresses its callback; the copy owner releases its result at a safe boundary.
+Tray changes retire only the affected drive, including pending PIO.
+Early host stop aborts the owned read without a spurious completion interrupt.
+
+Native validation used a private provider that holds DVD results for four guest
+frames and records successful owned-source callbacks. At frame one, the guest
+still sees DMA pending, zero words/results and its untouched DEADBEEF destination,
+while the core returns the expected video/audio. Reset then completes all three
+reads (0x2c800 correct words, no bad address), with exactly three owned callbacks.
+An early BM stop keeps the destination untouched and reports READY|ERR/ABRT,
+with bus-master activity/interrupt bits clear and no successful source callback.
+Pending DMA snapshot/replay is now covered by the CHD tests below. The pooled request was 200 bytes at the initial mapped-source stage and is
+208 bytes with the mounted-medium epoch, versus 192 for classic DMA; classic layout/stack use is unchanged and the owned path needs no separate
+16-byte-per-entry iovec array. These are layout facts, not hardware cache metrics.
+
+
+### Mounted CHD and DMA state replay
+
+`python3 libretro/tests/test-atapi-dma-replay.py . [cc]` compiles the production
+snapshot validator and resume functions. It checks parsed SG/progress capture,
+cooked/raw buffered extents, deferred single resubmission, rejected malformed
+states and failed replay retirement. The owned-source DMA byte oracle also
+resumes at non-sector-aligned map boundaries after changing committed guest
+RAM, proving those bytes are not replayed; overlapping later SG writes retain
+their original order. A changed medium epoch rejects a queued result before
+any guest mapping. Both fixtures support native Win64 compilation and default
+to ASan/UBSan on Linux.
+
+`make-chd-fixture.py RAW_ISO OUT_CHD [v3-zlib|v5-zstd] [PARTITION_BASE]` builds
+small independent test containers from the mkdisc pattern image. It constructs
+headers/maps/CRCs itself and uses Python raw deflate or the reference zstd CLI,
+not rchd's writer. A 0x2080000 prefix tests decoded logical partition selection.
+These fixtures are for tests, not general CHD authoring.
+
+Native integration validation uses the DVD DMA/PIO ROMs and these actual CHDs.
+The regular DVD oracle checks 0x2c800 words; a private 700-sector third read
+crosses the worker's 1 MiB boundary and checks 0x5e800 words. A raw READ CD fixture
+checks four 2352-byte frames, including their cooked payload (0x800 words).
+Native and seven-byte content-VFS reads preserve exact bytes/video/audio.
+
+For pending state checks, a private disk-provider gate holds actual CHD results
+for four guest frames, without sleeping or waiting on the frame owner. Saving
+the large transfer at frame 14 records exactly 1048576 committed bytes at source
+offset 4096000. Loads at 16 and 22 restore RAM byte-for-byte and finish all
+0x5e800 words. Pending raw DMA and PIO saved at frame 1 and loaded at 5/10 also
+finish their exact byte oracles. No successful final state alone is treated as
+proof that a pending command was serialized: the progress trace records the
+unfinished extent, and module tests validate rejection/resubmission separately.
+The CHD worker tests additionally cover lifecycle metadata waits and thread-safe
+completion signals, with no guest callback on the storage worker.
+
 `make dspnativeprograms` audits production-size JIT blocks (the normal 64-instruction
 limit, rather than the single-instruction native matrix). An instrumented
 `dspaudit` driver runs every GP fixture with two seeds against the interpreter
@@ -4769,3 +4955,26 @@ four intentional legacy fallback calls, with no unexpected interpreter use.
 
 
 The GL depth-copy fixture also executes the production fullscreen vertex shader and pass-state setup. It poisons reused destinations and changes source data between copies while enabling hostile guest scissor/cull/polygon state. Every destination texel must match the independent oracle, with zero native-copy clears and one high-resolution clear; shortening fullscreen triangle coverage must fail. These checks qualify removing the redundant pre-copy clear for native snapshots. Isolated copy timing found native-copy benefits on NVIDIA and llvmpipe, but large high-resolution llvmpipe copies benefited from retaining their clear; the high-resolution path therefore keeps it.
+
+
+The missing-DMA-subsection negative control leaves the large ROM stuck in its
+third transfer (status 7, only 0x7000 words checked) after a successful state
+load with identical restored RAM and uninterrupted cadence. This confirms the
+runtime state test depends on the new replay, rather than only generic state
+success. Held-read reset and Vulkan unload/reload both finish all three DVD
+reads; shutdown retires the pending command before joining/closing its source.
+
+A separate private XDVDFS fixture has a real default.xbe directory node, header
+and certificate in a CHD behind the 0x2080000 logical partition prefix. Native
+and seven-byte content-VFS attachment recover the expected 0x12345 runtime entry
+and preserve the DVD byte oracle, exercising all lifecycle metadata reads.
+Wrong-unit, invalid-signature and non-Xbox CHDs are refused before machine start.
+
+Win64 layout checks: classic DMA remains 192 bytes, retained DMA is 208,
+IDEState is 984 (eight additional bytes), and its cold replay allocation is
+8232 bytes. Existing req_nb_sectors/atapi_dma offsets stay 852/720. The copy loop
+uses a 112-byte stack frame; epoch checking raises the source callback from
+64 to 80 bytes. Classic DMA callback/submit frames remain 128/96. These are
+compiler/layout observations, not measured L1/L2 misses or game frame rates.
+The merged core also passes the 485-frame Vulkan pixel/RAM oracle and PCM
+control/split hashes plus reset/state frame/audio cadence checks.

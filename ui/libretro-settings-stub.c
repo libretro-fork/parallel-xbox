@@ -7,6 +7,7 @@
  */
 
 #include "qemu/osdep.h"
+#include "block/libretro-disk.h"
 #include <stdlib.h>
 #include <string.h>
 #include <assert.h>
@@ -99,6 +100,8 @@ void xemu_settings_reset_keyboard_mapping(void)
  * loaded content (sys.files.dvd_path). */
 bool xemu_media_is_xbox_disc(const char *path)
 {
+    int chd = lr_disk_probe_chd(path, NULL);
+    if (chd) return true; /* invalid CHD is rejected by content preflight */
     static const char magic[] = "MICROSOFT*XBOX*MEDIA";
     static const long partitions[] = {
         0, 0x18300000, 0xFD90000, 0x2080000,

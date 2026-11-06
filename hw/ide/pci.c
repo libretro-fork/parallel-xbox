@@ -126,6 +126,21 @@ static void bmdma_start_dma(const IDEDMA *dma, IDEState *s,
     }
 }
 
+static void bmdma_restore_dma(const IDEDMA *dma, IDEState *s,
+                               BlockCompletionFunc *cb)
+{
+    BMDMAState *bm = DO_UPCAST(BMDMAState, dma, dma);
+    PCIDevice *dev = PCI_DEVICE(bm->pci_dev);
+    IDEDMAReplay *r = s->dma_replay;
+    bm->dma_cb = cb;
+    s->bus->retry_unit = s->unit;
+    if (r->buffered) return;
+    ide_sglist_init(s, DEVICE(dev), r->count, pci_get_address_space(dev));
+    for (unsigned i = 0; i < r->count; i++) {
+        qemu_sglist_add(&s->sg, r->base[i], r->length[i]);
+    }
+}
+
 /**
  * Prepare an sglist based on available PRDs.
  * @limit: How many bytes to prepare total.
@@ -357,7 +372,7 @@ static bool ide_bmdma_current_needed(void *opaque)
 {
     BMDMAState *bm = opaque;
 
-    return (bm->cur_prd_len != 0);
+    return bm->cur_prd_len != 0 || bm->dma.aiocb != NULL;
 }
 
 static bool ide_bmdma_status_needed(void *opaque)
@@ -507,6 +522,7 @@ void pci_ide_create_devs(PCIDevice *dev)
 
 static const struct IDEDMAOps bmdma_ops = {
     .start_dma = bmdma_start_dma,
+    .restore_dma = bmdma_restore_dma,
     .prepare_buf = bmdma_prepare_buf,
     .rw_buf = bmdma_rw_buf,
     .restart_dma = bmdma_restart_dma,

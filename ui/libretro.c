@@ -2253,6 +2253,7 @@ static bool lr_state(bool save)
 static void lr_stop_machine(void)
 {
     vm_shutdown();
+    lr_disk_close_async_media();
     lr_dma_iov_cache_clear();
     lr_aiocb_cache_clear();
     ide_buffered_read_cache_clear();
@@ -2635,7 +2636,7 @@ RETRO_API void retro_get_system_info(struct retro_system_info *info)
     memset(info, 0, sizeof(*info));
     info->library_name     = "ParaLLEl Xbox";
     info->library_version  = xemu_libretro_version;
-    info->valid_extensions = "iso|xiso|bin";
+    info->valid_extensions = "iso|xiso|bin|chd";
     info->need_fullpath    = true;
     info->block_extract    = true;
 }
@@ -2720,6 +2721,7 @@ RETRO_API void retro_init(void)
 RETRO_API void retro_deinit(void)
 {
     LRLOG_INFO("[xemu] retro_deinit\n");
+    lr_disk_discard_chd_probe();
     /* The frontend owns this thread. Drain TLS-backed cleanup while its
      * storage is live, rather than retaining pointers until DLL detach. */
     qemu_thread_run_atexit();
@@ -2732,6 +2734,7 @@ RETRO_API void retro_deinit(void)
 /* A content refused at load: the reason as a notification and in the log */
 static void load_refused(const char *text)
 {
+    lr_disk_discard_chd_probe();
     struct retro_message_ext msg = {
         .msg = text,
         .duration = 6000,
@@ -2791,7 +2794,14 @@ RETRO_API bool retro_load_game(const struct retro_game_info *game)
      * booted the Xbox dashboard with the netboot image in the drive (NNshi).
      * The other machine needs RetroArch started again. An Xbox disc image
      * boots an Xbox, any other image a Chihiro, no content an Xbox. */
-    const bool chihiro = content[0] && !xemu_media_is_xbox_disc(content);
+    Error *chd_error = NULL;
+    int chd = lr_disk_probe_chd(content, &chd_error);
+    if (chd < 0) {
+        load_refused(chd_error ? error_get_pretty(chd_error) : "Invalid CHD image");
+        error_free(chd_error);
+        return false;
+    }
+    const bool chihiro = content[0] && !chd && !xemu_media_is_xbox_disc(content);
     if (emu_started_once && chihiro != emu_started_chihiro) {
         load_refused(chihiro
             ? "xemu: restart RetroArch to load a Chihiro game after an Xbox one"
@@ -3044,6 +3054,7 @@ RETRO_API bool retro_load_game_special(unsigned type,
 RETRO_API void retro_unload_game(void)
 {
     LRLOG_INFO("[xemu] retro_unload_game\n");
+    lr_disk_discard_chd_probe();
 
     if (emu_initialized) {
         /* before the machine stops: the frontend destroys the device after
