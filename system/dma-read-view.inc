@@ -9,7 +9,7 @@ typedef struct DMAReadViewAIOCB {
     AddressSpace *as;
     const void *data;
     void *owner;
-    uint64_t offset, done, total;
+    uint64_t offset, done, total, media_id;
     size_t length, position, limit;
     int sg_index;
     dma_addr_t sg_byte;
@@ -40,6 +40,7 @@ static void dma_read_view_complete(DMAReadViewAIOCB *r, int ret)
 static bool dma_read_view_submit(DMAReadViewAIOCB *r)
 {
     assert(!r->acb && !r->owner && !r->waiting && r->done < r->total);
+    if (lr_disk_read_identity(r->blk) != r->media_id) return false;
     r->length = MIN(r->total - r->done, r->limit);
     r->position = 0;
     r->acb = lr_disk_aio_read_view(r->blk, r->offset + r->done, r->length,
@@ -120,6 +121,7 @@ static void dma_read_view_cb(void *opaque, int ret)
 {
     DMAReadViewAIOCB *r = opaque;
     r->acb = NULL;
+    if (lr_disk_read_identity(r->blk) != r->media_id) r->cancelled = true;
     if (r->cancelled || ret < 0 || !r->data) {
         dma_read_view_complete(r, r->cancelled ? -ECANCELED : ret < 0 ? ret : -EIO);
         return;
@@ -161,14 +163,14 @@ bool dma_abandon_read_view(BlockAIOCB *acb)
     return true;
 }
 
-static BlockAIOCB *dma_read_view_start(BlockBackend *blk, QEMUSGList *sg,
-                                       uint64_t offset, uint32_t align,
+static BlockAIOCB *dma_read_view_start_at(BlockBackend *blk, QEMUSGList *sg,
+                                       uint64_t offset, uint32_t align, uint64_t done,
                                        BlockCompletionFunc *cb, void *opaque)
 {
     DMAReadViewAIOCB *r;
     size_t limit;
     assert(sg->as->map_client_owner == sthread_get_current_thread_id());
-    if (!align || (align & (align - 1)) || sg->size % align || !sg->size ||
+    if (!align || (align & (align - 1)) || sg->size % align || !sg->size || done >= sg->size ||
         offset > INT64_MAX || sg->size > (uint64_t)INT64_MAX - offset) return NULL;
     limit = lr_disk_read_view_max(blk, offset, sg->size);
     limit -= limit % align;
@@ -181,12 +183,21 @@ static BlockAIOCB *dma_read_view_start(BlockBackend *blk, QEMUSGList *sg,
     r->data = NULL;
     r->owner = NULL;
     r->offset = offset;
-    r->done = 0;
+    r->media_id = lr_disk_read_identity(blk);
+    r->done = done;
     r->total = sg->size;
     r->length = r->position = 0;
     r->limit = limit;
     r->sg_index = 0;
-    r->sg_byte = 0;
+    r->sg_byte = done;
+    while (r->sg_index < sg->nsg && r->sg_byte >= sg->sg[r->sg_index].len) {
+        r->sg_byte -= sg->sg[r->sg_index].len;
+        r->sg_index++;
+    }
+    if (done && r->sg_index >= sg->nsg) {
+        qemu_aio_unref(&r->common);
+        return NULL;
+    }
     r->map_client = (AddressSpaceMapClient){0};
     r->waiting = r->cancelled = r->copying = r->completing = false;
     if (!dma_read_view_submit(r)) {
@@ -195,4 +206,29 @@ static BlockAIOCB *dma_read_view_start(BlockBackend *blk, QEMUSGList *sg,
         return NULL;
     }
     return &r->common;
+}
+
+static BlockAIOCB *dma_read_view_start(BlockBackend *blk, QEMUSGList *sg,
+                                       uint64_t offset, uint32_t align,
+                                       BlockCompletionFunc *cb, void *opaque)
+{
+    return dma_read_view_start_at(blk, sg, offset, align, 0, cb, opaque);
+}
+
+bool dma_read_view_progress(BlockAIOCB *acb, uint64_t *offset, uint64_t *done)
+{
+    DMAReadViewAIOCB *r;
+    if (!acb || acb->aiocb_info != &dma_read_view_info) return false;
+    r = container_of(acb, DMAReadViewAIOCB, common);
+    if (r->copying || r->completing || r->cancelled) return false;
+    *offset = r->offset;
+    *done = r->done;
+    return true;
+}
+
+BlockAIOCB *dma_read_view_resume(BlockBackend *blk, QEMUSGList *sg,
+                                uint64_t offset, uint64_t done,
+                                BlockCompletionFunc *cb, void *opaque)
+{
+    return dma_read_view_start_at(blk, sg, offset, 1, done, cb, opaque);
 }

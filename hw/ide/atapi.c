@@ -24,6 +24,7 @@
  */
 
 #include "qemu/osdep.h"
+#include "system/dma-read-view.h"
 #include "qemu/cutils.h"
 #include "hw/scsi/scsi.h"
 #include "system/block-backend.h"
@@ -421,6 +422,7 @@ static void ide_atapi_cmd_read_dma_cb(void *opaque, int ret)
     IDEState *s = opaque;
     int data_offset, n;
 
+    s->atapi_dma_buffered = false;
     if (ret < 0) {
         if (ide_handle_rw_error(s, -ret, ide_dma_cmd_to_retry(s->dma_cmd))) {
             if (s->bus->error_status) {
@@ -476,6 +478,7 @@ static void ide_atapi_cmd_read_dma_cb(void *opaque, int ret)
     qemu_iovec_init_buf(&s->bus->dma->qiov, s->io_buffer + data_offset,
                         n * ATAPI_SECTOR_SIZE);
 
+    s->atapi_dma_buffered = true;
     s->bus->dma->aiocb = ide_buffered_readv(s, (int64_t)s->lba << 2,
                                             &s->bus->dma->qiov, n * 4,
                                             ide_atapi_cmd_read_dma_cb, s);
@@ -517,6 +520,36 @@ static void ide_atapi_cmd_read(IDEState *s, int lba, int nb_sectors,
         ide_atapi_cmd_read_dma(s, lba, nb_sectors, sector_size);
     } else {
         ide_atapi_cmd_read_pio(s, lba, nb_sectors, sector_size);
+    }
+}
+
+/* Re-submit only after RAM and controller state have both loaded. */
+void ide_atapi_dma_resume(IDEState *s)
+{
+    IDEDMAReplay *r = s->dma_replay;
+    if (!r || !r->pending || s->bus->dma->aiocb) return;
+    r->pending = false;
+    s->atapi_dma = 1;
+    s->dma_cmd = IDE_DMA_ATAPI;
+    s->lba = r->lba;
+    s->packet_transfer_size = r->packet;
+    s->cd_sector_size = r->sector_size;
+    s->io_buffer_size = r->buffer_size;
+    s->io_buffer_index = 0;
+    s->bus->dma->ops->restore_dma(s->bus->dma, s,
+        r->buffered ? ide_atapi_cmd_read_dma_cb : ide_atapi_cmd_read_dma_direct_cb);
+    if (r->buffered) {
+        int offset = r->sector_size == 2352 ? 16 : 0;
+        int sectors = r->sector_size == 2352 ? 1 : r->buffer_size / 2048;
+        qemu_iovec_init_buf(&s->bus->dma->qiov, s->io_buffer + offset, sectors * 2048);
+        s->atapi_dma_buffered = true;
+        s->bus->dma->aiocb = ide_buffered_readv(s, (int64_t)s->lba << 2,
+            &s->bus->dma->qiov, sectors * 4, ide_atapi_cmd_read_dma_cb, s);
+    } else {
+        s->atapi_dma_direct = true;
+        s->bus->dma->aiocb = dma_read_view_resume(s->blk, &s->sg, r->offset,
+            r->done, ide_atapi_cmd_read_dma_direct_cb, s);
+        if (!s->bus->dma->aiocb) ide_dma_error(s);
     }
 }
 

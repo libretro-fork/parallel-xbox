@@ -24,11 +24,11 @@ typedef struct {uintptr_t map_client_owner;AddressSpaceMapClient*client;} Addres
 typedef struct {dma_addr_t base,len;} ScatterGatherEntry;
 typedef struct {ScatterGatherEntry*sg;int nsg;uint64_t size;AddressSpace*as;} QEMUSGList;
 enum {LR_MEDIUM_NONE,LR_MEDIUM_FILE,LR_MEDIUM_OTHER};
-typedef struct {struct {int kind;bool writable;int64_t length;uint64_t base;void*file;} m;} BlockBackend;
+typedef struct {struct {int kind;bool writable;int64_t length;uint64_t base;void*file;void*chd;} m;uint64_t media_id;} BlockBackend;
 static uint8_t image[IMAGE],ram[RAM],oracle[RAM];static BlockBackend backend;
 static AddressSpace as;static QEMUSGList list;
 typedef struct IDEBus IDEBus;
-typedef struct {bool atapi_dma_direct,atapi_pio_pending,tray_open;unsigned commits,aborts,inactive,unit,cdrom_changed;uint64_t nb_sectors;BlockBackend*blk;IDEBus*bus;struct {bool new_media,eject_request;} events;} IDEState;
+typedef struct {bool atapi_dma_direct,atapi_dma_buffered,atapi_pio_pending,tray_open;unsigned commits,aborts,inactive,unit,cdrom_changed;uint64_t nb_sectors;BlockBackend*blk;IDEBus*bus;struct {bool new_media,eject_request;} events;} IDEState;
 typedef void Error;
 struct IDEBus {uint8_t retry_unit,unit;IDEState ifs[2];struct {BlockAIOCB*aiocb;} *dma;unsigned irqs;};
 static typeof(*((IDEBus*)0)->dma) dma;
@@ -40,6 +40,7 @@ static bool blocked,mapping_enabled,register_inline,ready_cancel,cancel_self;
 static void retire_descriptors(void){free(list.sg);list.sg=NULL;list.nsg=0;list.size=0;}
 static uintptr_t sthread_get_current_thread_id(void){return 17;}
 static const uint8_t*lr_file_view(void*f,int64_t off,size_t n){(void)f;return mapping_enabled && off>=0 && off<=IMAGE && n<=IMAGE-(size_t)off?image+off:NULL;}
+#define LR_CHD_MAX_READ (1024*1024)
 /* QUERY */
 static size_t lr_disk_read_view_max(BlockBackend*b,uint64_t off,uint64_t n){size_t x=actual_view_limit(b,off,n);return MIN(x,cap);}
 static void *blk_aio_get(const AIOCBInfo*i,BlockBackend*b,BlockCompletionFunc*cb,void*arg){(void)b;BlockAIOCB*a=calloc(1,i->aiocb_size);assert(a);a->aiocb_info=i;a->cb=cb;a->opaque=arg;a->refs=1;allocated++;live++;return a;}
@@ -82,6 +83,7 @@ static void ide_dma_buf_commit(IDEState*s,unsigned n){assert(s==&bus.ifs[1] && !
 static void ide_abort_command(IDEState*s){s->aborts++;}
 static void ide_set_inactive(IDEState*s,bool more){assert(!more);s->inactive++;}
 /* IDE HELPER */
+static void ide_cancel_dma_sync(IDEState*s){(void)s;abort();}
 static void ide_atapi_pio_cancel(IDEState*s){s->atapi_pio_pending=false;}
 static void blk_get_geometry(BlockBackend*b,uint64_t*n){assert(b==&backend);*n=(uint64_t)b->m.length/512;}
 static void ide_bus_set_irq(IDEBus*b){b->irqs++;}
@@ -91,7 +93,7 @@ static void reset(size_t limit){
  assert(!live && !refs && !mapped && !as.client);for(unsigned i=0;i<8;i++)assert(!queue[i].busy);
  memset(ram,0xcc,sizeof(ram));memcpy(oracle,ram,sizeof(ram));
  for(unsigned i=0;i<IMAGE;i++)image[i]=(uint8_t)((i*29)^(i>>7));
- backend=(BlockBackend){.m={LR_MEDIUM_FILE,false,IMAGE,0,NULL}};as=(AddressSpace){.map_client_owner=17};
+ backend=(BlockBackend){.m={.kind=LR_MEDIUM_FILE,.length=IMAGE}};as=(AddressSpace){.map_client_owner=17};
  allocated=maps=unmaps=dirty=callbacks=submits=0;cap=limit;map_piece=127;block_after=SIZE_MAX;
  blocked=register_inline=ready_cancel=cancel_self=false;mapping_enabled=true;result=source_error=cancel_mode=refuse_at=0;
  ScatterGatherEntry entries[]={{100,512},{200,1024},{0,0},{3000,2048},{100,512}};
@@ -167,6 +169,26 @@ int main(void){
  reset(1024);blk_aio_cancel(active);done();bus.ifs[1].atapi_pio_pending=true;
  ide_cd_change_cb(&bus.ifs[1],false,NULL);assert(!bus.ifs[1].atapi_pio_pending && bus.ifs[1].aborts==1);
  ide_cd_change_cb(&bus.ifs[1],true,NULL);assert(!bus.ifs[1].tray_open && bus.ifs[1].aborts==1);
+ for(unsigned progress=1;progress<4096;progress+=137){
+  reset(1024);block_after=progress;deliver(&queue[0],0);
+  /* Progress may span several chunks; finish until the chosen map boundary. */
+  while(!as.client){for(unsigned i=0;i<8;i++)if(queue[i].busy)deliver(&queue[i],0);}
+  uint64_t offset,committed;assert(dma_read_view_progress(active,&offset,&committed));
+  assert(offset==512 && committed==progress && !mapped);
+  assert(dma_abandon_read_view(active));assert(!live && !refs);
+  /* Model guest changes to already-committed RAM and a restored SG table. */
+  memset(ram,0x5a,RAM);memcpy(oracle,ram,RAM);
+  size_t logical=0;
+  for(int i=0;i<list.nsg;i++){
+   size_t skip=committed>logical?MIN(committed-logical,list.sg[i].len):0;
+   memcpy(oracle+list.sg[i].base+skip,image+512+logical+skip,list.sg[i].len-skip);
+   logical+=list.sg[i].len;
+  }
+  block_after=SIZE_MAX;callbacks=0;
+  active=dma_read_view_resume(&backend,&list,offset,committed,complete,&callbacks);assert(active);dma.aiocb=active;
+  finish_sources();assert(callbacks==1 && !result && !memcmp(ram,oracle,RAM));done();
+ }
+ reset(1024);backend.media_id++;finish_sources();assert(callbacks==1 && result==-ECANCELED && !maps && !dirty);done();
  randomized();
  puts("DMA retained source: no early maps, ordered overlaps/chunks, map retries, precise unmaps, cancellation/reentry, abandonment and range/fallback oracles PASS");
 }

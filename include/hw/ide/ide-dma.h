@@ -17,6 +17,8 @@ typedef void DMAStopFunc(const IDEDMA *, bool);
 
 struct IDEDMAOps {
     DMAStartFunc *start_dma;
+    /* Rebuild a saved SG / callback without re-reading PRDs or resetting them. */
+    DMAStartFunc *restore_dma;
     DMAVoidFunc *pio_transfer;
     DMAInt32Func *prepare_buf;
     DMAu32Func *commit_buf;

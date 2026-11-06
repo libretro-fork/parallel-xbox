@@ -18,8 +18,9 @@
  * next pass of the frame loop, as QEMU's callers expect (never inside the
  * call that made the request). No coroutine, no thread pool, no thread
  * switch, no allocation. What a request takes on the guest's time is
- * therefore fixed: none, as when the guest idled on a read before, and a
- * state taken between frames never has one in flight. The frame loop
+ * therefore fixed for ordinary synchronous files: none. Compressed media
+ * uses the separate deferred provider described below and may be pending
+ * across frames or state snapshots. The frame loop
  * waits for a completion as for the GPU (lr_disk_pending,
  * ui/libretro.c), so a guest idling on its disk does not skip ahead to its
  * next timer first.
@@ -66,6 +67,7 @@
 #include "block/libretro-read-view.h"
 #include "block/libretro-vfs-read.h"
 #include "block/libretro-qcow2.h"
+#include "block/libretro-chd.h"
 #include "system/block-backend.h"
 #include "system/blockdev.h"
 #include "hw/core/cpu.h"
@@ -89,12 +91,14 @@ typedef enum {
     LR_MEDIUM_QCOW2,    /* a qcow2 image, read and written in place */
     LR_MEDIUM_VFS,
     LR_MEDIUM_MEMORY,
+    LR_MEDIUM_CHD,
 } LRMediumKind;
 
 typedef struct LRMedium {
     LRMediumKind kind;
     LRFile *file;
     LRQcow2 *qcow2;
+    LRCHD *chd;
     struct retro_vfs_file_handle *vfs;
     AddressSpace *as;
     uint64_t base;      /* where the drive's data starts in the image */
@@ -103,6 +107,18 @@ typedef struct LRMedium {
     bool xbox_disc; /* immutable classification of this mounted medium */
     int64_t vfs_position;
 } LRMedium;
+
+typedef struct LRCHDProvider {
+    LRDiskProvider provider;
+    LRCHD *chd;
+    LRCHDRequest *request;
+    const void **data;
+    void **owner;
+    uint64_t offset;
+    size_t length;
+} LRCHDProvider;
+
+QEMU_BUILD_BUG_ON(sizeof(void *) == 8 && sizeof(LRCHDProvider) != 64);
 
 typedef struct LRDiskReq {
     BlockAIOCB common;
@@ -130,6 +146,8 @@ struct BlockBackend {
     int in_flight;
     int refcnt;
     LRDiskReq req[LR_DISK_REQS];
+    LRCHDProvider chd_req[LR_DISK_REQS]; /* cold optional provider descriptors */
+    uint64_t media_id;
     QTAILQ_ENTRY(BlockBackend) link;
 };
 
@@ -148,8 +166,10 @@ static int lr_disk_waiting; /* provider work: never a frame-loop wait reason */
 void lr_disk_set_xbox_disc(BlockBackend *blk, bool xbox_disc)
 {
     if (blk) {
+        if (blk->m.kind == LR_MEDIUM_CHD) return;
         blk->m.xbox_disc = xbox_disc && !blk->m.writable &&
-            (blk->m.kind == LR_MEDIUM_FILE || blk->m.kind == LR_MEDIUM_VFS);
+            (blk->m.kind == LR_MEDIUM_FILE || blk->m.kind == LR_MEDIUM_VFS ||
+             blk->m.kind == LR_MEDIUM_CHD);
     }
 }
 
@@ -182,6 +202,7 @@ static bool lr_disk_is_uri(const char *path)
 
 static void lr_medium_close(LRMedium *m)
 {
+    if (m->chd) lr_chd_close(m->chd);
     if (m->qcow2) {
         lr_qcow2_flush(m->qcow2);
         lr_qcow2_close(m->qcow2);
@@ -195,11 +216,118 @@ static void lr_medium_close(LRMedium *m)
     memset(m, 0, sizeof(*m));
 }
 
+/* A compressed source has one owner after open: the decoder worker. */
+typedef struct LRCHDInput {
+    LRFile *file;
+    struct retro_vfs_file_handle *vfs;
+    struct retro_vfs_interface *interface;
+    int64_t cursor;
+} LRCHDInput;
+
+static int lr_chd_source_read(void *opaque, uint64_t offset, void *data, size_t len)
+{
+    LRCHDInput *in = opaque;
+    LRFileIOV iov = {data, len};
+    if (offset > INT64_MAX) return -EIO;
+    return in->file ? lr_file_pread(in->file, offset, data, len) :
+        lr_vfs_readv(in->interface, in->vfs, &in->cursor, offset, &iov, 1);
+}
+static const uint8_t *lr_chd_source_view(void *opaque, uint64_t offset, size_t len)
+{
+    LRCHDInput *in = opaque;
+    return in->file && offset <= INT64_MAX ? lr_file_view(in->file, offset, len) : NULL;
+}
+static void lr_chd_source_close(void *opaque)
+{
+    LRCHDInput *in = opaque;
+    if (in->file) lr_file_close(in->file);
+    if (in->vfs) in->interface->close(in->vfs);
+    g_free(in);
+}
+static void lr_chd_source_notify(void *opaque)
+{
+    (void)opaque;
+    qemu_notify_event();
+}
+
+static int lr_medium_read_metadata(LRMedium *m, uint64_t offset, void *data, size_t len)
+{
+    LRFileIOV iov = {data, len};
+    if (offset > (uint64_t)m->length || len > (uint64_t)m->length - offset ||
+        offset > (uint64_t)INT64_MAX - m->base) return -EIO;
+    offset += m->base;
+    if (m->chd) return lr_chd_read_metadata(m->chd, offset, data, len);
+    return m->file ? lr_file_pread(m->file, offset, data, len) :
+        m->vfs ? lr_vfs_readv(xemu_libretro_vfs, m->vfs, &m->vfs_position,
+                            offset, &iov, 1) : -ENOTSUP;
+}
+
+/* Called only at content attachment/replacement, before guest execution. */
+static bool lr_medium_open_chd(LRMedium *m, int64_t *size, Error **errp)
+{
+    static const uint64_t partitions[] = {0, 0x18300000, 0xfd90000, 0x2080000};
+    LRCHDInput *input = g_new0(LRCHDInput, 1);
+    LRCHDSource source = {0};
+    int error;
+    input->file = m->file; input->vfs = m->vfs;
+    input->interface = xemu_libretro_vfs; input->cursor = -1;
+    source.opaque = input; source.size = *size;
+    source.read = lr_chd_source_read; source.view = lr_chd_source_view;
+    source.close = lr_chd_source_close; source.notify = lr_chd_source_notify;
+    m->chd = lr_chd_open(&source, &error);
+    if (!m->chd) {
+        g_free(input); /* source ownership did not transfer */
+        error_setg(errp, "CHD requires a self-contained cooked DVD with "
+                   "2048-byte units and no CD tracks or parent (decoder error %d)", error);
+        return false;
+    }
+    m->file = NULL; m->vfs = NULL;
+    m->kind = LR_MEDIUM_CHD;
+    uint64_t length = lr_chd_size(m->chd);
+    if (length > INT64_MAX) {
+        error_setg(errp, "CHD logical length exceeds supported range");
+        return false;
+    }
+    *size = length;
+    m->length = length;
+    for (unsigned i = 0; i < ARRAY_SIZE(partitions); i++) {
+        char magic[20];
+        if (partitions[i] + 65536 + sizeof(magic) > length) continue;
+        if (lr_medium_read_metadata(m, partitions[i] + 65536, magic, sizeof(magic))) {
+            error_setg(errp, "CHD logical partition probe failed");
+            return false;
+        }
+        if (!memcmp(magic, "MICROSOFT*XBOX*MEDIA", sizeof(magic))) {
+            m->base = partitions[i];
+            m->xbox_disc = true;
+            return true;
+        }
+    }
+    error_setg(errp, "CHD contains no supported Xbox DVD game partition");
+    return false;
+}
+
+static LRMedium lr_chd_prepared;
+static char *lr_chd_prepared_path;
+
+void lr_disk_discard_chd_probe(void)
+{
+    lr_medium_close(&lr_chd_prepared);
+    g_clear_pointer(&lr_chd_prepared_path, g_free);
+}
+
 static bool lr_medium_open(LRMedium *m, const char *path, uint64_t offset,
                            bool writable, Error **errp)
 {
     int64_t size;
 
+    if (!writable && !offset && lr_chd_prepared_path &&
+        !strcmp(path, lr_chd_prepared_path)) {
+        *m = lr_chd_prepared;
+        memset(&lr_chd_prepared, 0, sizeof(lr_chd_prepared));
+        g_clear_pointer(&lr_chd_prepared_path, g_free);
+        return true;
+    }
     memset(m, 0, sizeof(*m));
     m->vfs_position = -1;
     if (lr_disk_is_uri(path)) {
@@ -249,6 +377,24 @@ static bool lr_medium_open(LRMedium *m, const char *path, uint64_t offset,
             m->kind = LR_MEDIUM_QCOW2;
         }
     }
+    /* Detect the container by bytes, including frontend URIs and short reads. */
+    if (size >= 8 && m->kind != LR_MEDIUM_QCOW2) {
+        uint8_t magic[8];
+        m->length = size;
+        if (!lr_medium_read_metadata(m, 0, magic, sizeof(magic)) &&
+            !memcmp(magic, "MComprHD", 8)) {
+            if (writable) {
+                error_setg(errp, "CHD media is read only");
+                lr_medium_close(m);
+                return false;
+            }
+            if (!lr_medium_open_chd(m, &size, errp)) {
+                lr_medium_close(m);
+                return false;
+            }
+            offset = m->base; /* decoded logical game partition, never file bytes */
+        }
+    }
     if (size < 0 || (uint64_t)size < offset) {
         error_setg(errp, "%s is shorter than its offset 0x%" PRIx64, path,
                    offset);
@@ -280,6 +426,10 @@ static int lr_disk_rw(BlockBackend *blk, int64_t offset, QEMUIOVector *qiov,
         return -EPERM;
     }
     switch (m->kind) {
+    case LR_MEDIUM_CHD:
+        /* Guest reads must use owned asynchronous views. Metadata has an
+         * explicit lifecycle API, never a hidden decoder wait in blk_pread. */
+        return -ENOTSUP;
     case LR_MEDIUM_FILE:
         ret = write ? lr_file_pwritev(m->file, m->base + offset,
                                       (const LRFileIOV *)qiov->iov,
@@ -328,6 +478,45 @@ static int lr_disk_rw(BlockBackend *blk, int64_t offset, QEMUIOVector *qiov,
         abort();
     }
     return ret;
+}
+
+int lr_disk_read_metadata(BlockBackend *blk, uint64_t offset, void *data, size_t len)
+{
+    if (blk->m.chd) return lr_medium_read_metadata(&blk->m, offset, data, len);
+    return blk_pread(blk, offset, len, data, 0);
+}
+
+/* 0 ordinary image, 1 valid Xbox CHD, negative invalid/unsupported CHD.
+ * This lifecycle preflight prevents CHD from being mistaken for Chihiro. */
+int lr_disk_probe_chd(const char *path, Error **errp)
+{
+    LRCHDInput input = {.interface = xemu_libretro_vfs, .cursor = -1};
+    uint8_t magic[8];
+    if (!path || !*path) return 0;
+    if (lr_chd_prepared_path && !strcmp(path, lr_chd_prepared_path)) return 1;
+    lr_disk_discard_chd_probe();
+    if (lr_disk_is_uri(path)) {
+        if (input.interface)
+            input.vfs = input.interface->open(path, RETRO_VFS_FILE_ACCESS_READ,
+                                             RETRO_VFS_FILE_ACCESS_HINT_NONE);
+    } else input.file = lr_file_open(path, false, false);
+    if (!input.file && !input.vfs) return 0; /* normal load handles raw errors */
+    int ret = lr_chd_source_read(&input, 0, magic, sizeof(magic));
+    if (input.file) lr_file_close(input.file);
+    if (input.vfs) input.interface->close(input.vfs);
+    if (ret || memcmp(magic, "MComprHD", 8)) {
+        const char *extension = strrchr(path, '.');
+        if (extension && !g_ascii_strcasecmp(extension, ".chd")) {
+            error_setg(errp, "CHD header is truncated or has an invalid signature");
+            return -EINVAL;
+        }
+        return 0;
+    }
+    /* Keep the validated medium through classification/configuration. The
+     * mount consumes it once, avoiding repeated decoder/worker creation. */
+    if (!lr_medium_open(&lr_chd_prepared, path, 0, false, errp)) return -EINVAL;
+    lr_chd_prepared_path = g_strdup(path);
+    return 1;
 }
 
 int lr_disk_zero(BlockBackend *blk, int64_t offset, int64_t bytes)
@@ -415,6 +604,7 @@ bool lr_disk_open(BlockBackend *blk, const char *path, uint64_t offset,
     }
     lr_medium_close(&blk->m);
     blk->m = m;
+    blk->media_id++;
     blk->error_logged = false;
     return true;
 }
@@ -422,6 +612,7 @@ bool lr_disk_open(BlockBackend *blk, const char *path, uint64_t offset,
 void lr_disk_open_memory(BlockBackend *blk, AddressSpace *as, uint64_t size)
 {
     lr_medium_close(&blk->m);
+    blk->media_id++;
     blk->m.kind = LR_MEDIUM_MEMORY;
     blk->m.as = as;
     blk->m.length = (int64_t)size;
@@ -454,10 +645,12 @@ bool lr_disk_change(BlockBackend *blk, const char *path, uint64_t offset,
         blk->dev_ops->change_media_cb(blk->dev_opaque, false, &error_abort);
     }
     lr_medium_close(&blk->m);
+    blk->media_id++;
     if (m.kind == LR_MEDIUM_NONE) {
         return true;
     }
     blk->m = m;
+    blk->media_id++;
     blk->error_logged = false;
     if (lr_disk_has_tray(blk) && blk_dev_is_tray_open(blk)) {
         Error *err = NULL;
@@ -622,6 +815,8 @@ void lr_disk_release_read_view(void *owner)
 
 size_t lr_disk_read_view_max(BlockBackend *blk, uint64_t offset, uint64_t size)
 {
+    if (blk && blk->m.chd && size && offset <= (uint64_t)blk->m.length &&
+        size <= (uint64_t)blk->m.length - offset) return LR_CHD_MAX_READ;
     if (!blk || blk->m.kind != LR_MEDIUM_FILE || blk->m.writable || !size ||
         blk->m.length < 0 || offset > (uint64_t)blk->m.length ||
         size > (uint64_t)blk->m.length - offset || blk->m.base > INT64_MAX ||
@@ -633,12 +828,66 @@ size_t lr_disk_read_view_max(BlockBackend *blk, uint64_t offset, uint64_t size)
     return SIZE_MAX;
 }
 
+uint64_t lr_disk_read_identity(BlockBackend *blk) { return blk->media_id; }
+
+static bool lr_chd_provider_ready(LRDiskProvider *base, int *ret)
+{
+    LRCHDProvider *p = container_of(base, LRCHDProvider, provider);
+    const void *bytes;
+    size_t length;
+    int result;
+    if (!p->request) {
+        result = lr_chd_submit(p->chd, p->offset, p->length, &p->request);
+        if (result == -EAGAIN) return false;
+        if (result) { *ret = result; p->chd = NULL; return true; }
+    }
+    result = lr_chd_poll(p->request, &bytes, &length);
+    if (!result) return false;
+    *ret = result < 0 ? result : length != p->length ? -EIO : 0;
+    if (!*ret) { *p->data = bytes; *p->owner = p->request; }
+    else lr_chd_release(p->request);
+    p->request = NULL;
+    p->chd = NULL;
+    return true;
+}
+static void lr_chd_provider_abandon(LRDiskProvider *base)
+{
+    LRCHDProvider *p = container_of(base, LRCHDProvider, provider);
+    lr_chd_release(p->request);
+    p->request = NULL; p->chd = NULL;
+}
+static BlockAIOCB *lr_disk_chd_read_view(BlockBackend *blk, int64_t offset,
+        size_t len, const void **data, void **owner, BlockCompletionFunc *cb, void *opaque)
+{
+    if (offset < 0 || !len || len > LR_CHD_MAX_READ || offset > blk->m.length ||
+        len > (uint64_t)(blk->m.length - offset))
+        return lr_disk_submit(blk, -EIO, cb, opaque);
+    for (unsigned i = 0; i < LR_DISK_REQS; i++) {
+        LRCHDProvider *p = &blk->chd_req[i];
+        if (p->chd) continue;
+        *p = (LRCHDProvider){.provider = {lr_chd_provider_ready, lr_chd_provider_abandon},
+            .chd = blk->m.chd, .offset = blk->m.base + offset, .length = len,
+            .data = data, .owner = owner};
+        /* Submit immediately; queue exhaustion remains deferred without
+         * falling back to guest mapping or a synchronous read. */
+        int ret = lr_chd_submit(p->chd, p->offset, len, &p->request);
+        if (ret && ret != -EAGAIN) {
+            p->chd = NULL;
+            return lr_disk_submit(blk, ret, cb, opaque);
+        }
+        return lr_disk_submit_deferred(blk, &p->provider, cb, opaque);
+    }
+    return lr_disk_submit(blk, -EAGAIN, cb, opaque);
+}
+
 BlockAIOCB *lr_disk_aio_read_view(BlockBackend *blk, int64_t offset, size_t size,
                                  const void **data, void **owner,
                                  BlockCompletionFunc *cb, void *opaque)
 {
     *data = NULL;
     *owner = NULL;
+    if (blk && blk->m.chd)
+        return lr_disk_chd_read_view(blk, offset, size, data, owner, cb, opaque);
     if (blk && blk->m.kind == LR_MEDIUM_FILE && !blk->m.writable &&
         offset >= 0 && offset <= blk->m.length &&
         size <= (uint64_t)(blk->m.length - offset) &&
@@ -795,14 +1044,38 @@ int bdrv_flush_all(void)
     return 0;
 }
 
+static void lr_disk_close_chd(BlockBackend *blk);
+
 void bdrv_close_all(void)
 {
     BlockBackend *blk;
 
+    lr_disk_close_async_media();
     bdrv_drain_all();
     QTAILQ_FOREACH(blk, &lr_disks, link) {
         lr_medium_close(&blk->m);
     }
+}
+
+/* Content shutdown: device retirement first, then join its storage owner.
+ * A reset/state load only abandons requests and keeps the source alive. */
+static void lr_disk_close_chd(BlockBackend *blk)
+{
+    if (!blk->m.chd) return;
+    if (blk->dev_ops && blk->dev_ops->change_media_cb)
+        blk->dev_ops->change_media_cb(blk->dev_opaque, false, &error_abort);
+    for (unsigned i = 0; i < LR_DISK_REQS; i++) {
+        LRDiskReq *r = &blk->req[i];
+        if (r->busy && !r->completing) blk_aio_cancel(&r->common);
+    }
+    lr_medium_close(&blk->m);
+    blk->media_id++;
+}
+
+void lr_disk_close_async_media(void)
+{
+    BlockBackend *blk;
+    QTAILQ_FOREACH(blk, &lr_disks, link) lr_disk_close_chd(blk);
 }
 
 void lr_disk_sync_all(void)
@@ -898,6 +1171,7 @@ BlockBackend *blk_new(AioContext *ctx, uint64_t perm, uint64_t shared_perm)
 void blk_unref(BlockBackend *blk)
 {
     if (blk && --blk->refcnt == 0) {
+        lr_disk_close_chd(blk);
         bdrv_drain_all();
         lr_medium_close(&blk->m);
         QTAILQ_REMOVE(&lr_disks, blk, link);

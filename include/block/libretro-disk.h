@@ -21,6 +21,12 @@ extern int lr_disk_pending;
 
 /* Dispatch a snapshot of completed disk requests on the emulation owner. */
 bool lr_disk_poll(void);
+/* Content lifecycle metadata only; CHD waits/decodes never enter guest I/O. */
+int lr_disk_read_metadata(BlockBackend *blk, uint64_t offset, void *data, size_t len);
+int lr_disk_probe_chd(const char *path, Error **errp);
+void lr_disk_discard_chd_probe(void);
+/* Content shutdown only: retire CD commands, then stop/join decoder owners. */
+void lr_disk_close_async_media(void);
 
 /* Immutable bytes of a read-only mapped image; no read/copy. NULL means use
  * blk_pread. The loan ends on eject/change, and never exposes a writable HDD. */

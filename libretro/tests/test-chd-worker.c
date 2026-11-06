@@ -17,7 +17,7 @@
 
 typedef struct Source {
     uint8_t *bytes; size_t length; uintptr_t owner;
-    bool live, gate, mapped; unsigned closes, worker_reads;
+    bool live, gate, mapped; unsigned closes, worker_reads; retro_atomic_int_t notifications;
     retro_atomic_int_t entered, permit, fail;
     retro_eventcount_t wake;
 } Source;
@@ -54,6 +54,7 @@ static const uint8_t *view_source(void*arg,uint64_t off,size_t n)
     enter(s);assert(off<=s->length && n<=s->length-off);
     return s->bytes+off;
 }
+static void notify_source(void*arg){Source*s=arg;retro_atomic_fetch_add_int(&s->notifications,1);}
 static void close_source(void*arg)
 {
     Source*s=arg;assert(sthread_get_current_thread_id()==s->owner);
@@ -87,8 +88,12 @@ static void run(const char*dir,const char*name,bool mapped)
     s.bytes=load(dir,name,&s.length);
     retro_atomic_int_init(&s.entered,0);retro_atomic_int_init(&s.permit,0);
     retro_atomic_int_init(&s.fail,0);assert(retro_eventcount_init_lock_free(&s.wake));
-    LRCHDSource src={&s,s.length,read_source,view_source,close_source};int error;
+    retro_atomic_int_init(&s.notifications,0);
+    LRCHDSource src={&s,s.length,read_source,view_source,close_source,notify_source,&s};int error;
     LRCHD*c=lr_chd_open(&src,&error);assert(c && !error && lr_chd_size(c)==raw_len);
+    uint8_t metadata[713];
+    assert(!lr_chd_read_metadata(c,129,metadata,sizeof(metadata)));
+    assert(!memcmp(metadata,raw+129,sizeof(metadata)));
     LRCHDRequest*r[LR_CHD_SLOTS],*extra; s.live=true;
     for(unsigned i=0;i<LR_CHD_SLOTS;i++)assert(!lr_chd_submit(c,4096+i*257,4000,&r[i]));
     await(&s.entered,&s.wake);
@@ -135,6 +140,7 @@ static void run(const char*dir,const char*name,bool mapped)
     /* A queued request and a completed view both survive medium teardown. */
     assert(!lr_chd_submit(c,8192,8192,&r[0]));
     lr_chd_close(c);assert(s.closes==1 && !s.bytes);
+    assert(retro_atomic_load_acquire_int(&s.notifications)>0);
     assert(!memcmp(held,raw+4096,8192));
     assert(lr_chd_poll(extra,&bytes,&n)==1 && bytes==held);
     assert(!memcmp(old,raw+4096+257,old_n));lr_chd_release(r[1]);
@@ -152,7 +158,7 @@ static void invalid(const char*dir)
         if(mode==0)s.bytes[0]='Z';
         if(mode==1){s.bytes[60]=0;s.bytes[61]=0;s.bytes[62]=2;s.bytes[63]=0;}
         if(mode==2)s.bytes[104]=1; /* external parent SHA-1 */
-        LRCHDSource src={&s,mode==3?8:s.length,read_source,NULL,close_source};
+        LRCHDSource src={&s,mode==3?8:s.length,read_source,NULL,close_source,NULL,NULL};
         int e=0;assert(!lr_chd_open(&src,&e) && e<0 && !s.closes);
         free(s.bytes);
     }
@@ -162,7 +168,7 @@ static void stop_race(const char*dir)
     for(unsigned pass=0;pass<128;pass++){
         Source s={.owner=sthread_get_current_thread_id()};
         s.bytes=load(dir,"v5.chd",&s.length);
-        LRCHDSource src={&s,s.length,read_source,NULL,close_source};int error;
+        LRCHDSource src={&s,s.length,read_source,NULL,close_source,NULL,NULL};int error;
         LRCHD*c=lr_chd_open(&src,&error);assert(c && !error);s.live=true;
         LRCHDRequest*r[LR_CHD_SLOTS];
         for(unsigned i=0;i<LR_CHD_SLOTS;i++)assert(!lr_chd_submit(c,4096,8192,&r[i]));

@@ -16,47 +16,49 @@ include/7z/r7z_lzma.h
 encodings/encoding_huffman.c
 include/encodings/huffman.h
 
-Existing file I/O/thread/atomic facilities remain owned by this core.
+The core Makefile now builds these codecs with all four
+HAVE_RCHD_{DEFLATE,LZMA,FLAC,ZSTD} definitions. Existing deflate, CRC32,
+CPU-feature and compatibility facilities are reused.
 
-This is codec groundwork, not a mounted CHD backend. These sources are
-compiled by libretro/tests/test-chd-codecs.py, not the core Makefile yet.
-Enable all four HAVE_RCHD_{DEFLATE,LZMA,FLAC,ZSTD} when integrating them.
-The existing deflate, CRC32, CPU-feature and compatibility headers are reused.
+block/libretro-chd.c owns one decoder and storage source on one worker.
+The pinned rchd API accepts pipeline depth one only. Decoding/file/VFS calls
+never run from guest submission, owner polling, cancellation or savestates.
+retro_eventcount_init_lock_free() rejects mutex/condition-variable fallback;
+completion only publishes a retained result and signals the main owner.
 
-The pinned API accepts pipeline depth one only. Borrowed input must remain
-valid until the read step has consumed it. A step bounds decoding by hunk,
-not host wall-clock time: run file access and decoding on their owned worker,
-not on retro_run. Do not add a guest-visible wait for a worker completion.
-ATAPI PIO now prepares complete phases asynchronously and retains sector tails,
-while preserving the announced byte count and DRQ burst. The current disk
-provider still completes its file reads synchronously at submission; the CHD
-worker is implemented in block/libretro-chd.c and validated independently, but
-readiness-aware disk dispatch is available through lr_disk_submit_deferred.
-Pending PIO command state/replay is implemented in the IDE phase path; pending
-DMA state/replay and logical media probing are still required before mounting
-media.
+Eight fixed result slots bound decoded payloads to 8 MiB. Each result is
+64-byte aligned independently of allocator alignment, with descriptor-only
+libretro-common SPSC publication. Worker scratch is reserved from the parsed
+compressed map (compressed blobs may exceed decoded hunk size). Mapped source
+input is borrowed; VFS short reads fill reusable worker scratch. rchd still
+copies its decoded hunk cache into the retained result. There is no claim of
+end-to-end zero-copy: DMA performs the final scatter into guest RAM, and PIO/
+raw-sector framing requires the device buffer. No extra DMA staging payload
+or per-request disk iovec array is introduced.
 
-Core-owned threading adaptation: retro_eventcount_init_lock_free() rejects the
-slock/scond fallback before allocating it; existing init behavior is preserved.
-The CHD worker requires that initializer and lock-free retro_atomic/retro_spsc.
-Its source and fixed request payloads are allocated at open; retained payloads
-are aligned to 64 bytes independently of the allocator base. Inputs are borrowed
-from stable mappings or reusable worker scratch. rchd still copies its decoded
-hunk cache into the retained result; the adapter adds no further result copy.
-The frame owner must split requests above 1 MiB and handle -EAGAIN without a
-wait. Eight pending/retained requests bound the decoded-result storage to 8 MiB.
-Initial mount policy is cooked DVD units of 2048 bytes without CD track tables
-or external parents. Other layouts fail explicitly, rather than being decoded
-as if they had that geometry. Lifecycle open/close may perform I/O/join; submit,
-poll and release may not. The worker's stop check cancels queued work and a
-held decoded result remains independent of the closed source/decoder.
-Abandonment publishes cancellation for the next worker decode boundary;
-accepted storage calls already in progress finish on their storage owner.
+Initial mount policy: self-contained cooked Xbox DVD data, unit 2048,
+sector-aligned logical size, hunk at most 1 MiB, no CD tracks or parent.
+Native files and frontend content/saf VFS URIs are detected by container bytes.
+The four Xbox partition candidates are checked in decoded logical space.
+A validated preflight medium transfers directly into the mounted drive;
+classification/configuration does not create a second decoder. Partition and
+XBE metadata use an explicit lifecycle-only read API. Ordinary blk_pread of a
+CHD fails rather than silently waiting on a frame.
 
-Owned-source DMA preparation: dma-read-view.inc requests a retained source before
-mapping destinations, copies ordered spans with one short-lived guest map, and
-can abandon without a late device callback. Native immutable FILE media uses
-one full-range source loan; other backends do not advertise it yet. Remaining
-CHD work includes DMA state/progress/SG replay, logical probes, media identity
-across chunks, completion wake signaling, and frontend mounting. No CHD kind is
-connected solely because this optional path now exists.
+Disk readiness is checked once per owner pass. Unfinished work is excluded
+from frame-busy hints; slot exhaustion stays pending without I/O or a wait.
+Retained-source DMA maps only after completion, keeps at most one guest map,
+and releases it before provider/map-client waits. A medium epoch prevents
+later chunks or callbacks from accepting a replaced source. Only owner-side
+copies/callbacks touch guest state.
+
+DMA states save the parsed PRDs, exact committed byte progress, original
+source offset and ATAPI extent (no host pointers or decoded payloads). Replay
+skips committed bytes and restores the controller callback/SG without reading
+possibly changed PRDs. Buffered raw-sector DMA restarts its outstanding source
+read before framing/copying. PIO retains its submitted sector count and tail.
+All replay waits until the whole VM/RAM load has completed. Reset, load, early
+stop and affected-drive eject retire old command ownership without waiting.
+Content shutdown/eject closes and joins the worker only after device retirement;
+reset and state load retain the mounted source. Lifecycle metadata and teardown
+may perform I/O/wait; this is not a claim that all existing core waits are gone.

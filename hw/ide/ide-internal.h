@@ -411,6 +411,7 @@ void ide_abort_command(IDEState *s);
 void ide_atapi_cmd_ok(IDEState *s);
 void ide_atapi_cmd_error(IDEState *s, int sense_key, int asc);
 void ide_atapi_dma_restart(IDEState *s);
+void ide_atapi_dma_resume(IDEState *s);
 void ide_atapi_io_error(IDEState *s, int ret);
 
 void ide_ioport_write(void *opaque, uint32_t addr, uint32_t val);

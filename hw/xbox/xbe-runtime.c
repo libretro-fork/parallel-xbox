@@ -23,7 +23,7 @@ static const uint8_t *disc_bytes(BlockBackend *blk, uint64_t offset,
     }
     const uint8_t *view = lr_disk_view(blk, offset, size);
     return view ? view :
-        (blk_pread(blk, offset, size, scratch, 0) < 0 ? NULL : scratch);
+        (lr_disk_read_metadata(blk, offset, scratch, size) < 0 ? NULL : scratch);
 }
 
 static uint32_t disc_entry(BlockBackend *blk)
@@ -45,7 +45,7 @@ static uint32_t disc_entry(BlockBackend *blk)
         if (offset > size - 14 ||
             !(node = disc_bytes(blk, root + offset, sizeof(nbuf), nbuf)) ||
             node[13] > size - offset - 14 ||
-            blk_pread(blk, root + offset + 14, node[13], name, 0) < 0) {
+            lr_disk_read_metadata(blk, root + offset + 14, name, node[13]) < 0) {
             return 0;
         }
         name[node[13]] = 0;

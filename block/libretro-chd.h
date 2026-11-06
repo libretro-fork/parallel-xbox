@@ -20,12 +20,18 @@ typedef struct LRCHDSource {
     int (*read)(void *, uint64_t, void *, size_t);
     const uint8_t *(*view)(void *, uint64_t, size_t);
     void (*close)(void *);
+    /* Optional thread-safe wake signal only; never a guest callback. */
+    void (*notify)(void *);
+    void *notify_opaque;
 } LRCHDSource;
 
 /* Lifecycle only: open parses metadata synchronously, then starts one owner.
  * Initially accepts self-contained cooked DVD images (unit 2048, no tracks or
  * external parent). No partially decoded/unsupported layout is mounted. */
 LRCHD *lr_chd_open(const LRCHDSource *source, int *error);
+/* Lifecycle metadata only. Waits on a lock-free eventcount; never call from
+ * guest I/O, retro_run, frame polling, cancellation or savestate callbacks. */
+int lr_chd_read_metadata(LRCHD *chd, uint64_t offset, void *data, size_t len);
 uint64_t lr_chd_size(const LRCHD *chd);
 /* Lifecycle only: stops/joins the worker. Accepted requests remain pollable
  * and releasable after close, including decoded spans already handed out. */

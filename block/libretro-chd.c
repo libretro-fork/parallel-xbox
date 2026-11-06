@@ -34,7 +34,7 @@ struct LRCHD {
     size_t input_capacity;
     LRCHDRequest *slot[LR_CHD_SLOTS];
     retro_spsc_t queue;
-    retro_eventcount_t wake;
+    retro_eventcount_t wake, completed;
     retro_atomic_int_t stop;
     sthread_t *thread;
 };
@@ -102,6 +102,8 @@ static void chd_worker(void *opaque)
         if (retro_spsc_read(&c->queue, &r, sizeof(r)) == sizeof(r)) {
             r->result = chd_decode(c, r);
             retro_atomic_store_release_int(&r->ready, 1);
+            retro_eventcount_notify(&c->completed);
+            if (c->source.notify) c->source.notify(c->source.notify_opaque);
             continue;
         }
         if (retro_atomic_load_acquire_int(&c->stop)) {
@@ -131,7 +133,7 @@ LRCHD *lr_chd_open(const LRCHDSource *source, int *error)
     rchd_request_t request;
     const rchd_info_t *info;
     int e = -EINVAL;
-    bool queue = false, event = false;
+    bool queue = false, event = false, completed = false;
     if (!error) return NULL;
     *error = -EINVAL;
     if (!source || !source->read) return NULL;
@@ -182,11 +184,15 @@ LRCHD *lr_chd_open(const LRCHDSource *source, int *error)
     if (!(event = retro_eventcount_init_lock_free(&c->wake))) {
         e = -ENOTSUP; goto fail;
     }
+    if (!(completed = retro_eventcount_init_lock_free(&c->completed))) {
+        e = -ENOTSUP; goto fail;
+    }
     c->thread = sthread_create(chd_worker, c);
     if (!c->thread) { e = -EAGAIN; goto fail; }
     *error = 0;
     return c;
 fail:
+    if (completed) retro_eventcount_free(&c->completed);
     if (event) retro_eventcount_free(&c->wake);
     if (queue) retro_spsc_free(&c->queue);
     for (unsigned i = 0; i < LR_CHD_SLOTS; i++) free(c->slot[i]);
@@ -256,9 +262,35 @@ void lr_chd_close(LRCHD *c)
         r->attached = false;
         if (!r->used || r->abandoned) free(r);
     }
+    retro_eventcount_free(&c->completed);
     retro_eventcount_free(&c->wake);
     retro_spsc_free(&c->queue);
     rchd_free(c->decoder); free(c->input);
     if (c->source.close) c->source.close(c->source.opaque);
     free(c);
+}
+
+int lr_chd_read_metadata(LRCHD *c, uint64_t offset, void *data, size_t len)
+{
+    uint8_t *out = data;
+    if (offset > c->length || len > c->length - offset) return -EINVAL;
+    while (len) {
+        LRCHDRequest *r;
+        const void *bytes;
+        size_t got, want = len > LR_CHD_MAX_READ ? LR_CHD_MAX_READ : len;
+        int ret = lr_chd_submit(c, offset, want, &r);
+        if (ret) return ret;
+        while (!(ret = lr_chd_poll(r, &bytes, &got))) {
+            int key = retro_eventcount_prepare_wait(&c->completed);
+            if (lr_chd_poll(r, &bytes, &got))
+                retro_eventcount_cancel_wait(&c->completed);
+            else retro_eventcount_commit_wait(&c->completed, key);
+        }
+        if (ret > 0 && got == want) memcpy(out, bytes, want);
+        else if (ret > 0) ret = -EIO;
+        lr_chd_release(r);
+        if (ret < 0) return ret;
+        offset += want; out += want; len -= want;
+    }
+    return 0;
 }

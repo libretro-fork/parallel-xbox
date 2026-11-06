@@ -30,6 +30,7 @@ typedef struct { DMA *dma; } IDEBus;
 typedef struct IDEState {
     QLIST_HEAD(, IDEBufferedRequest) buffered_requests;
     IDEBus *bus;
+    bool atapi_dma_buffered;
     void *blk;
 } IDEState;
 

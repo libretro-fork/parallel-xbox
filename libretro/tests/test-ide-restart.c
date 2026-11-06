@@ -72,6 +72,7 @@ static void ide_flush_cache(IDEState *s){(void)s;operation_done(5);}
 static void ide_atapi_dma_restart(IDEState *s){(void)s;operation_done(6);}
 static void restart_hba(IDEDMA *d){(void)d;operation_done(7);}
 static unsigned pio_resumes;
+static void ide_atapi_dma_resume(IDEState *s){(void)s;}
 static void ide_atapi_pio_resume(IDEState *s){
  assert(s->atapi_pio_pending && !s->pio_aiocb);s->pio_aiocb=s;pio_resumes++;
 }

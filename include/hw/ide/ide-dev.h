@@ -50,6 +50,17 @@ enum ide_dma_cmd {
     IDE_DMA__COUNT
 };
 
+/* Cold savestate metadata; no host pointers or decoded payloads are saved.
+ * The controller accepts at most one page of 8-byte PRDs. */
+#define IDE_DMA_REPLAY_SG 512
+typedef struct IDEDMAReplay {
+    uint64_t offset, done;
+    uint64_t base[IDE_DMA_REPLAY_SG], length[IDE_DMA_REPLAY_SG];
+    uint32_t count;
+    int32_t lba, packet, sector_size, buffer_size;
+    bool buffered, pending;
+} IDEDMAReplay;
+
 /* NOTE: IDEState represents in fact one drive */
 struct IDEState {
     IDEBus *bus;
@@ -106,6 +117,7 @@ struct IDEState {
     /* An ATAPI DMA read of 2048-byte sectors in flight straight into the
      * guest's memory (atapi.c ide_atapi_cmd_read_dma_direct_cb) */
     bool atapi_dma_direct;
+    bool atapi_dma_buffered; /* source read outstanding before raw-sector framing */
     bool atapi_pio_pending; /* owned phase read, not yet exposed through DRQ */
     int atapi_dma; /* true if dma is requested for the packet cmd */
     BlockAIOCB *pio_aiocb;
@@ -147,6 +159,7 @@ struct IDEState {
     uint8_t *smart_selftest_data;
     /* AHCI */
     int ncq_queues;
+    IDEDMAReplay *dma_replay; /* cold state I/O; preserve hot field offsets */
 };
 
 struct IDEDeviceClass {
