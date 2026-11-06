@@ -4,7 +4,7 @@
 
 /* Owner-context only. Limit both search cost and retained RGBA8 storage.
  * Keys are exact 11-bit width/height pairs, never hashes. Only single-level,
- * ordinary 2D RGBA8 uploads qualify; surface conversions opt out. */
+ * 2D RGBA8 uploads and complete 2D RGBA8 surface snapshots qualify. */
 #define SAMPLED_TEXTURE_POOL_COUNT 16
 #define SAMPLED_TEXTURE_POOL_BYTES (4u * 1024u * 1024u)
 typedef struct SampledTexturePool {

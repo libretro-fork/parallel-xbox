@@ -61,6 +61,8 @@
 
 ## Unreleased
 
+- OpenGL recycles eligible single-level 2D RGBA8 conversion textures through the existing 16-texture/4 MiB pool after flip completion. Matching scaled storage can be reused without another allocation or guest-RAM upload. Depth, cubemap, bordered, mipmapped and oversized storage keep their existing lifetimes; no new fences, waits or shader variants are added.
+
 - OpenGL skips the guest-RAM upload and temporary image storage when a new texture will be fully populated from a GPU surface. Color, depth and complete cubemap snapshots allocate through their existing converters instead. Both depth-option modes benefit; texture cache hits and shaders are unchanged.
 
 - Vulkan samples eligible GPU-rendered D16 depth surfaces directly, avoiding the intermediate depth-to-texture copy and allocation. This also applies at 1x with High Resolution Depth Textures disabled. Native downsampling, active attachments, anisotropy, mipmaps and other depth representations retain their existing paths. No shader/pipeline variants or CPU readbacks are added.

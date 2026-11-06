@@ -5007,3 +5007,23 @@ oracle. A mutant removing the deferred-initialization branch must fail.
 Existing byte-reinterpret allocation and ordinary fresh/recycled textures
 retain their checks. NGB slots 8/10 at 1x/8x with both depth policies supplement
 these fixtures with eight byte-identical parent/candidate captures.
+
+
+The GL texture-recycle fixture also executes the production color-conversion
+allocation block and post-conversion pool-key update. It checks 64 GPU-written
+snapshot lifetimes at 1x/2x/4x/8x: pending storage is unavailable, exact completed
+storage is reused, and two subsequent snapshot creations add no allocations
+(128 avoided allocations across 192 snapshot creations). RAM-to-snapshot and
+snapshot-to-RAM exchange preserve pixels, reset swizzle/LOD state and keep the
+original shared count/byte limits. Eight snapshot-admission exclusions cover
+borders, mipmaps, cubemaps, oversized native/scaled extents, 1D, RGB565 and depth.
+A mutant bypassing the completion watermark must fail, as must the existing
+redundant-upload mutant. The flip-retirement fixture covers the unchanged
+completion source. NGB slots 8/10 at 1x/8x in both depth modes retain identical
+parent/candidate captures; these are regression controls, not a measured FPS gain.
+
+On Windows, set `CC` to MinGW GCC and `GL_TEXTURE_RECYCLE_EPOXY_ROOT` to the
+directory containing `libepoxy/include` and `libepoxy.a`; the fixture uses WGL.
+`GL_TEXTURE_RECYCLE_CFLAGS=-Wno-maybe-uninitialized` suppresses GCC's extracted
+invalid-dimensionality warning when compiling with the epoxy dispatch macros.
+Linux uses surfaceless EGL/OpenGL. No test observers or counters enter the core.

@@ -635,6 +635,14 @@ void bind_textures(NV2AState *d, bool highres_depth)
                 pgraph_gl_render_surface_to_texture(d, surface, binding,
                                                     &state, i);
             }
+            /* Retain only exact single-level RGBA8 conversion storage.
+             * RAM-to-surface transitions can change its scaled dimensions. */
+            sampled_texture_key_store(binding->recycle_key,
+                !surf_to_tex_bytes && !state.border && state.levels == 1 &&
+                state.dimensionality == 2 && !state.cubemap &&
+                binding->s2t_format == GL_RGBA8 ?
+                    sampled_texture_key(binding->s2t_width,
+                                        binding->s2t_height) : 0);
             binding->draw_time = surface->draw_time;
             /* Byte aliases always use native snapshots; depth follows the
              * startup-selected policy. Color retains internal resolution. */
@@ -1080,11 +1088,19 @@ static TextureBinding* generate_texture(const TextureShape s,
 
     PGRAPHGLState *r = g_nv2a->pgraph.gl_renderer_state;
     /* Start with the common linear RGBA8 case. Compressed, mipmapped,
-     * bordered, cube and surface-derived storage retain their old lifetime. */
+     * bordered and cube storage retain their old lifetime. Surface snapshots
+     * share this pool only for single-level 2D RGBA8 at their actual size. */
     uint32_t recycle_key = !empty && !surface_snapshot && !s.cubemap && !s.border &&
         s.dimensionality == 2 && s.levels == 1 &&
         s.color_format == NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_A8R8G8B8
         ? sampled_texture_key(s.width, s.height) : 0;
+    if (surface_snapshot && !empty && !s.cubemap && !s.border &&
+        s.dimensionality == 2 && s.levels == 1 &&
+        f.gl_internal_format == GL_RGBA8) {
+        unsigned width = s.width, height = s.height;
+        pgraph_apply_scaling_factor(&g_nv2a->pgraph, &width, &height);
+        recycle_key = sampled_texture_key(width, height);
+    }
     GLuint gl_texture = sampled_texture_take(&r->sampled_texture_pool,
                                               recycle_key);
     bool recycled = gl_texture != 0;
@@ -1195,6 +1211,13 @@ static TextureBinding* generate_texture(const TextureShape s,
     ret->addrv = 0xFFFFFFFF;
     ret->addrp = 0xFFFFFFFF;
     ret->border_color_set = false;
+    if (surface_snapshot && recycled) {
+        /* Reused storage already has this exact format and scaled extent.
+         * The converter still overwrites every texel, but need not allocate. */
+        ret->s2t_width = recycle_key >> 11;
+        ret->s2t_height = recycle_key & 2047;
+        ret->s2t_format = GL_RGBA8;
+    }
     return ret;
 }
 
