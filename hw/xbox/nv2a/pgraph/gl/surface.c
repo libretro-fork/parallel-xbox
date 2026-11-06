@@ -565,10 +565,11 @@ static void render_surface_to_texture_slow(NV2AState *d,
  * state for rendering; it will configure GL state here but only restore a
  * couple of items.
  */
-void pgraph_gl_render_surface_to_texture(NV2AState *d, SurfaceBinding *surface,
+static inline __attribute__((always_inline))
+void render_surface_to_texture(NV2AState *d, SurfaceBinding *surface,
                                       TextureBinding *texture,
                                       TextureShape *texture_shape,
-                                      int texture_unit)
+                                      int texture_unit, bool highres_depth)
 {
     /* External texture binds below desync the per-unit shadow. */
     pgraph_gl_tex_shadow_invalidate(d->pgraph.gl_renderer_state);
@@ -583,7 +584,7 @@ void pgraph_gl_render_surface_to_texture(NV2AState *d, SurfaceBinding *surface,
     nv2a_profile_inc_counter(NV2A_PROF_SURF_TO_TEX);
 
     /* surface_to_texture_can_fastpath refuses every depth surface: only colour
-     * takes this gate, and depth goes to its GPU paths below (native-1x depth,
+     * takes this gate, and depth goes to its GPU paths below (depth snapshot,
      * or the packing shader for raw Z read as A8R8G8B8). */
     if (surface->color &&
         !surface_to_texture_can_fastpath(surface, texture_shape)) {
@@ -594,9 +595,12 @@ void pgraph_gl_render_surface_to_texture(NV2AState *d, SurfaceBinding *surface,
 
     if (!surface->color && (f->gl_format == GL_DEPTH_STENCIL ||
                             f->gl_format == GL_DEPTH_COMPONENT)) {
-        /* Native-1x depth texture through fs_depth, on the GPU. A8R8G8B8 (raw
-         * Z bits as colour) falls through to the packing shader. */
+        /* The same GPU depth copy at native or internal resolution. A8R8G8B8
+         * (raw Z bits as colour) falls through to the packing shader. */
         unsigned int nw = texture_shape->width, nh = texture_shape->height;
+        if (highres_depth) {
+            pgraph_apply_scaling_factor(pg, &nw, &nh);
+        }
 
         glActiveTexture(GL_TEXTURE0 + texture_unit);
         glBindTexture(texture->gl_target, texture->gl_texture);
@@ -631,7 +635,7 @@ void pgraph_gl_render_surface_to_texture(NV2AState *d, SurfaceBinding *surface,
         glProgramUniform1i(r->s2t_rndr.depth_prog, r->s2t_rndr.depth_tex_loc,
                            texture_unit);
         glProgramUniform1i(r->s2t_rndr.depth_prog, r->s2t_rndr.depth_scale_loc,
-                           pg->surface_scale_factor);
+                           highres_depth ? 1 : pg->surface_scale_factor);
         glBindVertexArray(r->s2t_rndr.vao);
         glViewport(0, 0, nw, nh);
         s2t_pass_state(r);
@@ -644,7 +648,7 @@ void pgraph_gl_render_surface_to_texture(NV2AState *d, SurfaceBinding *surface,
 
         glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT,
                                GL_TEXTURE_2D, 0, 0);
-        texture->scale = 1;
+        texture->scale = highres_depth ? pg->surface_scale_factor : 1;
         glActiveTexture(GL_TEXTURE0 + texture_unit);
         glBindTexture(texture->gl_target, texture->gl_texture);
         s2t_pass_end(d, cost_suspended);
@@ -674,6 +678,23 @@ void pgraph_gl_render_surface_to_texture(NV2AState *d, SurfaceBinding *surface,
     glBindTexture(texture->gl_target, texture->gl_texture);
     glUseProgram(
         r->shader_binding ? r->shader_binding->gl_program : 0);
+}
+
+void pgraph_gl_render_surface_to_texture(NV2AState *d, SurfaceBinding *surface,
+                                       TextureBinding *texture,
+                                       TextureShape *texture_shape,
+                                       int texture_unit)
+{
+    render_surface_to_texture(d, surface, texture, texture_shape, texture_unit,
+                              false);
+}
+
+void pgraph_gl_render_surface_to_texture_highres_depth(
+    NV2AState *d, SurfaceBinding *surface, TextureBinding *texture,
+    TextureShape *texture_shape, int texture_unit)
+{
+    render_surface_to_texture(d, surface, texture, texture_shape, texture_unit,
+                              true);
 }
 
 /* A cubemap whose six faces are render surfaces, converted face by face on
@@ -745,7 +766,7 @@ bool pgraph_gl_check_surface_to_texture_compatibility(
         case NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_DEPTH_X8_Y24_FLOAT:
         case NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_DEPTH_Y16_FIXED:
         case NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_DEPTH_Y16_FLOAT:
-            return true;  /* native-1x depth downsample */
+            return true;  /* GPU depth snapshot at the selected resolution */
         case NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_A8R8G8B8:
             /* raw Z24S8 bits -> RGBA via packing shader */
             return surface->fmt.bytes_per_pixel == 4;

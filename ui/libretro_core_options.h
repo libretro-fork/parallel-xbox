@@ -252,7 +252,7 @@ struct retro_core_option_v2_definition option_defs_us[] = {
         "xemu_high_resolution_depth_textures",
         "High Resolution Depth Textures (Restart)",
         NULL,
-        "Vulkan only. Preserve internal resolution when GPU-rendered depth surfaces become textures, instead of reducing them to native resolution. May sharpen depth-based shadows and other depth effects. Can change precise depth comparisons and increase GPU conversion work and memory use. No effect at 1x. Independent of Force Texture LOD0; restart content to apply.",
+        "Preserve internal resolution when GPU-rendered depth surfaces become textures in OpenGL and Vulkan, instead of reducing them to native resolution. May sharpen depth-based shadows and other depth effects. Can change precise depth comparisons and increase GPU conversion work and memory use. No effect at 1x. Independent of Force Texture LOD0; restart content to apply.",
         NULL,
         "video",
         {

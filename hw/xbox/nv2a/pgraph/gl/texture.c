@@ -304,13 +304,14 @@ static void touch_texture_sources(PGRAPHState *pg, SurfaceBinding *surface,
     }
 }
 
-void pgraph_gl_bind_textures(NV2AState *d)
+static inline __attribute__((always_inline))
+void bind_textures(NV2AState *d, bool highres_depth)
 {
     int i;
     PGRAPHState *pg = &d->pgraph;
     PGRAPHGLState *r = pg->gl_renderer_state;
 
-    NV2A_GL_DGROUP_BEGIN("%s", __func__);
+    NV2A_GL_DGROUP_BEGIN("%s", "pgraph_gl_bind_textures");
 
     for (i=0; i<NV2A_MAX_TEXTURES; i++) {
         bool enabled = pgraph_is_texture_enabled(pg, i);
@@ -625,14 +626,19 @@ void pgraph_gl_bind_textures(NV2AState *d)
                 surface->vram_addr, surface->width, surface->height);
             if (surf_to_tex_bytes) {
                 pgraph_gl_reinterpret_surface_to_texture(d, surface, binding);
+            } else if (highres_depth) {
+                pgraph_gl_render_surface_to_texture_highres_depth(
+                    d, surface, binding, &state, i);
             } else {
                 pgraph_gl_render_surface_to_texture(d, surface, binding,
                                                     &state, i);
             }
             binding->draw_time = surface->draw_time;
-            /* Depth reads and byte reinterpretation use native-size snapshots. */
+            /* Byte aliases always use native snapshots; depth follows the
+             * startup-selected policy. Color retains internal resolution. */
             binding->scale =
-                (surf_to_tex_bytes || binding->s2t_format == GL_DEPTH_COMPONENT24)
+                (surf_to_tex_bytes || (!highres_depth &&
+                 binding->s2t_format == GL_DEPTH_COMPONENT24))
                     ? 1 : pg->surface_scale_factor;
         }
 
@@ -660,6 +666,16 @@ void pgraph_gl_bind_textures(NV2AState *d)
         pg->texture_dirty[i] = false;
     }
     NV2A_GL_DGROUP_END();
+}
+
+void pgraph_gl_bind_textures(NV2AState *d)
+{
+    bind_textures(d, false);
+}
+
+void pgraph_gl_bind_textures_highres_depth(NV2AState *d)
+{
+    bind_textures(d, true);
 }
 
 static enum S3TC_DECOMPRESS_FORMAT

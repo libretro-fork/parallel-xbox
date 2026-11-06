@@ -272,7 +272,8 @@ void pgraph_gl_own_draw_resume(NV2AState *d)
     xemu_cost_blit_resume(d, &pgraph_gl_cost_ops);
 }
 
-void pgraph_gl_draw_begin(NV2AState *d)
+static inline __attribute__((always_inline))
+void draw_begin(NV2AState *d, bool highres_depth)
 {
     PGRAPHState *pg = &d->pgraph;
     PGRAPHGLState *r = pg->gl_renderer_state;
@@ -318,7 +319,11 @@ void pgraph_gl_draw_begin(NV2AState *d)
                                 : r->supported_aliased_line_width_range[1];
         r->wide_lines = line_prim && lw_px > host_max;
 
-        pgraph_gl_bind_textures(d);
+        if (highres_depth) {
+            pgraph_gl_bind_textures_highres_depth(d);
+        } else {
+            pgraph_gl_bind_textures(d);
+        }
         pgraph_gl_bind_shaders(pg);
     }
 
@@ -544,6 +549,18 @@ gl_state_done:;
         glEndQuery(GL_SAMPLES_PASSED);
         r->gl_zpass_query_open = false;
     }
+}
+
+/* Startup selects the renderer entry. Constant arguments remove the policy
+ * branches, leaving the default draw path without option checks. */
+void pgraph_gl_draw_begin(NV2AState *d)
+{
+    draw_begin(d, false);
+}
+
+void pgraph_gl_draw_begin_highres_depth(NV2AState *d)
+{
+    draw_begin(d, true);
 }
 
 void pgraph_gl_draw_end(NV2AState *d)
