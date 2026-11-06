@@ -643,7 +643,12 @@ void render_surface_to_texture(NV2AState *d, SurfaceBinding *surface,
         glEnable(GL_DEPTH_TEST);
         glDepthFunc(GL_ALWAYS);
         glDepthMask(GL_TRUE);
-        glClear(GL_DEPTH_BUFFER_BIT);
+        /* Native snapshots are fully overwritten with ALWAYS. Keep the
+         * high-resolution clear: it helps large software-rendered copies.
+         * The startup specialization folds this condition out. */
+        if (highres_depth) {
+            glClear(GL_DEPTH_BUFFER_BIT);
+        }
         glDrawArrays(GL_TRIANGLES, 0, 3);
 
         glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT,

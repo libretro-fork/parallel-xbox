@@ -59,6 +59,8 @@
 
 ## Unreleased
 
+- Remove the redundant depth clear before native OpenGL depth-texture snapshots when High Resolution Depth Textures is disabled. The fullscreen copy overwrites every texel with depth testing set to ALWAYS and depth writes enabled. This saves one driver clear per snapshot without changing sampling or shader variants. High-resolution snapshots retain their clear because it helps large copies on software renderers.
+
 - Extend High Resolution Depth Textures to OpenGL. Keep sampled depth at internal resolution using the existing copy shader, with finer Ninja Gaiden Black character shadows above 1x. Startup selects compiled draw/bind/copy paths, so disabled draws do not check the option. Disabled and 1x captures match the prior behavior; no new shader variants, copy passes or CPU readbacks are added.
 
 - Add High Resolution Depth Textures (Restart), disabled by default and Vulkan-only. Preserve rendered depth detail when sampling GPU depth textures, improving Ninja Gaiden Black's character-shadow outline above 1x. Some games rely on native depth comparisons; enabling can change those effects and increase conversion work/memory. The disabled draw paths and shader/pipeline keys are unchanged; the policy is selected only at startup.
