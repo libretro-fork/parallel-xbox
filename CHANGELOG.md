@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- CPU: share translated blocks across incoming carry-flag states and retain direct links through dynamic flag updates. Reduces CPU overhead on JSRF's title screen and in Ninja Gaiden Black while preserving guest clocks and frame pacing.
+
 - CPU: recognize Gunvalkyrie's register-swapped RAM wait loop, reducing wasted CPU work on its title/menu screen while retaining guest frame timing and interrupt handling.
 
 - CPU: allow the translator to retain integer CPU state across SSE arithmetic and shuffle helper calls, preserving SIMD results and floating-point status.

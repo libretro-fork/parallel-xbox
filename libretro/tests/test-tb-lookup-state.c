@@ -21,6 +21,7 @@
 #define CPU_LOG_EXEC 4
 typedef uint64_t vaddr;
 typedef struct {vaddr pc;uint32_t flags,cs_base,cflags;} TCGTBCPUState;
+typedef struct { uint32_t flags; } DisasContext;
 typedef struct {uint32_t hflags,eflags,cc_op;uint64_t eip;struct {uint32_t base;} segs[2];} CPUX86State;
 typedef struct CPUState CPUState;
 typedef struct {TCGTBCPUState (*get_tb_cpu_state)(CPUState *);} Ops;
@@ -38,7 +39,7 @@ static const void *tcg_code_gen_epilogue;
 static jmp_buf exit_jump;
 static CPUState *env_cpu(CPUArchState *env) {return env;}
 static CPUX86State *cpu_env(CPUState *cpu) {return &cpu->env;}
-static uint32_t x86_cc_op_cf_class(uint32_t op) {return op&3;}
+#define TB_CF_ANY 7
 static uint32_t tb_cf_flags(uint32_t klass) {return klass<<28;}
 static int retro_atomic_load_relaxed_int(int *p) {return *p;}
 static bool qemu_loglevel_mask(int mask) {return (loglevel&mask)!=0;}
@@ -67,7 +68,11 @@ int main(void) {
         loglevel=((mode&8)?CPU_LOG_TB_NOCHAIN:0)|((mode&16)?CPU_LOG_EXEC:0);
         hit=mode&32;breakpoint=false;
         uint32_t expected_flags=cpu.env.hflags|(cpu.env.eflags&0x73100);
-        if(xemu_cpu_boost) expected_flags|=(cpu.env.cc_op&3)<<28;
+        DisasContext dc={.flags=expected_flags};
+        uint32_t exit_flags;
+        assert(gen_exit_tb_flags(&dc,&exit_flags));
+        if(xemu_cpu_boost) expected_flags|=TB_CF_ANY<<28;
+        assert(exit_flags==expected_flags);
         uint32_t expected_base=(cpu.env.hflags&HF_CS64_MASK)?0:cpu.env.segs[R_CS].base;
         uint64_t expected_pc=(cpu.env.hflags&HF_CS64_MASK)?cpu.env.eip:(uint32_t)(expected_base+cpu.env.eip);
         uint32_t expected_cflags=cpu.tcg_cflags;

@@ -11,7 +11,7 @@ repo = Path(sys.argv[1]).resolve()
 
 def function(path, name):
     source = (repo / path).read_text()
-    match = re.search(r'^(?:static )?(?:inline )?(?:TCGTBCPUState|uint32_t|const void \*) ?'
+    match = re.search(r'^(?:static )?(?:inline )?(?:TCGTBCPUState|uint32_t|bool|const void \*) ?'
                       + re.escape(name) + r'\([^;{]*\)\s*\{', source, re.M)
     assert match, name
     end = source.index('{', match.start()) + 1
@@ -25,6 +25,7 @@ def function(path, name):
 production = function('target/i386/tcg/tcg-cpu.h', 'x86_tb_cpu_state')
 production += '\n' + function('target/i386/tcg/tcg-cpu.c', 'x86_get_tb_cpu_state')
 production += '\n' + function('accel/tcg/cpu-exec-common.c', 'curr_cflags')
+production += '\n' + function('target/i386/tcg/translate.c', 'gen_exit_tb_flags')
 production += '\n' + '\n'.join(function('accel/tcg/cpu-exec.c', name) for name in
                               ('xemu_get_tb_cpu_state', 'xemu_lookup_cflags', 'HELPER(lookup_tb_ptr)'))
 code = Path(__file__).with_suffix('.c').read_text().replace('/* PRODUCTION */', production)

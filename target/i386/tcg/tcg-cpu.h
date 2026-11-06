@@ -54,7 +54,7 @@ static inline TCGTBCPUState x86_tb_cpu_state(CPUState *cs)
     flags = env->hflags |
         (env->eflags & (IOPL_MASK | TF_MASK | RF_MASK | VM_MASK | AC_MASK));
     if (xemu_cpu_boost) {
-        flags |= tb_cf_flags(x86_cc_op_cf_class(env->cc_op));
+        flags |= tb_cf_flags(TB_CF_ANY);
     }
     if (env->hflags & HF_CS64_MASK) {
         cs_base = 0;
