@@ -45,6 +45,13 @@ static ShaderSource *reference_module(const ShaderModuleCacheKey *key){return vk
 #endif
 static void pgraph_vk_shader_source_unref(ShaderSource *s){assert(s->refs>1);s->refs--;}
 static size_t retro_spsc_write(void *ring,const void *data,size_t size){assert(ring==&vk_spec_out&&size==sizeof(VkSpecDone));if(emitted_n==queue_limit)return 0;memcpy(&emitted[emitted_n++],data,size);return size;}
+/* Model both direct reservation and the unchanged copy/drop fallback. */
+static bool retro_spsc_write_reserve(void *ring,void **out,size_t n){
+ assert(ring==&vk_spec_out&&n==sizeof(VkSpecDone));*out=NULL;
+ if(!vk_spec_push_constants||emitted_n==queue_limit)return false;
+ *out=&emitted[emitted_n];return true;
+}
+static void retro_spsc_write_end(void *ring,size_t n){assert(ring==&vk_spec_out&&n==sizeof(VkSpecDone)&&emitted_n<queue_limit);emitted_n++;}
 static void *counted_memset(void *p,int value,size_t n){
 #ifdef CHECKED
  zeroed_bytes+=n;

@@ -28,6 +28,7 @@
 #include "ui/xemu-settings.h"
 
 GloContext *g_nv2a_context_render;
+static PGRAPHRenderer pgraph_gl_renderer;
 
 static void early_context_init(void)
 {
@@ -37,6 +38,12 @@ static void early_context_init(void)
 static void pgraph_gl_init(NV2AState *d, Error **errp)
 {
     PGRAPHState *pg = &d->pgraph;
+
+    /* The existing renderer dispatch selects a compiled specialization;
+     * neither variant checks this option during drawing or texture binds. */
+    pgraph_gl_renderer.ops.draw_begin =
+        nv2a_get_high_resolution_depth_textures() ?
+            pgraph_gl_draw_begin_highres_depth : pgraph_gl_draw_begin;
 
     pg->gl_renderer_state = g_malloc0(sizeof(*pg->gl_renderer_state));
     PGRAPHGLState *r = pg->gl_renderer_state;

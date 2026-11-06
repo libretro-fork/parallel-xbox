@@ -51,9 +51,11 @@ typedef enum DSPDMARegister {
 /* Memory access callbacks for backend-agnostic DMA */
 typedef uint32_t (*dsp_dma_mem_read_func)(void *opaque, int space, uint32_t addr);
 typedef void (*dsp_dma_mem_write_func)(void *opaque, int space, uint32_t addr, uint32_t value);
-/* the count words from addr in place, when they are plain memory the
- * DMA may read and write directly; NULL otherwise */
-typedef uint32_t *(*dsp_dma_mem_ptr_func)(void *opaque, int space, uint32_t addr, uint32_t count);
+/* Borrow count plain-memory words for this transfer. write distinguishes
+ * DSP destinations from read-only sources (notably program memory). Return
+ * NULL when the access must retain per-word callbacks. */
+typedef uint32_t *(*dsp_dma_mem_ptr_func)(void *opaque, int space, uint32_t addr,
+                                       uint32_t count, bool write);
 
 typedef struct DSPDMAState {
     /* DSP memory access (backend-agnostic) */

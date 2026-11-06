@@ -1,5 +1,9 @@
 /* SPDX-License-Identifier: LGPL-2.1-or-later */
 #include <stdio.h>
+#include <stdlib.h>
+#ifdef _WIN32
+#include <windows.h>
+#endif
 #include <stdint.h>
 #include <stdbool.h>
 #include <stddef.h>
@@ -8,6 +12,9 @@
 #include <time.h>
 #include <vulkan/vulkan.h>
 #include "hw/xbox/nv2a/pgraph/glsl/shaders.h"
+#undef assert
+#define assert(x) do { if (!(x)) { fprintf(stderr,"FAIL line %d: %s\n",__LINE__,#x); _Exit(1); } } while(0)
+/* BENCH HELPERS */
 #define VSH_UBO_BINDING 0
 #define PSH_UBO_BINDING 1
 #define PSH_TEX_BINDING 2
@@ -28,7 +35,7 @@ static void *count_clear(void *dst,int v,size_t n){cleared+=n;return memset(dst,
 #ifdef CHECKED
 #undef memset
 #endif
-#if defined(REFERENCE_VERTEX_CLEAR) || defined(REFERENCE_FRAGMENT_CLEAR)
+#if defined(REFERENCE_VERTEX_CLEAR) || defined(REFERENCE_FRAGMENT_CLEAR) || defined(REFERENCE_GEOMETRY_CLEAR)
 #define REFERENCE_PRE(r,s,g,v) reference_pre_refs(r,s,g,v)
 #else
 #define REFERENCE_PRE(r,s,g,v) reference_refs(r,s,g,v,NULL)
@@ -51,11 +58,17 @@ static void correctness(void){
 #endif
   int nb=vk_state_module_keys(&state,r.use_push_constants_for_uniform_attrs,b);
 #ifdef CHECKED
-  assert(cleared==(size_t)nb*sizeof(ShaderModuleCacheKey)-sizeof(state.vsh)-sizeof(state.psh));
-#ifdef REFERENCE_FRAGMENT_CLEAR
-  assert(old_full_clear-cleared==sizeof(state.psh));
+  size_t skipped_geom=need_geometry?sizeof(state.geom):0;
+#if defined(COPY_CONTROL) || defined(CURRENT_CLEARS_GEOMETRY_STATE)
+  skipped_geom=0;
+#endif
+  assert(cleared==(size_t)nb*sizeof(ShaderModuleCacheKey)-sizeof(state.vsh)-sizeof(state.psh)-skipped_geom);
+#ifdef REFERENCE_GEOMETRY_CLEAR
+  assert(old_full_clear-cleared==skipped_geom);
+#elif defined(REFERENCE_FRAGMENT_CLEAR)
+  assert(old_full_clear-cleared==sizeof(state.psh)+skipped_geom);
 #else
-  assert(old_full_clear-cleared==sizeof(state.vsh)+sizeof(state.psh));
+  assert(old_full_clear-cleared==sizeof(state.vsh)+sizeof(state.psh)+skipped_geom);
 #endif
 #endif
   assert(na==nb&&!memcmp(a,b,na*sizeof(a[0])));
@@ -74,13 +87,13 @@ static void correctness(void){
   lookups=0;pgraph_vk_ref_pre_state_modules(&r,&state,&gb,&vb);
   assert(lookups==expected&&lookups==1+(unsigned)need_geometry&&ga==gb&&va==vb&&!memcmp(old,captured,lookups*sizeof(old[0])));
 #ifdef CHECKED
-  assert(cleared==lookups*sizeof(ShaderModuleCacheKey)-sizeof(state.vsh));
-#ifdef REFERENCE_FRAGMENT_CLEAR
-  assert(old_cleared==cleared);
+  assert(cleared==lookups*sizeof(ShaderModuleCacheKey)-sizeof(state.vsh)-skipped_geom);
+#if defined(REFERENCE_FRAGMENT_CLEAR) || defined(REFERENCE_GEOMETRY_CLEAR)
+  assert(old_cleared-cleared==skipped_geom);
 #elif defined(REFERENCE_VERTEX_CLEAR)
-  assert(old_cleared-cleared==sizeof(state.vsh));
+  assert(old_cleared-cleared==sizeof(state.vsh)+skipped_geom);
 #else
-  assert(old_cleared-cleared==sizeof(ShaderModuleCacheKey)+sizeof(state.vsh));
+  assert(old_cleared-cleared==sizeof(ShaderModuleCacheKey)+sizeof(state.vsh)+skipped_geom);
 #endif
 #endif
   lookups=0;pgraph_vk_ref_state_modules(&r,&state,&gb,&vb,&psh);
@@ -94,16 +107,16 @@ __attribute__((noinline)) static int baseline_full(const ShaderState *s,bool p,S
 __attribute__((noinline)) static int current_full(const ShaderState *s,bool p,ShaderModuleCacheKey *k){return vk_state_module_keys(s,p,k);}
 static double bench(unsigned current,unsigned full,unsigned geom){
  ShaderState state;memset(&state,0,sizeof(state));ShaderModuleCacheKey keys[3];PGRAPHVkState r={true};need_geometry=geom;
- struct timespec a,b;timespec_get(&a,TIME_UTC);
+ double a=monotonic_ns();
  for(unsigned i=0;i<1000000;i++){
   state.vsh.programmable.program_data[0][0]=i;
   if(full){int(*run)(const ShaderState*,bool,ShaderModuleCacheKey*)=current?current_full:baseline_full;sink=run(&state,true,keys);}
   else{ShaderModuleInfo *g,*v;lookups=0;if(current)pgraph_vk_ref_pre_state_modules(&r,&state,&g,&v);else REFERENCE_PRE(&r,&state,&g,&v);sink=lookups;}
  }
- timespec_get(&b,TIME_UTC);return ((b.tv_sec-a.tv_sec)*1e9+b.tv_nsec-a.tv_nsec)/1000000;
+ double b=monotonic_ns();return (b-a)/1000000;
 }
 #endif
-int main(void){correctness();printf("module-key=%zu vertex-state=%zu fragment-state=%zu bytes; omitted overwritten clears checked\n",sizeof(ShaderModuleCacheKey),sizeof(VshState),sizeof(PshState));
+int main(void){pin_thread("MODULE_KEY_BENCH_CPU");correctness();printf("module-key=%zu vertex-state=%zu fragment-state=%zu geometry-state=%zu bytes; omitted overwritten clears checked\n",sizeof(ShaderModuleCacheKey),sizeof(VshState),sizeof(PshState),sizeof(GeomState));
 #ifndef CHECKED
  puts("Isolated key builders/modeled lookup capture; no shader compilation/GPU timing; ns/state");
  for(unsigned round=0;round<5;round++)for(unsigned full=0;full<2;full++)for(unsigned geom=0;geom<2;geom++){

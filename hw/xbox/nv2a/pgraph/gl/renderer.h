@@ -519,7 +519,7 @@ typedef struct PGRAPHGLState {
         GLuint fbo, vao, vbo, prog;
         GLuint tex_loc, surface_size_loc;
         GLuint pack_prog, pack_tex_loc;  /* depth-surface -> A8R8G8B8 packing */
-        GLuint depth_prog, depth_tex_loc, depth_scale_loc; /* scaled -> 1x */
+        GLuint depth_prog, depth_tex_loc, depth_scale_loc; /* depth snapshot */
         /* A8R8G8B8 bits -> depth, the inverse of pack_prog: a buffer written
          * as colour, then bound as zeta (alias_convert). */
         GLuint unpack_prog, unpack_tex_loc;
@@ -586,6 +586,7 @@ void pgraph_gl_tex_shadow_reset(PGRAPHGLState *r);
 void pgraph_gl_uniform_sources_invalidate(PGRAPHGLState *r);
 void pgraph_gl_tex_shadow_invalidate(PGRAPHGLState *r);
 void pgraph_gl_bind_textures(NV2AState *d);
+void pgraph_gl_bind_textures_highres_depth(NV2AState *d);
 
 void pgraph_gl_bind_vertex_attributes(NV2AState *d, unsigned int min_element, unsigned int max_element, bool inline_data, unsigned int inline_stride, unsigned int provoking_element, bool allow_basevertex);
 bool pgraph_gl_check_surface_to_texture_compatibility(const SurfaceBinding *surface, const TextureShape *shape);
@@ -596,6 +597,7 @@ void pgraph_gl_download_dirty_surfaces(NV2AState *d);
 void pgraph_gl_clear_report_value(NV2AState *d);
 void pgraph_gl_clear_surface(NV2AState *d, uint32_t parameter);
 void pgraph_gl_draw_begin(NV2AState *d);
+void pgraph_gl_draw_begin_highres_depth(NV2AState *d);
 void pgraph_gl_draw_state_invalidate(PGRAPHGLState *r);
 void pgraph_gl_draw_end(NV2AState *d);
 void pgraph_gl_flush_draw(NV2AState *d);
@@ -633,6 +635,9 @@ void pgraph_gl_process_pending_downloads(NV2AState *d);
 void pgraph_gl_cpu_access_service(NV2AState *d);
 void pgraph_gl_reload_surface_scale_factor(PGRAPHState *pg);
 void pgraph_gl_render_surface_to_texture(NV2AState *d, SurfaceBinding *surface, TextureBinding *texture, TextureShape *texture_shape, int texture_unit);
+void pgraph_gl_render_surface_to_texture_highres_depth(NV2AState *d,
+    SurfaceBinding *surface, TextureBinding *texture, TextureShape *texture_shape,
+    int texture_unit);
 void pgraph_gl_render_cube_faces_to_texture(NV2AState *d,
                                             SurfaceBinding *faces[6],
                                             TextureBinding *texture,

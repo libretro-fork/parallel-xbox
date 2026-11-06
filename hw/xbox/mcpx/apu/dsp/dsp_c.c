@@ -46,12 +46,32 @@ static void c_dma_mem_write(void *opaque, int space, uint32_t addr,
 }
 
 static uint32_t *c_dma_mem_ptr(void *opaque, int space, uint32_t addr,
-                               uint32_t count)
+                               uint32_t count, bool write)
 {
-    /* the DMA reads to the host or writes from it; a write to P is by
-     * the word (dsp56k_write_memory drops the JIT's code for it) */
-    return dsp56k_memory_ptr((dsp_core_t *)opaque, space, addr, count,
-                             space == DSP_SPACE_P);
+#if HOST_BIG_ENDIAN
+    /* Program words use little-endian storage; retain byte-order-aware
+     * callbacks on hosts where a raw word pointer would change the result. */
+    if (space == DSP_SPACE_P) return NULL;
+#endif
+    uint32_t *mem = dsp56k_memory_ptr((dsp_core_t *)opaque, space, addr, count, write);
+    /* P writes must invalidate code through the callback. For reads, retain
+     * read_memory_p's rejection of uninitialized/out-of-width words: fall
+     * back to ordered callbacks rather than bypassing their strict check. */
+    if (mem && space == DSP_SPACE_P) {
+        /* A reduction avoids a branch per valid program word and permits
+         * vectorization. Invalid spans still use the strict read callbacks. */
+        uint32_t a = 0, b = 0, c = 0, d = 0, i = 0;
+        for (; count - i >= 4; i += 4) {
+            a |= mem[i];
+            b |= mem[i + 1];
+            c |= mem[i + 2];
+            d |= mem[i + 3];
+        }
+        uint32_t combined = a | b | c | d;
+        for (; i < count; i++) combined |= mem[i];
+        if (combined & 0xff000000) return NULL;
+    }
+    return mem;
 }
 
 static uint32_t c_read_peripheral(dsp_core_t *core, uint32_t address)
@@ -125,29 +145,59 @@ static void dsp_c_run_until_halt(DSPState *dsp)
     }
 }
 
-/* a run of the scratch space into P, for dsp_c_bootstrap */
+typedef struct BootstrapLoad {
+    uint32_t *base;
+    uint32_t *at;
+    unsigned partial;
+} BootstrapLoad;
+
+static inline void dsp_c_bootstrap_word(BootstrapLoad *load, uint32_t v)
+{
+    if (v & 0xff000000) {
+        DPRINTF("Bootstrap %04x: %08x\n", (unsigned)(load->at - load->base), v);
+    }
+    *load->at++ = v & 0x00ffffff;
+}
+
+/* Copy and normalize each complete word in the borrowed scratch span.
+ * A walker may split a word; assemble that word before masking it. */
 static void dsp_c_bootstrap_run(void *user, uint8_t *host, size_t bytes)
 {
-    uint32_t **at = user;
-
-    memcpy(*at, host, bytes);
-    *at = (uint32_t *)((uint8_t *)*at + bytes);
+    BootstrapLoad *load = user;
+    if (load->partial) {
+        size_t n = MIN(bytes, sizeof(uint32_t) - load->partial);
+        memcpy((uint8_t *)load->at + load->partial, host, n);
+        load->partial += n;
+        host += n;
+        bytes -= n;
+        if (load->partial == sizeof(uint32_t)) {
+            dsp_c_bootstrap_word(load, *load->at);
+            load->partial = 0;
+        }
+    }
+    while (bytes >= sizeof(uint32_t)) {
+        uint32_t v;
+        memcpy(&v, host, sizeof(v));
+        dsp_c_bootstrap_word(load, v);
+        host += sizeof(v);
+        bytes -= sizeof(v);
+    }
+    if (bytes) {
+        memcpy(load->at, host, bytes);
+        load->partial = bytes;
+    }
 }
 
 static void dsp_c_bootstrap(DSPState *dsp)
 {
     dsp_core_t *core = c_core(dsp);
 
-    // scratch memory is dma'd in to pram by the bootrom
-    uint32_t *at = core->pram;
+    /* Scratch memory is DMA'd into PRAM by the boot ROM. Normalize on the
+     * way in rather than reading all 0x800 destination words a second time. */
+    BootstrapLoad load = { .base = core->pram, .at = core->pram };
     dsp->dma.scratch_walk(dsp->dma.rw_opaque, 0, 0x800 * 4, false,
-                          dsp_c_bootstrap_run, &at);
-    for (int i = 0; i < 0x800; i++) {
-        if (core->pram[i] & 0xff000000) {
-            DPRINTF("Bootstrap %04x: %08x\n", i, core->pram[i]);
-            core->pram[i] &= 0x00ffffff;
-        }
-    }
+                          dsp_c_bootstrap_run, &load);
+    assert(load.partial == 0);
     memset(core->pram_opcache, 0, sizeof(core->pram_opcache));
     if (core->jit) {
         dspjit_flush(core->jit);

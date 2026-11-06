@@ -137,6 +137,8 @@ python3 "$here/test-vk-depth-reuse.py" "$here/../.." "$cc"
 python3 "$here/test-lru-visit.py" "$here/../.." "$cc"
 python3 "$here/test-lru-promote.py" "$here/../.." "$cc"
 python3 "$here/test-spsc-pair.py" "$here/../.." "$cc"
+python3 "$here/test-spsc-reserve.py" "$here/../.." "$cc"
+python3 "$here/test-spsc-read-view.py" "$here/../.." "$cc"
 python3 "$here/test-sibling-queue.py" "$here/../.." "$cc"
 python3 "$here/test-binding-state-hash.py" "$here/../.." "$cc" --copy-baseline --real-canonical --check-only
 python3 "$here/test-block-memory.py" "$here/../.." "$cc"
@@ -297,6 +299,7 @@ python3 "$here/test-texture-reinterpret.py" "$here/../.." "$cc"
 python3 "$here/test-texture-cow-ordering.py" "$here/../.." "$cc"
 python3 "$here/test-degenerate-texture-vram.py" "$here/../.." "$cc"
 python3 "$here/test-depth-transfer-capacity.py" "$here/../.." "$cc"
+python3 "$here/test-high-resolution-depth.py" "$here/../.." "$cc"
 python3 "$here/test-depth-upload-footprint.py" "$here/../.." "$cc"
 python3 "$here/test-depth-readback-capacity.py" "$here/../.." "$cc"
 python3 "$here/test-tlb-dirty.py" "$here/../.." "$cc"
@@ -306,8 +309,11 @@ python3 "$here/test-vertex-snapshot-cache.py" "$here/../.." "$cc"
 python3 "$here/test-vk-vertex-copies.py" "$here/../.." "$cc"
 python3 "$here/test-vk-vertex-formats.py" "$here/../.." "$cc"
 python3 "$here/test-vk-worker-modules.py" "$here/../.." "$cc"
+python3 "$here/test-worker-direct.py" "$here/../.." "$cc"
+python3 "$here/test-worker-drain.py" "$here/../.." "$cc"
 python3 "$here/test-worker-key-hash.py" "$here/../.." "$cc" --clear-baseline --check-only
 python3 "$here/test-pre-module-keys.py" "$here/../.." "$cc" --fragment-clear-baseline --check-only
+python3 "$here/test-pre-module-keys.py" "$here/../.." "$cc" --geometry-clear-baseline --check-only
 python3 "$here/test-prepare-xiso.py"
 # Production GL transfers against Mesa's GL on a surfaceless EGL display
 case $core in
@@ -320,6 +326,7 @@ case $core in
     python3 "$here/test-gl-texture-scratch.py" "$here/../.." "$cc"
     python3 "$here/test-gl-scale-scratch.py" "$here/../.." "$cc"
     python3 "$here/test-gl-pitched-surface.py" "$here/../.." "$cc"
+    python3 "$here/test-gl-high-resolution-depth.py" "$here/../.." --cc "$cc"
     python3 "$here/test-gl-volume-compression.py" "$here/../.." "$cc"
     python3 "$here/test-packed-overlay.py" "$here/../.." "$cc"
     python3 "$here/test-surface-blend.py" "$here/../.." "$cc" --gl

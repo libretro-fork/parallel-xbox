@@ -868,7 +868,8 @@ typedef struct PGRAPHVkState {
      * device has textureCompressionBC and samples and copies into the
      * three formats (else they are decoded to RGBA8 on the CPU) */
     bool bc_native;
-    /* Formats already asked whether this device blits them (texture.c). */
+    /* Native blit permission: device capabilities, with optional depth
+     * reduction disabled at initialization by the depth texture policy. */
     struct {
         VkFormat format;
         bool ok;

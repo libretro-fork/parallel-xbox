@@ -117,6 +117,147 @@ static void dma_run(void *user, uint8_t *host, size_t bytes)
         t->n += items;
         return;
     }
+    /* Outbound 32-bit slots preserve raw DSP words, including upper bits.
+     * Keep conversion/callback/interleaved paths and overlapping transfers
+     * ordered word by word. The walker still owns fencing and dirty tracking. */
+    if (t->to_host && t->item_size == 4 && t->mem && !t->interleave) {
+        const uint32_t *src = t->mem + t->n;
+        uintptr_t a = (uintptr_t)host, b = (uintptr_t)src;
+        if (a >= b ? a - b >= bytes : b - a >= bytes) {
+            memcpy(host, src, bytes);
+            t->n += items;
+            return;
+        }
+    }
+    /* Start at the current scatter-gather item, then walk channels without
+     * dividing every sample. Read and publish each word in the original order
+     * so even overlapping host/DSP spans retain their scalar semantics. */
+    if (t->mem && t->to_host && t->interleave && items) {
+        uint32_t channel = t->n % t->channels;
+        uint32_t block = t->n / t->channels;
+        uint32_t idx = channel * t->blocks + block;
+        if (t->item_size == 2) {
+            for (size_t i = 0; i < items; i++) {
+                uint16_t v = t->mem[idx] >> 8;
+                memcpy(host + i * 2, &v, 2);
+                idx += t->blocks;
+                if (++channel == t->channels) {
+                    channel = 0;
+                    idx = ++block;
+                }
+            }
+        } else {
+            for (size_t i = 0; i < items; i++) {
+                uint32_t v = t->mem[idx];
+                memcpy(host + i * 4, &v, 4);
+                idx += t->blocks;
+                if (++channel == t->channels) {
+                    channel = 0;
+                    idx = ++block;
+                }
+            }
+        }
+        t->n += items;
+        return;
+    }
+    /* Callback-backed spans cannot be borrowed, but their channel indexing
+     * can still advance without per-item division. Keep each device/mapped
+     * read immediately before its corresponding host store. */
+    if (!t->mem && t->to_host && t->interleave && items) {
+        uint32_t channel = t->n % t->channels;
+        uint32_t block = t->n / t->channels;
+        uint32_t idx = channel * t->blocks + block;
+        if (t->item_size == 2) {
+            for (size_t i = 0; i < items; i++) {
+                uint16_t v = t->s->mem_read(t->s->mem_opaque, t->space, t->addr + idx) >> 8;
+                memcpy(host + i * 2, &v, 2);
+                idx += t->blocks;
+                if (++channel == t->channels) {
+                    channel = 0;
+                    idx = ++block;
+                }
+            }
+        } else {
+            for (size_t i = 0; i < items; i++) {
+                uint32_t v = t->s->mem_read(t->s->mem_opaque, t->space, t->addr + idx);
+                memcpy(host + i * 4, &v, 4);
+                idx += t->blocks;
+                if (++channel == t->channels) {
+                    channel = 0;
+                    idx = ++block;
+                }
+            }
+        }
+        t->n += items;
+        return;
+    }
+    /* Plain sequential RAM needs neither callback dispatch nor channel
+     * indexing per item. Keep aliasing legal: overlapping runs must retain
+     * scalar ordering, and unaligned host words still use memcpy. */
+    if (t->mem && !t->interleave) {
+        uint32_t *mem = t->mem + t->n;
+        if (t->to_host) {
+            if (t->item_size == 2) {
+                for (size_t i = 0; i < items; i++) {
+                    uint16_t v = mem[i] >> 8;
+                    memcpy(host + i * 2, &v, 2);
+                }
+            } else {
+                for (size_t i = 0; i < items; i++) {
+                    uint32_t v = mem[i];
+                    memcpy(host + i * 4, &v, 4);
+                }
+            }
+        } else if (t->item_size == 2) {
+            for (size_t i = 0; i < items; i++) {
+                uint16_t v;
+                memcpy(&v, host + i * 2, 2);
+                mem[i] = (uint32_t)v << 8;
+            }
+        } else {
+            uint32_t mask = t->item_mask;
+            for (size_t i = 0; i < items; i++) {
+                uint32_t v;
+                memcpy(&v, host + i * 4, 4);
+                mem[i] = v & mask;
+            }
+        }
+        t->n += items;
+        return;
+    }
+    /* The earlier paths consumed plain RAM and interleaved output. A
+     * sequential callback span needs no direct-memory test or channel-index
+     * calculation per item; keep the actual read/write callbacks per word. */
+    if (!t->interleave) {
+        uint32_t addr = t->addr + t->n;
+        if (t->to_host) {
+            if (t->item_size == 2) {
+                for (size_t i = 0; i < items; i++) {
+                    uint16_t v = t->s->mem_read(t->s->mem_opaque, t->space, addr + i) >> 8;
+                    memcpy(host + i * 2, &v, 2);
+                }
+            } else {
+                for (size_t i = 0; i < items; i++) {
+                    uint32_t v = t->s->mem_read(t->s->mem_opaque, t->space, addr + i);
+                    memcpy(host + i * 4, &v, 4);
+                }
+            }
+        } else if (t->item_size == 2) {
+            for (size_t i = 0; i < items; i++) {
+                uint16_t v;
+                memcpy(&v, host + i * 2, 2);
+                t->s->mem_write(t->s->mem_opaque, t->space, addr + i, (uint32_t)v << 8);
+            }
+        } else {
+            for (size_t i = 0; i < items; i++) {
+                uint32_t v;
+                memcpy(&v, host + i * 4, 4);
+                t->s->mem_write(t->s->mem_opaque, t->space, addr + i, v & t->item_mask);
+            }
+        }
+        t->n += items;
+        return;
+    }
     if (t->to_host) {
         if (t->item_size == 2) {
             for (size_t i = 0; i < items; i++) {
@@ -312,10 +453,10 @@ static void dsp_dma_run(DSPDMAState *s)
             transfer_size = block_count * item_size * channel_count;
             words = block_count * channel_count;
         }
-        /* the DSP's words in place where they are plain memory; a
-         * write to P goes through the callback (its code is dropped) */
+        /* Borrow read-only sources as well as writable plain RAM. P
+         * destinations retain callbacks so compiled code is invalidated. */
         if (!zero_aperture) {
-            t.mem = s->mem_ptr(s->mem_opaque, mem_space, mem_address, words);
+            t.mem = s->mem_ptr(s->mem_opaque, mem_space, mem_address, words, !direction);
         }
 
         if (direction) {

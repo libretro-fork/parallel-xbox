@@ -40,6 +40,8 @@ bool nv2a_libretro_switch_renderer(int type);
 void nv2a_set_surface_scale_factor(unsigned int scale);
 /* Set before starting the emulation/render threads. */
 void nv2a_set_force_texture_lod0(bool enabled);
+void nv2a_set_high_resolution_depth_textures(bool enabled);
+bool nv2a_get_high_resolution_depth_textures(void);
 bool nv2a_get_force_texture_lod0(void);
 void nv2a_set_force_quality_filtering(bool enabled);
 unsigned int nv2a_get_surface_scale_factor(void);

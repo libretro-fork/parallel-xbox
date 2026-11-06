@@ -1,5 +1,13 @@
 # The core's tests
 
+`test-pre-module-keys.py CHECKOUT [CC]` compares complete module keys and prewarm module-reference order with frozen implementations. The vertex, fragment and geometry baseline flags select individual snapshots; `--geometry-clear-baseline` requires runtime controls to reject a missing geometry copy, missing clear and missing clear observer. `--copy-control` compares identical geometry-baseline builders; `MODULE_KEY_BENCH_CPU` optionally pins a Windows CPU and timings use a monotonic clock. `MODULE_KEY_SOURCE` selects a local candidate source, and `MODULE_KEY_ASM` exports assembly with matching build flags. `--check-only` keeps checked byte/count validation and failure controls while skipping timing. These CPU fixtures model cache lookup capture and do not compile shaders or measure GPU work.
+
+`test-worker-drain.py CHECKOUT [CC]` compares production and frozen completion drains using real SPSC storage and key/source layouts. Checked and optimized runs cover complete ready-slot bytes, FIFO/window order, eviction/adoption/clear reference ownership, track markers, stopped/empty/partial drains, unaligned physical/size_t wrap and concurrent refill. Required mutations must compile and fail. `WORKER_DRAIN_SOURCE` can extract a local two-span candidate; checked views verify the final record is copied before releasing queue storage. `--benchmark` measures idle and pending-but-empty polls, three-record drains and concurrent CPU throughput; `--copy-control` compares identical drains. It reuses the placement/monotonic-clock helpers from `test-worker-direct.c`, including optional Windows CPU pinning. Source reference operations are modeled and final record validation is included; timings do not measure GPU work or game FPS. State-credit cases distinguish startup, idle, pending/cancelled work, two/three-module completion, the 256-state admission limit and the quiesced reset. Checked builds observe queue reads; an idle-guard candidate must avoid idle reads while still polling one pending state. A required mutant rejects skipping that state. `WORKER_DRAIN_ASM` optionally saves optimized fixture assembly.
+
+`test-spsc-read-view.py CHECKOUT [CC]` checks the real two-span consumer view and an instrumented copy of the same function. Checked and optimized builds cover plain/mirrored queues, both spans, partial availability/consumption, abandonment, stale cursor refresh counts, producer refill while bytes remain borrowed, and physical/size_t wrap. Concurrent transfers validate exact bytes/order before releasing either span. Four runtime controls reject missing acquire observation, premature consumption, a wrong wrapped pointer and eager cursor refresh. The API adds no copying or allocation; renderer integration is separate.
+
+`test-worker-direct.py CHECKOUT [CC]` compares the production Vulkan completion builder with a frozen copying builder using real SPSC storage, key/source layouts and XXH3. Checked and optimized runs cover exact bytes, stale cursors, physical/size_t wrap, partial/full drops and concurrent ownership transfer; missing-key and leaked-drop controls must fail. Compilation and source reference operations are modeled. `--benchmark` adds synthetic CPU timings with a monotonic clock and gated thread start; `--copy-control` compares identical builders. On Windows, `WORKER_BENCH_PRODUCER_CPU` and `WORKER_BENCH_CONSUMER_CPU` optionally pin logical CPUs (choose and report physical-core/SMT topology separately). `WORKER_DIRECT_SOURCE` can extract a local candidate source file. These timings do not measure game FPS or GPU work.
+
 `test-single-target.py CHECKOUT` rejects the obsolete Xbox selection macro in core-owned C/header sources and the static Makefiles. Host architecture, word-size and feature guards remain supported; the CPU, floating-point and emitter fixtures exercise those independently.
 
 `test-spsc-pair.py CHECKOUT [CC]` compiles the production queue with a copy observer installed after the libc string header, so fortified inline wrappers cannot bypass publication checks. Checked and optimized builds cover plain/mirrored queues, rollover, rejected writes and concurrent records. Runtime negative controls must reject an absent observer and premature publication. `SPSC_PAIR_CFLAGS` adds flags; `SPSC_PAIR_RUNNER` supplies an optional cross-build runner. CI explicitly covers fortification level 3 with ASan/UBSan.
@@ -4673,3 +4681,277 @@ proof that a pending command was serialized: the progress trace records the
 unfinished extent, and module tests validate rejection/resubmission separately.
 The CHD worker tests additionally cover lifecycle metadata waits and thread-safe
 completion signals, with no guest callback on the storage worker.
+
+`make dspnativeprograms` audits production-size JIT blocks (the normal 64-instruction
+limit, rather than the single-instruction native matrix). An instrumented
+`dspaudit` driver runs every GP fixture with two seeds against the interpreter
+and chunked JIT, requiring zero actual interpreter fallback calls. The current
+102 fixtures yield 408 comparisons, each spanning 100 frames. Both native-suite
+CI steps run this target. `--require-native` rejects uninstrumented builds,
+non-JIT hosts and nonpositive frame counts instead of silently passing.
+
+The separate `native-audit-fallback.inc` negative control deliberately uses the
+legacy out-of-width BSET #24 accumulator form. Ordinary comparison must pass,
+then the strict audit must reject its actual fallback with exit status 1. If
+that legacy form becomes native, update this control to exercise a real
+fallback again. It is not a missing valid guest instruction family.
+
+Zero-copy review: scratch/FIFO walkers lend bounded guest RAM spans directly
+to DMA conversion; VP mixing writes directly into GP memory; GP/EP output
+converts directly into the frontend queue. Do not retain borrowed pointers
+past the callback or bypass ownership fences/dirty tracking. DMA sample-width
+conversion, masks and interleaving prevent general buffer aliasing. Contiguous
+outbound 32-bit slots now use a bounded bulk copy when the host and DSP
+spans do not overlap; this still copies, rather than aliasing buffers. DSP
+state snapshots copy only on VM stop/start, not once per audio frame; sharing
+those arrays would change snapshot ownership and is not a hot-path win.
+
+`make dspdma` compares DMA runs against the scalar ordering across 83,296
+cases: both directions, 16/32-bit slots, raw upper bits, inbound masking,
+interleaving, direct/callback memory, zero/discard aperture, counts 0-64,
+unaligned host spans, nonzero item cursors, split callbacks and overlapping
+source/destination bytes. Complete buffers, item cursors and callback counts
+must match. Only outbound direct, non-interleaved, disjoint 32-bit spans use
+bulk copies. Inbound words retain masks and per-word program invalidation;
+sequential direct RAM conversions use dedicated loops; direct outbound
+interleaving advances a channel cursor. Callback-backed interleaved output
+also advances a cursor, while issuing every original read callback in order. Overlapping spans retain scalar order. Walkers
+still fence ownership and mark guest RAM dirty after the callback. Both native
+CI steps run this standalone test; DSP_PROGRAM_RUNNER supports cross-host runs.
+
+The alias matrix covers both directions and both slot widths over 192 host
+byte offsets, including unaligned, exact and partially overlapping spans.
+Direct inbound conversions still mask 32-bit slots or shift 16-bit samples;
+program memory remains callback-backed so writes invalidate native code.
+
+Direct interleaved output computes its initial channel/block from the current
+item cursor once per callback, then advances with addition and a channel-wrap
+check. Both 16-bit conversion and raw 32-bit slots retain their read/store
+order, including overlap. Additional tests cover all 1-16 channel counts,
+1-7 blocks, every starting item, full runs versus one-item callback splits,
+empty callbacks between samples, unaligned output and interleaved aliasing.
+The scalar oracle retains the original per-item division/remainder formula.
+
+`python libretro/tests/bench-dsp-dma.py . --baseline 7b081ba --json dma.json`
+builds the same isolated driver against the selected Git revision's DMA
+module and a snapshot of the working-tree module. It reuses the dspdma
+Makefile target's compiler/include/architecture flags; --cc accepts the
+compiler command (including optional sanitizer flags). The checkout must
+provide the current dspdma target. Temporary binaries are removed on exit.
+
+Ten cases cover direct 16/32-bit input/output, direct interleaved output,
+callback 32-bit input/output and callback interleaved 16/32-bit output. Each
+uses raw upper bits, unaligned host spans and a nonzero item cursor; six
+channels exercise non-power-of-two interleaving. Default sizes are 32, 128,
+512 and 2048 words. Five alternating old/current process runs per case use
+100000 transfers after warmup. --counts, --runs and --iterations override
+these settings; choose enough iterations for stable timings. The timer is
+QueryPerformanceCounter on Windows and CLOCK_MONOTONIC on POSIX.
+
+Every sample must match the other samples' complete-memory FNV fingerprint
+and final item cursor before timing is reported as comparable. Fingerprints
+are an inexpensive mismatch check, not independent correctness proof; run
+`make dspdma` for scalar oracles, overlap coverage and callback-count checks.
+Optional JSON records all timings, medians, source/driver SHA256 identities,
+Git revision IDs and compiler version. Current source may be uncommitted;
+use its recorded hash rather than assuming HEAD describes those bytes.
+
+These are warm conversion-loop measurements, including mock callback costs.
+They exclude guest walkers, ownership fences, dirty tracking, native-block
+execution and games. This compares two C revisions, not C against Rust. No
+elapsed-time threshold runs in CI; regression correctness remains separate.
+Sanitizer timings are for diagnostics and must not be compared with release
+numbers. Repeated processes may introduce noise; report spread and regressions
+as well as wins, and measure representative games separately when authorized.
+
+`make dspbootstrap` checks the fused bootstrap loader through both C engine
+operation tables. Each complete borrowed scratch word is loaded, masked to
+24 bits and stored once; the old full destination normalization pass is gone.
+Sub-word fragments are assembled before masking, without retaining a host
+pointer. Opcode-cache reset and JIT flush still happen after the entire load.
+
+The 65564-case matrix covers all 8193 split positions across the 8192-byte
+load, four unaligned host offsets, repeated 1-9-byte fragments and empty
+callbacks. It independently checks every PRAM word, untouched upper PRAM and
+the complete opcode cache. A primed CLR A block replaced by NOP must execute
+the replacement on both interpreter and JIT engines. Both native CI steps
+run the target; DSP_PROGRAM_RUNNER supports cross-host checks. This is a
+bootstrap memory-pass reduction, not a per-frame or game-startup timing claim.
+
+The channel/resume matrix additionally runs callback-backed reads with both
+static and read-mutated source memory. It compares complete source/output
+buffers, cursors, callback counts and exact ordered address/space/value traces
+for full spans versus one-item callback splits. No callback is skipped or
+prefetched. The optimization applies only to outbound interleaving; callback
+writes and P-memory invalidation retain their existing paths. Zero-length
+callbacks do no cursor division. The scalar oracle still computes each item
+index independently with division/remainder.
+
+Sequential callback-backed transfers use dedicated loops after the direct
+RAM cases, avoiding per-item direct-memory and channel-index selection.
+Every read/write remains a backend callback; 16-bit shifts and 32-bit inbound
+masks are unchanged, and program writes still invalidate native code.
+An additional 24960 cases exercise all X/Y/P space IDs, both directions and
+widths, zero/nonzero cursors, every count 0-64 and host alignment 0-7, with
+full spans versus one-item splits. Both static and read/write-mutated backing
+memory must match the scalar oracle, along with exact ordered callback
+addresses, spaces, values, counts, complete host/DSP buffers and cursors.
+
+`make dspdmaspans` checks read-only P-memory borrowing through both actual C
+backend operation tables: 442412 range/direction/raw-word/cache checks.
+The DMA mem_ptr callback now receives write=true for DSP destinations and
+write=false for sources. A validated P read span can use direct transfer;
+P writes always return NULL and retain per-word invalidation callbacks.
+A P read span containing out-of-width/uninitialized words returns NULL so
+ordered strict reads still reject it. This validation scans P sources once;
+it does not normalize them or remove their strict read behavior.
+
+Tests cover every P address including one-past-end, zero and overflow counts,
+read/write direction, raw high bits at every P word and outbound data with
+zero payload callbacks. A primed CLR A program replaced through incoming DMA
+must invoke all three P writes and execute NOP afterward, proving interpreter
+and compiled-code invalidation. Existing descriptor/zero-aperture tests also
+check the exact direction flag and updated direct-read callback counts.
+Neither the saved-state layout nor scratch/FIFO ownership/dirty tracking
+changes. Both native CI steps run dspdmaspans.
+
+The revision DMA benchmark snapshots each module with its matching public
+headers and records their hashes, allowing comparisons across this internal
+callback-signature change. Its loop-only cases do not measure the P-span
+validation scan or descriptor work; use an actual DMA transfer benchmark for
+that cost. Borrowing the source removes per-word P read callbacks, not the
+required copy/conversion into host storage.
+Big-endian hosts retain byte-order-aware P callbacks rather than borrowing
+raw program words. The direct-span tests above ran on little-endian hosts.
+
+P-source validation combines four independent OR lanes, then reduces the
+remaining 0-3 words and tests the forbidden upper byte once. This permits
+SIMD generation without architecture-specific intrinsics and shortens the
+valid-span branch/dependency chains. Invalid sources still return NULL for
+strict ordered reads; they are not normalized or exposed directly. The scan
+stays within count, including zero and one-past-end empty spans.
+
+The expanded 442412-check matrix poisons every bit 24-31 at every PRAM word,
+checking full spans, a single poisoned word, odd/short prefix tails, empty
+spans and valid prefixes ending immediately before the poison. Direction,
+range/overflow and actual DMA code-invalidation checks remain. This is a
+validation-cost optimization; the source is still scanned and transferred.
+
+`make dspinvalidate` checks invalidation with normal production-size blocks,
+not the single-instruction native matrix. Once all normal, REP and interrupt
+cache entries covering a changed P word have been removed, its coverage bit
+is cleared. Repeated writes skip redundant scans until translation publishes
+coverage for that word again. The first covered write still sets the active
+code-changed flag so a callback cannot resume stale native code. Other words'
+conservative coverage is left intact; this is not range-wide cache pruning.
+
+The 2528 focused checks prime overlapping entries at PCs 0/1/16/32/63/64/65/127 across
+all eight scaling/LF identities, replace words at 1/16/32/63/64/65/127 in 17-write
+bursts, execute replacement CLR/NOP instructions through every covering entry,
+and require invalidation to rearm after recompilation. Exact scan counts and
+the code-changed flag must hold, with zero interpreter fallbacks. Existing
+native and production fixtures cover extension words, REP/interrupt caches,
+self-modifying DMA and post-write guards. Both native CI steps include this
+target. DSP_PROGRAM_RUNNER supports cross-host checks.
+
+The standalone test accepts --bench for one million changed writes to a
+previously compiled P word without intervening execution. It reports elapsed
+time and exact scan count (old 1000000, new 1), with the same final word and
+code-changed flag. It uses QueryPerformanceCounter or CLOCK_MONOTONIC. This
+instrumented synthetic loop excludes recompilation and is not a game timing
+or a C/Rust comparison; report the counter overhead with elapsed results.
+
+`make dspcoverage` compares the production coverage helper with a scalar
+bit-setting oracle in 17322216 cases. Every start/end pair within 0..4096,
+including inverted/empty ranges, is checked from an empty bitmap. Additional
+cases preserve deterministic existing bits across every short-block alignment,
+lengths 0-129, clipped endpoints and UINT32_MAX inputs. Guard words before
+and after the bitmap must remain untouched. The oracle advances one bit at
+a time independently of the production range-mask formula.
+
+Coverage publication clips the end to PRAM, skips empty/reversed ranges,
+ORs the head/tail masks and fills only fully enclosed bitmap words. It never
+shifts by 64 and preserves bits outside the span. A normal block's maximum
+128 program words therefore need at most three bitmap updates; REP/interrupt
+coverage uses the same helper. Stateful invalidation/rearm tests and normal
+production programs still verify the helper in execution. Both native CI
+steps include dspcoverage; DSP_PROGRAM_RUNNER supports cross-host checks.
+
+The standalone test's --bench alternates seven scalar/mask trials, each
+publishing one million 128-word spans with varied alignment. It requires
+identical final bitmaps and uses a volatile function dispatch to retain all
+updates. This isolates bookkeeping; it does not measure total JIT compile
+time, games or Rust performance. The preceding full native sweep is not a
+result of this batch; exhaustive bitmap equivalence plus stateful and program
+regressions are the validation for this range-publication specialization.
+
+`make dspflush` verifies the JIT's conservative 16-bit cache-table dirty mask:
+normal identities use bits 0-7, interrupt scales 8-11 and REP scales 12-15.
+Every publication marks its table through the shared coverage wrapper,
+including REP fallback entries with no native arena allocation. A flush always
+rewinds the arena, then clears coverage and retires published entries in
+marked pointer tables. Untouched slots are already empty. Per-word
+invalidation does not reset dirty bits. No saved state changes.
+
+The 671 focused checks cover initially empty flushes, populated/repeated
+empty flushes, all eight normal scaling/LF identities, direct CLR-to-NOP code
+replacement after flush, REP fallback-to-native replacement, and interrupt-only
+publication/replacement through all four scales and six pipeline stages.
+The intentional legacy REP negative path makes one call per scaling mode; its
+replacement must run natively without an additional fallback. Normal and
+interrupt paths add no fallbacks. Both native CI steps run this target.
+
+Empty flushes perform no pointer retirement or coverage clearing. The C
+interpreter opcode-cache clear in the outer backend API is separate and
+remains unchanged. The
+standalone --bench isolates 100000 repeated direct JIT flush calls after one
+populated flush; it reports actual table-reset count and high-resolution time.
+It excludes the outer backend clear, compilation and games. A conservative
+publication bit may cause a NULL store for an already-invalidated entry,
+but never skips a required retirement.
+
+Selective flush adds exact pointer-byte assertions for all eight normal
+identities, all four REP scales and all four interrupt scales through six
+pipeline stages. After all modes have been allocated, a single normal
+identity's two-instruction fixture publishes one entry, so flush writes one
+8-byte pointer rather than a 32 KiB table on 64-bit hosts; a second empty
+flush must add zero bytes. REP/interrupt publications retire their own slots.
+Dirty bits are enumerated
+with a nonzero-input bit scan, not by iterating all sixteen possible tables.
+
+`dspflush --bench-single` primes all modes, then times 10000 compile/run/flush
+cycles using only scale-zero normal execution. It prints resets and pointer
+bytes; the prior whole-marked-table policy writes 327680000 bytes versus
+80000 with sparse retirement on 64-bit hosts. Code, state setup, assertions
+and test instrumentation are common to both revisions. This is a synthetic
+cycle including compilation, not gameplay or
+a C/Rust comparison. The existing --bench empty-flush mode remains available.
+
+Each allocated scaling-mode cache adds four 512-byte publication bitmaps
+(2 KiB per used scale, at most 8 KiB per DSP). Normal LF-clear/LF-set,
+interrupt and REP tables have independent bitmaps. Publication ORs the PC bit,
+so invalidation/republication deduplicates naturally without a growable list.
+Flush enumerates set PC bits, stores NULL only to those slots and clears only
+nonzero metadata words. Fully occupied 64-entry groups use a bulk clear;
+partially occupied groups retain per-entry retirement. The byte counter covers
+pointer writes, not metadata writes, coverage clearing or hardware cache-line
+traffic. This trades small metadata storage and publication work for less
+flush traffic; the warm benchmark is not an end-to-end game measurement.
+
+Additional cases cover PCs across 64-bit boundaries and near PRAM's end,
+invalidated/recompiled and invalidated-only entries, disjoint publication
+sets after flush, mixed normal/REP/interrupt entries in one context, and
+fully occupied first/last groups including PC4095. Exact byte counts and
+CLR/NOP replacement results must agree. The complete test permits exactly
+four intentional legacy fallback calls, with no unexpected interpreter use.
+
+
+## High resolution depth texture policy
+
+`test-high-resolution-depth.py CHECKOUT [CC] [BASELINE_REV]` compiles the production startup policy and native-blit cache lookup. It checks all three host depth formats, unchanged color/cubemap format capabilities, initialization without device queries, and cached repeated lookups. Optional BASELINE_REV additionally requires that removing the initialization block and normalizing the helper name restores the entire previous texture recording source. The depth-transfer-capacity and depth-transfer-gpu fixtures cover the existing scaled fallback, buffer spans and packed-depth dependencies. Slot-8 1x/8x and slot-10 menu captures provide guest-scene checks; these are not compatibility proof for every depth effect.
+
+
+`test-gl-high-resolution-depth.py CHECKOUT [--cc CC] [--epoxy-root DIR]` executes the production GL depth-copy branch and its unchanged shader on a real GPU. It checks 360 copies across D16/D24/D32F source storage, five rectangle sizes, 1x/2x/3x/4x/8x/10x, both policies and allocation reuse. Independent native sub-sample and full-resolution oracles reject retained shrinking coordinates in enabled mode. It also compiles startup entry selection (including switching back to disabled) and the actual texture binding scale update, checks 48 color/depth/byte-alias metadata cases, and verifies no option getter appears in draw/bind/copy sources. Windows uses libepoxy as in the point/fog fixture; Linux uses EGL. Slot-8 and slot-10 captures at 1x/8x supplement these checks; they do not establish compatibility with every game. GL disabled code is specialized at compile time, but compiler outlining/layout may differ from the parent; parent/disabled/enabled timing comparisons are recorded separately from GPU copy tests.
+
+
+The GL depth-copy fixture also executes the production fullscreen vertex shader and pass-state setup. It poisons reused destinations and changes source data between copies while enabling hostile guest scissor/cull/polygon state. Every destination texel must match the independent oracle, with zero native-copy clears and one high-resolution clear; shortening fullscreen triangle coverage must fail. These checks qualify removing the redundant pre-copy clear for native snapshots. Isolated copy timing found native-copy benefits on NVIDIA and llvmpipe, but large high-resolution llvmpipe copies benefited from retaining their clear; the high-resolution path therefore keeps it.

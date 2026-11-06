@@ -961,21 +961,35 @@ static void vk_spec_compile_state(const ShaderState *st)
     for (int i = 0; i < n; i++) {
         uint64_t key_hash = fast_hash((const uint8_t *)&keys[i], sizeof(keys[i]));
         ShaderSource *spv = vk_spec_compile_module(&keys[i], key_hash);
-        VkSpecDone d;
-        /* Preserve zero padding around the key, which is overwritten below. */
-        memset(&d, 0, offsetof(VkSpecDone, key));
-        const size_t after_key = offsetof(VkSpecDone, key) + sizeof(d.key);
-        memset((char *)&d + after_key, 0, sizeof(d) - after_key);
-        d.key = keys[i];
-        d.key_hash = key_hash;
-        d.spirv = spv;
-        d.state_hash = i == n - 1 ? state_hash : 0;
+        VkSpecDone fallback;
+        void *record;
+        bool reserved = retro_spsc_write_reserve(&vk_spec_out, &record,
+                                                sizeof(VkSpecDone));
+        if (!reserved) {
+            record = &fallback;
+        }
+        /* The ring is byte-addressed: do not require typed alignment.
+         * Preserve padding exactly, then publish only the finished record. */
+        char *bytes = record;
+        const size_t after_key = offsetof(VkSpecDone, key) + sizeof(keys[i]);
+        uint64_t done_hash = i == n - 1 ? state_hash : 0;
+        memset(bytes, 0, offsetof(VkSpecDone, key));
+        memset(bytes + after_key, 0, sizeof(VkSpecDone) - after_key);
+        memcpy(bytes + offsetof(VkSpecDone, key), &keys[i], sizeof(keys[i]));
+        memcpy(bytes + offsetof(VkSpecDone, key_hash),
+               &key_hash, sizeof(key_hash));
+        memcpy(bytes + offsetof(VkSpecDone, spirv), &spv, sizeof(spv));
+        memcpy(bytes + offsetof(VkSpecDone, state_hash),
+               &done_hash, sizeof(done_hash));
         /* The out ring holds three records for each state the render
          * thread may have queued and not drained (vk_spec_queue bounds
          * that), so it has room; were it ever short, the record is dropped
          * and the state stays drawn as its sibling. */
-        if (retro_spsc_write(&vk_spec_out, &d, sizeof(d)) != sizeof(d)) {
-            pgraph_vk_shader_source_unref(d.spirv);
+        if (reserved) {
+            retro_spsc_write_end(&vk_spec_out, sizeof(VkSpecDone));
+        } else if (retro_spsc_write(&vk_spec_out, &fallback, sizeof(fallback)) !=
+                   sizeof(fallback)) {
+            pgraph_vk_shader_source_unref(spv);
         }
     }
 }

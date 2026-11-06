@@ -586,6 +586,29 @@ size_t retro_spsc_peek(const retro_spsc_t *q, void *data, size_t bytes)
    return bytes;
 }
 
+bool retro_spsc_write_reserve(retro_spsc_t *q, void **ptr, size_t bytes)
+{
+   size_t head, index, avail;
+   *ptr = NULL;
+   if (!bytes || bytes > q->capacity)
+      return false;
+   head = retro_atomic_load_relaxed_size(&q->head);
+   index = head & q->mask;
+   /* A wrapped record needs the copying path, regardless of available room. */
+   if (bytes > spsc_contig(q, index))
+      return false;
+   avail = q->capacity - (head - q->cached_tail);
+   if (avail < bytes)
+   {
+      q->cached_tail = retro_atomic_load_acquire_size(&q->tail);
+      avail = q->capacity - (head - q->cached_tail);
+   }
+   if (avail < bytes)
+      return false;
+   *ptr = q->buffer + index;
+   return true;
+}
+
 size_t retro_spsc_write_begin(retro_spsc_t *q, void **ptr)
 {
    size_t head_idx, span;
@@ -621,6 +644,38 @@ void retro_spsc_write_end(retro_spsc_t *q, size_t bytes)
     * consumer's acquire-load of head, same pairing as retro_spsc_write. */
    retro_atomic_store_release_size(&q->head,
          retro_atomic_load_relaxed_size(&q->head) + bytes);
+}
+
+size_t retro_spsc_read_begin_pair(retro_spsc_t *q, const void **first,
+      size_t *first_bytes, const void **second, size_t bytes)
+{
+   size_t tail, avail, index, span;
+   *first       = NULL;
+   *second      = NULL;
+   *first_bytes = 0;
+   if (!bytes)
+      return 0;
+   tail  = retro_atomic_load_relaxed_size(&q->tail);
+   avail = q->cached_head - tail;
+   /* A record-sized query need not refresh a cursor that already covers it. */
+   if (avail < bytes)
+   {
+      q->cached_head = retro_atomic_load_acquire_size(&q->head);
+      avail         = q->cached_head - tail;
+   }
+   if (bytes > avail)
+      bytes = avail;
+   if (!bytes)
+      return 0;
+   index = tail & q->mask;
+   span  = spsc_contig(q, index);
+   if (span > bytes)
+      span = bytes;
+   *first       = q->buffer + index;
+   *first_bytes = span;
+   if (span < bytes)
+      *second = q->buffer;
+   return bytes;
 }
 
 size_t retro_spsc_read_begin(retro_spsc_t *q, const void **ptr)

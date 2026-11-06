@@ -67,6 +67,60 @@
 
 ## Unreleased
 
+- DSP: JIT flushes retire only published entry slots, avoiding full pointer-table clearing for sparse caches while keeping a dense-group bulk path.
+
+- Remove the redundant depth clear before native OpenGL depth-texture snapshots when High Resolution Depth Textures is disabled. The fullscreen copy overwrites every texel with depth testing set to ALWAYS and depth writes enabled. This saves one driver clear per snapshot without changing sampling or shader variants. High-resolution snapshots retain their clear because it helps large copies on software renderers.
+
+- Extend High Resolution Depth Textures to OpenGL. Keep sampled depth at internal resolution using the existing copy shader, with finer Ninja Gaiden Black character shadows above 1x. Startup selects compiled draw/bind/copy paths, so disabled draws do not check the option. Disabled and 1x captures match the prior behavior; no new shader variants, copy passes or CPU readbacks are added.
+
+- Add High Resolution Depth Textures (Restart), disabled by default and Vulkan-only. Preserve rendered depth detail when sampling GPU depth textures, improving Ninja Gaiden Black's character-shadow outline above 1x. Some games rely on native depth comparisons; enabling can change those effects and increase conversion work/memory. The disabled draw paths and shader/pipeline keys are unchanged; the policy is selected only at startup.
+
+- DSP: nonempty JIT flushes clear only cache tables populated since the previous flush, avoiding writes to untouched mode/REP/interrupt tables.
+
+- Strengthen Vulkan module-key optimization checks with a frozen geometry baseline, pinned monotonic CPU comparisons, identical-code controls and required failures for missing state copies or clears. The geometry-clear candidates remain disabled; rendering behavior is unchanged.
+
+- DSP: repeated empty JIT flushes rewind the arena without clearing already-empty coverage and block tables again.
+
+- DSP: compiled-block coverage is published with bitmap range masks instead of one update per program word.
+
+
+- Strengthen Vulkan completion-drain tests to distinguish idle polling from pending-but-empty work, verify state credits through final markers and quiesce, and reject shortcuts that skip unfinished states. Renderer behavior is unchanged.
+
+- DSP: repeated writes to an invalidated program word skip redundant block-cache scans until recompilation covers the word again.
+
+
+- Add real-queue Vulkan completion-drain regression coverage for ready-table bytes, eviction/adoption ownership, FIFO order and state markers. Cross-cache concurrent controls rejected the first render-side copy-removal candidates, so the rendering path is unchanged.
+
+- Add a tested two-span queue reader for future Vulkan completion copy removal. It can borrow wrapped records without moving them or refreshing a producer cursor that already covers the requested bytes; renderer behavior is unchanged until integration.
+
+- Build Vulkan worker completion records directly in available queue storage, avoiding the intermediate full-record copy. Preserve exact record bytes, reference ownership and publication order, with the existing copy/drop behavior at ring boundaries or when space is unavailable.
+
+- DSP: validate borrowed program-RAM sources with a vectorizable reduction instead of branching on every word.
+
+- Audio: outbound DSP DMA borrows validated program-RAM spans directly; incoming program writes still use invalidating callbacks.
+
+
+- Add real-queue Vulkan worker completion regression coverage for exact record bytes, wrapping, queue drops and transferred reference ownership. This is test coverage for copy-removal work; renderer behavior is unchanged.
+
+- Audio: sequential callback-backed DSP DMA skips repeated memory-path and channel-index dispatch while retaining every per-word callback.
+
+- Audio: callback-backed interleaved DSP output now advances a channel cursor, retaining per-word callback order without repeated sample-index division.
+
+
+- Add an exact-size SPSC write reservation as a prerequisite for direct worker record construction. Refresh the consumer cursor only when cached room cannot cover the requested record; reject physical wraps and non-fitting records without publication. Existing queue callers and renderer behavior are unchanged.
+
+- DSP: bootstrap now masks program words while loading them, removing a second pass over destination program RAM.
+
+- DSP development: add a reproducible revision-to-revision DMA benchmark with output fingerprints, alternating runs and recorded compiler/source identities.
+
+- Audio: direct interleaved DSP output advances a channel cursor instead of dividing every sample, including across scatter-gather boundaries.
+
+- Audio: sequential DSP RAM DMA conversions avoid per-sample callback and channel dispatch while preserving masking and overlap order.
+
+- Audio: contiguous outbound DSP DMA words now use bulk copies, preserving conversion and overlapping-transfer ordering.
+
+- DSP: CI now rejects interpreter fallback in production-size DSP regression blocks, including a deliberate negative control.
+
 - DSP: keep VSL sources in the native accumulator cache for constant paired-RAM stores, avoiding unnecessary state spills and device checks.
 
 - DSP: specialize constant RAM addresses in memory bit operations while preserving mapped aliases, peripheral side effects and extension timing.
@@ -183,6 +237,7 @@
 - DSP: execute register-indirect X/Y bit-test calls natively, preserving address updates, cycle charges and conditional stack saves.
 
 - Remove AES/PCLMUL execution helpers and crypto engines unused by the fixed Xbox Pentium III. Keep opcode decoding and feature checks, including illegal-instruction and instruction-fetch fault ordering.
+
 
 - Strengthen speculative pipeline handoff coverage with the real shader-state/render-pass/key layouts and XXH3. Check poisoned slot reuse, complete owned key bytes and a full ring becoming available during completion draining before attempting further copy removal. Renderer behavior is unchanged.
 
