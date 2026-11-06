@@ -141,8 +141,8 @@ bool xemu_libretro_kernel_idle(CPUState *cpu)
     return false;
 }
 
-/* A bounded register-only loop polling ordinary guest RAM. NGB's timer wait
- * uses this form; an arbitrary store-free run still proves nothing. Require
+/* A bounded register-only loop polling ordinary guest RAM. NGB and
+ * Gunvalkyrie use these forms; an arbitrary store-free run proves nothing. Require
  * its complete back edge and reevaluate the unsigned comparison each time.
  * Interrupts must be enabled; device work and deadlines still use the
  * existing frame scheduler. */
@@ -156,7 +156,17 @@ bool xemu_libretro_memory_poll(CPUState *cpu)
         0x3b,0xc7,       /* cmp eax,edi */
         0x72,0xf6,       /* jb back to mov ecx,[edx] */
     };
+    /* Same wait with ESI as the difference and EDI as the preserved base
+     * (Gunvalkyrie). Accept only this complete register-consistent variant. */
+    static const uint8_t loop_edi[] = {
+        0x8b,0x0a,       /* mov ecx,[edx] */
+        0x8b,0xf7,       /* mov esi,edi */
+        0x2b,0xf1,       /* sub esi,ecx */
+        0x3b,0xc6,       /* cmp eax,esi */
+        0x72,0xf6,       /* jb back to mov ecx,[edx] */
+    };
     const uint8_t *code, *counter;
+    int base_reg = R_ESI;
     RCU_READ_LOCK_GUARD();
 
     if (cpu->singlestep_enabled || env->segs[R_CS].base || env->segs[R_DS].base ||
@@ -174,14 +184,20 @@ bool xemu_libretro_memory_poll(CPUState *cpu)
     }
     /* No MMIO, debug-read fallback, cached proof or intermediate byte copy. */
     code = lr_idle_ram_ptr(cpu, ip, sizeof(loop));
-    if (!code || memcmp(code, loop, sizeof(loop))) {
+    if (!code) {
         return false;
+    }
+    if (memcmp(code, loop, sizeof(loop))) {
+        if (memcmp(code, loop_edi, sizeof(loop_edi))) {
+            return false;
+        }
+        base_reg = R_EDI;
     }
     counter = lr_idle_ram_ptr(cpu, addr, 4);
     if (!counter) {
         return false;
     }
-    uint32_t remaining = (uint32_t)env->regs[R_ESI] - ldl_le_p(counter);
+    uint32_t remaining = (uint32_t)env->regs[base_reg] - ldl_le_p(counter);
     return (uint32_t)env->regs[R_EAX] < remaining;
 }
 

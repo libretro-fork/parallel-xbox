@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- CPU: recognize Gunvalkyrie's register-swapped RAM wait loop, reducing wasted CPU work on its title/menu screen while retaining guest frame timing and interrupt handling.
+
 - CPU: allow the translator to retain integer CPU state across SSE arithmetic and shuffle helper calls, preserving SIMD results and floating-point status.
 
 ## Previous changes

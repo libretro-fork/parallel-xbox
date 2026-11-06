@@ -4464,11 +4464,13 @@ static void i386_tr_init_disas_context(DisasContextBase *dcbase, CPUState *cpu)
 static bool xemu_ram_wait_candidate(const DisasContextBase *db)
 {
     static const uint8_t poll[] = {0x8B,0x0A,0x8B,0xFE,0x2B,0xF9,0x3B,0xC7,0x72,0xF6};
+    static const uint8_t poll_edi[] = {0x8B,0x0A,0x8B,0xF7,0x2B,0xF1,0x3B,0xC6,0x72,0xF6};
     uint32_t flags = tb_cflags(db->tb);
     return (flags & (CF_USE_ICOUNT | CF_NOIRQ)) == CF_USE_ICOUNT &&
         db->host_addr[0] &&
         (db->pc_first & ~TARGET_PAGE_MASK) <= TARGET_PAGE_SIZE - sizeof(poll) &&
-        !memcmp(db->host_addr[0], poll, sizeof(poll));
+        (!memcmp(db->host_addr[0], poll, sizeof(poll)) ||
+         !memcmp(db->host_addr[0], poll_edi, sizeof(poll_edi)));
 }
 
 static void i386_tr_tb_start(DisasContextBase *db, CPUState *cpu)

@@ -25,6 +25,7 @@ static CPUX86State *cpu_env(CPUState *cpu){return &cpu->env;}
 static unsigned rcu_depth,probes,translations;
 static uint32_t code_va,data_va;
 static uint8_t code[10],data[4];
+static unsigned variant;
 static bool code_fault,data_fault,code_device,data_device,short_code,short_data;
 static void rcu_end(unsigned *p){(void)p;assert(rcu_depth);rcu_depth--;}
 #define RCU_READ_LOCK_GUARD() unsigned guard __attribute__((cleanup(rcu_end)))=++rcu_depth
@@ -52,35 +53,44 @@ static void mem_check_access_callback_ramaddr(CPUState*cpu,uint64_t addr,uint64_
 static void *memory_region_get_ram_ptr(MemoryRegion *r){assert(rcu_depth&&r->ram&&!r->device);return r->ptr;}
 static uint32_t ldl_le_p(const uint8_t *p){return p[0]|(uint32_t)p[1]<<8|(uint32_t)p[2]<<16|(uint32_t)p[3]<<24;}
 static void put(uint32_t value){for(unsigned i=0;i<4;i++)data[i]=value>>(i*8);}
+#define CF_USE_ICOUNT 1u
+#define CF_NOIRQ 2u
+typedef struct {uint32_t cflags;} TestTB;
+typedef struct {TestTB *tb;const uint8_t *host_addr[2];uint64_t pc_first;} DisasContextBase;
+static uint32_t tb_cflags(TestTB *tb){return tb->cflags;}
 /* PRODUCTION */
+static bool nominated(void){TestTB tb={CF_USE_ICOUNT};DisasContextBase db={.tb=&tb,.host_addr={code,NULL},.pc_first=code_va};return xemu_ram_wait_candidate(&db);}
 static void setup(CPUState *cpu){
     static const uint8_t loop[]={0x8b,0x0a,0x8b,0xfe,0x2b,0xf9,0x3b,0xc7,0x72,0xf6};
     memset(cpu,0,sizeof(*cpu));memcpy(code,loop,sizeof(code));
+    if(variant){code[3]=0xf7;code[5]=0xf1;code[7]=0xc6;}
     code_va=0x003cab40;data_va=0x8196b000;
     cpu->env.segs[R_CS].limit=cpu->env.segs[R_DS].limit=UINT32_MAX;
     cpu->env.eip=code_va;cpu->env.hflags=HF_CS32_MASK;cpu->env.eflags=IF_MASK;
-    cpu->env.regs[R_EDX]=data_va;cpu->env.regs[R_ESI]=40;cpu->env.regs[R_EAX]=36;put(0);
+    cpu->env.regs[R_EDX]=data_va;cpu->env.regs[R_ESI]=variant?0xdeadbeef:40;cpu->env.regs[R_EDI]=variant?40:0xdeadbeef;cpu->env.regs[R_EAX]=36;put(0);
     probes=translations=0;code_fault=data_fault=code_device=data_device=short_code=short_data=false;
 }
 int main(void){
     CPUState cpu;unsigned cases=0;uint32_t seed=1;
+    for(variant=0;variant<2;variant++){
+    unsigned base_reg=variant?R_EDI:R_ESI;
     for(unsigned i=0;i<50000;i++){
         setup(&cpu);seed=seed*1664525u+1013904223u;uint32_t value=seed;
-        cpu.env.regs[R_ESI]=seed*97u;cpu.env.regs[R_EAX]=seed>>2;put(value);
+        cpu.env.regs[base_reg]=seed*97u;cpu.env.regs[variant?R_ESI:R_EDI]=~(seed*97u);cpu.env.regs[R_EAX]=seed>>2;put(value);
         /* The proof is independent of title addresses and accepts unaligned
          * ordinary RAM, with the same little-endian arithmetic as the CPU. */
         code_va=0x100000u+((seed>>16)&0x7ff)*16;cpu.env.eip=code_va;
         data_va=0x80030000u+(seed&15);cpu.env.regs[R_EDX]=data_va;
         CPUState before=cpu;uint8_t old_code[10],old_data[4];memcpy(old_code,code,10);memcpy(old_data,data,4);
-        uint64_t difference=((uint64_t)cpu.env.regs[R_ESI]+(1ull<<32)-value)&0xffffffffu;
+        uint64_t difference=((uint64_t)cpu.env.regs[base_reg]+(1ull<<32)-value)&0xffffffffu;
         bool expected=(uint64_t)cpu.env.regs[R_EAX]<difference;
-        assert(xemu_libretro_memory_poll(&cpu)==expected);
+        assert(nominated());assert(xemu_libretro_memory_poll(&cpu)==expected);
         assert(!memcmp(&cpu,&before,sizeof(cpu))&&!memcmp(code,old_code,10)&&!memcmp(data,old_data,4));
         assert(!rcu_depth&&probes==2&&translations==2);cases++;
     }
     for(unsigned byte=0;byte<10;byte++)for(unsigned v=0;v<256;v++){
         setup(&cpu);uint8_t original=code[byte];code[byte]=v;
-        assert(xemu_libretro_memory_poll(&cpu)==(v==original));cases++;
+        assert(nominated()==(v==original));assert(xemu_libretro_memory_poll(&cpu)==(v==original));cases++;
     }
     setup(&cpu);assert(xemu_libretro_memory_poll(&cpu));put(4);assert(!xemu_libretro_memory_poll(&cpu));put(0);assert(xemu_libretro_memory_poll(&cpu));
     code[9]=0xf5;assert(!xemu_libretro_memory_poll(&cpu));code[9]=0xf6;assert(xemu_libretro_memory_poll(&cpu));
@@ -112,6 +122,14 @@ int main(void){
         case 7:data_va=0x80030ffd;cpu.env.regs[R_EDX]=data_va;break;
         }
         assert(!xemu_libretro_memory_poll(&cpu)&&!rcu_depth);cases++;
+    }
+    setup(&cpu);TestTB tb={0};DisasContextBase db={.tb=&tb,.host_addr={code,NULL},.pc_first=code_va};
+    for(unsigned flags=0;flags<8;flags++){
+        tb.cflags=flags;assert(xemu_ram_wait_candidate(&db)==((flags&(CF_USE_ICOUNT|CF_NOIRQ))==CF_USE_ICOUNT));cases++;
+    }
+    tb.cflags=CF_USE_ICOUNT;db.pc_first=0x1ff6;assert(xemu_ram_wait_candidate(&db));
+    db.pc_first=0x1ff7;db.host_addr[0]=(const uint8_t*)1;assert(!xemu_ram_wait_candidate(&db));
+    db.pc_first=code_va;db.host_addr[0]=NULL;assert(!xemu_ram_wait_candidate(&db));cases+=3;
     }
     printf("RAM poll regression: %u arithmetic/opcode/interrupt/mapping cases, counter release and code changes passed; no MMIO reads, state changes or byte snapshots\n",cases);
 }
