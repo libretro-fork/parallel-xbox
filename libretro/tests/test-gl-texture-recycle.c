@@ -13,7 +13,7 @@
 typedef struct { bool cubemap; unsigned dimensionality,color_format,levels,width,height,depth; bool border; unsigned min_mipmap_level,max_mipmap_level,pitch; } TextureShape;
 typedef struct { unsigned bytes_per_pixel; bool linear; GLint gl_internal_format; GLenum gl_format,gl_type; GLint gl_swizzle_mask[4]; } ColorFormatInfo;
 #define NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_A8R8G8B8 0
-static const ColorFormatInfo kelvin_color_format_gl_map[]={ {4,true,GL_RGBA8,GL_BGRA,GL_UNSIGNED_INT_8_8_8_8_REV,{0}} };
+static const ColorFormatInfo kelvin_color_format_gl_map[]={ {4,true,GL_RGBA8,GL_BGRA,GL_UNSIGNED_INT_8_8_8_8_REV,{0}}, {4,false,GL_RGBA8,GL_BGRA,GL_UNSIGNED_INT_8_8_8_8_REV,{0}} };
 typedef struct { SampledTexturePool sampled_texture_pool; int texture_pool; GLuint fresh_tex[128];unsigned fresh_tex_r,fresh_tex_w; } PGRAPHGLState;
 typedef struct { struct { PGRAPHGLState *gl_renderer_state; } pgraph; } NV2AState;
 static NV2AState device,*g_nv2a=&device;
@@ -75,7 +75,7 @@ int main(void) {
   unsigned w=1+pass%15,h=1+(pass*7)%13,pitch=(w+3)*4;
   TextureShape s={.dimensionality=2,.color_format=0,.levels=1,.width=w,.height=h,.depth=1,.pitch=pitch};
   for(unsigned i=0;i<sizeof(data);i++)data[i]=(i*19+pass*37)&255;
-  TextureBinding *old=generate_texture(s,data,NULL,false,false);GLuint name=old->gl_texture;assert(sampled_texture_key_load(old->recycle_key));
+  TextureBinding *old=generate_texture(s,data,NULL,false,false,false);GLuint name=old->gl_texture;assert(sampled_texture_key_load(old->recycle_key));
   uint32_t key=sampled_texture_key_load(old->recycle_key);old->border_color_set=true;assert(sampled_texture_key_load(old->recycle_key)==key);
   sampled_texture_key_store(old->recycle_key,key);assert(old->border_color_set);
   const GLint swizzle[]={GL_ALPHA,GL_BLUE,GL_GREEN,GL_RED};glTexParameteriv(GL_TEXTURE_2D,GL_TEXTURE_SWIZZLE_RGBA,swizzle);
@@ -92,33 +92,49 @@ int main(void) {
    * flip readiness observation instead of adding this test-only glFinish. */
   glFinish();sampled_texture_complete(&r.sampled_texture_pool,serial);
   for(unsigned i=0;i<sizeof(data);i++)data[i]^=0xa7;
-  unsigned before=full_uploads;TextureBinding *next=generate_texture(s,data,NULL,false,false);
+  unsigned before=full_uploads;TextureBinding *next=generate_texture(s,data,NULL,false,false,false);
   assert(next->gl_texture==name&&full_uploads==before);reused++;
   assert(!sampled_texture_contains(&r.sampled_texture_pool,name));
   GLint value;glGetTexParameteriv(GL_TEXTURE_2D,GL_TEXTURE_BASE_LEVEL,&value);assert(value==0);glGetTexParameteriv(GL_TEXTURE_2D,GL_TEXTURE_MAX_LEVEL,&value);assert(value==1000);
   GLfloat lod;glGetTexParameterfv(GL_TEXTURE_2D,GL_TEXTURE_MIN_LOD,&lod);assert(lod==-1000);glGetTexParameterfv(GL_TEXTURE_2D,GL_TEXTURE_MAX_LOD,&lod);assert(lod==1000);
   pixels(name,w,h,actual);
-  TextureBinding *fresh=generate_texture(s,data,NULL,false,false);pixels(fresh->gl_texture,w,h,reference);
+  TextureBinding *fresh=generate_texture(s,data,NULL,false,false,false);pixels(fresh->gl_texture,w,h,reference);
   assert(!memcmp(actual,reference,w*h*4));
   for(unsigned y=0;y<h;y++)for(unsigned x=0;x<w;x++)for(unsigned c=0;c<4;c++)assert(actual[(y*w+x)*4+c]==data[y*pitch+x*4+(c==0?2:c==2?0:c)]);
   glDeleteTextures(1,&next->gl_texture);glDeleteTextures(1,&fresh->gl_texture);free(next);free(fresh);
   assert(!r.sampled_texture_pool.count&&!r.sampled_texture_pool.bytes);assert(glGetError()==GL_NO_ERROR);
  }
+ /* Surface snapshots allocate only when their converter runs. A poison
+  * input must never reach the guest upload helper, including cube faces. */
+ for(unsigned cube=0;cube<2;cube++) {
+  TextureShape s={.cubemap=cube,.color_format=cube,.dimensionality=2,.levels=1,.width=4,.height=4,.depth=1,.pitch=16};
+  unsigned before=full_uploads;
+  TextureBinding *snapshot=generate_texture(s,NULL,NULL,false,false,true);
+  assert(full_uploads==before&&!sampled_texture_key_load(snapshot->recycle_key));
+  assert(snapshot->draw_time==-1&&!snapshot->byte_reinterpret);
+  GLenum face=cube?GL_TEXTURE_CUBE_MAP_POSITIVE_X:GL_TEXTURE_2D;
+  GLint width=-1;glGetTexLevelParameteriv(face,0,GL_TEXTURE_WIDTH,&width);assert(width==0);
+  /* A complete converter overwrite, followed by actual sampling. */
+  for(unsigned f=0;f<(cube?6u:1u);f++)
+   glTexImage2D(face+f,0,GL_RGBA8,4,4,0,GL_RGBA,GL_UNSIGNED_BYTE,data);
+  if(!cube) { pixels(snapshot->gl_texture,4,4,actual);assert(!memcmp(actual,data,64)); }
+  assert(glGetError()==GL_NO_ERROR);texture_binding_destroy(snapshot);
+ }
  /* Ineligible storage cannot consume a matching pooled object. */
  TextureShape shape={.dimensionality=2,.levels=1,.width=4,.height=4,.depth=1,.pitch=16};
- TextureBinding *eligible=generate_texture(shape,data,NULL,false,false);
+ TextureBinding *eligible=generate_texture(shape,data,NULL,false,false,false);
  GLuint kept=eligible->gl_texture;texture_binding_destroy(eligible);
  for(unsigned mode=0;mode<3;mode++) {
   TextureShape s=shape;s.levels=mode==0?2:1;s.border=mode==1;
-  TextureBinding *other=generate_texture(s,data,NULL,mode==2,false);
+  TextureBinding *other=generate_texture(s,data,NULL,mode==2,false,false);
   assert(!sampled_texture_key_load(other->recycle_key)&&other->gl_texture!=kept);
   texture_binding_destroy(other);assert(r.sampled_texture_pool.count==1);
  }
  sampled_texture_finalize(&r.sampled_texture_pool);assert(!glIsTexture(kept));
  /* A stale warmup ticket must not extend a parked image's GPU lifetime. */
- eligible=generate_texture(shape,data,NULL,false,false);kept=eligible->gl_texture;
+ eligible=generate_texture(shape,data,NULL,false,false,false);kept=eligible->gl_texture;
  texture_binding_destroy(eligible);
- TextureBinding *active=generate_texture(shape,data,NULL,false,false);
+ TextureBinding *active=generate_texture(shape,data,NULL,false,false,false);
  r.fresh_tex[0]=kept;r.fresh_tex[1]=active->gl_texture;r.fresh_tex[2]=0;r.fresh_tex_w=3;
  touch_tickets(&r,1);assert(!touches&&r.fresh_tex_r==1);
  touch_tickets(&r,2);assert(touches==1&&r.fresh_tex_r==3);

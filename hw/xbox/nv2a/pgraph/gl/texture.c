@@ -35,7 +35,7 @@
 static TextureBinding *generate_texture(const TextureShape s,
                                         const uint8_t *texture_data,
                                         const uint8_t *palette_data, bool empty,
-                                        bool g8b8_lod_clamp);
+                                        bool g8b8_lod_clamp, bool surface_snapshot);
 static void texture_binding_destroy(gpointer data);
 
 static bool g8b8_sampler_lod_clamp(const TextureShape *s, unsigned filter)
@@ -559,7 +559,9 @@ void bind_textures(NV2AState *d, bool highres_depth)
         if (key_out->binding == NULL) {
             // Must create the texture
             key_out->binding = generate_texture(state, texture_data, palette_data,
-                                               surf_to_tex_bytes, g8b8_lod_clamp);
+                                               surf_to_tex_bytes, g8b8_lod_clamp,
+                                               !surf_to_tex_bytes &&
+                                               (surf_to_tex || surf_to_tex_cube));
             if (key_out->binding->gl_target == GL_TEXTURE_2D) {
                 r->fresh_tex[r->fresh_tex_w++ % ARRAY_SIZE(r->fresh_tex)] =
                     key_out->binding->gl_texture;
@@ -1072,14 +1074,14 @@ static void upload_gl_texture(GLenum gl_target,
 static TextureBinding* generate_texture(const TextureShape s,
                                         const uint8_t *texture_data,
                                         const uint8_t *palette_data, bool empty,
-                                        bool g8b8_lod_clamp)
+                                        bool g8b8_lod_clamp, bool surface_snapshot)
 {
     ColorFormatInfo f = kelvin_color_format_gl_map[s.color_format];
 
     PGRAPHGLState *r = g_nv2a->pgraph.gl_renderer_state;
     /* Start with the common linear RGBA8 case. Compressed, mipmapped,
      * bordered, cube and surface-derived storage retain their old lifetime. */
-    uint32_t recycle_key = !empty && !s.cubemap && !s.border &&
+    uint32_t recycle_key = !empty && !surface_snapshot && !s.cubemap && !s.border &&
         s.dimensionality == 2 && s.levels == 1 &&
         s.color_format == NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_A8R8G8B8
         ? sampled_texture_key(s.width, s.height) : 0;
@@ -1125,7 +1127,10 @@ static TextureBinding* generate_texture(const TextureShape s,
                    s.dimensionality, s.cubemap ? " (Cubemap)" : "",
                    s.width, s.height, s.depth);
 
-    if (empty) {
+    if (surface_snapshot) {
+        /* The selected surface converter allocates and fills every texel.
+         * Do not upload stale guest RAM or allocate throwaway storage. */
+    } else if (empty) {
         GLint unpack;
         glGetIntegerv(GL_PIXEL_UNPACK_BUFFER_BINDING, &unpack);
         glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
@@ -1179,7 +1184,7 @@ static TextureBinding* generate_texture(const TextureShape s,
     ret->gl_texture = gl_texture;
     sampled_texture_key_store(ret->recycle_key, recycle_key);
     ret->refcnt = 1;
-    ret->draw_time = empty ? -1 : 0;
+    ret->draw_time = (empty || surface_snapshot) ? -1 : 0;
     ret->data_hash = 0;
     ret->byte_reinterpret = empty;
     ret->g8b8_lod_clamp = g8b8_lod_clamp;

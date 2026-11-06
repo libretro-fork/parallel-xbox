@@ -4996,3 +4996,14 @@ pipeline is identical; CPU fences/readback are outside each measured batch.
 Treat this as an isolated workload, not an emulator FPS prediction. NGB slot-8
 and slot-10 parent/candidate captures at 1x/8x and both option values are
 regression controls; they do not establish that those scenes use D16 borrowing.
+
+
+The GL texture-recycle GPU fixture also checks deferred initialization of
+2D and complete cubemap surface snapshots: no guest upload, no initial level
+storage, no texture-pool consumption, and a forced first conversion even at
+source draw time zero. Poison/null guest data makes accidental upload fail.
+After storage is supplied, the 2D image is sampled against an independent byte
+oracle. A mutant removing the deferred-initialization branch must fail.
+Existing byte-reinterpret allocation and ordinary fresh/recycled textures
+retain their checks. NGB slots 8/10 at 1x/8x with both depth policies supplement
+these fixtures with eight byte-identical parent/candidate captures.

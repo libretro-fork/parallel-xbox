@@ -25,3 +25,13 @@ with tempfile.TemporaryDirectory(prefix='gl-texture-recycle-') as d:
  p=Path(d);(p/'test.c').write_text(code)
  subprocess.run([os.environ.get('CC','cc'),'-O2','-Wall','-Wextra','-Werror','-Wno-unused-parameter',*shlex.split(os.environ.get('GL_TEXTURE_RECYCLE_CFLAGS','')), '-I'+str(repo),str(p/'test.c'),'-o',str(p/'test'),'-lEGL','-lGL'],check=True)
  subprocess.run([str(p/'test')],env=dict(os.environ,EGL_PLATFORM='surfaceless'),check=True)
+ # Independently prove that dropping the no-upload branch fails the oracle.
+ mutant=code.replace('if (surface_snapshot) {','if (false) {',1)
+ assert mutant!=code
+ (p/'negative.c').write_text(mutant)
+ subprocess.run([os.environ.get('CC','cc'),'-O2','-Wall','-Wextra','-Werror','-Wno-unused-parameter',*shlex.split(os.environ.get('GL_TEXTURE_RECYCLE_CFLAGS','')), '-I'+str(repo),str(p/'negative.c'),'-o',str(p/'negative'),'-lEGL','-lGL'],check=True)
+ import resource
+ def no_core(): resource.setrlimit(resource.RLIMIT_CORE,(0,0))
+ failed=subprocess.run([str(p/'negative')],env=dict(os.environ,EGL_PLATFORM='surfaceless'),stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,preexec_fn=no_core)
+ assert failed.returncode!=0, 'redundant snapshot upload escaped the oracle'
+ print('PASS: 2D/cube snapshots defer storage and guest uploads; upload-branch negative rejected')
