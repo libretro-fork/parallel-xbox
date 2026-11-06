@@ -4955,3 +4955,26 @@ four intentional legacy fallback calls, with no unexpected interpreter use.
 
 
 The GL depth-copy fixture also executes the production fullscreen vertex shader and pass-state setup. It poisons reused destinations and changes source data between copies while enabling hostile guest scissor/cull/polygon state. Every destination texel must match the independent oracle, with zero native-copy clears and one high-resolution clear; shortening fullscreen triangle coverage must fail. These checks qualify removing the redundant pre-copy clear for native snapshots. Isolated copy timing found native-copy benefits on NVIDIA and llvmpipe, but large high-resolution llvmpipe copies benefited from retaining their clear; the high-resolution path therefore keeps it.
+
+
+The missing-DMA-subsection negative control leaves the large ROM stuck in its
+third transfer (status 7, only 0x7000 words checked) after a successful state
+load with identical restored RAM and uninterrupted cadence. This confirms the
+runtime state test depends on the new replay, rather than only generic state
+success. Held-read reset and Vulkan unload/reload both finish all three DVD
+reads; shutdown retires the pending command before joining/closing its source.
+
+A separate private XDVDFS fixture has a real default.xbe directory node, header
+and certificate in a CHD behind the 0x2080000 logical partition prefix. Native
+and seven-byte content-VFS attachment recover the expected 0x12345 runtime entry
+and preserve the DVD byte oracle, exercising all lifecycle metadata reads.
+Wrong-unit, invalid-signature and non-Xbox CHDs are refused before machine start.
+
+Win64 layout checks: classic DMA remains 192 bytes, retained DMA is 208,
+IDEState is 984 (eight additional bytes), and its cold replay allocation is
+8232 bytes. Existing req_nb_sectors/atapi_dma offsets stay 852/720. The copy loop
+uses a 112-byte stack frame; epoch checking raises the source callback from
+64 to 80 bytes. Classic DMA callback/submit frames remain 128/96. These are
+compiler/layout observations, not measured L1/L2 misses or game frame rates.
+The merged core also passes the 485-frame Vulkan pixel/RAM oracle and PCM
+control/split hashes plus reset/state frame/audio cadence checks.
