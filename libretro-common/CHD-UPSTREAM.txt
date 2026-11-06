@@ -52,3 +52,11 @@ poll and release may not. The worker's stop check cancels queued work and a
 held decoded result remains independent of the closed source/decoder.
 Abandonment publishes cancellation for the next worker decode boundary;
 accepted storage calls already in progress finish on their storage owner.
+
+Owned-source DMA preparation: dma-read-view.inc requests a retained source before
+mapping destinations, copies ordered spans with one short-lived guest map, and
+can abandon without a late device callback. Native immutable FILE media uses
+one full-range source loan; other backends do not advertise it yet. Remaining
+CHD work includes DMA state/progress/SG replay, logical probes, media identity
+across chunks, completion wake signaling, and frontend mounting. No CHD kind is
+connected solely because this optional path now exists.

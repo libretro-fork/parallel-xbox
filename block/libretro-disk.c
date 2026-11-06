@@ -61,6 +61,7 @@
 #include "block/snapshot.h"
 #include "block/libretro-disk.h"
 #include "block/libretro-disk-deferred.h"
+#include "block/libretro-disk-view.h"
 #include "block/libretro-file.h"
 #include "block/libretro-read-view.h"
 #include "block/libretro-vfs-read.h"
@@ -617,6 +618,19 @@ void lr_disk_release_read_view(void *owner)
     if (owner) {
         ((LRReadViewOwner *)owner)->release(owner);
     }
+}
+
+size_t lr_disk_read_view_max(BlockBackend *blk, uint64_t offset, uint64_t size)
+{
+    if (!blk || blk->m.kind != LR_MEDIUM_FILE || blk->m.writable || !size ||
+        blk->m.length < 0 || offset > (uint64_t)blk->m.length ||
+        size > (uint64_t)blk->m.length - offset || blk->m.base > INT64_MAX ||
+        offset > (uint64_t)INT64_MAX - blk->m.base ||
+        !lr_file_view(blk->m.file, blk->m.base + offset, 1)) return 0;
+    /* One retained mapping pins the complete immutable source, even through
+     * medium replacement. Worker-backed formats may later advertise chunks
+     * once their medium identity and pending DMA state are replayable. */
+    return SIZE_MAX;
 }
 
 BlockAIOCB *lr_disk_aio_read_view(BlockBackend *blk, int64_t offset, size_t size,

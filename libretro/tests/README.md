@@ -4602,3 +4602,39 @@ words/phases after 160 frames, while frame/audio cadence and load APIs still
 succeed. This validates the pending command rather than only a completed DRQ
 buffer. The private fixture uses synthetic owned results, not a mounted CHD;
 CHD/DMA integration remains separate work.
+
+### Owned-source DMA reads
+
+`python3 libretro/tests/test-dma-read-view.py . [cc]` compiles the production
+source-first DMA state machine, backend range query and IDE abandonment helper.
+It checks no mapping before provider completion, a maximum of one live mapping,
+ordered overlapping destinations, zero/partial SG spans, chunk boundaries,
+map-client retries (including inline retry), exact unmap access lengths, errors,
+initial fallback and cancellation. Reentry tests retire the SG during map,
+unmap and source release, including release during completion; no old device
+callback may run after abandonment. A seeded 1,000-case SG byte oracle varies
+even PRD lengths, overlaps, zero entries, source chunks and mapping boundaries.
+Linux defaults to ASan/UBSan; DMA_VIEW_BINARY/CFLAGS/SKIP_RUN support native builds.
+The existing DMA transfer and map tests continue to exercise the classic path.
+
+Only complete ranges of native read-only mapped files currently advertise this
+capability. Writable HDD and VFS requests retain their prior path. One native
+retained mapping pins the complete immutable source through replacement; future
+worker-backed chunked media still needs explicit identity and DMA state/replay
+integration before it can be mounted. No guest map or disk iovec array is held
+while this path waits for a provider or a map retry. Device command retirement
+suppresses its callback; the copy owner releases its result at a safe boundary.
+Tray changes retire only the affected drive, including pending PIO.
+Early host stop aborts the owned read without a spurious completion interrupt.
+
+Native validation used a private provider that holds DVD results for four guest
+frames and records successful owned-source callbacks. At frame one, the guest
+still sees DMA pending, zero words/results and its untouched DEADBEEF destination,
+while the core returns the expected video/audio. Reset then completes all three
+reads (0x2c800 correct words, no bad address), with exactly three owned callbacks.
+An early BM stop keeps the destination untouched and reports READY|ERR/ABRT,
+with bus-master activity/interrupt bits clear and no successful source callback.
+This validates ownership/reset, not pending DMA savestate support, which remains
+unfinished. The new pooled request is 200 bytes on Win64 versus 192 for classic
+DMA; classic layout/stack use is unchanged and the owned path needs no separate
+16-byte-per-entry iovec array. These are layout facts, not hardware cache metrics.

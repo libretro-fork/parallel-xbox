@@ -24,6 +24,7 @@
  */
 
 #include "qemu/osdep.h"
+#include "system/dma-read-view.h"
 #include "hw/irq.h"
 #include "hw/isa/isa.h"
 #include "migration/vmstate.h"
@@ -794,10 +795,26 @@ BlockAIOCB *ide_buffered_readv(IDEState *s, int64_t sector_num,
     return aioreq;
 }
 
+/* Detach an owned-source read without running a completion against reset
+ * device state. Its copy owner keeps no guest map across provider/map waits. */
+static bool ide_abandon_dma_view(IDEBus *bus)
+{
+    int unit = bus->retry_unit < MAX_IDE_DEVS ? bus->retry_unit :
+               bus->unit < MAX_IDE_DEVS ? bus->unit : 0;
+    IDEState *s = &bus->ifs[unit];
+    if (!dma_abandon_read_view(bus->dma->aiocb)) return false;
+    bus->dma->aiocb = NULL;
+    s->atapi_dma_direct = false;
+    ide_dma_buf_commit(s, 0);
+    ide_abort_command(s);
+    ide_set_inactive(s, false);
+    return true;
+}
+
 /**
  * Cancel all pending DMA requests.
- * Any buffered DMA requests are instantly canceled,
- * but any pending unbuffered DMA requests must be waited on.
+ * Buffered requests and owned-source reads can be abandoned immediately.
+ * Other unbuffered transfers retain their existing drain policy.
  */
 void ide_cancel_dma_sync(IDEState *s)
 {
@@ -827,20 +844,12 @@ void ide_cancel_dma_sync(IDEState *s)
         cancelled[i].cb(cancelled[i].opaque, -ECANCELED);
     }
 
-    /*
-     * We can't cancel Scatter Gather DMA in the middle of the
-     * operation or a partial (not full) DMA transfer would reach
-     * the storage so we wait for completion instead (we behave
-     * like if the DMA was completed by the time the guest trying
-     * to cancel dma with bmdma_cmd_writeb with BM_CMD_START not
-     * set).
-     *
-     * In the future we'll be able to safely cancel the I/O if the
-     * whole DMA operation will be submitted to disk with a single
-     * aio operation with preadv/pwritev.
-     */
+    /* Owned-source reads have no guest map held during provider/map waits
+     * and can retire without a completion or host wait. Other transfers,
+     * including storage writes, retain the existing drain behavior. */
     if (s->bus->dma->aiocb) {
         trace_ide_cancel_dma_sync_remaining();
+        if (ide_abandon_dma_view(s->bus)) return;
         blk_drain(s->blk);
         assert(s->bus->dma->aiocb == NULL);
     }
@@ -1301,6 +1310,16 @@ static void ide_cd_change_cb(void *opaque, bool load, Error **errp)
     IDEState *s = opaque;
     uint64_t nb_sectors;
 
+    if (!load) {
+        /* Retire this drive before replacement closes its source. Other
+         * devices on the bus keep their own active command. */
+        bool pio_pending = s->atapi_pio_pending;
+        ide_atapi_pio_cancel(s);
+        if (pio_pending) ide_abort_command(s);
+        if (s->bus->retry_unit == s->unit) {
+            ide_abandon_dma_view(s->bus);
+        }
+    }
     s->tray_open = !load;
     blk_get_geometry(s->blk, &nb_sectors);
     s->nb_sectors = nb_sectors;
@@ -2700,7 +2719,7 @@ void ide_bus_reset(IDEBus *bus)
     /* pending async DMA - needs the IDEState before it is reset */
     if (bus->dma->aiocb) {
         trace_ide_bus_reset_aio();
-        blk_aio_cancel(bus->dma->aiocb);
+        if (!ide_abandon_dma_view(bus)) blk_aio_cancel(bus->dma->aiocb);
         bus->dma->aiocb = NULL;
     }
 

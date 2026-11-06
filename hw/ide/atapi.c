@@ -359,7 +359,10 @@ static void ide_atapi_cmd_check_status(IDEState *s)
  * A DVD read of 2048-byte sectors, the whole transfer at once from the
  * image straight into the guest's memory through the PRD table's
  * scatter-gather list (dma_blk_read), as the hard disk's reads go
- * (core.c ide_dma_cb). The reads in 128 KB pieces went through a bounce
+ * (core.c ide_dma_cb). Immutable mapped sources are retained before the
+ * guest is mapped; each destination loan covers only its owner-side copy.
+ * Other sources retain the direct positional-I/O path.
+ * The reads in 128 KB pieces went through a bounce
  * buffer allocated for each (ide_buffered_readv), a copy into io_buffer
  * and a copy into the guest's memory (rw_buf). Raw 2352-byte sectors,
  * whose headers are made up in io_buffer, and the replies to the other
