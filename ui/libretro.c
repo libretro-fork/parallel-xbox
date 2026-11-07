@@ -125,46 +125,10 @@ static GLint  blit_tex_loc = -1;
 /* Vulkan HW render interface from RetroArch */
 static struct retro_hw_render_interface_vulkan *vulkan_if = NULL;
 
-/* RA-side VK resources: xemu's display image imported into RA's VkDevice */
-static VkImage ra_vk_image = VK_NULL_HANDLE;
-static VkImageView ra_vk_image_view = VK_NULL_HANDLE;
-static VkDeviceMemory ra_vk_memory = VK_NULL_HANDLE;
-static uint32_t ra_vk_width = 0, ra_vk_height = 0;
-static void *ra_last_handle = NULL;
+/* The frontend samples renderer-owned images on the negotiated device. */
 static struct retro_vulkan_image retro_vk_image;
-/* The Vulkan renderer is off the shared device (vk_park_renderer) */
+/* The Vulkan renderer is off the shared device (vk_park_renderer). */
 static bool vk_renderer_parked;
-static VkImageViewCreateInfo ra_vk_view_ci;
-
-/* VK function pointers from RA's device (not xemu's) */
-static PFN_vkCreateImage ra_vkCreateImage;
-static PFN_vkDestroyImage ra_vkDestroyImage;
-static PFN_vkCreateImageView ra_vkCreateImageView;
-static PFN_vkDestroyImageView ra_vkDestroyImageView;
-static PFN_vkAllocateMemory ra_vkAllocateMemory;
-static PFN_vkFreeMemory ra_vkFreeMemory;
-static PFN_vkBindImageMemory ra_vkBindImageMemory;
-static PFN_vkGetImageMemoryRequirements ra_vkGetImageMemoryRequirements;
-static PFN_vkGetPhysicalDeviceMemoryProperties ra_vkGetPhysicalDeviceMemoryProperties;
-static PFN_vkCreateCommandPool ra_vkCreateCommandPool;
-static PFN_vkDestroyCommandPool ra_vkDestroyCommandPool;
-static PFN_vkAllocateCommandBuffers ra_vkAllocateCommandBuffers;
-static PFN_vkFreeCommandBuffers ra_vkFreeCommandBuffers;
-static PFN_vkBeginCommandBuffer ra_vkBeginCommandBuffer;
-static PFN_vkEndCommandBuffer ra_vkEndCommandBuffer;
-static PFN_vkQueueSubmit ra_vkQueueSubmit;
-static PFN_vkQueueWaitIdle ra_vkQueueWaitIdle;
-static PFN_vkCmdPipelineBarrier ra_vkCmdPipelineBarrier;
-static PFN_vkCreateFence ra_vkCreateFence;
-static PFN_vkDestroyFence ra_vkDestroyFence;
-static PFN_vkWaitForFences ra_vkWaitForFences;
-static PFN_vkResetFences ra_vkResetFences;
-static PFN_vkResetCommandBuffer ra_vkResetCommandBuffer;
-static VkCommandPool ra_vk_cmd_pool = VK_NULL_HANDLE;
-static VkCommandBuffer ra_vk_cmds[2] = { VK_NULL_HANDLE, VK_NULL_HANDLE };
-static VkFence ra_vk_fences[2] = { VK_NULL_HANDLE, VK_NULL_HANDLE };
-static uint32_t ra_vk_frame_idx = 0;
-static bool ra_vk_funcs_resolved = false;
 
 /* Standalone GL for VK renderer's internal GL interop (PFIFO thread), and
  * the frontend's current context kept around the machine's commands */
@@ -425,301 +389,6 @@ static void draw_gl_crosshairs(unsigned width, unsigned height, uintptr_t fbo)
     }
     glDisable(GL_SCISSOR_TEST);
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
-}
-
-/* ========================================================================= */
-/* Vulkan HW render helpers                                                  */
-/* ========================================================================= */
-
-static void ra_vk_resolve_functions(void)
-{
-    if (!vulkan_if || ra_vk_funcs_resolved) return;
-
-    PFN_vkGetDeviceProcAddr gdpa = vulkan_if->get_device_proc_addr;
-    PFN_vkGetInstanceProcAddr gipa = vulkan_if->get_instance_proc_addr;
-    VkDevice dev = vulkan_if->device;
-    VkInstance inst = vulkan_if->instance;
-
-    ra_vkCreateImage = (PFN_vkCreateImage)gdpa(dev, "vkCreateImage");
-    ra_vkDestroyImage = (PFN_vkDestroyImage)gdpa(dev, "vkDestroyImage");
-    ra_vkCreateImageView = (PFN_vkCreateImageView)gdpa(dev, "vkCreateImageView");
-    ra_vkDestroyImageView = (PFN_vkDestroyImageView)gdpa(dev, "vkDestroyImageView");
-    ra_vkAllocateMemory = (PFN_vkAllocateMemory)gdpa(dev, "vkAllocateMemory");
-    ra_vkFreeMemory = (PFN_vkFreeMemory)gdpa(dev, "vkFreeMemory");
-    ra_vkBindImageMemory = (PFN_vkBindImageMemory)gdpa(dev, "vkBindImageMemory");
-    ra_vkGetImageMemoryRequirements = (PFN_vkGetImageMemoryRequirements)gdpa(dev, "vkGetImageMemoryRequirements");
-    ra_vkGetPhysicalDeviceMemoryProperties = (PFN_vkGetPhysicalDeviceMemoryProperties)gipa(inst, "vkGetPhysicalDeviceMemoryProperties");
-    ra_vkCreateCommandPool = (PFN_vkCreateCommandPool)gdpa(dev, "vkCreateCommandPool");
-    ra_vkDestroyCommandPool = (PFN_vkDestroyCommandPool)gdpa(dev, "vkDestroyCommandPool");
-    ra_vkAllocateCommandBuffers = (PFN_vkAllocateCommandBuffers)gdpa(dev, "vkAllocateCommandBuffers");
-    ra_vkFreeCommandBuffers = (PFN_vkFreeCommandBuffers)gdpa(dev, "vkFreeCommandBuffers");
-    ra_vkBeginCommandBuffer = (PFN_vkBeginCommandBuffer)gdpa(dev, "vkBeginCommandBuffer");
-    ra_vkEndCommandBuffer = (PFN_vkEndCommandBuffer)gdpa(dev, "vkEndCommandBuffer");
-    ra_vkQueueSubmit = (PFN_vkQueueSubmit)gdpa(dev, "vkQueueSubmit");
-    ra_vkQueueWaitIdle = (PFN_vkQueueWaitIdle)gdpa(dev, "vkQueueWaitIdle");
-    ra_vkCmdPipelineBarrier = (PFN_vkCmdPipelineBarrier)gdpa(dev, "vkCmdPipelineBarrier");
-    ra_vkCreateFence = (PFN_vkCreateFence)gdpa(dev, "vkCreateFence");
-    ra_vkDestroyFence = (PFN_vkDestroyFence)gdpa(dev, "vkDestroyFence");
-    ra_vkWaitForFences = (PFN_vkWaitForFences)gdpa(dev, "vkWaitForFences");
-    ra_vkResetFences = (PFN_vkResetFences)gdpa(dev, "vkResetFences");
-    ra_vkResetCommandBuffer = (PFN_vkResetCommandBuffer)gdpa(dev, "vkResetCommandBuffer");
-
-    ra_vk_funcs_resolved = (ra_vkCreateImage && ra_vkDestroyImage &&
-                            ra_vkCreateImageView && ra_vkDestroyImageView &&
-                            ra_vkAllocateMemory && ra_vkFreeMemory &&
-                            ra_vkBindImageMemory && ra_vkGetImageMemoryRequirements &&
-                            ra_vkGetPhysicalDeviceMemoryProperties &&
-                            ra_vkCreateCommandPool && ra_vkAllocateCommandBuffers &&
-                            ra_vkBeginCommandBuffer && ra_vkEndCommandBuffer &&
-                            ra_vkQueueSubmit && ra_vkCmdPipelineBarrier &&
-                            ra_vkCreateFence && ra_vkWaitForFences &&
-                            ra_vkResetFences && ra_vkResetCommandBuffer);
-
-    if (ra_vk_funcs_resolved && ra_vk_cmd_pool == VK_NULL_HANDLE) {
-        VkCommandPoolCreateInfo pool_ci = {
-            .sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
-            .flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT,
-            .queueFamilyIndex = vulkan_if->queue_index,
-        };
-        ra_vkCreateCommandPool(dev, &pool_ci, NULL, &ra_vk_cmd_pool);
-
-        VkCommandBufferAllocateInfo cmd_ai = {
-            .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
-            .commandPool = ra_vk_cmd_pool,
-            .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
-            .commandBufferCount = 2,
-        };
-        ra_vkAllocateCommandBuffers(dev, &cmd_ai, ra_vk_cmds);
-
-        VkFenceCreateInfo fence_ci = {
-            .sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO,
-            .flags = VK_FENCE_CREATE_SIGNALED_BIT,
-        };
-        ra_vkCreateFence(dev, &fence_ci, NULL, &ra_vk_fences[0]);
-        ra_vkCreateFence(dev, &fence_ci, NULL, &ra_vk_fences[1]);
-    }
-}
-
-static uint32_t ra_vk_find_memory_type(uint32_t type_bits, VkMemoryPropertyFlags props)
-{
-    VkPhysicalDeviceMemoryProperties mem_props;
-    ra_vkGetPhysicalDeviceMemoryProperties(vulkan_if->gpu, &mem_props);
-    for (uint32_t i = 0; i < mem_props.memoryTypeCount; i++) {
-        if ((type_bits & (1 << i)) &&
-            (mem_props.memoryTypes[i].propertyFlags & props) == props) {
-            return i;
-        }
-    }
-    return 0;
-}
-
-static void ra_vk_transition_layout(VkImage image, VkImageLayout old_layout, VkImageLayout new_layout)
-{
-    if (!vulkan_if || !ra_vk_funcs_resolved) return;
-
-    uint32_t idx = ra_vk_frame_idx;
-    VkCommandBuffer cmd = ra_vk_cmds[idx];
-    VkFence fence = ra_vk_fences[idx];
-    if (!cmd || !fence) return;
-
-    VkDevice dev = vulkan_if->device;
-
-    /* Wait for THIS slot's fence (from 2 frames ago — should be instant) */
-    ra_vkWaitForFences(dev, 1, &fence, VK_TRUE, UINT64_MAX);
-    ra_vkResetFences(dev, 1, &fence);
-    ra_vkResetCommandBuffer(cmd, 0);
-
-    VkCommandBufferBeginInfo begin_info = {
-        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
-        .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
-    };
-    ra_vkBeginCommandBuffer(cmd, &begin_info);
-
-    VkImageMemoryBarrier barrier = {
-        .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
-        .oldLayout = old_layout,
-        .newLayout = new_layout,
-        .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-        .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-        .image = image,
-        .subresourceRange = {
-            .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
-            .levelCount = 1,
-            .layerCount = 1,
-        },
-        .srcAccessMask = 0,
-        .dstAccessMask = VK_ACCESS_SHADER_READ_BIT,
-    };
-
-    ra_vkCmdPipelineBarrier(cmd,
-        VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
-        VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
-        0, 0, NULL, 0, NULL, 1, &barrier);
-
-    ra_vkEndCommandBuffer(cmd);
-
-    VkSubmitInfo submit = {
-        .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
-        .commandBufferCount = 1,
-        .pCommandBuffers = &cmd,
-    };
-
-    vulkan_if->lock_queue(vulkan_if->handle);
-    ra_vkQueueSubmit(vulkan_if->queue, 1, &submit, fence);
-    vulkan_if->unlock_queue(vulkan_if->handle);
-
-    /* Flip to other slot for next frame */
-    ra_vk_frame_idx = 1 - idx;
-}
-
-static void ra_vk_cleanup_display(void)
-{
-    if (!vulkan_if) return;
-    VkDevice dev = vulkan_if->device;
-
-    if (ra_vk_image_view != VK_NULL_HANDLE) {
-        ra_vkDestroyImageView(dev, ra_vk_image_view, NULL);
-        ra_vk_image_view = VK_NULL_HANDLE;
-    }
-    if (ra_vk_image != VK_NULL_HANDLE) {
-        ra_vkDestroyImage(dev, ra_vk_image, NULL);
-        ra_vk_image = VK_NULL_HANDLE;
-    }
-    if (ra_vk_memory != VK_NULL_HANDLE) {
-        ra_vkFreeMemory(dev, ra_vk_memory, NULL);
-        ra_vk_memory = VK_NULL_HANDLE;
-    }
-    ra_vk_width = 0;
-    ra_vk_height = 0;
-    ra_last_handle = NULL;
-}
-
-static bool ra_vk_import_display(void *ext_handle, int width, int height)
-{
-    if (!vulkan_if || !ra_vk_funcs_resolved || !ext_handle || !width || !height)
-        return false;
-
-    VkDevice dev = vulkan_if->device;
-
-    /* Cleanup old resources if size changed */
-    if (ra_vk_image != VK_NULL_HANDLE &&
-        ((uint32_t)width != ra_vk_width || (uint32_t)height != ra_vk_height)) {
-        ra_vk_cleanup_display();
-    }
-
-    /* Already imported this handle at this size */
-    if (ra_vk_image != VK_NULL_HANDLE && ext_handle == ra_last_handle)
-        return true;
-
-    ra_vk_cleanup_display();
-
-    /* Create VkImage on RA's device with external memory import */
-    VkExternalMemoryImageCreateInfo ext_img_ci = {
-        .sType = VK_STRUCTURE_TYPE_EXTERNAL_MEMORY_IMAGE_CREATE_INFO,
-#ifdef _WIN32
-        .handleTypes = VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_WIN32_BIT,
-#else
-        .handleTypes = VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_FD_BIT,
-#endif
-    };
-
-    VkImageCreateInfo img_ci = {
-        .sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
-        .pNext = &ext_img_ci,
-        .flags = VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT,
-        .imageType = VK_IMAGE_TYPE_2D,
-        .format = VK_FORMAT_R8G8B8A8_UNORM,
-        .extent = { width, height, 1 },
-        .mipLevels = 1,
-        .arrayLayers = 1,
-        .samples = VK_SAMPLE_COUNT_1_BIT,
-        .tiling = VK_IMAGE_TILING_OPTIMAL,
-        .usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT,
-        .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
-        .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
-    };
-
-    VkResult res = ra_vkCreateImage(dev, &img_ci, NULL, &ra_vk_image);
-    if (res != VK_SUCCESS) {
-        return false;
-    }
-
-    VkMemoryRequirements mem_reqs;
-    ra_vkGetImageMemoryRequirements(dev, ra_vk_image, &mem_reqs);
-
-    /* Import the external memory handle */
-#ifdef _WIN32
-    VkImportMemoryWin32HandleInfoKHR import_info = {
-        .sType = VK_STRUCTURE_TYPE_IMPORT_MEMORY_WIN32_HANDLE_INFO_KHR,
-        .handleType = VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_WIN32_BIT,
-        .handle = (HANDLE)ext_handle,
-    };
-#else
-    /* ext_handle only says which image this is; the fd is taken now, and a
-     * successful import makes it the driver's to close. */
-    const int import_fd = nv2a_take_vk_display_fd();
-    if (import_fd < 0) {
-        ra_vkDestroyImage(dev, ra_vk_image, NULL);
-        ra_vk_image = VK_NULL_HANDLE;
-        return false;
-    }
-    VkImportMemoryFdInfoKHR import_info = {
-        .sType = VK_STRUCTURE_TYPE_IMPORT_MEMORY_FD_INFO_KHR,
-        .handleType = VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_FD_BIT,
-        .fd = import_fd,
-    };
-#endif
-
-    VkMemoryAllocateInfo alloc_info = {
-        .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
-        .pNext = &import_info,
-        .allocationSize = mem_reqs.size,
-        .memoryTypeIndex = ra_vk_find_memory_type(mem_reqs.memoryTypeBits,
-                                                   VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT),
-    };
-
-    res = ra_vkAllocateMemory(dev, &alloc_info, NULL, &ra_vk_memory);
-    if (res != VK_SUCCESS) {
-#ifndef _WIN32
-        close(import_fd); /* still ours: the import failed */
-#endif
-        ra_vkDestroyImage(dev, ra_vk_image, NULL);
-        ra_vk_image = VK_NULL_HANDLE;
-        return false;
-    }
-
-    res = ra_vkBindImageMemory(dev, ra_vk_image, ra_vk_memory, 0);
-    if (res != VK_SUCCESS) {
-        ra_vk_cleanup_display();
-        return false;
-    }
-
-    /* Create VkImageView */
-    ra_vk_view_ci = (VkImageViewCreateInfo){
-        .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
-        .image = ra_vk_image,
-        .viewType = VK_IMAGE_VIEW_TYPE_2D,
-        .format = VK_FORMAT_R8G8B8A8_UNORM,
-        .components = { VK_COMPONENT_SWIZZLE_IDENTITY, VK_COMPONENT_SWIZZLE_IDENTITY,
-                        VK_COMPONENT_SWIZZLE_IDENTITY, VK_COMPONENT_SWIZZLE_IDENTITY },
-        .subresourceRange = {
-            .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
-            .levelCount = 1,
-            .layerCount = 1,
-        },
-    };
-
-    res = ra_vkCreateImageView(dev, &ra_vk_view_ci, NULL, &ra_vk_image_view);
-    if (res != VK_SUCCESS) {
-        ra_vk_cleanup_display();
-        return false;
-    }
-
-    ra_vk_width = width;
-    ra_vk_height = height;
-    ra_last_handle = ext_handle;
-
-    return true;
 }
 
 /* ========================================================================= */
@@ -1228,11 +897,22 @@ static void context_reset(void)
                 vulkan_if = (struct retro_hw_render_interface_vulkan *)iface;
                 LRLOG_INFO("[xemu] Got Vulkan HW render interface (version %u, device=%p)\n",
                            vulkan_if->interface_version, (void*)vulkan_if->device);
-                ra_vk_resolve_functions();
             } else {
                 LRLOG_ERROR("[xemu] Failed to get Vulkan HW render interface\n");
                 vulkan_if = NULL;
             }
+        }
+
+        /* Never start a private-device renderer behind a frontend that ignored
+         * negotiation. Its cross-device display path cannot provide the owned,
+         * GPU-ordered handoff required by retro_run. */
+        if (!vulkan_if || !xemu_libretro_vk.active ||
+            vulkan_if->device != xemu_libretro_vk.device ||
+            vulkan_if->gpu != xemu_libretro_vk.gpu ||
+            vulkan_if->instance != xemu_libretro_vk.instance) {
+            LRLOG_ERROR("[xemu] Vulkan requires the negotiated frontend device; use glcore if negotiation is unavailable\n");
+            context_ready = false;
+            return;
         }
 
         extern void libretro_gl_set_standalone_mode(void);
@@ -1267,7 +947,8 @@ static void context_reset(void)
  * exists, and nothing of it runs on a device that is gone */
 static void vk_park_renderer(void)
 {
-    if (!xemu_libretro_vk.active || vk_renderer_parked) {
+    /* A rejected context never started the machine or its command channel. */
+    if (!emu_initialized || !xemu_libretro_vk.active || vk_renderer_parked) {
         return;
     }
     lr_cmd_arg = CONFIG_DISPLAY_RENDERER_NULL;
@@ -1292,23 +973,6 @@ static void context_destroy(void)
         destroy_blit_resources();
     }
 
-    if (use_vulkan && vulkan_if) {
-        ra_vk_cleanup_display();
-        for (int i = 0; i < 2; i++) {
-            if (ra_vk_fences[i] != VK_NULL_HANDLE && ra_vkDestroyFence) {
-                ra_vkWaitForFences(vulkan_if->device, 1, &ra_vk_fences[i], VK_TRUE, UINT64_MAX);
-                ra_vkDestroyFence(vulkan_if->device, ra_vk_fences[i], NULL);
-                ra_vk_fences[i] = VK_NULL_HANDLE;
-            }
-            ra_vk_cmds[i] = VK_NULL_HANDLE;
-        }
-        ra_vk_frame_idx = 0;
-        if (ra_vk_cmd_pool != VK_NULL_HANDLE && ra_vkDestroyCommandPool) {
-            ra_vkDestroyCommandPool(vulkan_if->device, ra_vk_cmd_pool, NULL);
-            ra_vk_cmd_pool = VK_NULL_HANDLE;
-        }
-        ra_vk_funcs_resolved = false;
-    }
     vulkan_if = NULL;
 }
 
@@ -2023,32 +1687,14 @@ static void lr_idle_wait(CPUState *cpu, int64_t now, int64_t until)
 
 static void lr_finish_frame(void)
 {
-    /* Ask the FIFO owner to refresh scanout after its pending work. GL and
-     * shared-device Vulkan publish owned display images with GPU ordering;
-     * their frontend never waits for this CPU acknowledgement. Legacy Vulkan
-     * interop still needs the acknowledgement below. */
+    /* The FIFO owner composes scanout after pending work. Both renderers
+     * publish owned images with GPU ordering; present the latest available
+     * image without waiting for this request to be acknowledged. */
     extern int nv2a_libretro_frame_end(void);
-    extern bool nv2a_libretro_frame_end_done(int end);
-    int end;
 
-    if (!runstate_is_running()) {
-        return;
+    if (runstate_is_running()) {
+        nv2a_libretro_frame_end();
     }
-    /* Request scanout composition once. Legacy paths then wait for the
-     * FIFO owner to reach its idle point and acknowledge the refresh. */
-    end = nv2a_libretro_frame_end();
-    if (!end || !use_vulkan || xemu_libretro_vk.active) {
-        return;
-    }
-    for (;;) {
-        retro_atomic_store_relaxed_int(&nv2a_libretro_waiter, 1);
-        retro_atomic_thread_fence_seq_cst();
-        if (!runstate_is_running() || nv2a_libretro_frame_end_done(end)) {
-            break;
-        }
-        main_loop_wait(false);
-    }
-    retro_atomic_store_relaxed_int(&nv2a_libretro_waiter, 0);
 }
 
 /* One frame of guest time, from the end of the last one on a grid of
@@ -3021,8 +2667,11 @@ RETRO_API bool retro_load_game(const struct retro_game_info *game)
         xemu_vk_negotiation.interface_version = version;
         LRLOG_INFO("[xemu] Using Vulkan HW rendering, context negotiation v%u\n",
                    version);
-        environ_cb(RETRO_ENVIRONMENT_SET_HW_RENDER_CONTEXT_NEGOTIATION_INTERFACE,
-                   (void *)&xemu_vk_negotiation);
+        if (!environ_cb(RETRO_ENVIRONMENT_SET_HW_RENDER_CONTEXT_NEGOTIATION_INTERFACE,
+                        (void *)&xemu_vk_negotiation)) {
+            LRLOG_ERROR("[xemu] Vulkan device negotiation was refused; use the glcore video driver\n");
+            return false;
+        }
     } else {
         LRLOG_INFO("[xemu] Using OpenGL HW rendering\n");
         environ_cb(RETRO_ENVIRONMENT_SET_HW_SHARED_CONTEXT, NULL);
@@ -3206,55 +2855,9 @@ static void lr_present_video(void)
         return;
     }
 
-    static bool vk_display_initialized = false;
-
-    if (!vk_display_initialized) {
-        /* First frame: blocking sync to initialize display image */
-        int tex = nv2a_get_framebuffer_surface(NULL, NULL);
-        nv2a_release_framebuffer_surface();
-        if (tex) {
-            vk_display_initialized = true;
-        }
-    } else {
-        /* Subsequent frames: trigger async render (non-blocking) */
-        nv2a_trigger_display_render();
-    }
-
-    /* Get VK display info */
-    void *ext_handle = NULL;
-    int disp_w = 0, disp_h = 0;
-    nv2a_get_vk_display_info(&ext_handle, &disp_w, &disp_h);
-
-    if (ext_handle && disp_w > 0 && disp_h > 0) {
-        /* Import xemu's display image into RA's VkDevice */
-        static bool vk_layout_set = false;
-        if (ra_vk_import_display(ext_handle, disp_w, disp_h)) {
-            if (!vk_layout_set) {
-                ra_vk_transition_layout(ra_vk_image,
-                    VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL);
-                vk_layout_set = true;
-            }
-            ra_vk_transition_layout(ra_vk_image,
-                VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_GENERAL);
-
-            /* Set the image for RetroArch to display */
-            retro_vk_image.image_view = ra_vk_image_view;
-            retro_vk_image.image_layout = VK_IMAGE_LAYOUT_GENERAL;
-            retro_vk_image.create_info = ra_vk_view_ci;
-
-            vulkan_if->set_image(vulkan_if->handle, &retro_vk_image,
-                                 0, NULL, VK_QUEUE_FAMILY_IGNORED);
-
-            width = disp_w;
-            height = disp_h;
-
-            video_cb(RETRO_HW_FRAME_BUFFER_VALID, width, height, 0);
-        } else {
-            video_cb(NULL, width, height, 0);
-        }
-    } else {
-        video_cb(NULL, width, height, 0);
-    }
+    /* No active negotiated device (for example during context teardown).
+     * Keep the video/audio cadence without touching a private device. */
+    video_cb(NULL, width, height, 0);
 }
 
 /* A frame with no machine to show: black, and a frame's worth of silence */

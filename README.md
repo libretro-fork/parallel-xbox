@@ -76,7 +76,7 @@ Above native resolution, eligible depth-disabled 2D color rectangles with matche
 
 Guest RGB gamma ramps are applied automatically during presentation in both renderers, after video overlay composition. Game brightness settings and gamma fades need no core option. Neutral ramps bypass the lookup.
 
-The core renders with OpenGL or Vulkan, whichever RetroArch's video driver is (`glcore` or `vulkan`). On Android it is Vulkan only. On macOS it is OpenGL: MoltenVK has no geometry shaders, which xemu's Vulkan renderer needs, so use RetroArch's `glcore` driver there.
+The core renders with OpenGL or Vulkan, whichever RetroArch's video driver is (`glcore` or `vulkan`). Vulkan requires frontend device negotiation (v1 or v2); frontends without it should use `glcore`. Display images stay on the negotiated device, with no cross-device import fallback. On Android it is Vulkan only. On macOS it is OpenGL: MoltenVK has no geometry shaders, which xemu's Vulkan renderer needs, so use RetroArch's `glcore` driver there.
 
 ## Building
 

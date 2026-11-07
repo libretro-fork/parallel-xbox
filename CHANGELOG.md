@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Vulkan presentation now requires the negotiated frontend device. Remove the old cross-device import path and its blocking frame acknowledgement, fence waits and layout submissions. Frontends that refuse negotiation fail content loading explicitly; mismatched contexts stay idle instead of starting a private renderer. GL and shared-device Vulkan retain their existing latest-image handoff and exact audio cadence; guest device/coherence waits remain.
+
 - DSP: skip clearing the empty interpreter opcode cache during native-only execution. Preserve decoder-cache invalidation after interpreter use, bootstrap and state loading, with regression checks for both backends.
 
 - DSP JIT: clear only touched program-coverage words on sparse cache flushes, retaining the bulk clear for full coverage. Fix translation at the program-RAM wrap boundary so writes still invalidate high-address code; add exact clearing and boundary regression checks.

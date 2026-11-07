@@ -339,8 +339,7 @@ bool nv2a_libretro_guest_busy(void)
  * was drawn before them. Requests replace the latest sequence, without a
  * frame queue. Shared-device Vulkan presents the latest safely published
  * image without waiting for acknowledgement, as does GL after composing
- * into its owned mailbox. Legacy Vulkan interop waits for this
- * sequence. Return 0 with no GPU thread running. */
+ * into its owned mailbox. Return 0 with no GPU thread running. */
 int nv2a_libretro_frame_end(void)
 {
     NV2AState *d = g_nv2a;
@@ -355,19 +354,6 @@ int nv2a_libretro_frame_end(void)
     retro_atomic_store_release_int(&d->pfifo.frame_end_req, end);
     pfifo_kick(d);
     return end;
-}
-
-/* Whether the GPU's thread has drawn the display for request end, or
- * stopped */
-bool nv2a_libretro_frame_end_done(int end)
-{
-    NV2AState *d = g_nv2a;
-
-    if (!d || !retro_atomic_load_acquire_int(&d->pfifo.thread_running) ||
-        retro_atomic_load_relaxed_int(&d->pfifo.halt)) {
-        return true;
-    }
-    return retro_atomic_load_acquire_int(&d->pfifo.frame_end_done) == end;
 }
 
 QemuConsole *nv2a_get_vga_console(void)

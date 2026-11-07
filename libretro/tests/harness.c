@@ -56,6 +56,10 @@
  *                       and retro_unserialize
  *     --reset N         retro_reset before run N
  *     --reload N        close the content and load it again before run N
+ *     --vulkan-refuse-negotiation
+ *                       refuse device negotiation (expect load failure)
+ *     --vulkan-mismatch-device
+ *                       return a different device (expect idle callbacks)
  *     --strict          exit 1 unless every run gave one frame's worth of
  *                       audio in one batch and a video call, none of them
  *                       ending in silence after sound (samples run short)
@@ -130,6 +134,8 @@ static struct retro_hw_render_callback hw;
 static int have_hw;
 static int use_vulkan;
 static int vulkan_v1; /* --vulkan-v1: negotiation interface version 1 */
+static int vulkan_refuse_negotiation;
+static int vulkan_mismatch_device;
 static retro_keyboard_event_t kb_cb;
 
 static int run_no;
@@ -1150,7 +1156,7 @@ static bool env_cb(unsigned cmd, void *data)
            ~RETRO_ENVIRONMENT_EXPERIMENTAL:
       {
          const struct retro_hw_render_context_negotiation_interface *n = data;
-         if (!use_vulkan || n->interface_type !=
+         if (!use_vulkan || vulkan_refuse_negotiation || n->interface_type !=
                RETRO_HW_RENDER_CONTEXT_NEGOTIATION_INTERFACE_VULKAN)
             return false;
          vk_nego = data;
@@ -1702,6 +1708,10 @@ int main(int argc, char **argv)
          use_vulkan = 1;
       else if (!strcmp(argv[i], "--vulkan-v1"))
          use_vulkan = vulkan_v1 = 1;
+      else if (!strcmp(argv[i], "--vulkan-refuse-negotiation"))
+         use_vulkan = vulkan_refuse_negotiation = 1;
+      else if (!strcmp(argv[i], "--vulkan-mismatch-device"))
+         use_vulkan = vulkan_mismatch_device = 1;
       else if (!strcmp(argv[i], "--realtime"))
          realtime = 1;
       else if (!strcmp(argv[i], "--save") && i + 1 < argc)
@@ -1881,6 +1891,10 @@ int main(int argc, char **argv)
       fprintf(stderr, "harness: no Vulkan device\n");
       return 3;
    }
+   /* Deliberately violate negotiation without changing the real device used
+    * for harness cleanup. The core must not start its machine on this handle. */
+   if (vulkan_mismatch_device)
+      vk_iface.device = VK_NULL_HANDLE;
    if (have_hw && hw.context_reset)
       hw.context_reset();
    t_load = now_us() - t0;
