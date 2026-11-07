@@ -198,7 +198,7 @@ static void dsp_c_bootstrap(DSPState *dsp)
     dsp->dma.scratch_walk(dsp->dma.rw_opaque, 0, 0x800 * 4, false,
                           dsp_c_bootstrap_run, &load);
     assert(load.partial == 0);
-    memset(core->pram_opcache, 0, sizeof(core->pram_opcache));
+    dsp56k_clear_opcache(core);
     if (core->jit) {
         dspjit_flush(core->jit);
     }
@@ -280,7 +280,7 @@ static void dsp_c_set_cycle_count(DSPState *dsp, uint32_t count)
 
 static void dsp_c_invalidate_opcache(DSPState *dsp)
 {
-    memset(c_core(dsp)->pram_opcache, 0, sizeof(c_core(dsp)->pram_opcache));
+    dsp56k_clear_opcache(c_core(dsp));
     if (c_core(dsp)->jit) {
         dspjit_flush(c_core(dsp)->jit);
     }
@@ -359,7 +359,7 @@ static void dsp_c_sync_from_vm(DSPState *dsp)
     memcpy(core->interrupt_is_pending, vm->interrupt_is_pending,
            sizeof(core->interrupt_is_pending));
 
-    memset(core->pram_opcache, 0, sizeof(core->pram_opcache));
+    dsp56k_clear_opcache(core);
 }
 
 void dsp_c_init(DSPState *dsp)

@@ -71,6 +71,7 @@ struct dsp_core_s {
     uint32_t yram[DSP_YRAM_SIZE];
     uint32_t pram[DSP_PRAM_SIZE];
     const void *pram_opcache[DSP_PRAM_SIZE];
+    bool pram_opcache_dirty; /* conservative until the whole cache is cleared */
     /* the JIT (jit/dspjit.c), when the engine is it: its context (told of
      * every write to P) and, while it runs, the cycles left of dsp_run()'s */
     struct DspJit *jit;
@@ -154,6 +155,10 @@ struct dsp_core_s {
 
 /* Functions */
 void dsp56k_reset_cpu(dsp_core_t* dsp);		/* Set dsp_core to use */
+void dsp56k_clear_opcache(dsp_core_t *dsp);
+#ifdef DSPJIT_TEST
+uint64_t dsp56k_test_opcache_clear_bytes(void);
+#endif
 void dsp56k_execute_instruction(dsp_core_t* dsp);	/* Execute 1 instruction */
 
 uint32_t dsp56k_read_memory(dsp_core_t* dsp, int space, uint32_t address);

@@ -56,6 +56,93 @@ static void partial(Machine *m, unsigned pc, bool rep, bool clear)
     m->dsp->ops->run(m->dsp, 1);
     REQUIRE(c->registers[DSP_REG_A1] == (clear ? 0 : 0x123456));
 }
+static void require_empty_opcache(dsp_core_t *c)
+{
+    bool empty = true;
+    for (unsigned pc = 0; pc < DSP_PRAM_SIZE; pc++) empty &= c->pram_opcache[pc] == NULL;
+    REQUIRE(empty);
+    REQUIRE(!c->pram_opcache_dirty);
+}
+static void prime_opcache(dsp_core_t *c, unsigned pc)
+{
+    c->pc = pc;
+    c->pram[pc] = 0; /* nonparallel NOP populates the interpreter decoder cache */
+    c->is_idle = false;
+    c->loop_rep = 0;
+    c->interrupt_state = DSP_INTERRUPT_NONE;
+    dsp56k_execute_instruction(c);
+    REQUIRE(c->pram_opcache[pc] != NULL);
+    REQUIRE(c->pram_opcache_dirty);
+}
+static void backend_opcache_checks(void)
+{
+    for (unsigned jit = 0; jit < 2; jit++) {
+        Machine *m = machine_new(jit);
+        dsp_core_t *c = m->dsp->backend;
+        uint64_t bytes = dsp56k_test_opcache_clear_bytes();
+        require_empty_opcache(c);
+        for (unsigned i = 0; i < 1000; i++) m->dsp->ops->invalidate_opcache(m->dsp);
+        REQUIRE(dsp56k_test_opcache_clear_bytes() == bytes);
+        if (jit) {
+            c->pram[0] = 0x200013;
+            c->pram[1] = 0x08f484;
+            c->pram[2] = 1;
+            normal(m, 0, true);
+            m->dsp->ops->invalidate_opcache(m->dsp);
+            require_empty_opcache(c);
+            REQUIRE(dsp56k_test_opcache_clear_bytes() == bytes);
+        }
+        for (unsigned phase = 0; phase < 2; phase++) {
+            prime_opcache(c, 0);
+            prime_opcache(c, 63);
+            prime_opcache(c, DSP_PRAM_SIZE - 1);
+            m->dsp->ops->invalidate_opcache(m->dsp);
+            REQUIRE(dsp56k_test_opcache_clear_bytes() == bytes + (phase + 1) * sizeof(c->pram_opcache));
+            require_empty_opcache(c);
+            m->dsp->ops->invalidate_opcache(m->dsp);
+            REQUIRE(dsp56k_test_opcache_clear_bytes() == bytes + (phase + 1) * sizeof(c->pram_opcache));
+        }
+        /* Per-word eviction must not incorrectly mark other entries empty. */
+        prime_opcache(c, 0);
+        prime_opcache(c, 63);
+        m->dsp->ops->write_memory(m->dsp, 'P', 0, 1);
+        REQUIRE(c->pram_opcache[0] == NULL);
+        REQUIRE(c->pram_opcache[63] != NULL);
+        m->dsp->ops->invalidate_opcache(m->dsp);
+        require_empty_opcache(c);
+        /* Even eviction of the last pointer can retain a conservative marker. */
+        prime_opcache(c, 0);
+        m->dsp->ops->write_memory(m->dsp, 'P', 0, 1);
+        bytes = dsp56k_test_opcache_clear_bytes();
+        m->dsp->ops->invalidate_opcache(m->dsp);
+        REQUIRE(dsp56k_test_opcache_clear_bytes() == bytes + sizeof(c->pram_opcache));
+        require_empty_opcache(c);
+        prime_opcache(c, 63);
+        bytes = dsp56k_test_opcache_clear_bytes();
+        m->dsp->ops->bootstrap(m->dsp);
+        REQUIRE(dsp56k_test_opcache_clear_bytes() == bytes + sizeof(c->pram_opcache));
+        require_empty_opcache(c);
+        m->dsp->ops->bootstrap(m->dsp);
+        REQUIRE(dsp56k_test_opcache_clear_bytes() == bytes + sizeof(c->pram_opcache));
+        prime_opcache(c, 63);
+        bytes = dsp56k_test_opcache_clear_bytes();
+        m->dsp->ops->sync_to_vm(m->dsp);
+        m->dsp->core.pram[63] = 0x08f484;
+        m->dsp->core.pram[64] = 1;
+        m->dsp->core.pc = 63;
+        m->dsp->ops->sync_from_vm(m->dsp);
+        REQUIRE(dsp56k_test_opcache_clear_bytes() == bytes + sizeof(c->pram_opcache));
+        require_empty_opcache(c);
+        c->is_idle = false;
+        dsp56k_execute_instruction(c);
+        REQUIRE(c->is_idle); /* restored HALT must not reuse the old cached NOP */
+        m->dsp->ops->reset(m->dsp);
+        REQUIRE(c->pram_opcache_dirty); /* CPU reset preserves program memory */
+        m->dsp->ops->invalidate_opcache(m->dsp);
+        require_empty_opcache(c);
+        dispose(m);
+    }
+}
 static double seconds(void)
 {
 #ifdef _WIN32
@@ -403,6 +490,7 @@ int main(int argc, char **argv)
     }
     dispose(m);
     REQUIRE(dspjit_test_fallback_count() == 4); /* one deliberate legacy REP call per scale */
+    backend_opcache_checks();
     printf("DSP flush: %u empty/normal/REP/interrupt cache checks pass\n",checks);
     return 0;
 }

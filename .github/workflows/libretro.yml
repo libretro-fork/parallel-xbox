@@ -121,9 +121,9 @@ jobs:
       - name: Install focused DSP toolchains
         run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends libepoxy-dev gcc-aarch64-linux-gnu libc6-dev-arm64-cross qemu-user
       - name: Cache publication and flush under ASan and UBSan
-        run: make CC="cc -fsanitize=address,undefined -fno-omit-frame-pointer -fno-sanitize-recover=all" DSPFLUSH="$RUNNER_TEMP/dspflush-sanitize" DSPCOVERAGE="$RUNNER_TEMP/dspcoverage-sanitize" dspflush dspcoverage
+        run: make CC="cc -fsanitize=address,undefined -fno-omit-frame-pointer -fno-sanitize-recover=all" DSPFLUSH="$RUNNER_TEMP/dspflush-sanitize" DSPCOVERAGE="$RUNNER_TEMP/dspcoverage-sanitize" DSPBOOTSTRAP="$RUNNER_TEMP/dspbootstrap-sanitize" dspflush dspcoverage dspbootstrap
       - name: Cache publication and flush on emulated ARM64
-        run: make CC=aarch64-linux-gnu-gcc DSPFLUSH="$RUNNER_TEMP/dspflush-arm64" DSP_PROGRAM_RUNNER="qemu-aarch64 -L /usr/aarch64-linux-gnu" DSPCOVERAGE="$RUNNER_TEMP/dspcoverage-arm64" dspflush dspcoverage
+        run: make CC=aarch64-linux-gnu-gcc DSPFLUSH="$RUNNER_TEMP/dspflush-arm64" DSP_PROGRAM_RUNNER="qemu-aarch64 -L /usr/aarch64-linux-gnu" DSPCOVERAGE="$RUNNER_TEMP/dspcoverage-arm64" DSPBOOTSTRAP="$RUNNER_TEMP/dspbootstrap-arm64" dspflush dspcoverage dspbootstrap
 
   guest-gpu-progress:
     name: DOAX guest GPU progress regression

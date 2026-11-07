@@ -4893,7 +4893,7 @@ rewinds the arena, then clears coverage and retires published entries in
 marked pointer tables. Untouched slots are already empty. Per-word
 invalidation does not reset dirty bits. No saved state changes.
 
-The 1082 focused checks cover initially empty flushes, populated/repeated
+The 1189 focused checks cover initially empty flushes, populated/repeated
 empty flushes, all eight normal scaling/LF identities, direct CLR-to-NOP code
 replacement after flush, REP fallback-to-native replacement, and interrupt-only
 publication/replacement through all four scales and six pipeline stages.
@@ -5137,3 +5137,21 @@ The independent sanitizer/AArch64 CI job runs dspcoverage as well as dspflush.
 A program-RAM boundary regression also checks high-address invalidation and
 recompilation: translation must stop after emitting its wrap-to-zero chain,
 otherwise the block end could be overwritten by unreachable low-address code.
+
+The C backend's interpreter opcode cache now tracks whether lookup has
+populated it since the last whole-cache clear. Bootstrap, VM-state import and
+backend invalidation share the same conditional clear. A cache used only by
+native translations stays empty: invalidating it avoids a 4096-pointer memset
+(32 KiB on 64-bit hosts). This is separate from the JIT's coverage and pointer
+tables. Individual program writes evict their own decoded entry but retain the
+conservative dirty marker; CPU reset preserves it because PRAM is preserved.
+The marker is private derived state and does not change saved-state formats.
+
+The focused flush target checks both interpreter and JIT backends: 1000 empty
+backend invalidations, native-only execution, decoder publication at boundary
+PCs, repeated clear/repopulation, partial and last-entry eviction, bootstrap,
+state import with NOP-to-HALT code replacement, and CPU reset. Exact cleared
+byte counts detect redundant writes as well as a missed decoder publication.
+The bootstrap fixture marks its synthetic prefilled cache populated, matching
+production's publication invariant. The independent sanitizer and ARM64 CI
+job runs both the focused flush and the 65,564 bootstrap cases.

@@ -658,6 +658,21 @@ static const char* disasm_get_instruction_text(dsp_core_t* dsp)
     return dsp->disasm_str_instr2;
 }
 
+#ifdef DSPJIT_TEST
+static uint64_t test_opcache_clear_bytes;
+uint64_t dsp56k_test_opcache_clear_bytes(void) { return test_opcache_clear_bytes; }
+#endif
+
+void dsp56k_clear_opcache(dsp_core_t *dsp)
+{
+    if (!dsp->pram_opcache_dirty) return;
+    memset(dsp->pram_opcache, 0, sizeof(dsp->pram_opcache));
+    dsp->pram_opcache_dirty = false;
+#ifdef DSPJIT_TEST
+    test_opcache_clear_bytes += sizeof(dsp->pram_opcache);
+#endif
+}
+
 void dsp56k_execute_instruction(dsp_core_t* dsp)
 {
     trace_dsp56k_execute_instruction(dsp->is_gp, dsp->pc);
@@ -694,6 +709,7 @@ void dsp56k_execute_instruction(dsp_core_t* dsp)
         if (op == NULL) {
             op = lookup_opcode(dsp->cur_inst);
             dsp->pram_opcache[dsp->pc] = op;
+            dsp->pram_opcache_dirty = true;
         }
         if (op->emu_func) {
             op->emu_func(dsp);
