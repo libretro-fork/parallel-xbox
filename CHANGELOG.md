@@ -4,6 +4,10 @@
 
 - Vulkan presentation now requires the negotiated frontend device. Remove the old cross-device import path and its blocking frame acknowledgement, fence waits and layout submissions. Frontends that refuse negotiation fail content loading explicitly; mismatched contexts stay idle instead of starting a private renderer. GL and shared-device Vulkan retain their existing latest-image handoff and exact audio cadence; guest device/coherence waits remain.
 
+- Two-sided fixed-function lighting uses the back material's own alpha and specular power instead of the front values, fixing back-facing transparency and highlight sharpness. Both renderers and GPU Boost's dynamic lighting path use the existing uniform update/upload lifecycle; no resource copies or retained borrows are added.
+
+- Honor the independent local/infinite viewer setting for fixed-function reflection and sphere-map texture coordinates in both renderers, including GPU Boost's dynamic texgen path. Reuse the existing uniform storage and shader keys; refresh older OpenGL shader caches.
+
 - DSP: skip clearing the empty interpreter opcode cache during native-only execution. Preserve decoder-cache invalidation after interpreter use, bootstrap and state loading, with regression checks for both backends.
 
 - DSP JIT: clear only touched program-coverage words on sparse cache flushes, retaining the bulk clear for full coverage. Fix translation at the program-RAM wrap boundary so writes still invalidate high-address code; add exact clearing and boundary regression checks.

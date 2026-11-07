@@ -147,7 +147,7 @@ static void gen_dynamic_lights(MString *body, const VshState *state)
         "    float bDotVP = max(0.0, -nDotVPraw);\n"
         "    float bDotHV = max(0.0, -nDotHVraw);\n"
         "    float bpf = (bDotVP == 0.0 || bDotHV == 0.0)"
-        " ? 0.0 : pow(bDotHV, specularPower);\n"
+        " ? 0.0 : pow(bDotHV, specularPowerBack);\n"
         "    oB0.xyz += lightBackAmbientColor(i) * attenuation;\n"
         "    oB0.xyz += lightBackDiffuseColor(i) * attenuation * bDotVP;\n"
         "    oB1.xyz += lightBackSpecularColor(i) * attenuation * bpf;\n"
@@ -316,12 +316,17 @@ GLSL_DEFINE(materialEmissionColor, GLSL_LTCTXA(NV_IGRAPH_XF_LTCTXA_CM_COL) ".xyz
         mstring_append(body, "tNormal = normalize(tNormal);\n");
     }
 
+    /* TEXGEN_REF is independent of the lighting LOCALVIEWER setting.
+     * Keep it live in the existing texgen uniform for both shader paths. */
+    mstring_append(body,
+        "vec3 texgenEye = (texgenMode[0] & 4096u) != 0u\n"
+        "    ? vec3(0.0, 0.0, 1.0) : normalize(tPosition.xyz);\n");
     if (state->fixed_function.texgen_dynamic) {
         /* The per-coordinate texgen mode (a CSV1_A/B field) is read from a
          * uniform: every candidate source is computed and the mode selects. */
         mstring_append(body,
             "/* Dynamic texgen */\n"
-            "vec3 tgU = normalize(tPosition.xyz);\n"
+            "vec3 tgU = texgenEye;\n"
             "vec3 tgR = reflect(tgU, tNormal);\n"
             "float tgInvM = 1.0 / (2.0 * length(tgR + vec3(0.0, 0.0, 1.0)));\n"
             "vec3 tgSph = tgR * tgInvM + 0.5;\n");
@@ -364,7 +369,6 @@ GLSL_DEFINE(materialEmissionColor, GLSL_LTCTXA(NV_IGRAPH_XF_LTCTXA_CM_COL) ".xyz
         /* Set each component individually */
         /* FIXME: could be nicer if some channels share the same texgen */
         for (j = 0; j < 4; j++) {
-            /* TODO: TexGen View Model missing! */
             char c = "xyzw"[j];
             char cSuffix = "STRQ"[j];
             switch (state->fixed_function.texgen[i][j]) {
@@ -384,7 +388,7 @@ GLSL_DEFINE(materialEmissionColor, GLSL_LTCTXA(NV_IGRAPH_XF_LTCTXA_CM_COL) ".xyz
                 assert(j < 2);  /* Channels S,T only! */
                 mstring_append(body, "{\n");
                 /* FIXME: u, r and m only have to be calculated once */
-                mstring_append(body, "  vec3 u = normalize(tPosition.xyz);\n");
+                mstring_append(body, "  vec3 u = texgenEye;\n");
                 //FIXME: tNormal before or after normalization? Always normalize?
                 mstring_append(body, "  vec3 r = reflect(u, tNormal);\n");
 
@@ -404,7 +408,7 @@ GLSL_DEFINE(materialEmissionColor, GLSL_LTCTXA(NV_IGRAPH_XF_LTCTXA_CM_COL) ".xyz
                 assert(j < 3); /* Channels S,T,R only! */
                 mstring_append(body, "{\n");
                 /* FIXME: u and r only have to be calculated once, can share the one from SPHERE_MAP */
-                mstring_append(body, "  vec3 u = normalize(tPosition.xyz);\n");
+                mstring_append(body, "  vec3 u = texgenEye;\n");
                 mstring_append(body, "  vec3 r = reflect(u, tNormal);\n");
                 mstring_append_fmt(body, "  oT%d.%c = r.%c;\n",
                                    i, c, c);
@@ -453,7 +457,7 @@ GLSL_DEFINE(materialEmissionColor, GLSL_LTCTXA(NV_IGRAPH_XF_LTCTXA_CM_COL) ".xyz
             "           : esrc == 2u ? specular.rgb : diffuse.rgb;\n"
             "  oD1 = vec4(0.0, 0.0, 0.0, specular.a);\n"
             "  if ((csv0cCtl & 32768u) != 0u) {\n"
-            "    oB0 = vec4(sceneBackAmbientColor, oD0.a);\n"
+            "    oB0 = vec4(sceneBackAmbientColor, back_material_alpha);\n"
             "    oB1 = vec4(0.0, 0.0, 0.0, backSpecular.a);\n"
             "  }\n"
             "  vec3 VPeye = ((csv0cCtl & 2u) != 0u)\n"
@@ -504,7 +508,7 @@ GLSL_DEFINE(materialEmissionColor, GLSL_LTCTXA(NV_IGRAPH_XF_LTCTXA_CM_COL) ".xyz
 
         if (state->fixed_function.two_sided) {
             mstring_append(body,
-                "oB0 = vec4(sceneBackAmbientColor, oD0.a);\n"
+                "oB0 = vec4(sceneBackAmbientColor, back_material_alpha);\n"
                 "oB1 = vec4(0.0, 0.0, 0.0, backSpecular.a);\n");
         }
 
@@ -624,7 +628,7 @@ GLSL_DEFINE(materialEmissionColor, GLSL_LTCTXA(NV_IGRAPH_XF_LTCTXA_CM_COL) ".xyz
                     "      float bDotVP = max(0.0, -nDotVPraw);\n"
                     "      float bDotHV = max(0.0, -nDotHVraw);\n"
                     "      float bpf = (bDotVP == 0.0 || bDotHV == 0.0)"
-                    " ? 0.0 : pow(bDotHV, specularPower);\n"
+                    " ? 0.0 : pow(bDotHV, specularPowerBack);\n"
                     "      oB0.xyz += lightBackAmbientColor(%d) * attenuation;\n"
                     "      oB0.xyz += lightBackDiffuseColor(%d) * attenuation"
                     " * bDotVP;\n"

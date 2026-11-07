@@ -726,6 +726,9 @@ void pgraph_glsl_set_vsh_uniform_values(PGRAPHState *pg, const VshState *state,
     if (locs[VshUniform_material_alpha] != -1) {
         values->material_alpha[0] = pg->material_alpha;
     }
+    if (locs[VshUniform_back_material_alpha] != -1) {
+        values->back_material_alpha[0] = pg->back_material_alpha;
+    }
 
     if (locs[VshUniform_lightMode] != -1) {
         /* CSV0_D holds all eight 2-bit light modes in one field; hand it to
@@ -779,8 +782,12 @@ void pgraph_glsl_set_vsh_uniform_values(PGRAPHState *pg, const VshState *state,
         values->fogCtl[0] = ctl;
     }
     if (locs[VshUniform_texgenMode] != -1) {
+        /* Bits 0..11 hold the four coordinate modes. Borrow bit 12 for
+         * the global viewer mode without growing the uniform layout or key. */
+        uint32_t viewer = GET_MASK(pgraph_reg_r(pg, NV_PGRAPH_CSV0_D),
+                                   NV_PGRAPH_CSV0_D_TEXGEN_REF) << 12;
         for (int i = 0; i < 4; i++) {
-            uint32_t packed = 0;
+            uint32_t packed = viewer;
             for (int j = 0; j < 4; j++) {
                 packed |= pgraph_texgen_mode(pg, i, j) << (j * 3);
             }
@@ -864,6 +871,9 @@ void pgraph_glsl_set_vsh_uniform_values(PGRAPHState *pg, const VshState *state,
 
         if (locs[VshUniform_specularPower] != -1) {
             values->specularPower[0] = pg->specular_power;
+        }
+        if (locs[VshUniform_specularPowerBack] != -1) {
+            values->specularPowerBack[0] = pg->specular_power_back;
         }
     }
 }
