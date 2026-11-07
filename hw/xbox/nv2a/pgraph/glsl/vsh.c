@@ -869,11 +869,13 @@ void pgraph_glsl_set_vsh_uniform_values(PGRAPHState *pg, const VshState *state,
                    sizeof(pg->light_local_attenuation));
         }
 
-        if (locs[VshUniform_specularPower] != -1) {
-            values->specularPower[0] = pgraph_get_specular_power(pg, false);
+        if (locs[VshUniform_specularParams] != -1) {
+            memcpy(values->specularParams[0], pg->specular_params,
+                   sizeof(values->specularParams[0]));
         }
-        if (locs[VshUniform_specularPowerBack] != -1) {
-            values->specularPowerBack[0] = pgraph_get_specular_power(pg, true);
+        if (locs[VshUniform_specularParamsBack] != -1) {
+            memcpy(values->specularParamsBack[0], pg->specular_params_back,
+                   sizeof(values->specularParamsBack[0]));
         }
     }
 }

@@ -115,8 +115,8 @@ void pgraph_glsl_vsh_dynamic_ready(const VshState *state);
     DECL(S, back_material_alpha, float, 1)                   \
     DECL(S, pointParams, float, 8)                           \
     DECL(S, pointSizeReg, float, 1)                          \
-    DECL(S, specularPower, float, 1)                         \
-    DECL(S, specularPowerBack, float, 1)                     \
+    DECL(S, specularParams, vec3, 1)                         \
+    DECL(S, specularParamsBack, vec3, 1)                     \
     DECL(S, pointScale, float, 1)                            \
     DECL(S, surfaceSize, vec2, 1)
 

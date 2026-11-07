@@ -142,12 +142,7 @@ static void gen_dynamic_lights(MString *body, const VshState *state)
 
     mstring_append(
         body,
-        "  float pf;\n"
-        "  if (nDotVP == 0.0 || nDotHV == 0.0) {\n"
-        "    pf = 0.0;\n"
-        "  } else {\n"
-        "    pf = pow(nDotHV, specularPower);\n"
-        "  }\n"
+        "  float pf = specularFactor(nDotVP, nDotHV, specularParams);\n"
         "  vec3 lightAmbient = lightAmbientColor(i) * attenuation;\n"
         "  vec3 lightDiffuse = lightDiffuseColor(i) * attenuation * nDotVP;\n"
         "  vec3 lightSpecular = lightSpecularColor(i) * attenuation * pf;\n");
@@ -159,8 +154,7 @@ static void gen_dynamic_lights(MString *body, const VshState *state)
         "  if ((csv0cCtl & 32768u) != 0u) {\n"
         "    float bDotVP = max(0.0, -nDotVPraw);\n"
         "    float bDotHV = max(0.0, -nDotHVraw);\n"
-        "    float bpf = (bDotVP == 0.0 || bDotHV == 0.0)"
-        " ? 0.0 : pow(bDotHV, specularPowerBack);\n"
+        "    float bpf = specularFactor(bDotVP, bDotHV, specularParamsBack);\n"
         "    oB0.xyz += lightBackAmbientColor(i) * attenuation;\n"
         "    oB0.xyz += lightBackDiffuseColor(i) * attenuation * bDotVP;\n"
         "    oB1.xyz += lightBackSpecularColor(i) * attenuation * bpf;\n"
@@ -324,6 +318,17 @@ GLSL_DEFINE(materialEmissionColor, GLSL_LTCTXA(NV_IGRAPH_XF_LTCTXA_CM_COL) ".xyz
         "        return scene + (emissionSource == 0u ? vec3(0.0) : emission * multiplier);\n"
         "    }\n"
         "    return ambient * multiplier + (emissionSource == 0u ? scene : emission);\n"
+        "}\n");
+
+    /* Targeted adaptation of xemu PR #3076's hardware coefficient model.
+     * Preserve its exceptional-denominator bound instead of leaking infinity. */
+    mstring_append(header,
+        "float specularFactor(float lightDot, float halfDot, vec3 coefficients) {\n"
+        "    if (!(lightDot > 0.0) || !(halfDot > -coefficients.x)) return 0.0;\n"
+        "    float denominator = coefficients.y * halfDot + coefficients.z;\n"
+        "    if (denominator == 0.0) return 10000.0;\n"
+        "    if (!(denominator > 0.0)) return 0.0;\n"
+        "    return clamp((halfDot + coefficients.x) / denominator, 0.0, 10000.0);\n"
         "}\n");
 
     unsigned int count;
@@ -639,12 +644,7 @@ GLSL_DEFINE(materialEmissionColor, GLSL_LTCTXA(NV_IGRAPH_XF_LTCTXA_CM_COL) ".xyz
             }
 
             mstring_append_fmt(body,
-                "    float pf;\n"
-                "    if (nDotVP == 0.0 || nDotHV == 0.0) {\n"
-                "      pf = 0.0;\n"
-                "    } else {\n"
-                "      pf = pow(nDotHV, specularPower);\n"
-                "    }\n"
+                "    float pf = specularFactor(nDotVP, nDotHV, specularParams);\n"
                 "    vec3 lightAmbient = lightAmbientColor(%d) * attenuation;\n"
                 "    vec3 lightDiffuse = lightDiffuseColor(%d) * attenuation * nDotVP;\n"
                 "    vec3 lightSpecular = lightSpecularColor(%d) * attenuation * pf;\n",
@@ -660,8 +660,7 @@ GLSL_DEFINE(materialEmissionColor, GLSL_LTCTXA(NV_IGRAPH_XF_LTCTXA_CM_COL) ".xyz
                     "    {\n"
                     "      float bDotVP = max(0.0, -nDotVPraw);\n"
                     "      float bDotHV = max(0.0, -nDotHVraw);\n"
-                    "      float bpf = (bDotVP == 0.0 || bDotHV == 0.0)"
-                    " ? 0.0 : pow(bDotHV, specularPowerBack);\n"
+                    "      float bpf = specularFactor(bDotVP, bDotHV, specularParamsBack);\n"
                     "      oB0.xyz += lightBackAmbientColor(%d) * attenuation;\n"
                     "      oB0.xyz += lightBackDiffuseColor(%d) * attenuation"
                     " * bDotVP;\n"

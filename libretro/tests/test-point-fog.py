@@ -185,31 +185,58 @@ with tempfile.TemporaryDirectory(prefix='point-fog-') as temp:
             body=texgen_inputs+eye+(dynamic_texgen if dyn else static)
             output=('vec4(tgSph.xy,0,1)' if sphere else 'vec4(tgR,1)') if dyn else 'vec4(oT0.xyz,1)'
             add('texgen-'+name.lower()+('-dynamic' if dyn else '-static'),body,cases,output)
-    # Back-face alpha and shininess are independently programmed. Extract
-    # both lighting generators' expressions and vary only those live values.
+    # Specular triples are raw hardware coefficients, not reconstructed powers.
+    def specular_oracle(vp,hv,k):
+        if vp<=0 or hv<=-k[0]:return 0
+        denominator=k[1]*hv+k[2]
+        if denominator==0:return 10000
+        if denominator<0:return 0
+        return min(10000,max(0,(hv+k[0])/denominator))
+    spec_start=ff.index('        "float specularFactor(')
+    spec_end=ff.index('        "}\\n");',spec_start)+len('        "}\\n");')
+    spec_helper=strings(ff[spec_start:spec_end])
+    header=header.replace('void main(){',spec_helper+'void main(){')
+    coefficient_sets=[(0,-.494592,1.494592),(-.170208,-.855843,1.685635),
+        (-.838916,-2.887156,3.048239),(-.932112,-3.097628,3.165516),
+        (0,0,0),(.838916,2.887156,-3.048239),(0,.9,.1),
+        (-.421539,-1.70592,2.28438),(-.64766,-2.36199,2.71433),
+        (-.803673,-2.7813,2.97762),(-.863702,-2.92701,3.06331),
+        (1,0,1),(0,-2,1)]
+    spec_cases=[]
+    for k in coefficient_sets:
+        k=struct.unpack('3f',struct.pack('3f',*k))
+        for vp in (0,.25,1):
+            for hv in (0,.25,.5,.75,1,1.25):
+                spec_cases.append(([vp,hv,0,0,0,0,0,0,*k,0,0,0,0,0],
+                    [specular_oracle(vp,hv,k)]*4))
+    front_calls=re.findall(r'"( +float pf = specularFactor.*?;\\n)"',ff)
+    assert len(front_calls)==2
+    for path,call in zip(('dynamic','static'),front_calls):
+        body=('float nDotVP=probe[0].x,nDotHV=probe[0].y;'
+              'vec3 specularParams=probe[2].xyz;\n')+ast.literal_eval('"'+call+'"')
+        add('specular-front-'+path,body,spec_cases,'vec4(pf)')
     alpha_lines=re.findall(r'"( *oB0 = vec4\(sceneBackAmbientColor, .*?;\\n)"',ff)
-    assert len(alpha_lines)==2
     back_blocks=list(re.finditer('        " +float bDotVP =',ff))
-    assert len(back_blocks)==2
+    assert len(alpha_lines)==len(back_blocks)==2
     for path,alpha_line,match in zip(('dynamic','static'),alpha_lines,back_blocks):
         end=ff.index('oB0.xyz += lightBackAmbientColor',match.start())
-        back=strings(ff[match.start():end])
-        alpha=ast.literal_eval('"'+alpha_line+'"')
+        back=strings(ff[match.start():end]);alpha=ast.literal_eval('"'+alpha_line+'"')
         body=('float nDotVPraw=probe[0].x,nDotHVraw=probe[0].y;'
-              'float specularPower=probe[2].x,specularPowerBack=probe[2].z;'
-              'float back_material_alpha=probe[2].y;'
-              'vec3 sceneBackAmbientColor=vec3(0.0);vec4 oD0=vec4(probe[1].w);'
-              'vec4 oB0;\n')+alpha+back
+              'vec3 specularParams=probe[1].xyz,specularParamsBack=probe[2].xyz;'
+              'float back_material_alpha=probe[0].w;'
+              'vec3 sceneBackAmbientColor=vec3(0.0);vec4 oD0=vec4(probe[0].z),oB0;\n')+alpha+back
         cases=[]
-        for vp,hv in ((-1,-0.5),(-0.5,-0.8),(-1,-1),(1,-0.5),(-1,0.5),(0,-0.5)):
-            for front_power in (1,8):
-                for back_power in (2,16,2):
-                    for front_alpha,back_alpha in ((1,0.25),(0.2,0.75),(0.8,0)):
-                        pf=0 if vp>=0 or hv>=0 else (-hv)**back_power
-                        values=[vp,hv,0,0,0,0,0,front_alpha,front_power,back_alpha,back_power,0,0,0,0,0]
-                        cases.append((values,[back_alpha,pf,abs(hv)**front_power,1]))
+        for vp,hv in ((-1,-.5),(-.5,-.8),(-1,-1),(1,-.5),(-1,.5),(0,-.5)):
+            for front_k in coefficient_sets[:2]:
+                for back_k in coefficient_sets[1:4]:
+                    front_k=struct.unpack('3f',struct.pack('3f',*front_k))
+                    back_k=struct.unpack('3f',struct.pack('3f',*back_k))
+                    for fa,ba in ((1,.25),(.2,.75),(.8,0)):
+                        values=[vp,hv,fa,ba,*front_k,0,*back_k,0,0,0,0,0]
+                        cases.append((values,[ba,specular_oracle(max(0,-vp),max(0,-hv),back_k),
+                            specular_oracle(max(0,vp),max(0,hv),front_k),1]))
         add('lighting-back-'+path,body,cases,
-            'vec4(oB0.a,bpf,pow(abs(nDotHVraw),specularPower),1)')
+            'vec4(oB0.a,bpf,specularFactor(max(0.0,nDotVPraw),max(0.0,nDotHVraw),specularParams),1)')
     for kind,body in [('register',register),('program',program),('fixed',fixed)]:
         cases=[]
         for scale in (1,2,4,8):
@@ -331,7 +358,7 @@ with tempfile.TemporaryDirectory(prefix='point-fog-') as temp:
     for path in ('static','dynamic'):
         name='lighting-back-'+path
         for field,before,after in (('alpha','sceneBackAmbientColor, back_material_alpha','sceneBackAmbientColor, oD0.a'),
-                                   ('power','pow(bDotHV, specularPowerBack)','pow(bDotHV, specularPower)')):
+                                   ('coefficients','specularFactor(bDotVP, bDotHV, specularParamsBack)','specularFactor(bDotVP, bDotHV, specularParams)')):
             negative=out/(name+'-front-'+field+'.vert')
             source=(out/(name+'.vert')).read_text()
             assert before in source
@@ -339,7 +366,7 @@ with tempfile.TemporaryDirectory(prefix='point-fog-') as temp:
             result=subprocess.run([str(exe),str(negative),str(out/(name+'.bin'))],
                 env=dict(env,EGL_PLATFORM='surfaceless'),capture_output=True,text=True)
             assert result.returncode==1 and ' != ' in result.stderr,result.stderr
-    print('PASS: front-only back alpha/specular power fails both lighting path oracles')
+    print('PASS: front-only back alpha/specular coefficients fail both lighting path oracles')
     for path in ('static','dynamic'):
         name='spotlight-'+path
         negative=out/(name+'-linear.vert')
@@ -379,6 +406,16 @@ with tempfile.TemporaryDirectory(prefix='point-fog-') as temp:
         result=subprocess.run([str(exe),str(negative),str(out/(name+'.bin'))],env=dict(env,EGL_PLATFORM='surfaceless'),capture_output=True,text=True)
         assert result.returncode==1 and ' != ' in result.stderr,result.stderr
     print('PASS: double-scene and unmodulated ambient controls fail both material paths')
+    for path in ('static','dynamic'):
+        name='specular-front-'+path
+        negative=out/(name+'-power-one.vert')
+        source=(out/(name+'.vert')).read_text()
+        before='float pf = specularFactor(nDotVP, nDotHV, specularParams);'
+        assert before in source
+        negative.write_text(source.replace(before,'float pf = nDotVP > 0.0 ? pow(nDotHV, 1.0) : 0.0;'))
+        result=subprocess.run([str(exe),str(negative),str(out/(name+'.bin'))],env=dict(env,EGL_PLATFORM='surfaceless'),capture_output=True,text=True)
+        assert result.returncode==1 and ' != ' in result.stderr,result.stderr
+    print('PASS: power-one approximation fails both coefficient path oracles')
     if a.vulkan:
         vkargs=[]
         for path,data in zip(args[::2],args[1::2]):

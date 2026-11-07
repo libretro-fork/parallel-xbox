@@ -34,7 +34,7 @@ jobs:
         run: python3 libretro/tests/test-spotlight-falloff.py . cc
       - name: Sprite coordinates apply only to rasterized points
         run: python3 libretro/tests/test-point-sprite-selection.py . cc
-      - name: Partial shininess updates coalesce without stale bound uniforms
+      - name: Raw specular coefficients preserve partial writes and owned uniforms
         run: python3 libretro/tests/test-specular-updates.py . cc
       - name: EP worker ownership must preserve RAM, queue handoffs and TLB guards
         run: python3 libretro/tests/test-dsp-ownership.py . cc

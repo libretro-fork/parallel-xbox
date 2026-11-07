@@ -8,13 +8,13 @@ import os, subprocess, sys, tempfile
 r=Path(sys.argv[1]).resolve(); cc=sys.argv[2] if len(sys.argv)>2 else 'gcc'
 s=(r/'hw/xbox/nv2a/pgraph/glsl/vsh.c').read_text()
 blocks=[]
-for field in ('back_material_alpha','specularPowerBack'):
+for field in ('back_material_alpha','specularParamsBack'):
     start=s.index('if (locs[VshUniform_'+field+'] != -1) {')
     end=s.index('{',start)+1; depth=1
     while depth:
         depth+=(s[end]=='{')-(s[end]=='}');end+=1
     blocks.append(s[start:end])
-    # These scalars must remain live; no dirty marker on their method handlers.
+    # These uniforms stay live; each partial coefficient write is visible.
     sections=(r/'hw/xbox/nv2a/pgraph/glsl/uniform-cache.c').read_text()
     mapping=sections[sections.index('const int8_t pgraph_vsh_uniform_section'):sections.index('};')]
     assert '[VshUniform_'+field+']' not in mapping
@@ -23,12 +23,10 @@ code=r'''
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
-enum { VshUniform_back_material_alpha,VshUniform_specularPowerBack };
-typedef struct { float back_material_alpha,specular_power_back; } PGRAPHState;
-typedef struct { uint32_t before;float back_material_alpha[1],specularPowerBack[1];uint32_t after; } Values;
-static float pgraph_get_specular_power(PGRAPHState *pg,bool back) {
-    (void)back;return pg->specular_power_back;
-}
+#include <string.h>
+enum { VshUniform_back_material_alpha,VshUniform_specularParamsBack };
+typedef struct { float back_material_alpha,specular_params_back[6]; } PGRAPHState;
+typedef struct { uint32_t before;float back_material_alpha[1],specularParamsBack[1][3];uint32_t after; } Values;
 static void publish(PGRAPHState *pg,int *locs,Values *values) {
 /* PRODUCTION */
 }
@@ -36,17 +34,19 @@ int main(void) {
     Values v={.before=0x12345678,.after=0x98765432};int locs[]={0,0};
     PGRAPHState pg={0};
     for(unsigned i=0;i<1024;i++) {
-        pg.back_material_alpha=(i%17)/16.0f;pg.specular_power_back=(i%129)/2.0f;
+        pg.back_material_alpha=(i%17)/16.0f;
+        for(unsigned j=0;j<6;j++)pg.specular_params_back[j]=(i+j)/2.0f;
         publish(&pg,locs,&v);
         assert(v.back_material_alpha[0]==pg.back_material_alpha);
-        assert(v.specularPowerBack[0]==pg.specular_power_back);
+        assert(!memcmp(v.specularParamsBack[0],pg.specular_params_back,3*sizeof(float)));
         assert(v.before==0x12345678&&v.after==0x98765432);
     }
     for(unsigned inactive=0;inactive<2;inactive++) {
-        locs[inactive]=-1;v.back_material_alpha[0]=-1;v.specularPowerBack[0]=-2;
+        locs[inactive]=-1;v.back_material_alpha[0]=-1;
+        for(unsigned j=0;j<3;j++)v.specularParamsBack[0][j]=-2;
         publish(&pg,locs,&v);
         assert(v.back_material_alpha[0]==(inactive==0?-1:pg.back_material_alpha));
-        assert(v.specularPowerBack[0]==(inactive==1?-2:pg.specular_power_back));
+        for(unsigned j=0;j<3;j++)assert(v.specularParamsBack[0][j]==(inactive==1?-2:pg.specular_params_back[j]));
         locs[inactive]=0;
     }
     puts("PASS: 1024 live back-material updates, independent bindings and storage canaries");

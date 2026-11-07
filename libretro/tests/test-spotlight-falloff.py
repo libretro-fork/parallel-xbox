@@ -19,7 +19,8 @@ code=r'''
 #include <string.h>
 #include "hw/xbox/nv2a/nv2a_regs.h"
 typedef struct { uint32_t before,ltctxa[NV2A_LTCTXA_COUNT][4],after;
-                 bool ltctxa_dirty[NV2A_LTCTXA_COUNT]; } PGRAPHState;
+                 bool ltctxa_dirty[NV2A_LTCTXA_COUNT];
+                 float specular_params[6],specular_params_back[6]; } PGRAPHState;
 static void initialize(PGRAPHState *pg) { /* INITIAL */ }
 static void write_word(PGRAPHState *pg,int slot,int part,uint32_t parameter) {
     switch(part*4) { /* SETTER */ default:assert(false); }
@@ -27,6 +28,8 @@ static void write_word(PGRAPHState *pg,int slot,int part,uint32_t parameter) {
 int main(void) {
     PGRAPHState pg;memset(&pg,0xa5,sizeof(pg));initialize(&pg);
     const float expected[]={0,-0.494592f,1.494592f};
+    assert(!memcmp(pg.specular_params,expected,sizeof(expected)));
+    assert(!memcmp(pg.specular_params_back,expected,sizeof(expected)));
     for(unsigned row=0;row<NV2A_LTCTXA_COUNT;row++) {
         bool falloff=row<NV2A_MAX_LIGHTS*2&&row%2==0;
         for(unsigned part=0;part<4;part++) {
