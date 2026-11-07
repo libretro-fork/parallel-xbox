@@ -57,7 +57,7 @@ end=m.index('\n};',start)+3
 migration=m[start:end]
 assert '&vmstate_nv2a_back_material,' in m
 legacy=m[m.index('    /* Older states have no back-material subsection.'):]
-legacy=legacy[:legacy.index('\n}')]
+legacy=legacy[:legacy.index('    /* Constants outside regs_/ltctx')]+ '    return 0;'
 state_code=r'''
 #include <assert.h>
 #include <stdbool.h>

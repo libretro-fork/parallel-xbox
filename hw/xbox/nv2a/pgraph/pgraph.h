@@ -309,8 +309,7 @@ typedef struct PGRAPHState {
 
     float material_alpha;
 
-    /* NV097_SET_BACK_MATERIAL_ALPHA (0x17AC): stored, not read yet (the FF
-     * shader gives back faces the front alpha). */
+    /* NV097_SET_BACK_MATERIAL_ALPHA (0x17AC), independent of front alpha. */
     float back_material_alpha;
 
     // should figure out where these are in lighting context

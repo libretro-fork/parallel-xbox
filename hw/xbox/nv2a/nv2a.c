@@ -694,6 +694,19 @@ static int nv2a_pre_load(void *opaque)
     d->pgraph.specular_power_back = 0.0f;
     memset(d->pgraph.specular_params_back, 0,
            sizeof(d->pgraph.specular_params_back));
+    /* Constants outside regs_/ltctx were absent from older snapshots. */
+    d->pgraph.material_alpha = 0.0f;
+    d->pgraph.specular_power = 0.0f;
+    memset(d->pgraph.specular_params, 0, sizeof(d->pgraph.specular_params));
+    memset(d->pgraph.point_params, 0, sizeof(d->pgraph.point_params));
+    memset(d->pgraph.light_infinite_half_vector, 0,
+           sizeof(d->pgraph.light_infinite_half_vector));
+    memset(d->pgraph.light_infinite_direction, 0,
+           sizeof(d->pgraph.light_infinite_direction));
+    memset(d->pgraph.light_local_position, 0,
+           sizeof(d->pgraph.light_local_position));
+    memset(d->pgraph.light_local_attenuation, 0,
+           sizeof(d->pgraph.light_local_attenuation));
     return 0;
 }
 
@@ -709,6 +722,9 @@ static int nv2a_post_load(void *opaque, int version_id)
     /* The switch registers come back with the snapshot; the subchannel they
      * were loaded for does not. */
     d->pgraph.ctx_switch_subchannel = -1;
+    /* The restored constants must replace the renderer's later-frame values. */
+    d->pgraph.light_dirty = true;
+    d->pgraph.point_params_dirty = true;
     /* Texture registers return to the snapshot, but bound host textures
      * may still reflect later sampler/format state. Revalidate every unit. */
     for (unsigned i = 0; i < NV2A_MAX_TEXTURES; i++) {
@@ -778,6 +794,35 @@ static const VMStateDescription vmstate_nv2a_back_material = {
                               sizeof(float)),
         VMSTATE_BUFFER_UNSAFE(pgraph.specular_params_back, NV2AState, 1,
                               sizeof(float) * 6),
+        VMSTATE_END_OF_LIST()
+    },
+};
+
+static bool nv2a_lighting_point_needed(void *opaque)
+{
+    (void)opaque;
+    /* Values remain significant while their lighting/point switches are off. */
+    return true;
+}
+
+static const VMStateDescription vmstate_nv2a_lighting_point = {
+    .name = "nv2a/lighting-point",
+    .version_id = 1,
+    .minimum_version_id = 1,
+    .needed = nv2a_lighting_point_needed,
+    .fields = (const VMStateField[]) {
+        VMSTATE_BUFFER_UNSAFE(pgraph.material_alpha, NV2AState, 1, sizeof(float)),
+        VMSTATE_BUFFER_UNSAFE(pgraph.specular_power, NV2AState, 1, sizeof(float)),
+        VMSTATE_BUFFER_UNSAFE(pgraph.specular_params, NV2AState, 1, sizeof(float) * 6),
+        VMSTATE_BUFFER_UNSAFE(pgraph.point_params, NV2AState, 1, sizeof(float) * 8),
+        VMSTATE_BUFFER_UNSAFE(pgraph.light_infinite_half_vector, NV2AState, 1,
+                              sizeof(float) * NV2A_MAX_LIGHTS * 3),
+        VMSTATE_BUFFER_UNSAFE(pgraph.light_infinite_direction, NV2AState, 1,
+                              sizeof(float) * NV2A_MAX_LIGHTS * 3),
+        VMSTATE_BUFFER_UNSAFE(pgraph.light_local_position, NV2AState, 1,
+                              sizeof(float) * NV2A_MAX_LIGHTS * 3),
+        VMSTATE_BUFFER_UNSAFE(pgraph.light_local_attenuation, NV2AState, 1,
+                              sizeof(float) * NV2A_MAX_LIGHTS * 3),
         VMSTATE_END_OF_LIST()
     },
 };
@@ -971,6 +1016,7 @@ static const VMStateDescription vmstate_nv2a = {
     .subsections = (const VMStateDescription * const []) {
         &vmstate_nv2a_two_side,
         &vmstate_nv2a_back_material,
+        &vmstate_nv2a_lighting_point,
         NULL
     },
 };

@@ -3205,6 +3205,8 @@ not measure a before/after speedup from narrowing those barriers.
 
 ## Point sprites, fog, texgen and back lighting audit
 
+`test-lighting-point-state.py CHECKOUT [CC]` checks the production 448-byte lighting/point migration descriptor payload across 256 snapshots with deliberately different later-frame constants. It covers all eight lights, point coefficients, material alpha, front shininess and its six partially updated parameters, legacy defaults, storage canaries and post-load upload invalidation. This is descriptor-level coverage, not a complete QEMU save/load integration test. The implementation serializes owned inline constants under the existing migration FIFO hold; it adds no vertex/texture copies, staging allocations or retained borrowed views.
+
 `test-back-lighting.py CHECKOUT [CC]` checks 1,024 live uniform publications, inactive bindings and storage canaries, plus the actual back-material migration descriptors and legacy defaults. The descriptor round trip includes all six specular parameters so partially updated setters survive snapshots. This is not a full QEMU migration integration test. The new uniforms are two scalar values owned by the existing uniform structures; no guest pointers, texture/vertex copies, staging buffers or retained borrows are added.
 
 `test-texgen-viewer.py CHECKOUT [CC]` executes the production texgen uniform packing for 12,288 updates, checking local/infinite/local transitions, preservation of all coordinate modes and surrounding storage, and inactive bindings. It runs in CI. The viewer flag occupies bit 12 of the existing live texgen uniform; neither shader keys nor uniform layouts grow. No borrowed pointers are retained and no allocations or copy buffers are added.

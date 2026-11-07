@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Savestates restore point attenuation, front-material alpha/shininess and light vectors instead of retaining values from later frames. Partial shininess setters are preserved and restored uniforms are refreshed. Older states use zero defaults for constants they never saved. Only small owned constants are serialized; vertex/texture resources and borrowed lifetimes are unchanged.
+
 - Two-sided fixed-function lighting uses the back material's own alpha and specular power instead of the front values, fixing back-facing transparency and highlight sharpness. Both renderers and GPU Boost's dynamic lighting path use the existing uniform update/upload lifecycle; no resource copies or retained borrows are added.
 
 - Honor the independent local/infinite viewer setting for fixed-function reflection and sphere-map texture coordinates in both renderers, including GPU Boost's dynamic texgen path. Reuse the existing uniform storage and shader keys; refresh older OpenGL shader caches.
