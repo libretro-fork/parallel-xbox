@@ -870,10 +870,10 @@ void pgraph_glsl_set_vsh_uniform_values(PGRAPHState *pg, const VshState *state,
         }
 
         if (locs[VshUniform_specularPower] != -1) {
-            values->specularPower[0] = pg->specular_power;
+            values->specularPower[0] = pgraph_get_specular_power(pg, false);
         }
         if (locs[VshUniform_specularPowerBack] != -1) {
-            values->specularPowerBack[0] = pg->specular_power_back;
+            values->specularPowerBack[0] = pgraph_get_specular_power(pg, true);
         }
     }
 }

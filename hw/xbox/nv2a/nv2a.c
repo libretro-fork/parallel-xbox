@@ -713,6 +713,8 @@ static int nv2a_post_load(void *opaque, int version_id)
     /* The restored constants must replace the renderer's later-frame values. */
     d->pgraph.light_dirty = true;
     d->pgraph.point_params_dirty = true;
+    d->pgraph.specular_power_dirty = true;
+    d->pgraph.specular_power_back_dirty = true;
     /* Texture registers return to the snapshot, but bound host textures
      * may still reflect later sampler/format state. Revalidate every unit. */
     for (unsigned i = 0; i < NV2A_MAX_TEXTURES; i++) {

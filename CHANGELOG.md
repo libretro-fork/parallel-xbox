@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Partial or reordered shininess-coefficient updates now reach the next lit draw instead of waiting for the sixth word. Front and back powers are reconstructed once when their uniforms are next bound, coalescing complete uploads and avoiding work for inactive uniforms. No shader keys, uniforms, resource copies or borrowed lifetimes change.
+
 - Lines and filled polygons retain their stage-3 texture coordinates when a game leaves point-sprite mode enabled. Generated sprite coordinates are used only for point draws and polygons rasterized as points. Both renderers reuse the existing pass-through shader state; no new geometry, buffers, resource copies or borrowed lifetimes are introduced.
 
 - Savestates restore each texture matrix's enable flag together with its saved matrix, preventing particle and reflection textures from retaining a later frame's transform setting. Older snapshots default the unsaved flags to disabled. Only four booleans are added; texture/vertex storage, shader keys and borrowed lifetimes are unchanged.

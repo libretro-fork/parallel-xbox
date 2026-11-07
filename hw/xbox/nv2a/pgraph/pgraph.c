@@ -2382,13 +2382,25 @@ static float reconstruct_specular_power(const float *params) {
   return reconstructed_power;
 }
 
+float pgraph_get_specular_power(PGRAPHState *pg, bool back)
+{
+    /* Owner-thread scalar cache. Borrow only within this call; setters can
+     * upload any subset/order, and inactive uniforms leave the work pending. */
+    bool *dirty = back ? &pg->specular_power_back_dirty : &pg->specular_power_dirty;
+    float *power = back ? &pg->specular_power_back : &pg->specular_power;
+    const float *params = back ? pg->specular_params_back : pg->specular_params;
+    if (*dirty) {
+        *power = reconstruct_specular_power(params);
+        *dirty = false;
+    }
+    return *power;
+}
+
 DEF_METHOD_INC(NV097, SET_SPECULAR_PARAMS)
 {
     int slot = (method - NV097_SET_SPECULAR_PARAMS) / 4;
     pg->specular_params[slot] = *(float *)&parameter;
-    if (slot == 5) {
-        pg->specular_power = reconstruct_specular_power(pg->specular_params);
-    }
+    pg->specular_power_dirty = true;
 }
 
 DEF_METHOD_INC(NV097, SET_SCENE_AMBIENT_COLOR)
@@ -3506,9 +3518,7 @@ DEF_METHOD_INC(NV097, SET_SPECULAR_PARAMS_BACK)
 {
     int slot = (method - NV097_SET_SPECULAR_PARAMS_BACK) / 4;
     pg->specular_params_back[slot] = *(float *)&parameter;
-    if (slot == 5) {
-        pg->specular_power_back = reconstruct_specular_power(pg->specular_params_back);
-    }
+    pg->specular_power_back_dirty = true;
 }
 
 DEF_METHOD(NV097, SET_SHADER_CLIP_PLANE_MODE)

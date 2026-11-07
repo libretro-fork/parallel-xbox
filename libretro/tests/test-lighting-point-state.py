@@ -83,6 +83,7 @@ int main(void) {
         assert(values.texMatEnable[0]==mask);
         for(unsigned i=0;i<4;i++)assert(state.texture_matrix_enable[i]==!!(mask&(1u<<i)));
         refresh(&b);assert(b.pgraph.light_dirty&&b.pgraph.point_params_dirty);
+        assert(b.pgraph.specular_power_dirty&&b.pgraph.specular_power_back_dirty);
         legacy_reset(&b);
         for(const VMStateField *f=vmstate_nv2a_lighting_point.fields;f->size;f++)
             for(size_t i=0;i<f->size;i++)assert(*((uint8_t *)&b+f->offset+i)==0);

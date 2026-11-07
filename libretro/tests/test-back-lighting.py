@@ -20,11 +20,15 @@ for field in ('back_material_alpha','specularPowerBack'):
     assert '[VshUniform_'+field+']' not in mapping
 code=r'''
 #include <assert.h>
+#include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 enum { VshUniform_back_material_alpha,VshUniform_specularPowerBack };
 typedef struct { float back_material_alpha,specular_power_back; } PGRAPHState;
 typedef struct { uint32_t before;float back_material_alpha[1],specularPowerBack[1];uint32_t after; } Values;
+static float pgraph_get_specular_power(PGRAPHState *pg,bool back) {
+    (void)back;return pg->specular_power_back;
+}
 static void publish(PGRAPHState *pg,int *locs,Values *values) {
 /* PRODUCTION */
 }

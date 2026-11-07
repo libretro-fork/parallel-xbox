@@ -319,9 +319,13 @@ typedef struct PGRAPHState {
     float light_local_attenuation[NV2A_MAX_LIGHTS][3];
 
     float specular_params[6];
+    /* Derived power caches: any coefficient write invalidates them; a bound
+     * uniform consumes them. Dirty flags are invalidated after state loads. */
     float specular_power;
+    bool specular_power_dirty;
     float specular_params_back[6];
     float specular_power_back;
+    bool specular_power_back_dirty;
 
     float point_params[8];
 
@@ -674,6 +678,7 @@ static inline void pgraph_apply_scaling_factor(PGRAPHState *pg,
 }
 
 void pgraph_get_clear_color(PGRAPHState *pg, float rgba[4]);
+float pgraph_get_specular_power(PGRAPHState *pg, bool back);
 void pgraph_get_clear_depth_stencil_value(PGRAPHState *pg, float *depth, int *stencil);
 
 /* Vertex */
