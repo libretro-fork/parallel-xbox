@@ -536,6 +536,13 @@ void pgraph_init(NV2AState *d)
     pg->draw_time = 0;
 
     pg->material_alpha = 0.0f;
+    /* D3D's falloff-one coefficients (the FoFixed hardware test). Keep
+     * defaults in the existing context words, which snapshots already own. */
+    const float spot_falloff_default[3] = {0.0f, -0.494592f, 1.494592f};
+    for (int i = 0; i < NV2A_MAX_LIGHTS; i++) {
+        memcpy(pg->ltctxa[NV_IGRAPH_XF_LTCTXA_L0_K + i * 2],
+               spot_falloff_default, sizeof(spot_falloff_default));
+    }
     pg->line_width = 8; /* 1.0 pixel, in 1/8 pixel units */
     PG_SET_MASK(NV_PGRAPH_CONTROL_3, NV_PGRAPH_CONTROL_3_SHADEMODE,
          NV_PGRAPH_CONTROL_3_SHADEMODE_SMOOTH);

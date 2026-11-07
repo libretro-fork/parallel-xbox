@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Spotlights evaluate their programmed falloff curve instead of always fading linearly. Both renderers and GPU Boost's dynamic lighting path read the existing lighting-context coefficients, including cone cutoffs and hard cones. Shader keys, uniform layouts, resource copies and borrowed lifetimes are unchanged.
+
 - DSP: clear only populated groups of interpreter opcode-cache entries after interpreter use, reducing sparse clears from 32 KiB to 512 bytes per group on 64-bit hosts. Keep the full-cache bulk clear for dense coverage and add group-boundary and reuse regressions.
 
 - Vulkan presentation now requires the negotiated frontend device. Remove the old cross-device import path and its blocking frame acknowledgement, fence waits and layout submissions. Frontends that refuse negotiation fail content loading explicitly; mismatched contexts stay idle instead of starting a private renderer. GL and shared-device Vulkan retain their existing latest-image handoff and exact audio cadence; guest device/coherence waits remain.

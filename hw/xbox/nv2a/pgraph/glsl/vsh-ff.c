@@ -116,16 +116,13 @@ static void gen_dynamic_lights(MString *body, const VshState *state)
         "    nDotHV = max(0.0, nDotHVraw);\n",
         half_infinite, eye);
 
-    /* Spot: the cooked vector, as in the unrolled LIGHT_SPOT case (cooking
-     * decompiled from D3DDevice_SetLight and the lighting flush of the HOTD3
-     * D3D8 runtime; real hardware renders its hard cones, so it does not
-     * renormalize). The Falloff curve (L0_K) is not modelled. */
+    /* Consume the cooked vector without renormalizing hard cones, and the
+     * programmed L0_K curve through the same helper as static lighting. */
     mstring_append(
         body,
         "    if (lmode == 3u) {\n"
         "      vec4 spotDir = lightSpotDirection(i);\n"
-        "      attenuation *=\n"
-        "          clamp(dot(spotDir.xyz, VP) + spotDir.w, 0.0, 1.0);\n"
+        "      attenuation *= spotlightFactor(spotDir, VP, lightSpotFalloff(i));\n"
         "    }\n"
         "  }\n");
 
@@ -277,6 +274,22 @@ GLSL_DEFINE(sceneBackAmbientColor, GLSL_LTCTXA(NV_IGRAPH_XF_LTCTXA_BR_AMB) ".xyz
 GLSL_DEFINE(materialEmissionColor, GLSL_LTCTXA(NV_IGRAPH_XF_LTCTXA_CM_COL) ".xyz")
 "\n"
 );
+
+    /* NVIDIA US6417851B1: (x+L)/(M*x+N). nxdk_pgraph_tests' FoFixed
+     * hardware cases program these coefficients directly, not an exponent.
+     * All inputs are existing lighting constants; no new uniforms or keys. */
+    mstring_append(header,
+        "float spotlightFactor(vec4 spot, vec3 vp, vec3 k) {\n"
+        "    float ramp = dot(spot.xyz, vp) + spot.w;\n"
+        "    if (ramp <= 0.0) return 0.0;\n"
+        "    if (ramp >= 1.0) return 1.0;\n"
+        "    float numerator = ramp + k.x;\n"
+        "    if (numerator <= 0.0) return 0.0;\n"
+        "    float denominator = k.y * ramp + k.z;\n"
+        "    if (denominator == 0.0) return 1.0;\n"
+        "    if (denominator < 0.0) return 0.0;\n"
+        "    return clamp(numerator / denominator, 0.0, 1.0);\n"
+        "}\n");
 
     unsigned int count;
     bool mix;
@@ -591,15 +604,13 @@ GLSL_DEFINE(materialEmissionColor, GLSL_LTCTXA(NV_IGRAPH_XF_LTCTXA_CM_COL) ".xyz
                  * legitimately yields a large finite S (~2e19), and an angle
                  * rebuilt through 1/length(spt.xyz) would overflow float32
                  * (dot = 9e38 > FLT_MAX) and zero such a spotlight. The
-                 * cooked ramp already is the D3D8 spotlight factor with its
-                 * division precooked.
-                 * FIXME: D3DLIGHT8.Falloff power curve still unmodeled
-                 * (no effect on hard cones: the ramp zone has zero width). */
+                 * cooked ramp already contains D3D8's cone-angle division.
+                 * The falloff coefficients are evaluated directly by the
+                 * shared helper, including the inner/outer cone cutoffs. */
                 mstring_append_fmt(body,
                     "    vec4 spotDir = lightSpotDirection(%d);\n"
-                    "    attenuation *=\n"
-                    "        clamp(dot(spotDir.xyz, VP) + spotDir.w, 0.0, 1.0);\n",
-                    i);
+                    "    attenuation *= spotlightFactor(spotDir, VP, lightSpotFalloff(%d));\n",
+                    i, i);
                 break;
             default:
                 assert(!"Invalid light type");

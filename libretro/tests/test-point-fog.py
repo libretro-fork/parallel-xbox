@@ -50,6 +50,11 @@ void main(){
  float pointParams[8]=float[8](probe[2].x,probe[2].y,probe[2].z,probe[2].w,
                              0,0,probe[3].x,probe[3].y);
 '''
+
+helper_start=ff.index('        "float spotlightFactor(')
+helper_end=ff.index('        "}\\n");',helper_start)+len('        "}\\n");')
+spotlight_helper=strings(ff[helper_start:helper_end])
+header=header.replace('void main(){',spotlight_helper+'void main(){')
 env=dict(os.environ)
 if Path(a.cc).is_absolute():env['PATH']=str(Path(a.cc).parent)+os.pathsep+env['PATH']
 with tempfile.TemporaryDirectory(prefix='point-fog-') as temp:
@@ -61,6 +66,41 @@ with tempfile.TemporaryDirectory(prefix='point-fog-') as temp:
         with data.open('wb') as f:
             for uniform,expected in cases:f.write(struct.pack('20f',*uniform,*expected))
         args.extend([str(shader),str(data)])
+    # Coefficient sets measured by nxdk_pgraph_tests' FoFixed hardware suite.
+    # Include explicit zero/negative denominators and cone endpoints, rather
+    # than comparing the rational hardware curve to a D3D pow approximation.
+    coefficients=[(0,-0.494592,1.494592),(0,1,0),(-0.000244,0.500122,0.499634),
+        (-0.170208,-0.855843,1.685635),(-0.706496,-2.507095,2.800600),
+        (-0.932112,-3.097628,3.165516),(-0.986137,-3.165117,3.178980),
+        (-0.993286,-2.953324,2.960038),(-0.996561,-3.084043,3.087482),
+        (0,0,0),(0,0,-1),(0,-2,1),(-0.5,0,1)]
+    calls=re.findall(r'"( +attenuation \*= spotlightFactor.*?;\\n)"',ff)
+    assert len(calls)==2
+    for path,call in zip(('dynamic','static'),calls):
+        body=('#define lightSpotFalloff(i) probe[2].xyz\n'
+              'vec4 spotDir=probe[0];vec3 VP=probe[1].xyz;int i=0;'
+              'float attenuation=probe[3].x;\n')+ast.literal_eval('"'+call+'"').replace('%d','0')
+        cases=[]
+        for k in coefficients:
+            for ramp in (-1,0,0.0001,0.125,0.25,0.5,0.75,0.999,1,2):
+                # Match the uploaded float32 values before the double oracle.
+                ramp,*rounded_k=struct.unpack('4f',struct.pack('4f',ramp,*k))
+                if ramp<=0:factor=0
+                elif ramp>=1:factor=1
+                elif ramp+rounded_k[0]<=0:factor=0
+                else:
+                    denominator=rounded_k[1]*ramp+rounded_k[2]
+                    factor=1 if denominator==0 else 0 if denominator<0 else min(1,max(0,(ramp+rounded_k[0])/denominator))
+                for attenuation in (0.25,1,2):
+                    values=[0,0,ramp,0,0,0,1,0,*rounded_k,0,attenuation,0,0,0]
+                    cases.append((values,[attenuation*factor]*4))
+        # Hard cones have huge cooked vectors. Squaring/renormalizing them
+        # would overflow float32; direct dot+bias retains the cone cutoffs.
+        for z,bias,factor in ((2e19,-1e19,1),(2e19,-2e19,0),(1e19,-2e19,0)):
+            for attenuation in (0.25,1,2):
+                values=[0,0,z,bias,0,0,1,0,0,-0.494592,1.494592,0,attenuation,0,0,0]
+                cases.append((values,[attenuation*factor]*4))
+        add('spotlight-'+path,body,cases,'vec4(attenuation)')
     # TEXGEN_REF is a live bit in the existing texgenMode uniform. Exercise
     # both generator paths with alternating modes in one shader binding.
     eye=strings(between(ff,'    mstring_append(body,\n        "vec3 texgenEye',
@@ -214,6 +254,17 @@ with tempfile.TemporaryDirectory(prefix='point-fog-') as temp:
                 env=dict(env,EGL_PLATFORM='surfaceless'),capture_output=True,text=True)
             assert result.returncode==1 and ' != ' in result.stderr,result.stderr
     print('PASS: front-only back alpha/specular power fails both lighting path oracles')
+    for path in ('static','dynamic'):
+        name='spotlight-'+path
+        negative=out/(name+'-linear.vert')
+        source=(out/(name+'.vert')).read_text()
+        source=re.sub(r'attenuation \*= spotlightFactor\([^;]+;',
+            'attenuation *= clamp(dot(spotDir.xyz, VP) + spotDir.w, 0.0, 1.0);',source)
+        negative.write_text(source)
+        result=subprocess.run([str(exe),str(negative),str(out/(name+'.bin'))],
+            env=dict(env,EGL_PLATFORM='surfaceless'),capture_output=True,text=True)
+        assert result.returncode==1 and ' != ' in result.stderr,result.stderr
+    print('PASS: linear-only spotlights fail both lighting path oracles')
     if a.vulkan:
         vkargs=[]
         for path,data in zip(args[::2],args[1::2]):
