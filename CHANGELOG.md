@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Lines and filled polygons retain their stage-3 texture coordinates when a game leaves point-sprite mode enabled. Generated sprite coordinates are used only for point draws and polygons rasterized as points. Both renderers reuse the existing pass-through shader state; no new geometry, buffers, resource copies or borrowed lifetimes are introduced.
+
 - Savestates restore each texture matrix's enable flag together with its saved matrix, preventing particle and reflection textures from retaining a later frame's transform setting. Older snapshots default the unsaved flags to disabled. Only four booleans are added; texture/vertex storage, shader keys and borrowed lifetimes are unchanged.
 
 - Spotlight cutoffs force zero even when distance attenuation is non-finite, preventing infinity-times-zero from leaking NaNs outside the cone. Both fixed-function shader paths use the hardware-style mask without new uniforms, resource copies or borrowed views.

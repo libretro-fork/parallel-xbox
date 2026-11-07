@@ -260,6 +260,20 @@ static bool psh_ui_filter_supported(bool linear, unsigned levels,
         min == NV_PGRAPH_TEXFILTER0_MIN_TENT_LOD0);
 }
 
+static bool psh_point_sprite_enabled(uint32_t raster, unsigned primitive)
+{
+    if (!(raster & NV_PGRAPH_SETUPRASTER_POINTSMOOTHENABLE)) {
+        return false;
+    }
+    if (primitive == PRIM_TYPE_POINTS) {
+        return true;
+    }
+    /* Polygon modes do not turn lines into points. The geometry renderer
+     * requires matching front/back modes; use its front-mode selection. */
+    return primitive >= PRIM_TYPE_TRIANGLES && primitive <= PRIM_TYPE_POLYGON &&
+           GET_MASK(raster, NV_PGRAPH_SETUPRASTER_FRONTFACEMODE) == POLY_MODE_POINT;
+}
+
 void pgraph_glsl_set_psh_state(PGRAPHState *pg, PshState *state)
 {
     /* Coherent flag snapshots, also reused by the UI selector below. */
@@ -276,8 +290,7 @@ void pgraph_glsl_set_psh_state(PGRAPHState *pg, PshState *state)
     state->alpha_test = control &
                         NV_PGRAPH_CONTROL_0_ALPHATESTENABLE;
 
-    state->point_sprite = raster &
-                          NV_PGRAPH_SETUPRASTER_POINTSMOOTHENABLE;
+    state->point_sprite = psh_point_sprite_enabled(raster, pg->primitive_mode);
 
     state->shadow_depth_func =
         (enum PshShadowDepthFunc)GET_MASK(pgraph_reg_r(pg, NV_PGRAPH_SHADOWCTL),

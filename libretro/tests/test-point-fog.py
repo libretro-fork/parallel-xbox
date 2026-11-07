@@ -206,7 +206,15 @@ with tempfile.TemporaryDirectory(prefix='point-fog-') as temp:
         # Rasterize actual stage-coordinate setup: only stage 3 is replaced.
     ps=(r/'hw/xbox/nv2a/pgraph/glsl/psh.c').read_text()
     setup=strings(between(ps,'    mstring_append(vars, "vec4 pT0 =','    } else {'))
-    fragment='#version 330\nin vec4 vtxT0,vtxT1,vtxT2;out vec4 color;void main(){'+setup+'color=vec4(pT3.xy,pT0.xy);}'
+    fragment='#version 330\nin vec4 vtxT0,vtxT1,vtxT2,vtxT3;out vec4 color;void main(){'+setup+'color=vec4(pT3.xy,pT0.xy);}'
+    passthrough=strings(between(ps,'    } else {\n        mstring_append(vars, "vec4 pT3 = vtxT3;',
+                               '    if (ui_clamp)'))
+    pass_fragment=fragment.replace(setup,setup[:setup.index('vec4 pT3')]+passthrough)
+    begin=ps.index('static bool psh_point_sprite_enabled(')
+    selection=ps[begin:ps.index('\n}',begin)+2]
+    regs=(r/'hw/xbox/nv2a/pgraph/vsh_regs.h').read_text()
+    enums='\n'.join(re.search(r'enum '+name+r' \{.*?\};',regs,re.S)[0]
+                    for name in ('ShaderPrimitiveMode','ShaderPolygonMode'))
     sprite=r'''glDisable(GL_RASTERIZER_DISCARD);glEnable(GL_PROGRAM_POINT_SIZE);glEnable(GL_POINT_SPRITE);
     const char *vertex="#version 330\nuniform float size;out vec4 vtxT0,vtxT1,vtxT2;void main(){gl_Position=vec4(0,0,0,1);gl_PointSize=size;vtxT0=vec4(.125,.75,0,1);vtxT1=vec4(.25);vtxT2=vec4(.5);}";
     GLuint v=compile(GL_VERTEX_SHADER,vertex),f=compile(GL_FRAGMENT_SHADER,/* FRAGMENT */),p=glCreateProgram();
@@ -227,8 +235,37 @@ with tempfile.TemporaryDirectory(prefix='point-fog-') as temp:
     }
     glDeleteProgram(p);glDeleteShader(v);glDeleteShader(f);glDeleteFramebuffers(1,&fbo);glDeleteTextures(1,&texture);
     puts("PASS: point sprite sizes 8/16/32, stage-3 orientation and unchanged stage-0 coordinates");'''
-    fixture=out/'fixture.c';fixture.write_text((r/'libretro/tests/test-point-fog-gl.c').read_text().replace('/* SPRITE */',sprite.replace('/* FRAGMENT */',json.dumps(fragment))))
-    command=[a.cc,'-O2' ,'-std=gnu11','-Wall','-Wextra','-Werror',str(fixture),'-o',str(exe)]
+    nonpoints=r'''{
+    const char *vertex="#version 330\nout vec4 vtxT0,vtxT1,vtxT2,vtxT3;void main(){vec2 pos[3]=vec2[3](vec2(-.7,-.3),vec2(.7,-.3),vec2(0,.7));gl_Position=vec4(pos[gl_VertexID],0,1);gl_PointSize=8;vtxT0=vec4(.125,.75,0,1);vtxT1=vec4(.25);vtxT2=vec4(.5);vtxT3=vec4(.625,.375,0,1);}";
+    const char *fragments[2]={/* PASS FRAGMENT */,/* FRAGMENT */};
+    GLuint texture,fbo;glGenTextures(1,&texture);glBindTexture(GL_TEXTURE_2D,texture);glTexImage2D(GL_TEXTURE_2D,0,GL_RGBA32F,48,48,0,GL_RGBA,GL_FLOAT,NULL);
+    glGenFramebuffers(1,&fbo);glBindFramebuffer(GL_FRAMEBUFFER,fbo);glFramebufferTexture2D(GL_FRAMEBUFFER,GL_COLOR_ATTACHMENT0,GL_TEXTURE_2D,texture,0);assert(glCheckFramebufferStatus(GL_FRAMEBUFFER)==GL_FRAMEBUFFER_COMPLETE);
+    unsigned draws=0;
+    for(unsigned enabled=0;enabled<2;enabled++)for(unsigned polygon=0;polygon<2;polygon++)for(unsigned lines=0;lines<2;lines++){
+      unsigned primitive=lines?PRIM_TYPE_LINES:PRIM_TYPE_TRIANGLES;
+      uint32_t raster=polygon|(polygon<<2)|(enabled?NV_PGRAPH_SETUPRASTER_POINTSMOOTHENABLE:0);
+      bool sprite=psh_point_sprite_enabled(raster,primitive);
+      assert(sprite==(!lines&&polygon&&enabled));
+      GLuint v=compile(GL_VERTEX_SHADER,vertex),f=compile(GL_FRAGMENT_SHADER,fragments[sprite]),p=glCreateProgram();glAttachShader(p,v);glAttachShader(p,f);glLinkProgram(p);GLint linked;glGetProgramiv(p,GL_LINK_STATUS,&linked);assert(linked);glUseProgram(p);
+      glPolygonMode(GL_FRONT_AND_BACK,polygon?GL_POINT:GL_FILL);glClearColor(-1,-1,-1,-1);glClear(GL_COLOR_BUFFER_BIT);glDrawArrays(lines?GL_LINES:GL_TRIANGLES,0,lines?2:3);
+      float pixels[48*48*4];glReadPixels(0,0,48,48,GL_RGBA,GL_FLOAT,pixels);assert(glGetError()==GL_NO_ERROR);unsigned covered=0;
+      for(unsigned i=0;i<48*48;i++){float *c=&pixels[i*4];if(c[0]<0)continue;covered++;
+        if(!sprite){assert(c[0]==.625f&&c[1]==.375f);}else{assert(c[0]>=0&&c[0]<=1&&c[1]>=0&&c[1]<=1);}
+        assert(c[2]==.125f&&c[3]==.75f);
+      }
+      assert(covered);draws++;glDeleteProgram(p);glDeleteShader(v);glDeleteShader(f);
+    }
+    glPolygonMode(GL_FRONT_AND_BACK,GL_FILL);glDeleteFramebuffers(1,&fbo);glDeleteTextures(1,&texture);
+    printf("PASS: %u GPU primitive/polygon/sprite transitions preserve stage-3 coordinates\n",draws);
+    }'''
+    fixture=out/'fixture.c'
+    source=(r/'libretro/tests/test-point-fog-gl.c').read_text()
+    prefix='#include "hw/xbox/nv2a/nv2a_regs.h"\n#define ctz32(v) __builtin_ctz(v)\n'+enums+'\n'+selection+'\n'
+    source=source.replace('int main(',prefix+'int main(')
+    source=source.replace('/* SPRITE */',sprite+'\n'+nonpoints)
+    source=source.replace('/* PASS FRAGMENT */',json.dumps(pass_fragment)).replace('/* FRAGMENT */',json.dumps(fragment))
+    fixture.write_text(source)
+    command=[a.cc,'-O2' ,'-std=gnu11','-Wall','-Wextra','-Werror','-I'+str(r),str(fixture),'-o',str(exe)]
     if os.name=='nt':
         epoxy=a.epoxy_root.resolve();command+=['-I'+str(epoxy/'libepoxy/include'),str(epoxy/'libepoxy.a'),'-lopengl32','-lgdi32','-static']
     else:command+=['-lEGL','-lGL','-lm']

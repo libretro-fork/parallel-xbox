@@ -32,6 +32,8 @@ jobs:
         run: python3 libretro/tests/test-lighting-point-state.py . cc
       - name: Spotlight coefficients preserve context words and partial writes
         run: python3 libretro/tests/test-spotlight-falloff.py . cc
+      - name: Sprite coordinates apply only to rasterized points
+        run: python3 libretro/tests/test-point-sprite-selection.py . cc
       - name: EP worker ownership must preserve RAM, queue handoffs and TLB guards
         run: python3 libretro/tests/test-dsp-ownership.py . cc
       - name: EP ownership under address and undefined behavior sanitizers
