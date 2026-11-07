@@ -55,6 +55,10 @@ helper_start=ff.index('        "float spotlightFactor(')
 helper_end=ff.index('        "}\\n");',helper_start)+len('        "}\\n");')
 spotlight_helper=strings(ff[helper_start:helper_end])
 header=header.replace('void main(){',spotlight_helper+'void main(){')
+base_start=ff.index('        "vec3 lightingBaseColor(')
+base_end=ff.index('        "}\\n");',base_start)+len('        "}\\n");')
+base_helper=strings(ff[base_start:base_end])
+header=header.replace('void main(){',base_helper+'void main(){')
 env=dict(os.environ)
 if Path(a.cc).is_absolute():env['PATH']=str(Path(a.cc).parent)+os.pathsep+env['PATH']
 with tempfile.TemporaryDirectory(prefix='point-fog-') as temp:
@@ -66,6 +70,44 @@ with tempfile.TemporaryDirectory(prefix='point-fog-') as temp:
         with data.open('wb') as f:
             for uniform,expected in cases:f.write(struct.pack('20f',*uniform,*expected))
         args.extend([str(shader),str(data)])
+    # Numeric samples from the opaque diffuse-only halves of the hardware
+    # Emissive_me{0,0_15,0_5,1_0} captures at x=220/352/484,y=110/210/310.
+    # https://github.com/abaire/nxdk_pgraph_tests_golden_results/tree/main/results/Material_color_source
+    pairs=[(1,1),(2,1),(1,2),(2,2),(0,2),(2,0),(0,1),(1,0),(0,0)] # emission,ambient
+    hardware=[[(28,214,28),(105,138,28),(36,207,28),(112,130,28),(61,156,54),(76,178,76),(54,163,54),(76,178,76),(76,178,76)],
+        [(32,229,32),(108,153,32),(51,210,32),(127,134,32),(76,159,57),(92,182,80),(57,178,57),(80,194,80),(76,178,76)],
+        [(41,255,41),(117,189,41),(87,219,41),(163,143,41),(112,168,66),(127,191,89),(66,214,66),(89,229,89),(76,178,76)],
+        [(54,255,54),(130,240,54),(138,232,54),(214,156,54),(163,181,79),(178,204,102),(79,255,79),(102,255,102),(76,178,76)]]
+    colors={1:(.1,.4,.1),2:(.4,.1,.1)}
+    globals_dynamic=strings(between(ff,'            "  uint dsrc =','            "  oD1 ='))
+    ambient_dynamic=strings(between(ff,'            "  uint ambientSource =','    } else if (state->fixed_function.ambient_src'))
+    static_start=ff.index('            "oD0 = vec4(lightingBaseColor(')
+    globals_static=strings(ff[static_start:ff.index('            state->fixed_function.ambient_src',static_start)])
+    dynamic_cases=[]
+    for index,(emission,ambient) in enumerate(pairs):
+        cases=[]
+        for ki,k in enumerate((0,.15,.5,1)):
+            # Independently validate the floating oracle against hardware bytes.
+            if ambient==0:
+                base=[.2+(colors[emission][c]*k if emission else 0) for c in range(3)]
+            else:
+                base=[(.2 if emission==0 else colors[emission][c])+colors[ambient][c]*k for c in range(3)]
+            expected=[base[c]+.1*(1 if ambient==0 else colors[ambient][c])+(0,.4,0)[c] for c in range(3)]
+            assert all(abs(min(255,int(v*255))-hw)<=1 for v,hw in zip(expected,hardware[ki][index]))
+            values=[.2,.2,.2,.75,.1,.4,.1,.25,.4,.1,.1,.25,k,ambient,emission,0]
+            cases.append((values,expected+[.75]))
+        prefix=('uint csv0cCtl=(uint(probe[3].y)<<6u)|(uint(probe[3].z)<<4u);'
+                'vec3 sceneAmbientColor=probe[0].xyz;vec4 materialEmissionColor=vec4(probe[3].x);'
+                'vec4 diffuse=probe[1],specular=probe[2],oD0;float material_alpha=probe[0].a;\n')
+        light='vec3 lightAmbient=vec3(.1);\n'
+        static_global=globals_static.replace('%uu',str(ambient)+'u',1).replace('%uu',str(emission)+'u',1).replace('%s','material_alpha')
+        if ambient:
+            name='diffuse' if ambient==1 else 'specular'
+            ambient_static=strings(next(line for line in ff.splitlines() if 'mstring_append(body, "  lightAmbient *= '+name+'.xyz;' in line))
+        else:ambient_static=''
+        add('material-static-'+str(index),prefix+static_global+light+ambient_static+'oD0.rgb+=lightAmbient+vec3(0,.4,0);',cases,'oD0')
+        dynamic_cases.extend(cases)
+    add('material-dynamic',prefix+globals_dynamic+light+ambient_dynamic+'oD0.rgb+=lightAmbient+vec3(0,.4,0);',dynamic_cases,'oD0')
     # Coefficient sets measured by nxdk_pgraph_tests' FoFixed hardware suite.
     # Include explicit zero/negative denominators and cone endpoints, rather
     # than comparing the rational hardware curve to a D3D pow approximation.
@@ -320,6 +362,23 @@ with tempfile.TemporaryDirectory(prefix='point-fog-') as temp:
             env=dict(env,EGL_PLATFORM='surfaceless'),capture_output=True,text=True)
         assert result.returncode==1 and ' != ' in result.stderr,result.stderr
     print('PASS: unmasked non-finite spotlight attenuation fails both path oracles')
+    for name in ('material-static-8','material-dynamic'):
+        negative=out/(name+'-double-scene.vert')
+        source=(out/(name+'.vert')).read_text()
+        before='return scene + (emissionSource == 0u ? vec3(0.0) : emission * multiplier);'
+        assert before in source
+        negative.write_text(source.replace(before,'return scene * multiplier + (emissionSource == 0u ? scene : emission);'))
+        result=subprocess.run([str(exe),str(negative),str(out/(name+'.bin'))],env=dict(env,EGL_PLATFORM='surfaceless'),capture_output=True,text=True)
+        assert result.returncode==1 and ' != ' in result.stderr,result.stderr
+    for name in ('material-static-0','material-dynamic'):
+        negative=out/(name+'-unmodulated-ambient.vert')
+        source=(out/(name+'.vert')).read_text()
+        before=ambient_dynamic if name.endswith('dynamic') else '  lightAmbient *= diffuse.xyz;\n'
+        assert before in source
+        negative.write_text(source.replace(before,''))
+        result=subprocess.run([str(exe),str(negative),str(out/(name+'.bin'))],env=dict(env,EGL_PLATFORM='surfaceless'),capture_output=True,text=True)
+        assert result.returncode==1 and ' != ' in result.stderr,result.stderr
+    print('PASS: double-scene and unmodulated ambient controls fail both material paths')
     if a.vulkan:
         vkargs=[]
         for path,data in zip(args[::2],args[1::2]):

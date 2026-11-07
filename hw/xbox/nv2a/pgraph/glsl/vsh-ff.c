@@ -65,6 +65,20 @@ static void append_skinning_code(MString *str, bool mix, unsigned int count,
     }
 }
 
+static void append_ambient_source(MString *body, const VshState *state)
+{
+    if (state->fixed_function.csv0c_dynamic) {
+        mstring_append(body,
+            "  uint ambientSource = (csv0cCtl >> 6) & 3u;\n"
+            "  lightAmbient *= ambientSource == 1u ? diffuse.xyz\n"
+            "                : ambientSource == 2u ? specular.xyz : vec3(1.0);\n");
+    } else if (state->fixed_function.ambient_src == MATERIAL_COLOR_SRC_DIFFUSE) {
+        mstring_append(body, "  lightAmbient *= diffuse.xyz;\n");
+    } else if (state->fixed_function.ambient_src == MATERIAL_COLOR_SRC_SPECULAR) {
+        mstring_append(body, "  lightAmbient *= specular.xyz;\n");
+    }
+}
+
 /* The eight 2-bit CSV0_D light modes read from a uniform, as the hardware
  * does, not one program per combination; mirrors the unrolled code below. */
 static void gen_dynamic_lights(MString *body, const VshState *state)
@@ -136,7 +150,9 @@ static void gen_dynamic_lights(MString *body, const VshState *state)
         "  }\n"
         "  vec3 lightAmbient = lightAmbientColor(i) * attenuation;\n"
         "  vec3 lightDiffuse = lightDiffuseColor(i) * attenuation * nDotVP;\n"
-        "  vec3 lightSpecular = lightSpecularColor(i) * attenuation * pf;\n"
+        "  vec3 lightSpecular = lightSpecularColor(i) * attenuation * pf;\n");
+    append_ambient_source(body, state);
+    mstring_append(body,
         "  oD0.xyz += lightAmbient;\n"
         /* Two-sided lighting: the back face is lit with the negated
          * normal and the back light registers. */
@@ -295,6 +311,19 @@ GLSL_DEFINE(materialEmissionColor, GLSL_LTCTXA(NV_IGRAPH_XF_LTCTXA_CM_COL) ".xyz
         "float spotlightAttenuation(float attenuation, vec4 spot, vec3 vp, vec3 k) {\n"
         "    float factor = spotlightFactor(spot, vp, k);\n"
         "    return factor == 0.0 ? 0.0 : attenuation * factor;\n"
+        "}\n");
+
+    /* NV2A material-source combinations, verified by the Emissive_me*
+     * hardware tests: a material source supplies the precombined scene term. */
+    mstring_append(header,
+        "vec3 lightingBaseColor(uint ambientSource, uint emissionSource,\n"
+        "    vec3 scene, vec3 multiplier, vec3 diffuseColor, vec3 specularColor) {\n"
+        "    vec3 ambient = ambientSource == 2u ? specularColor : diffuseColor;\n"
+        "    vec3 emission = emissionSource == 2u ? specularColor : diffuseColor;\n"
+        "    if (ambientSource == 0u) {\n"
+        "        return scene + (emissionSource == 0u ? vec3(0.0) : emission * multiplier);\n"
+        "    }\n"
+        "    return ambient * multiplier + (emissionSource == 0u ? scene : emission);\n"
         "}\n");
 
     unsigned int count;
@@ -468,12 +497,9 @@ GLSL_DEFINE(materialEmissionColor, GLSL_LTCTXA(NV_IGRAPH_XF_LTCTXA_CM_COL) ".xyz
             "  float alphaSrc = dsrc == 0u ? material_alpha\n"
             "                 : dsrc == 2u ? specular.a : diffuse.a;\n"
             "  uint asrc = (csv0cCtl >> 6) & 3u;\n"
-            "  oD0 = vec4(asrc == 0u ? sceneAmbientColor\n"
-            "           : asrc == 2u ? specular.rgb : diffuse.rgb, alphaSrc);\n"
-            "  oD0.rgb *= materialEmissionColor.rgb;\n"
             "  uint esrc = (csv0cCtl >> 4) & 3u;\n"
-            "  oD0.rgb += esrc == 0u ? sceneAmbientColor\n"
-            "           : esrc == 2u ? specular.rgb : diffuse.rgb;\n"
+            "  oD0 = vec4(lightingBaseColor(asrc, esrc, sceneAmbientColor,\n"
+            "      materialEmissionColor.rgb, diffuse.rgb, specular.rgb), alphaSrc);\n"
             "  oD1 = vec4(0.0, 0.0, 0.0, specular.a);\n"
             "  if ((csv0cCtl & 32768u) != 0u) {\n"
             "    oB0 = vec4(sceneBackAmbientColor, back_material_alpha);\n"
@@ -506,22 +532,11 @@ GLSL_DEFINE(materialEmissionColor, GLSL_LTCTXA(NV_IGRAPH_XF_LTCTXA_CM_COL) ".xyz
             alpha_source = alpha_source_specular;
         }
 
-        if (state->fixed_function.ambient_src == MATERIAL_COLOR_SRC_MATERIAL) {
-            mstring_append_fmt(body, "oD0 = vec4(sceneAmbientColor, %s);\n", alpha_source);
-        } else if (state->fixed_function.ambient_src == MATERIAL_COLOR_SRC_DIFFUSE) {
-            mstring_append_fmt(body, "oD0 = vec4(diffuse.rgb, %s);\n", alpha_source);
-        } else if (state->fixed_function.ambient_src == MATERIAL_COLOR_SRC_SPECULAR) {
-            mstring_append_fmt(body, "oD0 = vec4(specular.rgb, %s);\n", alpha_source);
-        }
-
-        mstring_append(body, "oD0.rgb *= materialEmissionColor.rgb;\n");
-        if (state->fixed_function.emission_src == MATERIAL_COLOR_SRC_MATERIAL) {
-            mstring_append(body, "oD0.rgb += sceneAmbientColor;\n");
-        } else if (state->fixed_function.emission_src == MATERIAL_COLOR_SRC_DIFFUSE) {
-            mstring_append(body, "oD0.rgb += diffuse.rgb;\n");
-        } else if (state->fixed_function.emission_src == MATERIAL_COLOR_SRC_SPECULAR) {
-            mstring_append(body, "oD0.rgb += specular.rgb;\n");
-        }
+        mstring_append_fmt(body,
+            "oD0 = vec4(lightingBaseColor(%uu, %uu, sceneAmbientColor,\n"
+            "    materialEmissionColor.rgb, diffuse.rgb, specular.rgb), %s);\n",
+            state->fixed_function.ambient_src, state->fixed_function.emission_src,
+            alpha_source);
 
         mstring_append(body, "oD1 = vec4(0.0, 0.0, 0.0, specular.a);\n");
 
@@ -635,6 +650,7 @@ GLSL_DEFINE(materialEmissionColor, GLSL_LTCTXA(NV_IGRAPH_XF_LTCTXA_CM_COL) ".xyz
                 "    vec3 lightSpecular = lightSpecularColor(%d) * attenuation * pf;\n",
                 i, i, i);
 
+            append_ambient_source(body, state);
             mstring_append(body,
                 "    oD0.xyz += lightAmbient;\n");
             if (state->fixed_function.two_sided) {
