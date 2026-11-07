@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Honor the independent local/infinite viewer setting for fixed-function reflection and sphere-map texture coordinates in both renderers, including GPU Boost's dynamic texgen path. Reuse the existing uniform storage and shader keys; refresh older OpenGL shader caches.
+
 - DSP: skip clearing the empty interpreter opcode cache during native-only execution. Preserve decoder-cache invalidation after interpreter use, bootstrap and state loading, with regression checks for both backends.
 
 - DSP JIT: clear only touched program-coverage words on sparse cache flushes, retaining the bulk clear for full coverage. Fix translation at the program-RAM wrap boundary so writes still invalidate high-address code; add exact clearing and boundary regression checks.

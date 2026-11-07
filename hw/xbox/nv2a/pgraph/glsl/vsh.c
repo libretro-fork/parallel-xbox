@@ -779,8 +779,12 @@ void pgraph_glsl_set_vsh_uniform_values(PGRAPHState *pg, const VshState *state,
         values->fogCtl[0] = ctl;
     }
     if (locs[VshUniform_texgenMode] != -1) {
+        /* Bits 0..11 hold the four coordinate modes. Borrow bit 12 for
+         * the global viewer mode without growing the uniform layout or key. */
+        uint32_t viewer = GET_MASK(pgraph_reg_r(pg, NV_PGRAPH_CSV0_D),
+                                   NV_PGRAPH_CSV0_D_TEXGEN_REF) << 12;
         for (int i = 0; i < 4; i++) {
-            uint32_t packed = 0;
+            uint32_t packed = viewer;
             for (int j = 0; j < 4; j++) {
                 packed |= pgraph_texgen_mode(pg, i, j) << (j * 3);
             }

@@ -40,7 +40,7 @@ static const char *shader_gl_vendor = NULL;
 
 /* xemu_version follows upstream, so fork-only generator changes need their
  * own binary-cache revision. Bump this when generated shader semantics change. */
-static const char shader_codegen_version[] = "depth-overflow-retry-1";
+static const char shader_codegen_version[] = "texgen-viewer-1";
 
 /* Deleting a program frees its GL name for reuse: drop any uniform cache
  * held against that name so a future program cannot inherit it. */
