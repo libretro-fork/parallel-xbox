@@ -191,7 +191,14 @@ typedef struct NV2AState {
         retro_atomic_int_t dirty;
     } puserdac;
 
+    /* Cold PRAMIN aperture/compatibility state. Existing hot offsets stay put. */
+    MemoryRegion pramin_io;
+    uint8_t *pramin_top; /* NULL selects the legacy instance RAM block */
+    bool pramin_unified;
+    bool migration_parked; /* host-only save/load hold, including failed streams */
 } NV2AState;
+
+#include "hw/xbox/nv2a/ramin.h"
 
 typedef struct NV2ABlockInfo {
     const char *name;
