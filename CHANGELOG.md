@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- DSP: sparse cache flushes use word summaries to skip empty publication-bitmap words; focused Linux sanitizer and ARM64 checks now run independently in CI.
+
 - CPU: share translated blocks across incoming carry-flag states and retain direct links through dynamic flag updates. Reduces CPU overhead on JSRF's title screen and in Ninja Gaiden Black while preserving guest clocks and frame pacing.
 
 - CPU: recognize Gunvalkyrie's register-swapped RAM wait loop, reducing wasted CPU work on its title/menu screen while retaining guest frame timing and interrupt handling.

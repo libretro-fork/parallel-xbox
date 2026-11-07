@@ -42,6 +42,7 @@ uint64_t dspjit_test_fallback_count(void);
 uint64_t dspjit_test_invalidation_scans(void);
 uint64_t dspjit_test_flush_resets(void);
 uint64_t dspjit_test_flush_pointer_bytes(void);
+uint64_t dspjit_test_flush_bitmap_words(void);
 /* Pure coverage helper; caller provides the complete PRAM coverage bitmap. */
 void dspjit_test_cover_span(uint64_t *covered, uint32_t start, uint32_t end);
 uint64_t dspjit_test_entry_count(void);

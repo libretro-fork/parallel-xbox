@@ -112,6 +112,19 @@ jobs:
         timeout-minutes: 10
         run: make dspdecode dspnative dspnativeprograms dspdma dspbootstrap dspdmaspans dspinvalidate dspcoverage dspflush dspmax dspjumps dsptcc dsplogical dspstatus dspbudget dsprelative dsploops dspprogram dspregisterloops dspcompare dspstartup
 
+  dsp-cache-flush:
+    name: DSP cache flush sanitizers and ARM64
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install focused DSP toolchains
+        run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends libepoxy-dev gcc-aarch64-linux-gnu libc6-dev-arm64-cross qemu-user
+      - name: Cache publication and flush under ASan and UBSan
+        run: make CC="cc -fsanitize=address,undefined -fno-omit-frame-pointer -fno-sanitize-recover=all" DSPFLUSH="$RUNNER_TEMP/dspflush-sanitize" dspflush
+      - name: Cache publication and flush on emulated ARM64
+        run: make CC=aarch64-linux-gnu-gcc DSPFLUSH="$RUNNER_TEMP/dspflush-arm64" DSP_PROGRAM_RUNNER="qemu-aarch64 -L /usr/aarch64-linux-gnu" dspflush
+
   guest-gpu-progress:
     name: DOAX guest GPU progress regression
     runs-on: ubuntu-24.04
