@@ -4893,7 +4893,7 @@ rewinds the arena, then clears coverage and retires published entries in
 marked pointer tables. Untouched slots are already empty. Per-word
 invalidation does not reset dirty bits. No saved state changes.
 
-The 671 focused checks cover initially empty flushes, populated/repeated
+The 808 focused checks cover initially empty flushes, populated/repeated
 empty flushes, all eight normal scaling/LF identities, direct CLR-to-NOP code
 replacement after flush, REP fallback-to-native replacement, and interrupt-only
 publication/replacement through all four scales and six pipeline stages.
@@ -4928,11 +4928,13 @@ cycle including compilation, not gameplay or
 a C/Rust comparison. The existing --bench empty-flush mode remains available.
 
 Each allocated scaling-mode cache adds four 512-byte publication bitmaps
-(2 KiB per used scale, at most 8 KiB per DSP). Normal LF-clear/LF-set,
-interrupt and REP tables have independent bitmaps. Publication ORs the PC bit,
+and four 8-byte word summaries (2080 bytes per used scale, at most 8320 bytes
+per DSP). Normal LF-clear/LF-set, interrupt and REP tables have independent
+bitmaps and summaries. Publication ORs the PC bit,
 so invalidation/republication deduplicates naturally without a growable list.
-Flush enumerates set PC bits, stores NULL only to those slots and clears only
-nonzero metadata words. Fully occupied 64-entry groups use a bulk clear;
+Flush first enumerates the summary's nonzero bitmap words, then the set PC
+bits; it stores NULL only to those slots and clears only populated metadata
+words and summaries. Fully occupied 64-entry groups use a bulk clear;
 partially occupied groups retain per-entry retirement. The byte counter covers
 pointer writes, not metadata writes, coverage clearing or hardware cache-line
 traffic. This trades small metadata storage and publication work for less
@@ -5094,3 +5096,27 @@ Reference: https://github.com/xemu-project/xemu/pull/2952 (reviewed head
  d9eda2a3defdadada01a6c23fcbffa57591ed7d7). The core adaptation adds bounded
 span handling, cached block views, canonical RAM access and legacy-state
 selection rather than importing the proposal's byte-at-a-time implementation.
+
+A word summary adds one bit per entry-bitmap word. Publication updates both
+levels; flush uses nonzero-input bit scans and resets both levels. PRAM's
+64-word bitmap must fit the summary, enforced at compile time. A one-entry
+flush visits one entry-bitmap word instead of scanning all 64. The visit
+counter excludes reading the summary itself and does not measure physical
+cache-line traffic. The added summary storage is 32 bytes per used scale,
+at most 128 bytes per DSP beyond the publication bitmaps.
+
+Exact word-visit checks cover normal/REP/interrupt caches, mixed kinds,
+empty and repeated flushes, dense first/last groups, disjoint word sets,
+and a disjoint PC set within a previously populated word. This detects
+stale summaries as well as stale entry bits. --bench-single prints pointer
+bytes and bitmap-word visits; timing comparisons must remove the visit
+counter from both builds to avoid charging instrumentation per scanned word.
+Other common test counters remain identical. The benchmark isolates warm
+compile/run/flush cycles, not games or Rust.
+
+The independent dsp-cache-flush CI job runs the focused regression under
+Linux ASan/UBSan and then on AArch64 through qemu-aarch64 with a cross sysroot.
+It does not depend on earlier CPU/frame tests succeeding, and uses distinct
+binaries so sanitizer/native and cross-build configurations cannot collide.
+Local Windows checks can additionally use GCC undefined-behavior trap mode;
+that is not a substitute for claiming an ASan or ARM64 runtime result.

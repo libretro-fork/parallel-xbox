@@ -3,6 +3,9 @@
 ## Unreleased
 
 - Back retail 64 MiB PRAMIN with reversed 16-byte blocks of unified RAM, so CPU aliases and GPU instance reads share the same data. CPU accesses reuse RAM coherence/dirty handling, and descriptor reads borrow one complete block. Older snapshots retain their separate instance model until reset; unverified 128 MiB mappings keep the existing model. Unified states omit the unused shadow payload, and failed state operations release their GPU hold. No new shader variants, fences or locks are added.
+
+- DSP: sparse cache flushes use word summaries to skip empty publication-bitmap words; focused Linux sanitizer and ARM64 checks now run independently in CI.
+
 - CPU: share translated blocks across incoming carry-flag states and retain direct links through dynamic flag updates. Reduces CPU overhead on JSRF's title screen and in Ninja Gaiden Black while preserving guest clocks and frame pacing.
 
 - CPU: recognize Gunvalkyrie's register-swapped RAM wait loop, reducing wasted CPU work on its title/menu screen while retaining guest frame timing and interrupt handling.

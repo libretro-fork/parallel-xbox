@@ -78,11 +78,13 @@ int main(int argc, char **argv)
     REQUIRE(c->jit);
     const uint64_t entry_bytes = sizeof(void *);
     uint64_t bytes = dspjit_test_flush_pointer_bytes();
+    uint64_t bitmap_words = dspjit_test_flush_bitmap_words();
     uint64_t resets = dspjit_test_flush_resets();
     if (!bench) {
         for (unsigned i = 0; i < 32; i++) dspjit_flush(c->jit);
         REQUIRE(dspjit_test_flush_resets() == resets);
         REQUIRE(dspjit_test_flush_pointer_bytes() == bytes);
+        REQUIRE(dspjit_test_flush_bitmap_words() == bitmap_words);
     }
     c->pram[0] = 0x200013;
     c->pram[1] = 0x08f484;
@@ -93,15 +95,17 @@ int main(int argc, char **argv)
         dspjit_flush(c->jit);
         resets = dspjit_test_flush_resets();
         bytes = dspjit_test_flush_pointer_bytes();
+        bitmap_words = dspjit_test_flush_bitmap_words();
         unsigned iterations = bench_single ? 10000 : 100000;
         double start = seconds();
         for (unsigned i = 0; i < iterations; i++) {
             if (bench_single) normal(m, 0, true);
             dspjit_flush(c->jit);
         }
-        printf("%s flush: %.9f seconds, %" PRIu64 " table resets, %" PRIu64 " pointer bytes\n",
+        printf("%s flush: %.9f seconds, %" PRIu64 " table resets, %" PRIu64 " pointer bytes, %" PRIu64 " bitmap words\n",
                bench_single ? "single-mode" : "empty", seconds()-start,
-               dspjit_test_flush_resets()-resets, dspjit_test_flush_pointer_bytes()-bytes);
+               dspjit_test_flush_resets()-resets, dspjit_test_flush_pointer_bytes()-bytes,
+               dspjit_test_flush_bitmap_words()-bitmap_words);
         dispose(m);
         return 0;
     }
@@ -109,6 +113,7 @@ int main(int argc, char **argv)
     dspjit_flush(c->jit);
     REQUIRE(dspjit_test_flush_resets() == resets + 1);
     REQUIRE(dspjit_test_flush_pointer_bytes() == bytes + 8 * entry_bytes);
+    REQUIRE(dspjit_test_flush_bitmap_words() == bitmap_words + 8);
     for (unsigned i = 0; i < 32; i++) dspjit_flush(c->jit);
     REQUIRE(dspjit_test_flush_resets() == resets + 1);
     /* Deliberately replace PRAM directly: only flush can retire the old CLR. */
@@ -117,6 +122,7 @@ int main(int argc, char **argv)
     dspjit_flush(c->jit);
     REQUIRE(dspjit_test_flush_resets() == resets + 2);
     REQUIRE(dspjit_test_flush_pointer_bytes() == bytes + 16 * entry_bytes);
+    REQUIRE(dspjit_test_flush_bitmap_words() == bitmap_words + 16);
     for (unsigned i = 0; i < 32; i++) dspjit_flush(c->jit);
     REQUIRE(dspjit_test_flush_resets() == resets + 2);
     /* All modes remain allocated. Publish one entry in one identity, then
@@ -125,11 +131,14 @@ int main(int argc, char **argv)
         c->pram[0] = (mode & 1) ? 0x200013 : 0;
         normal(m, mode, !!(mode & 1));
         bytes = dspjit_test_flush_pointer_bytes();
+        bitmap_words = dspjit_test_flush_bitmap_words();
         dspjit_flush(c->jit);
         REQUIRE(dspjit_test_flush_pointer_bytes() == bytes + entry_bytes);
+        REQUIRE(dspjit_test_flush_bitmap_words() == bitmap_words + 1);
         REQUIRE(dspjit_test_flush_resets() == resets + 3 + mode);
         dspjit_flush(c->jit);
         REQUIRE(dspjit_test_flush_pointer_bytes() == bytes + entry_bytes);
+        REQUIRE(dspjit_test_flush_bitmap_words() == bitmap_words + 1);
     }
     /* Entry bitmaps must include far/boundary PCs and deduplicate an entry
      * invalidated and recompiled before the eventual flush. */
@@ -145,25 +154,42 @@ int main(int argc, char **argv)
     normal_at(m, 0, 3, false);
     m->dsp->ops->write_memory(m->dsp, 'P', 66, 0); /* invalidated, not republished */
     bytes = dspjit_test_flush_pointer_bytes();
+    bitmap_words = dspjit_test_flush_bitmap_words();
     dspjit_flush(c->jit);
     REQUIRE(dspjit_test_flush_pointer_bytes() == bytes + sizeof(pcs)/sizeof(*pcs) * entry_bytes);
+    REQUIRE(dspjit_test_flush_bitmap_words() == bitmap_words + 4);
     dspjit_flush(c->jit);
     REQUIRE(dspjit_test_flush_pointer_bytes() == bytes + sizeof(pcs)/sizeof(*pcs) * entry_bytes);
+    REQUIRE(dspjit_test_flush_bitmap_words() == bitmap_words + 4);
     for (unsigned i = 0; i < sizeof(pcs)/sizeof(*pcs); i++) {
         c->pram[pcs[i]] = 0;
         normal_at(m, 0, pcs[i], false);
     }
     bytes = dspjit_test_flush_pointer_bytes();
+    bitmap_words = dspjit_test_flush_bitmap_words();
     dspjit_flush(c->jit);
     REQUIRE(dspjit_test_flush_pointer_bytes() == bytes + sizeof(pcs)/sizeof(*pcs) * entry_bytes);
+    REQUIRE(dspjit_test_flush_bitmap_words() == bitmap_words + 4);
     /* A later disjoint publication must not inherit old bitmap entries. */
     c->pram[300] = 0;
     c->pram[301] = 0x08f484;
     c->pram[302] = 1;
     normal_at(m, 0, 300, false);
     bytes = dspjit_test_flush_pointer_bytes();
+    bitmap_words = dspjit_test_flush_bitmap_words();
     dspjit_flush(c->jit);
     REQUIRE(dspjit_test_flush_pointer_bytes() == bytes + entry_bytes);
+    REQUIRE(dspjit_test_flush_bitmap_words() == bitmap_words + 1);
+    /* Reuse a previously populated bitmap word with a disjoint PC set. */
+    c->pram[8] = 0;
+    c->pram[9] = 0x08f484;
+    c->pram[10] = 1;
+    normal_at(m, 0, 8, false);
+    bytes = dspjit_test_flush_pointer_bytes();
+    bitmap_words = dspjit_test_flush_bitmap_words();
+    dspjit_flush(c->jit);
+    REQUIRE(dspjit_test_flush_pointer_bytes() == bytes + entry_bytes);
+    REQUIRE(dspjit_test_flush_bitmap_words() == bitmap_words + 1);
     dispose(m);
 
     /* A cached REP fallback need not allocate native arena bytes. It must
@@ -184,9 +210,11 @@ int main(int argc, char **argv)
         REQUIRE(c->loop_rep);
         resets = dspjit_test_flush_resets();
         bytes = dspjit_test_flush_pointer_bytes();
+        bitmap_words = dspjit_test_flush_bitmap_words();
         dspjit_flush(c->jit);
         REQUIRE(dspjit_test_flush_resets() == resets + 1);
         REQUIRE(dspjit_test_flush_pointer_bytes() == bytes + entry_bytes);
+        REQUIRE(dspjit_test_flush_bitmap_words() == bitmap_words + 1);
         dspjit_flush(c->jit);
         REQUIRE(dspjit_test_flush_resets() == resets + 1);
         c->pram[0] = 0x200013;
@@ -201,6 +229,7 @@ int main(int argc, char **argv)
         dspjit_flush(c->jit);
         REQUIRE(dspjit_test_flush_resets() == resets + 2);
         REQUIRE(dspjit_test_flush_pointer_bytes() == bytes + 2 * entry_bytes);
+        REQUIRE(dspjit_test_flush_bitmap_words() == bitmap_words + 2);
         dispose(m);
     }
 
@@ -231,11 +260,14 @@ int main(int argc, char **argv)
                 REQUIRE(c->registers[DSP_REG_A1] == (phase ? 0x123456 : 0));
                 REQUIRE(dspjit_test_fallback_count() == fallback);
                 bytes = dspjit_test_flush_pointer_bytes();
+                bitmap_words = dspjit_test_flush_bitmap_words();
                 dspjit_flush(c->jit);
                 REQUIRE(dspjit_test_flush_resets() == resets + phase + 1);
                 REQUIRE(dspjit_test_flush_pointer_bytes() == bytes + entry_bytes);
+                REQUIRE(dspjit_test_flush_bitmap_words() == bitmap_words + 1);
                 dspjit_flush(c->jit);
                 REQUIRE(dspjit_test_flush_resets() == resets + phase + 1);
+                REQUIRE(dspjit_test_flush_bitmap_words() == bitmap_words + 1);
             }
             dispose(m);
         }
@@ -251,15 +283,19 @@ int main(int argc, char **argv)
     partial(m, 4, true, true);
     partial(m, 8, false, true);
     bytes = dspjit_test_flush_pointer_bytes();
+    bitmap_words = dspjit_test_flush_bitmap_words();
     dspjit_flush(c->jit);
     REQUIRE(dspjit_test_flush_pointer_bytes() == bytes + 3 * entry_bytes);
+    REQUIRE(dspjit_test_flush_bitmap_words() == bitmap_words + 3);
     c->pram[0] = c->pram[4] = c->pram[8] = 0;
     partial(m, 8, false, false);
     partial(m, 4, true, false);
     normal(m, 0, false);
     bytes = dspjit_test_flush_pointer_bytes();
+    bitmap_words = dspjit_test_flush_bitmap_words();
     dspjit_flush(c->jit);
     REQUIRE(dspjit_test_flush_pointer_bytes() == bytes + 3 * entry_bytes);
+    REQUIRE(dspjit_test_flush_bitmap_words() == bitmap_words + 3);
     dispose(m);
 
     /* Fully occupied first/last bitmap words exercise the dense bulk path
@@ -286,11 +322,14 @@ int main(int argc, char **argv)
         REQUIRE(dspjit_test_entry_count() == entries + 128);
         REQUIRE(dspjit_test_flush_resets() == resets + phase);
         bytes = dspjit_test_flush_pointer_bytes();
+        bitmap_words = dspjit_test_flush_bitmap_words();
         dspjit_flush(c->jit);
         REQUIRE(dspjit_test_flush_pointer_bytes() == bytes + 128 * entry_bytes);
+        REQUIRE(dspjit_test_flush_bitmap_words() == bitmap_words + 2);
         REQUIRE(dspjit_test_flush_resets() == resets + phase + 1);
         dspjit_flush(c->jit);
         REQUIRE(dspjit_test_flush_pointer_bytes() == bytes + 128 * entry_bytes);
+        REQUIRE(dspjit_test_flush_bitmap_words() == bitmap_words + 2);
     }
     dispose(m);
     REQUIRE(dspjit_test_fallback_count() == 4); /* one deliberate legacy REP call per scale */
