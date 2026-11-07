@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Savestates restore each texture matrix's enable flag together with its saved matrix, preventing particle and reflection textures from retaining a later frame's transform setting. Older snapshots default the unsaved flags to disabled. Only four booleans are added; texture/vertex storage, shader keys and borrowed lifetimes are unchanged.
+
 - Spotlight cutoffs force zero even when distance attenuation is non-finite, preventing infinity-times-zero from leaking NaNs outside the cone. Both fixed-function shader paths use the hardware-style mask without new uniforms, resource copies or borrowed views.
 
 - Spotlights evaluate their programmed falloff curve instead of always fading linearly. Both renderers and GPU Boost's dynamic lighting path read the existing lighting-context coefficients, including cone cutoffs and hard cones. Shader keys, uniform layouts, resource copies and borrowed lifetimes are unchanged.

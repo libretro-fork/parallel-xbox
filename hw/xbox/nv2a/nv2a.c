@@ -681,6 +681,8 @@ static int nv2a_pre_load(void *opaque)
     memset(d->pgraph.specular_params_back, 0,
            sizeof(d->pgraph.specular_params_back));
     /* Constants outside regs_/ltctx were absent from older snapshots. */
+    memset(d->pgraph.texture_matrix_enable, 0,
+           sizeof(d->pgraph.texture_matrix_enable));
     d->pgraph.material_alpha = 0.0f;
     d->pgraph.specular_power = 0.0f;
     memset(d->pgraph.specular_params, 0, sizeof(d->pgraph.specular_params));
@@ -793,7 +795,7 @@ static bool nv2a_lighting_point_needed(void *opaque)
 
 static const VMStateDescription vmstate_nv2a_lighting_point = {
     .name = "nv2a/lighting-point",
-    .version_id = 1,
+    .version_id = 2,
     .minimum_version_id = 1,
     .needed = nv2a_lighting_point_needed,
     .fields = (const VMStateField[]) {
@@ -809,6 +811,7 @@ static const VMStateDescription vmstate_nv2a_lighting_point = {
                               sizeof(float) * NV2A_MAX_LIGHTS * 3),
         VMSTATE_BUFFER_UNSAFE(pgraph.light_local_attenuation, NV2AState, 1,
                               sizeof(float) * NV2A_MAX_LIGHTS * 3),
+        VMSTATE_BOOL_ARRAY_V(pgraph.texture_matrix_enable, NV2AState, 4, 2),
         VMSTATE_END_OF_LIST()
     },
 };
