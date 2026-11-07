@@ -28,6 +28,8 @@ jobs:
         run: python3 libretro/tests/test-texgen-viewer.py . cc
       - name: Back material uniforms stay live without retaining borrowed data
         run: python3 libretro/tests/test-back-lighting.py . cc
+      - name: Savestates restore lighting and point constants before uploads
+        run: python3 libretro/tests/test-lighting-point-state.py . cc
       - name: EP worker ownership must preserve RAM, queue handoffs and TLB guards
         run: python3 libretro/tests/test-dsp-ownership.py . cc
       - name: EP ownership under address and undefined behavior sanitizers
