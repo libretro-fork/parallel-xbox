@@ -663,9 +663,8 @@ static RAMHTEntry ramht_lookup(NV2AState *d, uint32_t handle)
         GET_MASK(pfifo_reg_r(d, NV_PFIFO_RAMHT),
                  NV_PFIFO_RAMHT_BASE_ADDRESS) << 12;
 
-    assert(ramht_address + hash * 8 < memory_region_size(&d->ramin));
-
-    uint8_t *entry_ptr = d->ramin_ptr + ramht_address + hash * 8;
+    hwaddr entry_address = ramht_address + hash * 8;
+    uint8_t *entry_ptr = nv2a_ramin_span(d, entry_address, 8);
 
     uint32_t entry_handle = ldl_le_p((uint32_t*)entry_ptr);
     uint32_t entry_context = ldl_le_p((uint32_t*)(entry_ptr + 4));

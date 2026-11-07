@@ -23,6 +23,7 @@
 #include "hw/xbox/nv2a/nv2a_int.h"
 #include "hw/xbox/smbus.h"
 #include "qemu/main-loop.h"
+#include "system/address-spaces.h"
 
 void nv2a_update_irq(NV2AState *d)
 {
@@ -63,11 +64,99 @@ void nv2a_update_irq(NV2AState *d)
     }
 }
 
+/* Establish host views only at reset/restore boundaries, with the FIFO stopped.
+ * The upstream hardware evidence covers retail 64 MiB. Do not guess whether
+ * devkit/Chihiro instance memory uses the top of 64 or 128 MiB. */
+static void nv2a_pramin_set_mode(NV2AState *d, bool unified)
+{
+    d->pramin_unified = unified;
+    d->pramin_top = unified ? d->vram_ptr + (64 * MiB) - NV2A_PRAMIN_BLOCK : NULL;
+}
+
+static bool nv2a_pramin_restore_mode(NV2AState *d, int version_id)
+{
+    bool unified = version_id >= 6 && d->pramin_unified;
+    if (unified && memory_region_size(d->vram) != 64 * MiB) {
+        nv2a_pramin_set_mode(d, false);
+        return false;
+    }
+    nv2a_pramin_set_mode(d, unified);
+    return true;
+}
+
+/* Keep the legacy RAMBlock registered for incoming states, but do not copy
+ * its unused payload into new unified snapshots. The frontend's size bound
+ * remains large enough to save a subsequently loaded legacy state. */
+static void nv2a_pramin_save_begin(NV2AState *d)
+{
+    if (d->pramin_unified) qemu_ram_unset_migratable(d->ramin.ram_block);
+}
+
+static void nv2a_pramin_save_end(NV2AState *d)
+{
+    qemu_ram_set_migratable(d->ramin.ram_block);
+}
+
+/* MMIO values use at most two block spans, never byte-at-a-time translation.
+ * Unified accesses follow the same physical-RAM access/coherence handling as
+ * their direct CPU aliases. No new fence, renderer submission or wait is added. */
+static uint64_t nv2a_pramin_read(void *opaque, hwaddr addr, unsigned size)
+{
+    NV2AState *d = opaque;
+    uint8_t bytes[8] = {0};
+    assert(size && size <= 4 && addr <= NV2A_PRAMIN_BYTES - size);
+    if (!d->pramin_top) {
+        memcpy(bytes, d->ramin_ptr + addr, size);
+    } else {
+        unsigned n = MIN(size, NV2A_PRAMIN_BLOCK -
+                         (addr & (NV2A_PRAMIN_BLOCK - 1)));
+        hwaddr physical = nv2a_ramin_span(d, addr, n) - d->vram_ptr;
+        unsigned tail = size - n;
+        address_space_read(&address_space_memory, physical,
+                           MEMTXATTRS_UNSPECIFIED, bytes, n);
+        if (tail) {
+            /* The next logical block is 16 bytes below this block. */
+            address_space_read(&address_space_memory, physical + n - 32,
+                               MEMTXATTRS_UNSPECIFIED, bytes + n, tail);
+        }
+    }
+    return ldq_le_p(bytes);
+}
+
+static void nv2a_pramin_write(void *opaque, hwaddr addr, uint64_t value, unsigned size)
+{
+    NV2AState *d = opaque;
+    uint8_t bytes[4];
+    assert(size && size <= 4 && addr <= NV2A_PRAMIN_BYTES - size);
+    stl_le_p(bytes, value);
+    if (!d->pramin_top) {
+        memcpy(d->ramin_ptr + addr, bytes, size);
+        memory_region_set_dirty(&d->ramin, addr, size);
+    } else {
+        unsigned n = MIN(size, NV2A_PRAMIN_BLOCK -
+                         (addr & (NV2A_PRAMIN_BLOCK - 1)));
+        hwaddr physical = nv2a_ramin_span(d, addr, n) - d->vram_ptr;
+        unsigned tail = size - n;
+        address_space_write(&address_space_memory, physical,
+                            MEMTXATTRS_UNSPECIFIED, bytes, n);
+        if (tail) {
+            address_space_write(&address_space_memory, physical + n - 32,
+                                MEMTXATTRS_UNSPECIFIED, bytes + n, tail);
+        }
+    }
+}
+
+static const MemoryRegionOps nv2a_pramin_ops = {
+    .read = nv2a_pramin_read, .write = nv2a_pramin_write,
+    .endianness = DEVICE_LITTLE_ENDIAN,
+    .valid = {.min_access_size = 1, .max_access_size = 4, .unaligned = true},
+    .impl = {.min_access_size = 1, .max_access_size = 4, .unaligned = true},
+};
+
 DMAObject nv_dma_load(NV2AState *d, hwaddr dma_obj_address)
 {
-    assert(dma_obj_address < memory_region_size(&d->ramin));
-
-    uint32_t *dma_obj = (uint32_t *)(d->ramin_ptr + dma_obj_address);
+    assert((dma_obj_address & 15) == 0);
+    uint32_t *dma_obj = (uint32_t *)nv2a_ramin_span(d, dma_obj_address, 12);
     uint32_t flags = ldl_le_p(dma_obj);
     uint32_t limit = ldl_le_p(dma_obj + 1);
     uint32_t frame = ldl_le_p(dma_obj + 2);
@@ -325,17 +414,21 @@ static void nv2a_init_memory(NV2AState *d, MemoryRegion *ram)
     pci_register_bar(PCI_DEVICE(d), 1, PCI_BASE_ADDRESS_MEM_PREFETCH, &d->vram_pci);
 
 
-    /* RAMIN - should be in vram somewhere, but not quite sure where atm */
-    memory_region_init_ram(&d->ramin, OBJECT(d), "nv2a-ramin", 0x100000, &error_fatal);
-    /* memory_region_init_alias(&d->ramin, "nv2a-ramin", &d->vram,
-                         memory_region_size(d->vram) - 0x100000,
-                         0x100000); */
-
-    memory_region_add_subregion(&d->mmio, 0x700000, &d->ramin);
-
-
     d->vram_ptr = memory_region_get_ram_ptr(d->vram);
+    /* Retain the existing RAM block identity for old snapshots and the
+     * unverified 128 MiB model. Fresh retail sessions do not read/copy it. */
+    memory_region_init_ram(&d->ramin, OBJECT(d), "nv2a-ramin",
+                           NV2A_PRAMIN_BYTES, &error_fatal);
     d->ramin_ptr = memory_region_get_ram_ptr(&d->ramin);
+    bool retail = memory_region_size(d->vram) == 64 * MiB;
+    nv2a_pramin_set_mode(d, retail);
+    if (retail) {
+        memory_region_init_io(&d->pramin_io, OBJECT(d), &nv2a_pramin_ops, d,
+                              "nv2a-pramin", NV2A_PRAMIN_BYTES);
+        memory_region_add_subregion(&d->mmio, 0x700000, &d->pramin_io);
+    } else {
+        memory_region_add_subregion(&d->mmio, 0x700000, &d->ramin);
+    }
 
     memory_region_set_log(d->vram, true, DIRTY_MEMORY_NV2A);
     memory_region_set_log(d->vram, true, DIRTY_MEMORY_NV2A_TEX);
@@ -400,8 +493,20 @@ static void nv2a_unlock_fifo(NV2AState *d)
     pfifo_kick(d);
 }
 
+/* Save/load can fail before the device post hook runs. Retire only our own
+ * park request on the next lifecycle transition, never leak a parked GPU. */
+static void nv2a_migration_release(NV2AState *d)
+{
+    nv2a_pramin_save_end(d);
+    if (d->migration_parked) {
+        d->migration_parked = false;
+        nv2a_unlock_fifo(d);
+    }
+}
+
 static void nv2a_reset(NV2AState *d)
 {
+    nv2a_migration_release(d);
     /* Skip FIFO lock if PFIFO thread hasn't entered its main loop yet */
     bool have_renderer =
         retro_atomic_load_acquire_int(&d->pfifo.thread_running);
@@ -426,6 +531,7 @@ static void nv2a_reset(NV2AState *d)
         }
     }
 
+    nv2a_pramin_set_mode(d, memory_region_size(d->vram) == 64 * MiB);
     memset(d->pfifo.regs, 0, sizeof(d->pfifo.regs));
     memset(d->pgraph.regs_, 0, sizeof(d->pgraph.regs_));
     memset(d->pvideo.regs, 0, sizeof(d->pvideo.regs));
@@ -529,6 +635,9 @@ static void nv2a_vm_state_change(void *opaque, bool running, RunState state)
      * snapshots taken mid-action then crash the guest on load. Stop the
      * timer while the VM is not running and restart it on a clean period
      * boundary. */
+    /* Also recover the flag after any failed/interrupted save. Incoming old
+     * RAM tables must be allowed to name the registered legacy block. */
+    nv2a_migration_release(d);
     if (state == RUN_STATE_SAVE_VM) {
         nv2a_lock_fifo(d);
         retro_atomic_store_relaxed_int(&d->pfifo.halt, 1);
@@ -538,6 +647,8 @@ static void nv2a_vm_state_change(void *opaque, bool running, RunState state)
         pgraph_pre_savevm_wait(d);
         bql_lock();
         nv2a_lock_fifo(d);
+        d->migration_parked = true;
+        nv2a_pramin_save_begin(d);
     } else if (state == RUN_STATE_RESTORE_VM) {
         nv2a_lock_fifo(d);
         retro_atomic_store_relaxed_int(&d->pfifo.halt, 1);
@@ -559,7 +670,7 @@ static void nv2a_vm_state_change(void *opaque, bool running, RunState state)
 static int nv2a_post_save(void *opaque)
 {
     NV2AState *d = opaque;
-    nv2a_unlock_fifo(d);
+    nv2a_migration_release(d);
     return 0;
 }
 
@@ -567,6 +678,7 @@ static int nv2a_pre_load(void *opaque)
 {
     NV2AState *d = opaque;
     nv2a_lock_fifo(d);
+    d->migration_parked = true;
     /* The incoming snapshot owns the canonical array; never retain a host view. */
     d->pgraph.inline_array_external = NULL;
     d->pgraph.inline_array_external_committed = false;
@@ -594,9 +706,15 @@ static int nv2a_post_load(void *opaque, int version_id)
     }
     pgraph_rebuild_inline_elements_bounds(&d->pgraph);
     retro_atomic_store_relaxed_int(&d->pgraph.flush_pending, 1);
+    /* Old snapshots keep their original instance model; never overwrite
+     * independently saved unified RAM with a legacy shadow conversion. */
+    if (!nv2a_pramin_restore_mode(d, version_id)) {
+        nv2a_migration_release(d);
+        return -EINVAL;
+    }
     /* The compression flag follows the restored PFB registers. */
     pfb_update_zcomp(d);
-    nv2a_unlock_fifo(d);
+    nv2a_migration_release(d);
     return 0;
 }
 
@@ -685,7 +803,7 @@ static bool nv2a_vmstate_inline_elements_length_ok(void *opaque,
 
 static const VMStateDescription vmstate_nv2a = {
     .name = "nv2a",
-    .version_id = 5,
+    .version_id = 6,
     .minimum_version_id = 1,
     .post_save = nv2a_post_save,
     .post_load = nv2a_post_load,
@@ -813,6 +931,7 @@ static const VMStateDescription vmstate_nv2a = {
         VMSTATE_UINT64_V(ptimer.time_offset, NV2AState, 4),
         VMSTATE_TIMER_V(ptimer.timer, NV2AState, 4),
         VMSTATE_BOOL_V(pgraph.zpass_pixel_count_enable, NV2AState, 4),
+        VMSTATE_BOOL_V(pramin_unified, NV2AState, 6),
         VMSTATE_END_OF_LIST()
     },
     .subsections = (const VMStateDescription * const []) {

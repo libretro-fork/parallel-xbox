@@ -5030,6 +5030,73 @@ directory containing `libepoxy/include` and `libepoxy.a`; the fixture uses WGL.
 invalid-dimensionality warning when compiling with the epoxy dispatch macros.
 Linux uses surfaceless EGL/OpenGL. No test observers or counters enter the core.
 
+
+### PRAMIN unified instance memory
+
+`python3 libretro/tests/test-pramin.py . [cc]` compiles the production span,
+MMIO and state-mode helpers. An independent per-byte oracle covers all
+1/2/4-byte positions in the 1 MiB aperture, including unaligned accesses across
+reversed 16-byte blocks. There are 9,437,172 width/address cases and 786,432
+four-byte descriptor checks across unified retail, legacy retail and legacy
+128 MiB modes. The fake address space verifies at most two physical spans,
+exact dirty bytes and no physical access in legacy mode. Mode restoration,
+unsupported-mode rejection, save omission and one-time release of a failed
+migration's owned park request are checked too. Linux defaults to ASan/UBSan;
+PRAMIN_BINARY/CFLAGS/SKIP_RUN support native Win64 fixtures.
+
+`rom/pramin.asm` is a firmware-free native oracle. Assemble with the usual
+rom include path and run 160 strict harness frames. RAM 0x300000 must contain
+PMOK (0x4b4f4d50), with zero at 0x300004. It configures the AGP bridge/NV2A,
+checks PRAMIN 0x10010 against physical 0x03feffe0 in both directions, verifies
+an unaligned dword across blocks, and executes RAM code before/after changing
+its immediate through PRAMIN. This last check requires CPU code-cache
+invalidation through the physical alias. UNIFIED=0 selects the legacy oracle;
+use it with xemu_memory=128 or an older-model snapshot. WAIT leaves a live
+continuation for save/load testing; defaults to 50000000 guest loop iterations,
+not a host wait.
+
+Native validation uses --save 1 --load 5 --load-again 10 --verify-load for the
+unified ROM, with exact restored RAM, PMOK, and per-run video/800-or-801 audio.
+An exact-parent NV2A implementation fails the unified alias oracle at step 2.
+That parent also produces genuine v5 states with differing RAM/PRAMIN contents;
+the candidate loads them without changing any saved RAM bytes and continues in
+the original model. Re-saving produces a usable v6 legacy-model state. An old
+Vulkan GPU state saved/loaded at frame 200 completes the 485-frame guest-RAM
+oracle and exact frontend cadence. External-state cadence comparisons use the
+saved frame phase (the harness only knows the phase of its own in-memory save).
+
+NV2A v6 records the model, never host views. Fresh 64 MiB sessions select the
+published retail mapping; 128 MiB stays on the original model because the
+upstream review has not established which physical top it should use. Loaded
+older states stay legacy until reset. CPU aperture accesses use the existing
+physical RAM coherence/dirty/code-invalidation path; GPU metadata consumers
+borrow one validated block, with no payload allocation or renderer operation.
+No PSO key, compilation queue, fence, mutex or spinlock is added.
+
+During unified saves the unused legacy RAMBlock is omitted from the migration
+stream. It remains registered/allocated for incoming older snapshots, and the
+frontend size bound still accommodates those states. Native streams omit
+1,050,686 bytes of shadow payload/page headers. Legacy-model saves include the
+block. Lifecycle transitions and device post hooks restore its migration flag
+and release only the migration's own FIFO park request, including failed
+streams. A deliberately short save followed by full save/load succeeds; a
+truncated NV2A field stream followed by a frontend reset also continues with
+PMOK and strict cadence. These checks establish recovery, not transactional
+rollback of an invalid snapshot.
+
+Win64 observations: NV2AState grows 288 cold bytes (4440464 to 4440752), with
+ramin_ptr/pgraph offsets unchanged (71488/143264). nv_dma_load stack drops
+80 to 64 bytes; RAMHT/context/method frames remain 80/80/224. Specializing the
+CPU aperture common case reduced initial read/write frames from 144/160 to
+112/112 bytes. Hardware L1/L2 misses, spill rates and real-game FPS were not
+measured. The full GL/Vulkan pixel/RAM fixtures and PCM control/split/reset/
+state cadence checks pass; this is synthetic regression coverage.
+
+Reference: https://github.com/xemu-project/xemu/pull/2952 (reviewed head
+ d9eda2a3defdadada01a6c23fcbffa57591ed7d7). The core adaptation adds bounded
+span handling, cached block views, canonical RAM access and legacy-state
+selection rather than importing the proposal's byte-at-a-time implementation.
+
 A word summary adds one bit per entry-bitmap word. Publication updates both
 levels; flush uses nonzero-input bit scans and resets both levels. PRAM's
 64-word bitmap must fit the summary, enforced at compile time. A one-entry

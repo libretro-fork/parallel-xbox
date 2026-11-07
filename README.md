@@ -503,3 +503,5 @@ the CPU owner unlinks callbacks and queues deferred node reclamation without
 a synchronous grace-period wait. Existing device/MemoryRegion ownership and
 direct DMA leases remain in effect. Callback removal adds no payload copy,
 bounce buffer, mutex/spinlock or GPU query.
+
+Retail 64 MiB sessions expose PRAMIN as reversed 16-byte blocks of unified RAM. Older savestates continue with their original separate instance memory until reset; 128 MiB configurations retain that model pending hardware verification. Current states preserve the selected model.

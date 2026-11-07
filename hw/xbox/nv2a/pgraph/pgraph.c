@@ -149,9 +149,7 @@ void pgraph_write(void *opaque, hwaddr addr, uint64_t val, unsigned int size)
             NV2A_DPRINTF("PGRAPH: read channel %d context from %" HWADDR_PRIx "\n",
                          pgraph_channel_id, context_address);
 
-            assert(context_address < memory_region_size(&d->ramin));
-
-            uint8_t *context_ptr = d->ramin_ptr + context_address;
+            uint8_t *context_ptr = nv2a_ramin_span(d, context_address, 4);
             uint32_t context_user = ldl_le_p((uint32_t*)context_ptr);
 
             NV2A_DPRINTF("    - CTX_USER = 0x%x\n", context_user);
@@ -1041,8 +1039,8 @@ int pgraph_method(NV2AState *d, unsigned int subchannel,
     assert(subchannel < 8);
 
     if (method == NV_SET_OBJECT) {
-        assert(parameter < memory_region_size(&d->ramin));
-        uint8_t *obj_ptr = d->ramin_ptr + parameter;
+        assert((parameter & 15) == 0);
+        uint8_t *obj_ptr = nv2a_ramin_span(d, parameter, 16);
 
         uint32_t ctx_1 = ldl_le_p((uint32_t*)obj_ptr);
         uint32_t ctx_2 = ldl_le_p((uint32_t*)(obj_ptr+4));
