@@ -26,6 +26,8 @@ jobs:
       - uses: actions/checkout@v4
       - name: Texgen viewer changes preserve packed modes and uniform storage
         run: python3 libretro/tests/test-texgen-viewer.py . cc
+      - name: Back material uniforms stay live without retaining borrowed data
+        run: python3 libretro/tests/test-back-lighting.py . cc
       - name: EP worker ownership must preserve RAM, queue handoffs and TLB guards
         run: python3 libretro/tests/test-dsp-ownership.py . cc
       - name: EP ownership under address and undefined behavior sanitizers

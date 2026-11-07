@@ -534,6 +534,10 @@ static void nv2a_reset(NV2AState *d)
     nv2a_pramin_set_mode(d, memory_region_size(d->vram) == 64 * MiB);
     memset(d->pfifo.regs, 0, sizeof(d->pfifo.regs));
     memset(d->pgraph.regs_, 0, sizeof(d->pgraph.regs_));
+    d->pgraph.back_material_alpha = 0.0f;
+    d->pgraph.specular_power_back = 0.0f;
+    memset(d->pgraph.specular_params_back, 0,
+           sizeof(d->pgraph.specular_params_back));
     memset(d->pvideo.regs, 0, sizeof(d->pvideo.regs));
 
     d->pcrtc.start = 0;
@@ -684,6 +688,12 @@ static int nv2a_pre_load(void *opaque)
     d->pgraph.inline_array_external_committed = false;
     /* Off unless the snapshot says otherwise (vmstate_nv2a_two_side). */
     d->pgraph.two_side_light_en = false;
+    /* Older states have no back-material subsection. Do not inherit the
+     * future frame's values when loading one, including a partial setter. */
+    d->pgraph.back_material_alpha = 0.0f;
+    d->pgraph.specular_power_back = 0.0f;
+    memset(d->pgraph.specular_params_back, 0,
+           sizeof(d->pgraph.specular_params_back));
     return 0;
 }
 
@@ -744,6 +754,30 @@ static const VMStateDescription vmstate_nv2a_two_side = {
     .needed = nv2a_two_side_needed,
     .fields = (const VMStateField[]) {
         VMSTATE_BOOL(pgraph.two_side_light_en, NV2AState),
+        VMSTATE_END_OF_LIST()
+    },
+};
+
+static bool nv2a_back_material_needed(void *opaque)
+{
+    (void)opaque;
+    /* Preserve values even while two-sided lighting is disabled: the game
+     * may enable it later without resending either material setter. */
+    return true;
+}
+
+static const VMStateDescription vmstate_nv2a_back_material = {
+    .name = "nv2a/back-material",
+    .version_id = 1,
+    .minimum_version_id = 1,
+    .needed = nv2a_back_material_needed,
+    .fields = (const VMStateField[]) {
+        VMSTATE_BUFFER_UNSAFE(pgraph.back_material_alpha, NV2AState, 1,
+                              sizeof(float)),
+        VMSTATE_BUFFER_UNSAFE(pgraph.specular_power_back, NV2AState, 1,
+                              sizeof(float)),
+        VMSTATE_BUFFER_UNSAFE(pgraph.specular_params_back, NV2AState, 1,
+                              sizeof(float) * 6),
         VMSTATE_END_OF_LIST()
     },
 };
@@ -936,6 +970,7 @@ static const VMStateDescription vmstate_nv2a = {
     },
     .subsections = (const VMStateDescription * const []) {
         &vmstate_nv2a_two_side,
+        &vmstate_nv2a_back_material,
         NULL
     },
 };

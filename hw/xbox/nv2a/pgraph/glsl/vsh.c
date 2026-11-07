@@ -726,6 +726,9 @@ void pgraph_glsl_set_vsh_uniform_values(PGRAPHState *pg, const VshState *state,
     if (locs[VshUniform_material_alpha] != -1) {
         values->material_alpha[0] = pg->material_alpha;
     }
+    if (locs[VshUniform_back_material_alpha] != -1) {
+        values->back_material_alpha[0] = pg->back_material_alpha;
+    }
 
     if (locs[VshUniform_lightMode] != -1) {
         /* CSV0_D holds all eight 2-bit light modes in one field; hand it to
@@ -868,6 +871,9 @@ void pgraph_glsl_set_vsh_uniform_values(PGRAPHState *pg, const VshState *state,
 
         if (locs[VshUniform_specularPower] != -1) {
             values->specularPower[0] = pg->specular_power;
+        }
+        if (locs[VshUniform_specularPowerBack] != -1) {
+            values->specularPowerBack[0] = pg->specular_power_back;
         }
     }
 }

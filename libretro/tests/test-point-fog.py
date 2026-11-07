@@ -96,6 +96,31 @@ with tempfile.TemporaryDirectory(prefix='point-fog-') as temp:
             body=texgen_inputs+eye+(dynamic_texgen if dyn else static)
             output=('vec4(tgSph.xy,0,1)' if sphere else 'vec4(tgR,1)') if dyn else 'vec4(oT0.xyz,1)'
             add('texgen-'+name.lower()+('-dynamic' if dyn else '-static'),body,cases,output)
+    # Back-face alpha and shininess are independently programmed. Extract
+    # both lighting generators' expressions and vary only those live values.
+    alpha_lines=re.findall(r'"( *oB0 = vec4\(sceneBackAmbientColor, .*?;\\n)"',ff)
+    assert len(alpha_lines)==2
+    back_blocks=list(re.finditer('        " +float bDotVP =',ff))
+    assert len(back_blocks)==2
+    for path,alpha_line,match in zip(('dynamic','static'),alpha_lines,back_blocks):
+        end=ff.index('oB0.xyz += lightBackAmbientColor',match.start())
+        back=strings(ff[match.start():end])
+        alpha=ast.literal_eval('"'+alpha_line+'"')
+        body=('float nDotVPraw=probe[0].x,nDotHVraw=probe[0].y;'
+              'float specularPower=probe[2].x,specularPowerBack=probe[2].z;'
+              'float back_material_alpha=probe[2].y;'
+              'vec3 sceneBackAmbientColor=vec3(0.0);vec4 oD0=vec4(probe[1].w);'
+              'vec4 oB0;\n')+alpha+back
+        cases=[]
+        for vp,hv in ((-1,-0.5),(-0.5,-0.8),(-1,-1),(1,-0.5),(-1,0.5),(0,-0.5)):
+            for front_power in (1,8):
+                for back_power in (2,16,2):
+                    for front_alpha,back_alpha in ((1,0.25),(0.2,0.75),(0.8,0)):
+                        pf=0 if vp>=0 or hv>=0 else (-hv)**back_power
+                        values=[vp,hv,0,0,0,0,0,front_alpha,front_power,back_alpha,back_power,0,0,0,0,0]
+                        cases.append((values,[back_alpha,pf,abs(hv)**front_power,1]))
+        add('lighting-back-'+path,body,cases,
+            'vec4(oB0.a,bpf,pow(abs(nDotHVraw),specularPower),1)')
     for kind,body in [('register',register),('program',program),('fixed',fixed)]:
         cases=[]
         for scale in (1,2,4,8):
@@ -177,6 +202,18 @@ with tempfile.TemporaryDirectory(prefix='point-fog-') as temp:
                 env=dict(env,EGL_PLATFORM='surfaceless'),capture_output=True,text=True)
             assert result.returncode==1 and ' != ' in result.stderr,result.stderr
     print('PASS: local-only reflection/sphere texgen fails both path oracles')
+    for path in ('static','dynamic'):
+        name='lighting-back-'+path
+        for field,before,after in (('alpha','sceneBackAmbientColor, back_material_alpha','sceneBackAmbientColor, oD0.a'),
+                                   ('power','pow(bDotHV, specularPowerBack)','pow(bDotHV, specularPower)')):
+            negative=out/(name+'-front-'+field+'.vert')
+            source=(out/(name+'.vert')).read_text()
+            assert before in source
+            negative.write_text(source.replace(before,after))
+            result=subprocess.run([str(exe),str(negative),str(out/(name+'.bin'))],
+                env=dict(env,EGL_PLATFORM='surfaceless'),capture_output=True,text=True)
+            assert result.returncode==1 and ' != ' in result.stderr,result.stderr
+    print('PASS: front-only back alpha/specular power fails both lighting path oracles')
     if a.vulkan:
         vkargs=[]
         for path,data in zip(args[::2],args[1::2]):

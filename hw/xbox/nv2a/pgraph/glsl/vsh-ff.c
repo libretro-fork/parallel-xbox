@@ -147,7 +147,7 @@ static void gen_dynamic_lights(MString *body, const VshState *state)
         "    float bDotVP = max(0.0, -nDotVPraw);\n"
         "    float bDotHV = max(0.0, -nDotHVraw);\n"
         "    float bpf = (bDotVP == 0.0 || bDotHV == 0.0)"
-        " ? 0.0 : pow(bDotHV, specularPower);\n"
+        " ? 0.0 : pow(bDotHV, specularPowerBack);\n"
         "    oB0.xyz += lightBackAmbientColor(i) * attenuation;\n"
         "    oB0.xyz += lightBackDiffuseColor(i) * attenuation * bDotVP;\n"
         "    oB1.xyz += lightBackSpecularColor(i) * attenuation * bpf;\n"
@@ -457,7 +457,7 @@ GLSL_DEFINE(materialEmissionColor, GLSL_LTCTXA(NV_IGRAPH_XF_LTCTXA_CM_COL) ".xyz
             "           : esrc == 2u ? specular.rgb : diffuse.rgb;\n"
             "  oD1 = vec4(0.0, 0.0, 0.0, specular.a);\n"
             "  if ((csv0cCtl & 32768u) != 0u) {\n"
-            "    oB0 = vec4(sceneBackAmbientColor, oD0.a);\n"
+            "    oB0 = vec4(sceneBackAmbientColor, back_material_alpha);\n"
             "    oB1 = vec4(0.0, 0.0, 0.0, backSpecular.a);\n"
             "  }\n"
             "  vec3 VPeye = ((csv0cCtl & 2u) != 0u)\n"
@@ -508,7 +508,7 @@ GLSL_DEFINE(materialEmissionColor, GLSL_LTCTXA(NV_IGRAPH_XF_LTCTXA_CM_COL) ".xyz
 
         if (state->fixed_function.two_sided) {
             mstring_append(body,
-                "oB0 = vec4(sceneBackAmbientColor, oD0.a);\n"
+                "oB0 = vec4(sceneBackAmbientColor, back_material_alpha);\n"
                 "oB1 = vec4(0.0, 0.0, 0.0, backSpecular.a);\n");
         }
 
@@ -628,7 +628,7 @@ GLSL_DEFINE(materialEmissionColor, GLSL_LTCTXA(NV_IGRAPH_XF_LTCTXA_CM_COL) ".xyz
                     "      float bDotVP = max(0.0, -nDotVPraw);\n"
                     "      float bDotHV = max(0.0, -nDotHVraw);\n"
                     "      float bpf = (bDotVP == 0.0 || bDotHV == 0.0)"
-                    " ? 0.0 : pow(bDotHV, specularPower);\n"
+                    " ? 0.0 : pow(bDotHV, specularPowerBack);\n"
                     "      oB0.xyz += lightBackAmbientColor(%d) * attenuation;\n"
                     "      oB0.xyz += lightBackDiffuseColor(%d) * attenuation"
                     " * bDotVP;\n"
