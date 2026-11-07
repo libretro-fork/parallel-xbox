@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- OpenGL refreshes scene textures after the CPU rewrites their source surfaces, including individual cubemap faces. Pending uploads can no longer bypass refresh through the texture-reuse fast path. Clean sources keep their existing fast path; no allocations, extra copies for clean textures or extended borrowed lifetimes are added.
+
 - Specular highlights use the programmed NV2A coefficient curve instead of reconstructing a power and applying `pow`. Front and back materials work in both lighting paths, including partial coefficient writes and bounded exceptional denominators. Existing uniform uploads carry the coefficient triples; no texture/vertex copies, staging buffers or extended borrowed lifetimes are added. Legacy snapshot slots remain readable.
 
 - Fixed-function material-source lighting matches the hardware's precombined scene term and applies vertex ambient colors to each light's ambient contribution. This prevents brightened material colors and incorrect vertex-color tints. Static and dynamic lighting share the correction using existing constants and uniforms; no new resource copies or borrowed lifetimes are introduced.

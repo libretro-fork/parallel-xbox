@@ -428,10 +428,15 @@ void bind_textures(NV2AState *d, bool highres_depth)
         if (!pg->texture_dirty[i] && tbind &&
             tbind->g8b8_lod_clamp == g8b8_lod_clamp &&
             tbind->byte_reinterpret == surf_to_tex_bytes &&
-            !(surf_to_tex_bytes && surface->upload_pending)) {
+            !(surface && surface->upload_pending)) {
             bool reusable = false;
             if (surf_to_tex_cube) {
                 reusable = tbind->draw_time == cube_draw_time;
+                /* CPU writes do not advance draw_time until upload. Every
+                 * face must be current before the cached snapshot is used. */
+                for (int fc = 0; fc < 6; fc++) {
+                    reusable &= !cube_faces[fc]->upload_pending;
+                }
             } else if (surface && tbind->draw_time == surface->draw_time) {
                 reusable = true;
             } else if (!surface) {
