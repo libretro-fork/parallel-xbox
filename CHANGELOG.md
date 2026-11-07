@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Vulkan shader locals are initialized each time their declaration executes. Nested loops and repeated blocks no longer retain values from an earlier iteration, preventing incorrect shader calculations. No extra geometry copies, resource retention or shadow work is added.
+
 - OpenGL refreshes scene textures after the CPU rewrites their source surfaces, including individual cubemap faces. Pending uploads can no longer bypass refresh through the texture-reuse fast path. Clean sources keep their existing fast path; no allocations, extra copies for clean textures or extended borrowed lifetimes are added.
 
 - Specular highlights use the programmed NV2A coefficient curve instead of reconstructing a power and applying `pow`. Front and back materials work in both lighting paths, including partial coefficient writes and bounded exceptional denominators. Existing uniform uploads carry the coefficient triples; no texture/vertex copies, staging buffers or extended borrowed lifetimes are added. Legacy snapshot slots remain readable.

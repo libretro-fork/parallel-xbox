@@ -1044,13 +1044,18 @@ static uint32_t make_variable(C *c, Type *t, int sc, uint32_t init)
     uint32_t id = new_id(c);
     uint32_t pt = ptr_type(c, t, sc);
     Buf *b = sc == SpvStorageClassFunction ? &c->fvars : &c->types;
-    op(b, SpvOpVariable, init ? 4 : 3);
+    bool local_init = sc == SpvStorageClassFunction && init;
+    op(b, SpvOpVariable, init && !local_init ? 4 : 3);
     buf_put(b, pt);
     buf_put(b, id);
     buf_put(b, sc);
-    if (init) {
+    if (init && !local_init) {
         buf_put(b, init);
     }
+    /* Only the declaration belongs to the entry block. A GLSL initializer
+     * executes at its statement, including each re-entry into a loop body
+     * or an inlined function. OpVariable's initializer runs just once. */
+    if (local_init) ins0(c, SpvOpStore, 2, id, init);
     if (sc != SpvStorageClassFunction && sc != SpvStorageClassPrivate &&
         sc != SpvStorageClassWorkgroup) {
         buf_put(&c->entry_iface, id);
