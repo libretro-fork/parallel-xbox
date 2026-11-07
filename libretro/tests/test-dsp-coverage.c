@@ -18,17 +18,23 @@ static void scalar(uint64_t *bits, uint32_t start, uint32_t end)
     for (uint32_t pc = start; pc < MIN(end, DSP_PRAM_SIZE); pc++)
         bits[pc >> 6] |= UINT64_C(1) << (pc & 63);
 }
-static void verify(const uint64_t *initial, const uint64_t *expected, uint32_t start, uint32_t end)
+static void verify(const uint64_t *initial, const uint64_t *expected, uint64_t expected_mask, uint32_t start, uint32_t end)
 {
     Bitmap actual = { .before = UINT64_C(0x123456789abcdef0), .after = UINT64_C(0xfedcba9876543210) };
     memcpy(actual.bits, initial, sizeof(actual.bits));
-    dspjit_test_cover_span(actual.bits, start, end);
+    uint64_t mask = dspjit_test_cover_span_mask(actual.bits, start, end);
     if (actual.before != UINT64_C(0x123456789abcdef0) || actual.after != UINT64_C(0xfedcba9876543210) ||
-        memcmp(actual.bits, expected, sizeof(actual.bits))) {
+        memcmp(actual.bits, expected, sizeof(actual.bits)) || mask != expected_mask) {
         fprintf(stderr,"DSP coverage mismatch: start=%u end=%u\n",start,end);
         exit(1);
     }
     cases++;
+}
+static uint64_t scalar_mask(uint32_t start, uint32_t end)
+{
+    uint64_t mask = 0;
+    for (uint32_t pc = start; pc < MIN(end, DSP_PRAM_SIZE); pc++) mask |= UINT64_C(1) << (pc >> 6);
+    return mask;
 }
 static double seconds(void)
 {
@@ -70,9 +76,13 @@ int main(int argc, char **argv)
      * Extend the scalar oracle by exactly one word as the endpoint advances. */
     for (uint32_t start = 0; start <= DSP_PRAM_SIZE; start++) {
         memset(expected, 0, sizeof(expected));
+        uint64_t mask = 0;
         for (uint32_t end = 0; end <= DSP_PRAM_SIZE; end++) {
-            if (end > start) expected[(end - 1) >> 6] |= UINT64_C(1) << ((end - 1) & 63);
-            verify(zero, expected, start, end);
+            if (end > start) {
+                expected[(end - 1) >> 6] |= UINT64_C(1) << ((end - 1) & 63);
+                mask |= UINT64_C(1) << ((end - 1) >> 6);
+            }
+            verify(zero, expected, mask, start, end);
         }
     }
     /* Preserve prior coverage and test overlaps at every possible short-block
@@ -83,20 +93,20 @@ int main(int argc, char **argv)
         for (unsigned n = 0; n <= 129; n++) {
             memcpy(expected, initial, sizeof(expected));
             scalar(expected, start, start + n);
-            verify(initial, expected, start, start + n);
+            verify(initial, expected, scalar_mask(start, start + n), start, start + n);
         }
         memcpy(expected, initial, sizeof(expected));
         scalar(expected, start, UINT32_MAX);
-        verify(initial, expected, start, UINT32_MAX);
+        verify(initial, expected, scalar_mask(start, UINT32_MAX), start, UINT32_MAX);
     }
     static const uint32_t edge[] = {0,1,63,64,65,4095,4096,4097,UINT32_MAX-1,UINT32_MAX};
     for (unsigned a = 0; a < sizeof(edge)/sizeof(*edge); a++) {
         for (unsigned b = 0; b < sizeof(edge)/sizeof(*edge); b++) {
             memcpy(expected, initial, sizeof(expected));
             scalar(expected, edge[a], edge[b]);
-            verify(initial, expected, edge[a], edge[b]);
+            verify(initial, expected, scalar_mask(edge[a], edge[b]), edge[a], edge[b]);
         }
     }
-    printf("DSP coverage: %" PRIu64 " scalar bitmap comparisons agree\n",cases);
+    printf("DSP coverage: %" PRIu64 " scalar bitmap/mask comparisons agree\n",cases);
     return 0;
 }

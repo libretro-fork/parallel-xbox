@@ -4893,7 +4893,7 @@ rewinds the arena, then clears coverage and retires published entries in
 marked pointer tables. Untouched slots are already empty. Per-word
 invalidation does not reset dirty bits. No saved state changes.
 
-The 808 focused checks cover initially empty flushes, populated/repeated
+The 1082 focused checks cover initially empty flushes, populated/repeated
 empty flushes, all eight normal scaling/LF identities, direct CLR-to-NOP code
 replacement after flush, REP fallback-to-native replacement, and interrupt-only
 publication/replacement through all four scales and six pipeline stages.
@@ -5120,3 +5120,20 @@ It does not depend on earlier CPU/frame tests succeeding, and uses distinct
 binaries so sanitizer/native and cross-build configurations cannot collide.
 Local Windows checks can additionally use GCC undefined-behavior trap mode;
 that is not a substitute for claiming an ASan or ARM64 runtime result.
+
+Coverage clearing also has a per-DSP 8-byte word summary. Publication records
+all touched coverage words; invalidation conservatively retains their markers
+until flush. Sparse flushes clear only these words, while fully populated
+coverage retains the 512-byte bulk clear. A single-word case writes 8 bytes
+of coverage instead of 512; this excludes pointer retirement and summary
+stores and is not a game-speed measurement. --bench-single reports coverage
+word writes separately. The pure --bench coverage helper ignores its returned
+summary mask, so that older microbenchmark does not measure summary storage.
+
+The 17,322,216 scalar coverage checks now compare both bitmap contents and
+returned touched-word masks. Exact clearing counts exercise repeated empty
+flushes, disjoint reuse, invalidated entries, all cache kinds and full coverage.
+The independent sanitizer/AArch64 CI job runs dspcoverage as well as dspflush.
+A program-RAM boundary regression also checks high-address invalidation and
+recompilation: translation must stop after emitting its wrap-to-zero chain,
+otherwise the block end could be overwritten by unreachable low-address code.

@@ -71,6 +71,8 @@ static uint64_t test_flush_pointer_bytes;
 uint64_t dspjit_test_flush_pointer_bytes(void) { return test_flush_pointer_bytes; }
 static uint64_t test_flush_bitmap_words;
 uint64_t dspjit_test_flush_bitmap_words(void) { return test_flush_bitmap_words; }
+static uint64_t test_flush_coverage_words;
+uint64_t dspjit_test_flush_coverage_words(void) { return test_flush_coverage_words; }
 static uint64_t test_fallback_count;
 static uint64_t test_entry_count;
 uint64_t dspjit_test_entry_count(void) { return test_entry_count; }
@@ -138,6 +140,7 @@ struct DspJit {
     dspjit_block_fn *rep_blocks[4]; /* REP checks loop state dynamically */
     /* Conservative coverage since the last flush. Stale bits cost only
      * another scan; data words never translated need no cache walk. */
+    uint64_t coverage_words; /* touched coverage words, conservative until flush */
     uint64_t covered[(DSP_PRAM_SIZE + 63) / 64];
     struct Tr *tr;      /* the translator's state, made once */
 };
@@ -4765,6 +4768,7 @@ retry:
             acc_spill_all(t, false);
             emit_chain_to(t, at, t->cyc);
             t->cyc = 0;
+            break;
         }
     }
     if (t->cyc) {
@@ -5026,7 +5030,23 @@ void dspjit_flush(DspJit *jit)
 #ifdef DSPJIT_TEST
     test_flush_resets++;
 #endif
-    memset(jit->covered, 0, sizeof(jit->covered));
+    uint64_t coverage = jit->coverage_words;
+    if (coverage == UINT64_MAX) {
+        memset(jit->covered, 0, sizeof(jit->covered));
+#ifdef DSPJIT_TEST
+        test_flush_coverage_words += ARRAY_SIZE(jit->covered);
+#endif
+    } else {
+        while (coverage) {
+            unsigned word = __builtin_ctzll(coverage);
+            jit->covered[word] = 0;
+#ifdef DSPJIT_TEST
+            test_flush_coverage_words++;
+#endif
+            coverage &= coverage - 1;
+        }
+    }
+    jit->coverage_words = 0;
     /* Only tables published since the previous flush need to be cleared.
      * Allocated but untouched tables are already empty. */
     unsigned dirty = jit->dirty_tables;
@@ -5124,26 +5144,31 @@ static void rep_step(dsp_core_t *core)
     core->jit_cycles -= core->instr_cycle;
 }
 
-static void dspjit_cover_span(uint64_t *covered, uint32_t start, uint32_t end)
+static uint64_t dspjit_cover_span(uint64_t *covered, uint32_t start, uint32_t end)
 {
     end = MIN(end, DSP_PRAM_SIZE);
-    if (start >= end) return;
+    if (start >= end) return 0;
     uint32_t first = start >> 6, last = (end - 1) >> 6;
     uint64_t head = UINT64_MAX << (start & 63);
     uint64_t tail = UINT64_MAX >> (63 - ((end - 1) & 63));
     if (first == last) {
         covered[first] |= head & tail;
-        return;
+        return UINT64_C(1) << first;
     }
     covered[first] |= head;
     for (uint32_t word = first + 1; word < last; word++) covered[word] = UINT64_MAX;
     covered[last] |= tail;
+    return (UINT64_MAX << first) & (UINT64_MAX >> (63 - last));
 }
 
 #ifdef DSPJIT_TEST
 void dspjit_test_cover_span(uint64_t *covered, uint32_t start, uint32_t end)
 {
     dspjit_cover_span(covered, start, end);
+}
+uint64_t dspjit_test_cover_span_mask(uint64_t *covered, uint32_t start, uint32_t end)
+{
+    return dspjit_cover_span(covered, start, end);
 }
 #endif
 
@@ -5157,7 +5182,7 @@ static void dspjit_cover_words(DspJit *jit, uint32_t start, uint32_t end, unsign
     unsigned word = start >> 6;
     published->entries[word] |= UINT64_C(1) << (start & 63);
     published->words |= UINT64_C(1) << word;
-    dspjit_cover_span(jit->covered, start, end);
+    jit->coverage_words |= dspjit_cover_span(jit->covered, start, end);
 }
 
 void dspjit_run(DspJit *jit, int cycles)

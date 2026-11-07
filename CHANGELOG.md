@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- DSP JIT: clear only touched program-coverage words on sparse cache flushes, retaining the bulk clear for full coverage. Fix translation at the program-RAM wrap boundary so writes still invalidate high-address code; add exact clearing and boundary regression checks.
+
 - Back retail 64 MiB PRAMIN with reversed 16-byte blocks of unified RAM, so CPU aliases and GPU instance reads share the same data. CPU accesses reuse RAM coherence/dirty handling, and descriptor reads borrow one complete block. Older snapshots retain their separate instance model until reset; unverified 128 MiB mappings keep the existing model. Unified states omit the unused shadow payload, and failed state operations release their GPU hold. No new shader variants, fences or locks are added.
 
 - DSP: sparse cache flushes use word summaries to skip empty publication-bitmap words; focused Linux sanitizer and ARM64 checks now run independently in CI.
