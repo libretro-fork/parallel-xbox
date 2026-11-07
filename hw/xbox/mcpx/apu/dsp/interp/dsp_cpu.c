@@ -663,14 +663,29 @@ static uint64_t test_opcache_clear_bytes;
 uint64_t dsp56k_test_opcache_clear_bytes(void) { return test_opcache_clear_bytes; }
 #endif
 
+_Static_assert(DSP_PRAM_SIZE == 64 * 64, "opcode cache group summary requires 4096 words");
+
 void dsp56k_clear_opcache(dsp_core_t *dsp)
 {
-    if (!dsp->pram_opcache_dirty) return;
-    memset(dsp->pram_opcache, 0, sizeof(dsp->pram_opcache));
-    dsp->pram_opcache_dirty = false;
+    uint64_t words = dsp->pram_opcache_words;
+    if (!words) return;
+    if (words == UINT64_MAX) {
+        memset(dsp->pram_opcache, 0, sizeof(dsp->pram_opcache));
 #ifdef DSPJIT_TEST
-    test_opcache_clear_bytes += sizeof(dsp->pram_opcache);
+        test_opcache_clear_bytes += sizeof(dsp->pram_opcache);
 #endif
+    } else {
+        while (words) {
+            unsigned group = __builtin_ctzll(words);
+            memset(dsp->pram_opcache + group * 64, 0,
+                   64 * sizeof(*dsp->pram_opcache));
+#ifdef DSPJIT_TEST
+            test_opcache_clear_bytes += 64 * sizeof(*dsp->pram_opcache);
+#endif
+            words &= words - 1;
+        }
+    }
+    dsp->pram_opcache_words = 0;
 }
 
 void dsp56k_execute_instruction(dsp_core_t* dsp)
@@ -709,7 +724,7 @@ void dsp56k_execute_instruction(dsp_core_t* dsp)
         if (op == NULL) {
             op = lookup_opcode(dsp->cur_inst);
             dsp->pram_opcache[dsp->pc] = op;
-            dsp->pram_opcache_dirty = true;
+            dsp->pram_opcache_words |= UINT64_C(1) << (dsp->pc >> 6);
         }
         if (op->emu_func) {
             op->emu_func(dsp);

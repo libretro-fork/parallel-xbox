@@ -36,7 +36,7 @@ int main(void)
                 stride = 4096;
                 memset(c->pram, 0xa5, sizeof(c->pram));
                 memset(c->pram_opcache, 0xff, sizeof(c->pram_opcache));
-                c->pram_opcache_dirty = true;
+                c->pram_opcache_words = UINT64_MAX;
                 m->dsp->ops->bootstrap(m->dsp);
                 for (unsigned i = 0; i < DSP_PRAM_SIZE; i++) {
                     uint32_t expected = 0xa5a5a5a5;

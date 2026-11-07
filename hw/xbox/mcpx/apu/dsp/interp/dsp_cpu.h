@@ -71,7 +71,7 @@ struct dsp_core_s {
     uint32_t yram[DSP_YRAM_SIZE];
     uint32_t pram[DSP_PRAM_SIZE];
     const void *pram_opcache[DSP_PRAM_SIZE];
-    bool pram_opcache_dirty; /* conservative until the whole cache is cleared */
+    uint64_t pram_opcache_words; /* populated 64-entry groups since last clear */
     /* the JIT (jit/dspjit.c), when the engine is it: its context (told of
      * every write to P) and, while it runs, the cycles left of dsp_run()'s */
     struct DspJit *jit;

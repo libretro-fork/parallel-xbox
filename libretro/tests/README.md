@@ -4899,7 +4899,7 @@ rewinds the arena, then clears coverage and retires published entries in
 marked pointer tables. Untouched slots are already empty. Per-word
 invalidation does not reset dirty bits. No saved state changes.
 
-The 1189 focused checks cover initially empty flushes, populated/repeated
+The 18997 focused checks cover initially empty flushes, populated/repeated
 empty flushes, all eight normal scaling/LF identities, direct CLR-to-NOP code
 replacement after flush, REP fallback-to-native replacement, and interrupt-only
 publication/replacement through all four scales and six pipeline stages.
@@ -5161,3 +5161,19 @@ byte counts detect redundant writes as well as a missed decoder publication.
 The bootstrap fixture marks its synthetic prefilled cache populated, matching
 production's publication invariant. The independent sanitizer and ARM64 CI
 job runs both the focused flush and the 65,564 bootstrap cases.
+
+Interpreter opcode-cache retirement is now sparse after interpreter use too.
+A 64-bit summary replaces the previous dirty flag: each bit denotes a group
+of 64 decoded pointers published since the last clear. Per-word eviction
+retains conservative group markers. A populated group clears 64 pointers
+(512 bytes on 64-bit hosts), instead of clearing the entire 32 KiB table.
+Zero summaries return without stores; all-ones summaries keep the bulk memset.
+The fixed 4096-entry layout is enforced by a compile-time assertion. Neither
+interpreter semantics nor saved-state layout changes.
+
+Exact byte-count checks cover both endpoints of every group, duplicate
+publication, disjoint group reuse and empty repeats on both C backends.
+Dense cases cover one published pointer in every group and all 4096 pointers,
+including repopulation after clearing. Bootstrap's synthetic full cache now
+sets the complete group summary. Existing code-replacement, VM-import and
+CPU-reset regressions continue to check the publication invariant.

@@ -61,7 +61,7 @@ static void require_empty_opcache(dsp_core_t *c)
     bool empty = true;
     for (unsigned pc = 0; pc < DSP_PRAM_SIZE; pc++) empty &= c->pram_opcache[pc] == NULL;
     REQUIRE(empty);
-    REQUIRE(!c->pram_opcache_dirty);
+    REQUIRE(!c->pram_opcache_words);
 }
 static void prime_opcache(dsp_core_t *c, unsigned pc)
 {
@@ -72,13 +72,14 @@ static void prime_opcache(dsp_core_t *c, unsigned pc)
     c->interrupt_state = DSP_INTERRUPT_NONE;
     dsp56k_execute_instruction(c);
     REQUIRE(c->pram_opcache[pc] != NULL);
-    REQUIRE(c->pram_opcache_dirty);
+    REQUIRE(c->pram_opcache_words & (UINT64_C(1) << (pc >> 6)));
 }
 static void backend_opcache_checks(void)
 {
     for (unsigned jit = 0; jit < 2; jit++) {
         Machine *m = machine_new(jit);
         dsp_core_t *c = m->dsp->backend;
+        const uint64_t group_bytes = 64 * sizeof(*c->pram_opcache);
         uint64_t bytes = dsp56k_test_opcache_clear_bytes();
         require_empty_opcache(c);
         for (unsigned i = 0; i < 1000; i++) m->dsp->ops->invalidate_opcache(m->dsp);
@@ -97,10 +98,10 @@ static void backend_opcache_checks(void)
             prime_opcache(c, 63);
             prime_opcache(c, DSP_PRAM_SIZE - 1);
             m->dsp->ops->invalidate_opcache(m->dsp);
-            REQUIRE(dsp56k_test_opcache_clear_bytes() == bytes + (phase + 1) * sizeof(c->pram_opcache));
+            REQUIRE(dsp56k_test_opcache_clear_bytes() == bytes + (phase + 1) * 2 * group_bytes);
             require_empty_opcache(c);
             m->dsp->ops->invalidate_opcache(m->dsp);
-            REQUIRE(dsp56k_test_opcache_clear_bytes() == bytes + (phase + 1) * sizeof(c->pram_opcache));
+            REQUIRE(dsp56k_test_opcache_clear_bytes() == bytes + (phase + 1) * 2 * group_bytes);
         }
         /* Per-word eviction must not incorrectly mark other entries empty. */
         prime_opcache(c, 0);
@@ -115,15 +116,15 @@ static void backend_opcache_checks(void)
         m->dsp->ops->write_memory(m->dsp, 'P', 0, 1);
         bytes = dsp56k_test_opcache_clear_bytes();
         m->dsp->ops->invalidate_opcache(m->dsp);
-        REQUIRE(dsp56k_test_opcache_clear_bytes() == bytes + sizeof(c->pram_opcache));
+        REQUIRE(dsp56k_test_opcache_clear_bytes() == bytes + group_bytes);
         require_empty_opcache(c);
         prime_opcache(c, 63);
         bytes = dsp56k_test_opcache_clear_bytes();
         m->dsp->ops->bootstrap(m->dsp);
-        REQUIRE(dsp56k_test_opcache_clear_bytes() == bytes + sizeof(c->pram_opcache));
+        REQUIRE(dsp56k_test_opcache_clear_bytes() == bytes + group_bytes);
         require_empty_opcache(c);
         m->dsp->ops->bootstrap(m->dsp);
-        REQUIRE(dsp56k_test_opcache_clear_bytes() == bytes + sizeof(c->pram_opcache));
+        REQUIRE(dsp56k_test_opcache_clear_bytes() == bytes + group_bytes);
         prime_opcache(c, 63);
         bytes = dsp56k_test_opcache_clear_bytes();
         m->dsp->ops->sync_to_vm(m->dsp);
@@ -131,15 +132,38 @@ static void backend_opcache_checks(void)
         m->dsp->core.pram[64] = 1;
         m->dsp->core.pc = 63;
         m->dsp->ops->sync_from_vm(m->dsp);
-        REQUIRE(dsp56k_test_opcache_clear_bytes() == bytes + sizeof(c->pram_opcache));
+        REQUIRE(dsp56k_test_opcache_clear_bytes() == bytes + group_bytes);
         require_empty_opcache(c);
         c->is_idle = false;
         dsp56k_execute_instruction(c);
         REQUIRE(c->is_idle); /* restored HALT must not reuse the old cached NOP */
         m->dsp->ops->reset(m->dsp);
-        REQUIRE(c->pram_opcache_dirty); /* CPU reset preserves program memory */
+        REQUIRE(c->pram_opcache_words); /* CPU reset preserves program memory */
         m->dsp->ops->invalidate_opcache(m->dsp);
         require_empty_opcache(c);
+        /* Every group, both boundary entries: duplicate publications share
+         * one clear and a disjoint reuse must not retain the old summary. */
+        for (unsigned group = 0; group < 64; group++) {
+            prime_opcache(c, group * 64);
+            prime_opcache(c, group * 64 + 63);
+            REQUIRE(c->pram_opcache_words == (UINT64_C(1) << group));
+            bytes = dsp56k_test_opcache_clear_bytes();
+            m->dsp->ops->invalidate_opcache(m->dsp);
+            REQUIRE(dsp56k_test_opcache_clear_bytes() == bytes + group_bytes);
+            require_empty_opcache(c);
+            m->dsp->ops->invalidate_opcache(m->dsp);
+            REQUIRE(dsp56k_test_opcache_clear_bytes() == bytes + group_bytes);
+        }
+        /* Dense summaries retain the bulk path, whether each group has
+         * one published slot or all of its slots. Re-arm after each clear. */
+        for (unsigned stride = 64; stride; stride = stride == 64 ? 1 : 0) {
+            for (unsigned pc = 0; pc < DSP_PRAM_SIZE; pc += stride) prime_opcache(c, pc);
+            REQUIRE(c->pram_opcache_words == UINT64_MAX);
+            bytes = dsp56k_test_opcache_clear_bytes();
+            m->dsp->ops->invalidate_opcache(m->dsp);
+            REQUIRE(dsp56k_test_opcache_clear_bytes() == bytes + sizeof(c->pram_opcache));
+            require_empty_opcache(c);
+        }
         dispose(m);
     }
 }

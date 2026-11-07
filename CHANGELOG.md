@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- DSP: clear only populated groups of interpreter opcode-cache entries after interpreter use, reducing sparse clears from 32 KiB to 512 bytes per group on 64-bit hosts. Keep the full-cache bulk clear for dense coverage and add group-boundary and reuse regressions.
+
 - Vulkan presentation now requires the negotiated frontend device. Remove the old cross-device import path and its blocking frame acknowledgement, fence waits and layout submissions. Frontends that refuse negotiation fail content loading explicitly; mismatched contexts stay idle instead of starting a private renderer. GL and shared-device Vulkan retain their existing latest-image handoff and exact audio cadence; guest device/coherence waits remain.
 
 - Savestates restore point attenuation, front-material alpha/shininess and light vectors instead of retaining values from later frames. Partial shininess setters are preserved and restored uniforms are refreshed. Older states use zero defaults for constants they never saved. Only small owned constants are serialized; vertex/texture resources and borrowed lifetimes are unchanged.
