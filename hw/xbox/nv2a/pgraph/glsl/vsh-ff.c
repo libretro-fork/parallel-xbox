@@ -122,7 +122,7 @@ static void gen_dynamic_lights(MString *body, const VshState *state)
         body,
         "    if (lmode == 3u) {\n"
         "      vec4 spotDir = lightSpotDirection(i);\n"
-        "      attenuation *= spotlightFactor(spotDir, VP, lightSpotFalloff(i));\n"
+        "      attenuation = spotlightAttenuation(attenuation, spotDir, VP, lightSpotFalloff(i));\n"
         "    }\n"
         "  }\n");
 
@@ -289,6 +289,12 @@ GLSL_DEFINE(materialEmissionColor, GLSL_LTCTXA(NV_IGRAPH_XF_LTCTXA_CM_COL) ".xyz
         "    if (denominator == 0.0) return 1.0;\n"
         "    if (denominator < 0.0) return 0.0;\n"
         "    return clamp(numerator / denominator, 0.0, 1.0);\n"
+        "}\n"
+        /* LLU cutoff flags select zero; multiplying a zero factor by an
+         * infinite reciprocal attenuation would instead leak NaN. */
+        "float spotlightAttenuation(float attenuation, vec4 spot, vec3 vp, vec3 k) {\n"
+        "    float factor = spotlightFactor(spot, vp, k);\n"
+        "    return factor == 0.0 ? 0.0 : attenuation * factor;\n"
         "}\n");
 
     unsigned int count;
@@ -609,7 +615,7 @@ GLSL_DEFINE(materialEmissionColor, GLSL_LTCTXA(NV_IGRAPH_XF_LTCTXA_CM_COL) ".xyz
                  * shared helper, including the inner/outer cone cutoffs. */
                 mstring_append_fmt(body,
                     "    vec4 spotDir = lightSpotDirection(%d);\n"
-                    "    attenuation *= spotlightFactor(spotDir, VP, lightSpotFalloff(%d));\n",
+                    "    attenuation = spotlightAttenuation(attenuation, spotDir, VP, lightSpotFalloff(%d));\n",
                     i, i);
                 break;
             default:

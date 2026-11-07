@@ -74,7 +74,7 @@ with tempfile.TemporaryDirectory(prefix='point-fog-') as temp:
         (-0.932112,-3.097628,3.165516),(-0.986137,-3.165117,3.178980),
         (-0.993286,-2.953324,2.960038),(-0.996561,-3.084043,3.087482),
         (0,0,0),(0,0,-1),(0,-2,1),(-0.5,0,1)]
-    calls=re.findall(r'"( +attenuation \*= spotlightFactor.*?;\\n)"',ff)
+    calls=re.findall(r'"( +attenuation = spotlightAttenuation.*?;\\n)"',ff)
     assert len(calls)==2
     for path,call in zip(('dynamic','static'),calls):
         body=('#define lightSpotFalloff(i) probe[2].xyz\n'
@@ -100,6 +100,13 @@ with tempfile.TemporaryDirectory(prefix='point-fog-') as temp:
             for attenuation in (0.25,1,2):
                 values=[0,0,z,bias,0,0,1,0,0,-0.494592,1.494592,0,attenuation,0,0,0]
                 cases.append((values,[attenuation*factor]*4))
+        # Hardware cutoff masks force zero, even if reciprocal distance
+        # attenuation is non-finite. Multiplying infinity by zero is NaN.
+        for ramp,k in ((-1,(0,-0.494592,1.494592)),(0,(0,-0.494592,1.494592)),
+                       (0.125,(-0.170208,-0.855843,1.685635))):
+            for attenuation in (float('inf'),float('-inf'),float('nan')):
+                values=[0,0,ramp,0,0,0,1,0,*k,0,attenuation,0,0,0]
+                cases.append((values,[0]*4))
         add('spotlight-'+path,body,cases,'vec4(attenuation)')
     # TEXGEN_REF is a live bit in the existing texgenMode uniform. Exercise
     # both generator paths with alternating modes in one shader binding.
@@ -258,13 +265,24 @@ with tempfile.TemporaryDirectory(prefix='point-fog-') as temp:
         name='spotlight-'+path
         negative=out/(name+'-linear.vert')
         source=(out/(name+'.vert')).read_text()
-        source=re.sub(r'attenuation \*= spotlightFactor\([^;]+;',
+        source=re.sub(r'attenuation = spotlightAttenuation\([^;]+;',
             'attenuation *= clamp(dot(spotDir.xyz, VP) + spotDir.w, 0.0, 1.0);',source)
         negative.write_text(source)
         result=subprocess.run([str(exe),str(negative),str(out/(name+'.bin'))],
             env=dict(env,EGL_PLATFORM='surfaceless'),capture_output=True,text=True)
         assert result.returncode==1 and ' != ' in result.stderr,result.stderr
     print('PASS: linear-only spotlights fail both lighting path oracles')
+    for path in ('static','dynamic'):
+        name='spotlight-'+path
+        negative=out/(name+'-unmasked.vert')
+        source=(out/(name+'.vert')).read_text()
+        before='factor == 0.0 ? 0.0 : attenuation * factor'
+        assert before in source
+        negative.write_text(source.replace(before,'attenuation * factor'))
+        result=subprocess.run([str(exe),str(negative),str(out/(name+'.bin'))],
+            env=dict(env,EGL_PLATFORM='surfaceless'),capture_output=True,text=True)
+        assert result.returncode==1 and ' != ' in result.stderr,result.stderr
+    print('PASS: unmasked non-finite spotlight attenuation fails both path oracles')
     if a.vulkan:
         vkargs=[]
         for path,data in zip(args[::2],args[1::2]):

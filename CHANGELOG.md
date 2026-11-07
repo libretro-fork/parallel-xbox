@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Spotlight cutoffs force zero even when distance attenuation is non-finite, preventing infinity-times-zero from leaking NaNs outside the cone. Both fixed-function shader paths use the hardware-style mask without new uniforms, resource copies or borrowed views.
+
 - Spotlights evaluate their programmed falloff curve instead of always fading linearly. Both renderers and GPU Boost's dynamic lighting path read the existing lighting-context coefficients, including cone cutoffs and hard cones. Shader keys, uniform layouts, resource copies and borrowed lifetimes are unchanged.
 
 - DSP: clear only populated groups of interpreter opcode-cache entries after interpreter use, reducing sparse clears from 32 KiB to 512 bytes per group on 64-bit hosts. Keep the full-cache bulk clear for dense coverage and add group-boundary and reuse regressions.
