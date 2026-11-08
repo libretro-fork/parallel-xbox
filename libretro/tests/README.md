@@ -1,5 +1,10 @@
 # The core's tests
 
+The [shader/PSO recovery plan](../../docs/cold-first-play-recovery.md) records
+the current cold-play regression and the GitHub workflow. It separates CPU
+compilation, real software-Vulkan PSO correctness and physical-GPU first-play
+qualification. A green CPU job does not establish smooth gameplay.
+
 For fixed-checkpoint ABBA throughput checks, slowdown budgets, noise handling and the DOA3 known-bad control, see [performance regression checks](performance-regressions.md). Carry specialization and gate-evaluator checks also run in GitHub CI.
 
 `test-pre-module-keys.py CHECKOUT [CC]` compares complete module keys and prewarm module-reference order with frozen implementations. The vertex, fragment and geometry baseline flags select individual snapshots; `--geometry-clear-baseline` requires runtime controls to reject a missing geometry copy, missing clear and missing clear observer. `--copy-control` compares identical geometry-baseline builders; `MODULE_KEY_BENCH_CPU` optionally pins a Windows CPU and timings use a monotonic clock. `MODULE_KEY_SOURCE` selects a local candidate source, and `MODULE_KEY_ASM` exports assembly with matching build flags. `--check-only` keeps checked byte/count validation and failure controls while skipping timing. These CPU fixtures model cache lookup capture and do not compile shaders or measure GPU work.

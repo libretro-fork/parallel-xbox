@@ -374,6 +374,11 @@ or creation. The worker retains its cache path and export scratch. Teardown
 still joins and performs a final save; driver cache extraction can contend
 with shader compilation, so this does not establish global nonblocking behavior.
 
+Cold-first-play shader/PSO smoothness is currently a known regression,
+particularly in DOA3's first fights. The [recovery and regression plan](docs/cold-first-play-recovery.md)
+defines cache-empty first-play acceptance separately from warm-cache FPS,
+per-commit shader tests, zero-copy ownership and file-I/O requirements.
+
 The fixed Xbox CPU rejects AES/PCLMUL instructions through its existing
 decoder feature checks. Their emitters share the illegal-opcode path and
 the unused engines/helpers are removed. A synthetic ROM checks 20 traps,

@@ -1,0 +1,250 @@
+name: Shader and PSO regressions
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  revisions:
+    runs-on: ubuntu-24.04
+    outputs:
+      matrix: ${{ steps.revisions.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: revisions
+        env:
+          EVENT: ${{ github.event_name }}
+          BEFORE: ${{ github.event.before }}
+          AFTER: ${{ github.event.pull_request.head.sha || github.sha }}
+          ACCEPTED: ${{ vars.SHADER_ACCEPTED_BASELINE }}
+        run: |
+          python3 - <<'PY'
+          import json, os, re, subprocess
+          def git(*args):
+              return subprocess.check_output(['git', *args], text=True).strip()
+          after, before = os.environ['AFTER'], os.environ.get('BEFORE', '')
+          if os.environ['EVENT'] == 'push' and before and set(before) != {'0'}:
+              commits = git('rev-list', '--reverse', before+'..'+after).splitlines()
+          else:
+              commits = [after]
+          if not commits or len(commits) > 32:
+              raise SystemExit('Unqualified: split pushes larger than 32 commits; no commits are silently skipped')
+          accepted = os.environ.get('ACCEPTED', '')
+          if accepted and not re.fullmatch(r'[0-9a-fA-F]{40}', accepted):
+              raise SystemExit('SHADER_ACCEPTED_BASELINE must pin a verified full commit SHA')
+          if accepted:
+              git('cat-file', '-e', accepted+'^{commit}')
+          rows = []
+          for commit in commits:
+              parent = git('rev-parse', commit+'^')
+              rows.append(dict(commit=commit, reference=parent, kind='parent'))
+              if accepted and accepted != parent:
+                  rows.append(dict(commit=commit, reference=accepted, kind='accepted'))
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
+              f.write('matrix='+json.dumps(dict(include=rows))+'\n')
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as f:
+              f.write('Every new commit in this push is compared, not just its tip.\n\n')
+              f.write('Pinned accepted reference: '+(accepted or '**UNQUALIFIED: not configured; parent comparison only**')+'\n\n')
+              f.write('Current cold-play smoothness remains **BAD/regressed** until separate physical-GPU qualification proves recovery.\n')
+          PY
+
+  contracts:
+    name: Contracts ${{ matrix.commit }} / ${{ matrix.kind }}
+    needs: revisions
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.revisions.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: driver
+          fetch-depth: 0
+      - name: Check candidate source with the current test harness
+        env:
+          COMMIT: ${{ matrix.commit }}
+        run: git -C driver worktree add --detach ../candidate "$COMMIT"
+      - name: PSO identity, stable jobs, output ownership and file-cache publication
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p results
+          for test in test-pipeline-key-clear test-pipeline-job-view test-pipeline-ahead-key test-worker-drain test-vk-worker-modules test-shader-cache-handoff test-file-retained-view test-pipeline-cache-export test-shader-layout test-spv-prefix-view; do
+            python3 "driver/libretro/tests/$test.py" candidate cc 2>&1 | tee "results/$test.log"
+          done
+          python3 driver/libretro/tests/test-pre-module-keys.py candidate cc --geometry-clear-baseline --check-only 2>&1 | tee results/module-keys.log
+          python3 driver/libretro/tests/test-throughput-gate.py 2>&1 | tee results/throughput-gate.log
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: shader-contracts-${{ matrix.commit }}-${{ matrix.kind }}
+          path: results/
+
+  compilation:
+    name: Compilation ${{ matrix.commit }} / ${{ matrix.kind }}
+    needs: revisions
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix: ${{ fromJSON(needs.revisions.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: driver
+          fetch-depth: 0
+      - name: Create separate parent/accepted and candidate source trees
+        env:
+          COMMIT: ${{ matrix.commit }}
+          REFERENCE: ${{ matrix.reference }}
+        run: |
+          git -C driver worktree add --detach ../candidate "$COMMIT"
+          git -C driver worktree add --detach ../reference "$REFERENCE"
+          mkdir -p corpus/candidate corpus/reference results
+          printf '%s\n' "$COMMIT" "$REFERENCE" > results/revisions.txt
+      - name: Build tools and compile the complete bundled dictionary
+        run: |
+          sudo apt-get -qy update
+          sudo apt-get -qy install build-essential pkg-config libepoxy-dev spirv-tools
+          set -o pipefail
+          make -C reference -j2 seedshaders 2>&1 | tee results/reference-build.log
+          make -C candidate -j2 seedshaders 2>&1 | tee results/candidate-build.log
+          reference/libretro/tests/seedshaders reference/data/shader_seeds.bin corpus/reference 2>&1 | tee results/reference-dictionary.log
+          candidate/libretro/tests/seedshaders candidate/data/shader_seeds.bin corpus/candidate 2>&1 | tee results/candidate-dictionary.log
+      - name: Validate all exported SPIR-V modules
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import subprocess
+          files = sorted(Path('corpus').rglob('*.spv'))
+          if not files:
+              raise SystemExit('No generated modules: unqualified')
+          for path in files:
+              subprocess.run(['spirv-val', '--target-env', 'vulkan1.3', str(path)], check=True)
+          Path('results/validation.txt').write_text(f'{len(files)} exported modules validated\n')
+          PY
+      - name: Compare fresh compiler invocations under SPIR-V 1.5 and 1.6
+        run: |
+          set -o pipefail
+          python3 driver/libretro/tests/benchmark-shader-compile.py --baseline reference --candidate candidate --corpus corpus --output results/comparison --prepare-corpus --validator spirv-val 2>&1 | tee results/comparison.log
+      - name: Require the timing gate to reject an injected slow compiler
+        run: |
+          set +e
+          python3 driver/libretro/tests/benchmark-shader-compile.py --baseline candidate --candidate candidate --corpus corpus --output results/negative-control --inject-candidate-delay > results/negative-control.log 2>&1
+          result=$?
+          set -e
+          cat results/negative-control.log
+          python3 - "$result" <<'PY'
+          import json, sys
+          from pathlib import Path
+          report = json.loads(Path('results/negative-control/report.json').read_text())
+          assert int(sys.argv[1]) in (1, 2), 'bad compiler passed'
+          assert report['injected_negative_control'] and report['slowdown'] > .20
+          assert report['status'] != 'pass'
+          # A noisy deliberately delayed process may be inconclusive. That is
+          # still a rejected gate, not permission to relax real timing limits.
+          PY
+      - name: Record the qualification boundary
+        if: always()
+        run: |
+          echo 'This job measures CPU compilation and validates generated words. It does not measure driver PSOs, cold-boot gameplay, physical GPU time or presentation smoothness.' >> "$GITHUB_STEP_SUMMARY"
+          echo 'No missing reference-hardware run is converted into a pass. Current cold-play regression remains open.' >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: shader-compilation-${{ matrix.commit }}-${{ matrix.kind }}
+          path: |
+            results/**/*.log
+            results/**/*.json
+            results/**/*.csv
+            results/**/*.tsv
+            results/*.txt
+
+  software-gpu:
+    name: Software Vulkan PSO and numerical validation
+    needs: revisions
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.revisions.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: driver
+          fetch-depth: 0
+      - env:
+          COMMIT: ${{ matrix.commit }}
+        run: git -C driver worktree add --detach ../candidate "$COMMIT"
+      - name: Install test-only software Vulkan and validation tools
+        run: |
+          sudo apt-get -qy update
+          sudo apt-get -qy install build-essential libvulkan1 mesa-vulkan-drivers vulkan-validationlayers spirv-tools
+      - name: Create actual test pipelines and execute numerical controls
+        run: |
+          set -euo pipefail
+          mkdir -p results
+          python3 driver/libretro/tests/test-glslc-local-init.py candidate --cc cc 2>&1 | tee results/local-init.log
+          python3 driver/libretro/tests/test-spv-clear.py candidate cc --gpu 2>&1 | tee results/clear.log
+          python3 driver/libretro/tests/test-spv-geom.py candidate cc --gpu 2>&1 | tee results/geometry.log
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: shader-software-gpu-${{ matrix.commit }}-${{ matrix.kind }}
+          path: results/
+
+  shader-gate:
+    name: Shader and PSO required gate
+    if: always()
+    needs: [revisions, contracts, compilation, software-gpu]
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Require every revision and reference job to pass
+        env:
+          RESULTS: ${{ toJSON(needs) }}
+        run: |
+          python3 - <<'PY'
+          import json, os
+          results = json.loads(os.environ['RESULTS'])
+          failed = [name for name, value in results.items() if value['result'] != 'success']
+          if failed:
+              raise SystemExit('Failed or unqualified shader checks: '+', '.join(failed))
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as f:
+              f.write('CPU compilation, PSO contracts and software-GPU checks passed for every tested revision.\n\n')
+              f.write('This is NOT physical-GPU cold-play qualification. The current cold-play regression remains open.\n')
+          PY
+
+  physical-cold-play:
+    name: Reference-hardware cold-play qualification
+    # Never run private assets or a self-hosted runner on untrusted PR code.
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/libretro' && vars.SHADER_HARDWARE_ENABLED == 'true'
+    needs: revisions
+    runs-on: [self-hosted, shader-reference]
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Run the administrator-provisioned cold/warm fixture service
+        env:
+          REVISIONS: ${{ needs.revisions.outputs.matrix }}
+          ACCEPTED: ${{ vars.SHADER_ACCEPTED_BASELINE }}
+          QUALIFIER: ${{ vars.SHADER_HARDWARE_QUALIFIER }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$ACCEPTED" && test -n "$QUALIFIER"
+          # Executable is provisioned on the trusted runner, not downloaded by the core.
+          # Contract and cache/scene requirements are in docs/cold-first-play-recovery.md.
+          "$QUALIFIER" --revisions-json "$REVISIONS" --accepted "$ACCEPTED" --output "$RUNNER_TEMP/shader-cold-play-$GITHUB_RUN_ID"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: shader-reference-hardware-${{ github.sha }}
+          path: ${{ runner.temp }}/shader-cold-play-${{ github.run_id }}/public-report/**

@@ -1,5 +1,12 @@
 # Throughput regression checks
 
+**Cold shader/PSO smoothness is currently BAD/regressed.** The 8% gate below
+measures steady callback throughput, not first-play interruptions. It does
+not qualify cold gameplay or authorize a new compilation hitch. See the
+[cold-first-play recovery plan](../../docs/cold-first-play-recovery.md) for
+the cache matrix, per-commit shader workflow, ownership/I/O rules and separate
+physical-hardware acceptance requirements.
+
 Correct output alone does not establish acceptable performance. CPU/JIT,
 renderer and scheduling changes should also run paired checkpoint benchmarks
 against the current release before delivery. Keep a known-good core binary
