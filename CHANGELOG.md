@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- OpenGL keeps dynamic lighting-family requests pending until both required vertex variants fit in the generation queue. A one-slot opening could previously lose the second variant and leave the family specializing indefinitely. Reuse existing owned records without extra buffers, payload copies or waits. Add exhaustive queue-pressure/retry/lifetime checks and a required lost-variant negative control to shader CI. This does not close uncovered first-use Vulkan PSO stalls.
+
 - Compile the QCOW2 integration test as C11, matching the core and its existing aligned view-owner storage. This fixes the legacy C99 test build without changing alignment or runtime code.
 
 - Restore index-load and Vulkan vertex-format fixtures for existing migration helpers and borrowed inline data. Add poisoned-canonical borrowed-input coverage and rejection controls for ignored lends and unreleased migration owners, and run both checks in shader/PSO contracts. No runtime changes.

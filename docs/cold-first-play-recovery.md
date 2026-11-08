@@ -343,6 +343,58 @@ standard for its existing `max_align_t` owner storage. Conversion cases pass
 locally; runtime and alignment are unchanged. The hosted ARM64 PRAMIN timeout
 remains a separately recorded unqualified platform result, not a relaxed gate.
 
+### OpenGL dynamic vertex-family queue pressure
+
+A dynamic lighting family needs both vertex prefix variants before its
+adoption count reaches two. The service previously popped an owned pending
+record with only one free generation slot, then ignored the failed second
+enqueue. That lost a variant permanently. The service now requires two free
+slots before consuming that record. Only the render thread changes slot
+ownership, so the worker cannot take a checked slot between the capacity
+test and publication. Other producers retain their one-slot checks.
+
+No queue is enlarged, no pending payload is cloned, and no wait/spin, worker,
+retained lend or release profiling is added. Job/key layouts, generated code,
+module identity, serialized seeds and driver validation are unchanged; no
+cache version change is needed. This is an OpenGL scheduling repair, not a
+fix for the uncovered Vulkan first-use full-PSO path.
+
+The production-function test uses the actual module-key layout and covers
+all 65,536 occupancy patterns with one and eight pending families (131,072
+cases), mixed queued/completed owners, retry after retirement, both prefix
+keys and poisoned consumed-bank storage. A negative control restoring the
+one-slot dequeue must fail. The existing 100,000-job concurrent worker test
+also checks publication, duplicates, slot reuse and parking.
+
+On Ryzen 9 9950X3D/RTX 5090, OpenGL/8x, a two-block ABBA comparison used
+16 fresh boots: application-cache-empty and persistent-cache repeats.
+Both revisions ran in the same 96 MiB L3 domain, with unchanged options,
+verified native module-cache persistence, no overlapping local builds/tests,
+and zero image readbacks/allocations. Driver cache state was uncontrolled.
+All 15,136 measured fight-entry/live callbacks stayed below 16.683 ms,
+including 9,600 verified live-round callbacks. Live run-mean comparisons
+changed -0.56% cold and -0.20% warm, indistinguishable within noise. Fight
+window maxima were 12.606/11.342 ms baseline/candidate cold and
+10.769/10.876 ms warm. This is not a demonstrated speedup or presented-frame
+latency measurement. The private passive MMU probe was outside `retro_run`;
+the release build excludes that export.
+
+One candidate initial callback took 223.298 ms before valid guest metadata
+(first valid sample at callback 11). Retain it: complete boot smoothness is
+not qualified. A separate eight-process early-boot ABBA repeat, four per
+revision, did not reproduce it (67.129-69.713 ms maxima). Its cause remains
+unresolved; these repeats do not erase the observation or prove driver-cold
+recovery. No thresholds or accepted references were changed.
+
+Full-resolution captures showed the same fight without missing geometry;
+they were not byte-identical, so are not an exact-pixel equivalence claim.
+The private frontend fixture was corrected before qualification to accommodate
+8x output; earlier clipped captures are invalid. Separate save/two-load checks
+restored identical RAM and reset resumed live play with correct audio cadence.
+OpenGL content reload remains explicitly unsupported without a frontend
+restart; the existing rejection was observed, not bypassed. Other device/
+context replacement paths are not certified by this workload.
+
 Require the known bad cold-play replay to fail and the candidate to pass;
 retain the original failure and a same-hardware clean-binary comparison.
 Show no new obvious compiler interruption relative to the verified smooth

@@ -1853,10 +1853,12 @@ static bool gen_job_push(const ShaderModuleCacheKey *key, bool gate,
     return false;
 }
 
-static bool gen_jobs_have_free(void)
+/* Only the render thread changes used; the worker publishes completion but
+ * cannot consume these slots between this check and a multi-module enqueue. */
+static bool gen_jobs_have_free(unsigned needed)
 {
     for (int i = 0; i < GEN_JOBS; i++) {
-        if (!gen_jobs[i].used) {
+        if (!gen_jobs[i].used && --needed == 0) {
             return true;
         }
     }
@@ -2119,7 +2121,7 @@ static void comb_async_service(PGRAPHGLState *r, unsigned max_items)
     bool fed = false;
     PshState st;
     bool gate;
-    while (gen_jobs_have_free() && comb_async_take(r, &st, &gate)) {
+    while (gen_jobs_have_free(1) && comb_async_take(r, &st, &gate)) {
         ShaderModuleCacheKey key;
         memset(&key, 0, sizeof(key));
         key.kind = GL_FRAGMENT_SHADER;
@@ -2136,7 +2138,7 @@ static void comb_async_service(PGRAPHGLState *r, unsigned max_items)
 
     /* ...vertex modules of queued specialised states (both variants)... */
     for (unsigned qi = r->spec_pending_r;
-         qi != r->spec_pending_w && gen_jobs_have_free(); qi++) {
+         qi != r->spec_pending_w && gen_jobs_have_free(1); qi++) {
         ShaderState *qs = &r->spec_pending[qi % ARRAY_SIZE(r->spec_pending)];
         for (int prefix = 0; prefix < 2; prefix++) {
             ShaderModuleCacheKey key;
@@ -2151,7 +2153,10 @@ static void comb_async_service(PGRAPHGLState *r, unsigned max_items)
     }
 
     /* ...and dynamic vertex families (both variants). */
-    while (gen_jobs_have_free()) {
+    /* Taking a family consumes its owned pending record. Both prefix variants
+     * must fit before taking it: losing one leaves adoption short of two and
+     * the family keeps specialising on the draw path indefinitely. */
+    while (gen_jobs_have_free(2)) {
         VshState vst;
         if (!pgraph_glsl_vsh_dynamic_pending_take(&vst)) {
             break;
@@ -2169,7 +2174,7 @@ static void comb_async_service(PGRAPHGLState *r, unsigned max_items)
     /* ...and cold-boot seed keys, lowest priority: only leftover slots,
      * so live compile demand always wins. */
     while (r->seed.state == 1 && r->seed.mod_idx < r->seed.mod_n &&
-           gen_jobs_have_free()) {
+           gen_jobs_have_free(1)) {
         ShaderModuleCacheKey *sk = &r->seed.mod_keys[r->seed.mod_idx++];
         if (module_known(r, sk)) {
             continue;

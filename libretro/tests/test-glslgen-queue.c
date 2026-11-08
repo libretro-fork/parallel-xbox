@@ -61,7 +61,7 @@ int main(void)
         assert(gen_job_push(&key, !!(value & 1), !!(value & 2)));
         submitted++;
     }
-    assert(!gen_jobs_have_free());
+    assert(!gen_jobs_have_free(1));
     {
         ShaderModuleCacheKey overflow = {0};
         assert(!gen_job_push(&overflow, false, false));
@@ -86,7 +86,7 @@ int main(void)
                 completed++;
             }
         }
-        if (submitted < total && gen_jobs_have_free()) {
+        if (submitted < total && gen_jobs_have_free(1)) {
             ShaderModuleCacheKey key = {0};
             unsigned value = ++submitted;
             key.kind = value % 3;
@@ -102,7 +102,7 @@ int main(void)
             retro_sleep(0);
         }
     }
-    assert(!gen_jobs_pending() && gen_jobs_have_free());
+    assert(!gen_jobs_pending() && gen_jobs_have_free(1));
     assert((unsigned)retro_atomic_load_acquire_int(&generated) == total);
     retro_atomic_store_release_int(&stop, 1);
     retro_eventcount_notify(&gen_ready);
