@@ -23,7 +23,6 @@
 #define XEMU_XBE_H
 
 #include <stdbool.h>
-#include <stddef.h>
 #include <stdint.h>
 
 // http://www.caustik.com/cxbx/download/xbe.htm
@@ -110,10 +109,6 @@ extern "C" {
 // Get current XBE info
 struct xbe *xemu_get_xbe_info(void);
 bool xemu_get_xbe_title_id(uint32_t *title_id);
-/* Emulation thread, BQL held and vCPU stopped. Read mapped RAM only; no
- * pointers survive the call and no MMIO region is accessed. */
-bool xemu_read_virtual_ram(uint32_t address, void *data, size_t size);
-bool xemu_validate_doaxvb_sun_profile(void);
 
 #ifdef __cplusplus
 }

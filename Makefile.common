@@ -476,8 +476,6 @@ SOURCES_TARGET := \
 	$(CORE_DIR)/hw/xbox/nv2a/pcrtc.c \
 	$(CORE_DIR)/hw/xbox/nv2a/pfb.c \
 	$(CORE_DIR)/hw/xbox/nv2a/pfifo.c \
-	$(CORE_DIR)/hw/xbox/nv2a/pfifo-sun.c \
-	$(CORE_DIR)/hw/xbox/nv2a/sun-shadow-camera.c \
 	$(CORE_DIR)/hw/xbox/nv2a/pgraph/cost.c \
 	$(CORE_DIR)/hw/xbox/nv2a/pgraph/gl/blit.c \
 	$(CORE_DIR)/hw/xbox/nv2a/pgraph/gl/debug.c \
@@ -514,8 +512,6 @@ SOURCES_TARGET := \
 	$(CORE_DIR)/hw/xbox/nv2a/pgraph/vk/debug.c \
 	$(CORE_DIR)/hw/xbox/nv2a/pgraph/vk/display.c \
 	$(CORE_DIR)/hw/xbox/nv2a/pgraph/vk/draw.c \
-	$(CORE_DIR)/hw/xbox/nv2a/pgraph/vk/draw-sun.c \
-	$(CORE_DIR)/hw/xbox/nv2a/pgraph/vk/sun-native.c \
 	$(CORE_DIR)/hw/xbox/nv2a/pgraph/vk/glsl.c \
 	$(CORE_DIR)/hw/xbox/nv2a/pgraph/vk/gpuprops.c \
 	$(CORE_DIR)/hw/xbox/nv2a/pgraph/vk/image.c \

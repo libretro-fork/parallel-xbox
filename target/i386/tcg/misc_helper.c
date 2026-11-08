@@ -24,12 +24,6 @@
 #include "exec/cputlb.h"
 #include "helper-tcg.h"
 #include "hw/xbox/xbe-runtime.h"
-#include "hw/xbox/nv2a/pgraph/sun-shadow-hooks.h"
-
-void helper_xemu_sun_camera(CPUX86State *env, target_ulong pc)
-{
-    xemu_sun_camera_capture(env_cpu(env), pc, env->regs[R_EAX]);
-}
 
 void helper_xemu_xbe_runtime(CPUX86State *env, target_ulong pc)
 {

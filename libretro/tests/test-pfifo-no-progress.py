@@ -4,10 +4,9 @@ from pathlib import Path
 import os, shlex, subprocess, sys, tempfile
 r=Path(sys.argv[1]).resolve()
 s=Path(os.environ.get('PFIFO_PROGRESS_SOURCE',r/'hw/xbox/nv2a/pfifo.c')).read_text()
-s=s.replace('#include "pfifo-pusher.inc"',(r/'hw/xbox/nv2a/pfifo-pusher.inc').read_text())
-a=s.rindex('            ssize_t num_words_processed =')
+a=s.index('            ssize_t num_words_processed =')
 b=s.index('        } else {',a)
-body=s[a:b].replace('#endif\n','')
+body=s[a:b]
 code=Path(__file__).with_suffix('.c').read_text().replace('/* PRODUCTION */',body)
 cc=sys.argv[2] if len(sys.argv)>2 else 'cc'
 win='mingw' in cc or os.name=='nt'

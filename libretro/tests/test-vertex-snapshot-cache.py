@@ -15,8 +15,6 @@ draw = (repo / 'hw/xbox/nv2a/pgraph/vk/draw.c').read_text()
 vertex = (repo / 'hw/xbox/nv2a/pgraph/vk/vertex.c').read_text()
 header = (repo / 'hw/xbox/nv2a/pgraph/vk/renderer.h').read_text()
 
-draw=draw.replace('#include "draw-stream.inc"', (repo/'hw/xbox/nv2a/pgraph/vk/draw-stream.inc').read_text())
-
 def function(source, name):
     match = re.search(r'^[A-Za-z_][A-Za-z0-9_ *]*\b' + name + r'\(', source, re.M)
     assert match, name

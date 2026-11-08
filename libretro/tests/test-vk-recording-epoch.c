@@ -115,9 +115,6 @@ static void vkCmdResetQueryPool(VkCommandBuffer cmd,VkQueryPool pool,unsigned fi
     (void)cmd;(void)pool;assert(first==xemu_cost_segn && count==XEMU_COST_SEGS-first);
 }
 static const int finish_reason_to_counter_enum[VK_FINISH_REASON_EAGER+1]={0};
-/* This fixture lends no inline memory. The inline-writer regression covers
- * materialization; these schedules exercise recording and fence ownership. */
-static void pgraph_materialize_inline_array(PGRAPHState *pg) { (void)pg; }
 /* PRODUCTION */
 int main(void) {
     quiet_test_errors();unsigned cases=0;

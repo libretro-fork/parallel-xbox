@@ -27,8 +27,6 @@
 #include "system/hw_accel.h"
 #include "cpu.h"
 #include "exec/target_page.h"
-#include "system/address-spaces.h"
-#include "hw/xbox/nv2a/pgraph/sun-shadow-profile.h"
 
 static int virt_to_phys(vaddr vaddr, hwaddr *phys_addr)
 {
@@ -79,37 +77,6 @@ static ssize_t virt_dma_memory_read(vaddr vaddr, void *buf, size_t len)
     }
 
     return num_bytes_read;
-}
-
-bool xemu_read_virtual_ram(uint32_t address, void *data, size_t size)
-{
-    CPUState *cpu = qemu_get_cpu(0);
-    if (!cpu || (size && !data) || size > (uint64_t)UINT32_MAX + 1 - address) return false;
-    uint8_t *destination = data;
-    while (size) {
-        hwaddr physical;
-        size_t amount = MIN(size, TARGET_PAGE_SIZE - (address & ~TARGET_PAGE_MASK));
-        if (virt_to_phys(address, &physical)) return false;
-        MemoryRegionSection section = memory_region_find(get_system_memory(), physical, amount);
-        bool ram = section.mr && memory_region_is_ram(section.mr) &&
-                   int128_get64(section.size) >= amount;
-        if (section.mr) memory_region_unref(section.mr);
-        if (!ram || cpu_memory_rw_debug(cpu, address, destination, amount, false)) return false;
-        address += amount; destination += amount; size -= amount;
-    }
-    return true;
-}
-
-static bool sun_profile_read(void *opaque, uint32_t address, void *data, size_t size)
-{
-    (void)opaque;
-    return xemu_read_virtual_ram(address, data, size);
-}
-
-bool xemu_validate_doaxvb_sun_profile(void)
-{
-    return pgraph_sun_validate(&pgraph_sun_doaxvb_us, sun_profile_read, NULL) &&
-           pgraph_sun_validate_draw_seams(sun_profile_read, NULL);
 }
 
 struct xbe *xemu_get_xbe_info(void)

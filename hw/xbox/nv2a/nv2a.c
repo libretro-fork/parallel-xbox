@@ -21,7 +21,6 @@
  */
 
 #include "hw/xbox/nv2a/nv2a_int.h"
-#include "pgraph/sun-shadow-hooks.h"
 #include "hw/xbox/smbus.h"
 #include "qemu/main-loop.h"
 #include "system/address-spaces.h"
@@ -1060,61 +1059,4 @@ void nv2a_init(PCIBus *bus, int devfn, MemoryRegion *ram)
     nv2a_init_vga(d);
     ptimer_init(d);
     qemu_add_vm_change_state_handler(nv2a_vm_state_change, d);
-}
-
-/* Optional renderer dispatch is changed only while the existing FIFO worker
- * is parked. Its ordinary running loop contains no enhancement test. */
-static retro_atomic_ptr_t sun_pending;
-static retro_atomic_int_t sun_requested, sun_cpu_detached;
-static bool sun_worker_running;
-
-bool pgraph_sun_worker_requested(void) { return retro_atomic_load_acquire_int(&sun_requested)!=0; }
-void pgraph_sun_worker_failed(void) { retro_atomic_store_release_int(&sun_requested,0); }
-
-bool nv2a_sun_request(bool enabled, uint64_t lifetime)
-{
-    NV2AState *d=g_nv2a;
-    if(!d || !retro_atomic_load_acquire_int(&d->pfifo.thread_running))return !enabled;
-    if(!enabled && !retro_atomic_load_acquire_ptr(&sun_pending))return true;
-    nv2a_lock_fifo(d);
-    PgraphVkSunNative *pending=retro_atomic_load_relaxed_ptr(&sun_pending);
-    bool result=false;
-    if(!enabled) {
-        xemu_sun_camera_detach();
-        retro_atomic_store_release_int(&sun_cpu_detached,1);
-        retro_atomic_store_release_int(&sun_requested,0);
-        if(!sun_worker_running) {pgraph_vk_sun_free(pending);retro_atomic_store_release_ptr(&sun_pending,NULL);}
-        result=true;
-    } else if(pending) {
-        result=pgraph_sun_worker_requested();
-    } else {
-        pending=pgraph_vk_sun_create(d,lifetime);
-        result=pending && xemu_sun_camera_attach(pgraph_vk_sun_fifo(pending));
-        if(result) {
-            retro_atomic_store_release_ptr(&sun_pending,pending);
-            retro_atomic_store_release_int(&sun_cpu_detached,0);
-            retro_atomic_store_release_int(&sun_requested,1);
-        } else pgraph_vk_sun_free(pending);
-    }
-    nv2a_unlock_fifo(d);
-    return result;
-}
-
-PgraphSunFifo *pgraph_sun_worker_enter(NV2AState *d)
-{
-    PgraphVkSunNative *pending=retro_atomic_load_acquire_ptr(&sun_pending);
-    if(!pending || !pgraph_vk_sun_enter(d,pending)) {
-        pgraph_sun_worker_failed();return NULL;
-    }
-    sun_worker_running=true;
-    return pgraph_vk_sun_fifo(pending);
-}
-void pgraph_sun_worker_leave(NV2AState *d)
-{
-    PgraphVkSunNative *pending=retro_atomic_load_relaxed_ptr(&sun_pending);
-    if(sun_worker_running) pgraph_vk_sun_leave(d,pending);
-    sun_worker_running=false;
-    if(retro_atomic_load_acquire_int(&sun_cpu_detached)) {
-        pgraph_vk_sun_free(pending);retro_atomic_store_release_ptr(&sun_pending,NULL);
-    }
 }

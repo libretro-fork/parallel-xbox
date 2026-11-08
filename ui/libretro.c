@@ -38,9 +38,6 @@
 #include "ui/libretro-widescreen-titles.h"
 #include "xemu-xbe.h"
 #include "hw/xbox/xbe-runtime.h"
-#include "hw/xbox/nv2a/pgraph/sun-shadow-runtime.h"
-#include "hw/xbox/nv2a/pgraph/sun-shadow-hooks.h"
-#include "system/reset.h"
 #include "qemu/bswap.h"
 #include "data/xbox_hdd.qcow2.h"
 
@@ -1000,26 +997,6 @@ static int opt_aspect = 0; /* 0 auto, 1 4:3, 2 16:9 */
  * guest's memory and the EEPROM device need (poll_guest_title) */
 static retro_atomic_int_t guest_title_id;
 static retro_atomic_int_t guest_video_flags;
-static PgraphSunIdentity guest_sun_identity;
-static retro_atomic_int_t guest_sun_supported, opt_sun_requested;
-static bool sun_option_available;
-static bool sun_applied;
-
-static void lr_sun_identity_reset(void *opaque)
-{
-    (void)opaque;
-    retro_atomic_store_release_int(&guest_sun_supported,0);
-    sun_applied=false;
-    xemu_sun_camera_detach();
-    nv2a_sun_request(false,0);
-    pgraph_sun_identity_reset(&guest_sun_identity);
-}
-
-static bool lr_sun_verify(void *opaque)
-{
-    (void)opaque;
-    return xemu_validate_doaxvb_sun_profile();
-}
 
 /* The EEPROM's video settings (user section, 0x94), and their Widescreen
  * bit */
@@ -1082,24 +1059,6 @@ static void poll_guest_title(void)
     uint32_t flags = 0, title_id = 0;
 
     retro_atomic_store_relaxed_int(&guest_title_id, (int)(xemu_get_xbe_title_id(&title_id) ? title_id : 0));
-    if (pgraph_sun_identity_update(&guest_sun_identity, title_id, lr_sun_verify, NULL)) {
-        xemu_sun_camera_detach();
-        nv2a_sun_request(false,0);
-        sun_applied=false;
-        if (title_id == 0x54430007) {
-            LRLOG_INFO("[xemu] DOAXVB shadow profile: %s\n",
-                guest_sun_identity.build == PGRAPH_SUN_DOAXVB_US_11106 ?
-                    "supported loaded build verified" : "loaded build not supported");
-        }
-    }
-    bool supported=guest_sun_identity.build==PGRAPH_SUN_DOAXVB_US_11106 && use_vulkan;
-    retro_atomic_store_release_int(&guest_sun_supported,supported);
-    bool want_sun=supported && retro_atomic_load_acquire_int(&opt_sun_requested);
-    if(want_sun!=sun_applied) {
-        bool accepted=nv2a_sun_request(want_sun,guest_sun_identity.generation);
-        if(accepted)sun_applied=want_sun;
-        else LRLOG_WARN("[xemu] DOAXVB sun shadows: activation unavailable; original rendering retained\n");
-    }
     if (smbus_storage_peek(EEPROM_VIDEO_FLAGS, &flags, sizeof(flags))) {
         retro_atomic_store_relaxed_int(&guest_video_flags, (int)(le32_to_cpu(flags)));
     }
@@ -1185,11 +1144,6 @@ static void update_aspect(void)
 static void update_variables(void)
 {
     struct retro_variable var;
-    if(sun_option_available) {
-        var.key="xemu_doaxvb_sun_shadows";var.value=NULL;
-        bool requested=environ_cb && environ_cb(RETRO_ENVIRONMENT_GET_VARIABLE,&var) && var.value && !strcmp(var.value,"enabled");
-        retro_atomic_store_release_int(&opt_sun_requested,requested);
-    }
 
     get_option_string("xemu_bootrom_path", opt_bootrom_path, sizeof(opt_bootrom_path));
     get_option_string("xemu_bios_path", opt_bios_path, sizeof(opt_bios_path));
@@ -1407,19 +1361,6 @@ static void update_variables(void)
     }
 }
 
-/* Frontend owner only: unsupported builds do not register this key at all.
- * The emulation owner publishes compatibility through the existing title
- * poll; no options callbacks run on the GPU or vCPU worker. */
-static void refresh_sun_option(void)
-{
-    bool available=retro_atomic_load_acquire_int(&guest_sun_supported)!=0 && use_vulkan;
-    if(available==sun_option_available)return;
-    sun_option_available=available;
-    libretro_set_sun_option_definition(available);
-    bool categories=false;libretro_set_core_options(environ_cb,&categories);
-    if(available)update_variables();
-}
-
 /* ========================================================================= */
 /* QEMU init helpers                                                         */
 /* ========================================================================= */
@@ -1607,7 +1548,6 @@ static int lr_frame_pre_save(void *opaque)
 
 static int lr_frame_post_load(void *opaque, int version_id)
 {
-    lr_sun_identity_reset(NULL);
     lr_frame_end_vt = lr_frame_state.end_vt;
     lr_frame_rem = lr_frame_state.frame_rem;
     lr_audio_rem = lr_frame_state.audio_rem;
@@ -1867,7 +1807,6 @@ static bool lr_start_machine(void)
     static char machine_image[4096]; /* the content the machine holds */
     if (!machine_built) {
         qemu_init();
-        qemu_register_reset(lr_sun_identity_reset, NULL);
         /* no JSON description of every field at the end of each state:
          * nothing reads it, and Run-Ahead saves a state every frame */
         MACHINE(qdev_get_machine())->suppress_vmdesc = true;
@@ -1921,7 +1860,6 @@ static bool lr_start_machine(void)
 
     lr_frame_end_vt = 0;
     lr_title_poll = 0;
-    lr_sun_identity_reset(NULL);
     libretro_audio_discard();
     bql_unlock();
     return true;
@@ -1935,7 +1873,6 @@ static bool lr_state(bool save)
     if (save) {
         ok = lr_state_save(lr_state_buf, lr_state_len, &err);
     } else {
-        lr_sun_identity_reset(NULL);
         ok = lr_state_load(lr_state_buf, lr_state_len, &lr_state_disk_newer,
                            &err);
         /* a state puts the samples it had queued back (the APU's
@@ -1962,7 +1899,6 @@ static bool lr_state(bool save)
 static void lr_stop_machine(void)
 {
     vm_shutdown();
-    lr_sun_identity_reset(NULL);
     lr_disk_close_async_media();
     lr_dma_iov_cache_clear();
     lr_aiocb_cache_clear();
@@ -2238,8 +2174,6 @@ static void hdd_trim(void)
 RETRO_API void retro_set_environment(retro_environment_t cb)
 {
     environ_cb = cb;
-    libretro_set_sun_option_definition(false);
-    sun_option_available=false;
 
     /* Set core options v2 */
     bool categories_supported = false;
@@ -2783,8 +2717,6 @@ RETRO_API void retro_unload_game(void)
 
     game_loaded = false;
     emu_initialized = false;
-    retro_atomic_store_release_int(&guest_sun_supported,0);
-    refresh_sun_option();
 }
 
 /* One frame's worth of audio: 48000 * 1001 / 60000 = 800.8 samples, so 800
@@ -3008,7 +2940,6 @@ RETRO_API void retro_run(void)
 
     lr_present_video();
     lr_present_audio(true);
-    refresh_sun_option();
 }
 
 RETRO_API void retro_reset(void)
@@ -3046,9 +2977,8 @@ RETRO_API bool retro_unserialize(const void *data, size_t size)
         return false;
     lr_state_buf = (void *)data;
     lr_state_len = size;
-    bool loaded=lr_command(LR_CMD_LOAD);
-    refresh_sun_option();
-    if(!loaded)return false;
+    if (!lr_command(LR_CMD_LOAD))
+        return false;
     if (lr_state_disk_newer) {
         struct retro_message_ext msg = {
             .msg = "The game has written to the hard disk since this state "

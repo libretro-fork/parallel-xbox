@@ -2926,38 +2926,6 @@ static Val call_builtin(C *c, const char *name, Val *a, int n, bool *handled)
             fail(c, "%s() needs a sampler and a coordinate", name);
         }
         Type *img = a[0].t->elem;
-        if (img->depth) {
-            /* sampler2DShadow returns one comparison value, with the
-             * reference in P.z, not a vec4 ordinary image sample.
-             * Khronos GLSL built-in functions, texture/textureLod. */
-            if (img->dim != SpvDim2D || img->elem->kind != TY_FLOAT || img->arrayed || proj ||
-                comp_count(a[1].t) != 3) {
-                fail(c, "%s() supports a sampler2DShadow and vec3 coordinate", name);
-            }
-            if (c->stage != GLSLC_STAGE_FRAGMENT && !lod) {
-                fail(c, "%s() outside a fragment shader; use textureLod()", name);
-            }
-            a[1] = convert(c, a[1], TY_FLOAT);
-            uint32_t xy = ins(c, SpvOpVectorShuffle, vec_type(c, TY_FLOAT, 2)->id,
-                              4, a[1].id, a[1].id, 0u, 1u);
-            uint32_t reference = ins(c, SpvOpCompositeExtract, c->t_float->id, 2, a[1].id, 2u);
-            r.t = c->t_float;
-            if (lod) {
-                if (n != 3) fail(c, "textureLod() needs a level");
-                if (comp_count(a[2].t) != 1) fail(c, "textureLod() needs a scalar level");
-                a[2] = convert(c, a[2], TY_FLOAT);
-                r.id = ins(c, SpvOpImageSampleDrefExplicitLod, r.t->id, 5,
-                           a[0].id, xy, reference, (uint32_t)SpvImageOperandsLodMask, a[2].id);
-            } else if (n == 3) {
-                if (comp_count(a[2].t) != 1) fail(c, "texture() needs a scalar bias");
-                a[2] = convert(c, a[2], TY_FLOAT);
-                r.id = ins(c, SpvOpImageSampleDrefImplicitLod, r.t->id, 5,
-                           a[0].id, xy, reference, (uint32_t)SpvImageOperandsBiasMask, a[2].id);
-            } else {
-                r.id = ins(c, SpvOpImageSampleDrefImplicitLod, r.t->id, 3, a[0].id, xy, reference);
-            }
-            return r;
-        }
         int coords = img->dim == SpvDim1D ? 1 : img->dim == SpvDim2D ? 2 : 3;
         if (img->arrayed) {
             coords++;

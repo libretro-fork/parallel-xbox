@@ -3,8 +3,6 @@
 from pathlib import Path
 import re,os,shlex,subprocess,sys,tempfile
 r=Path(sys.argv[1]).resolve();cc=sys.argv[2] if len(sys.argv)>2 else 'gcc';s=Path(os.environ.get('VK_COW_SOURCE',r/'hw/xbox/nv2a/pgraph/vk/draw.c')).read_text();v=(r/'hw/xbox/nv2a/pgraph/vk/vertex.c').read_text();h=(r/'hw/xbox/nv2a/pgraph/vk/renderer.h').read_text()
-s=s.replace('#include "draw-stream.inc"', (r/'hw/xbox/nv2a/pgraph/vk/draw-stream.inc').read_text())
-
 def function(source,name):
  m=re.search(r'^(?:static )?(?:bool|void|VertexCowCacheEntry \*)\s*'+name+r'\(',source,re.M);assert m,name
  a=source.index('{',m.start());b=a+1;depth=1

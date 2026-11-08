@@ -21,8 +21,6 @@
  *     --wav FILE        write the audio
  *     --hash-video      read back every frame and hash it
  *     --opt key=value   a core option
- *     --opt-at F:key=value  change a core option before run F
- *     --trace-options   log registered core option keys
  *     --realtime        pace runs at 59.94 Hz instead of running flat out
  *     --rt-runs N       pace only the first N runs, then flat out
  *     --key F:ID[:LEN]  hold RETROK id for LEN runs from run F
@@ -117,9 +115,6 @@
 static struct { char key[128]; char val[128]; } opts[MAX_OPTS];
 static int nopts;
 static int opts_dirty;
-static struct { int frame; char key[128], value[128]; } option_events[MAX_EVENTS];
-static unsigned noption_events;
-static int trace_options;
 
 typedef struct { int first, id, len, is_key; } ev_t;
 static ev_t evs[MAX_EVENTS];
@@ -1125,26 +1120,13 @@ static bool env_cb(unsigned cmd, void *data)
       }
       case RETRO_ENVIRONMENT_SET_INPUT_DESCRIPTORS:
       case RETRO_ENVIRONMENT_SET_SUPPORT_NO_GAME:
+      case RETRO_ENVIRONMENT_SET_CORE_OPTIONS_V2:
+      case RETRO_ENVIRONMENT_SET_CORE_OPTIONS_V2_INTL:
       case RETRO_ENVIRONMENT_SET_GEOMETRY:
       case RETRO_ENVIRONMENT_SET_SYSTEM_AV_INFO:
       case RETRO_ENVIRONMENT_SET_CORE_OPTIONS_DISPLAY:
       case RETRO_ENVIRONMENT_SET_HW_SHARED_CONTEXT:
          return true;
-      case RETRO_ENVIRONMENT_SET_CORE_OPTIONS_V2:
-      case RETRO_ENVIRONMENT_SET_CORE_OPTIONS_V2_INTL:
-      {
-         const struct retro_core_options_v2 *options =
-            cmd == RETRO_ENVIRONMENT_SET_CORE_OPTIONS_V2 ? data :
-               ((const struct retro_core_options_v2_intl *)data)->us;
-         if (trace_options && options && options->definitions)
-         {
-            fprintf(stderr,"core_options_begin\n");
-            for (unsigned i=0;options->definitions[i].key;i++)
-               fprintf(stderr,"core_option=%s\n",options->definitions[i].key);
-            fprintf(stderr,"core_options_end\n");
-         }
-         return true;
-      }
       case RETRO_ENVIRONMENT_GET_CORE_OPTIONS_VERSION:
          *(unsigned *)data = 2;
          return true;
@@ -1807,18 +1789,6 @@ int main(int argc, char **argv)
             nopts++;
          }
       }
-      else if (!strcmp(argv[i], "--trace-options"))
-         trace_options = 1;
-      else if (!strcmp(argv[i], "--opt-at") && i + 1 < argc && noption_events < MAX_EVENTS)
-      {
-         const char *event=argv[++i], *colon=strchr(event,':');
-         const char *eq=colon?strchr(colon+1,'='):NULL;
-         if (!eq || colon==event || eq==colon+1) return 2;
-         option_events[noption_events].frame=atoi(event);
-         snprintf(option_events[noption_events].key,128,"%.*s",(int)(eq-colon-1),colon+1);
-         snprintf(option_events[noption_events].value,128,"%s",eq+1);
-         noption_events++;
-      }
       else if ((!strcmp(argv[i], "--key") || !strcmp(argv[i], "--pad")) &&
             i + 1 < argc && nevs < MAX_EVENTS)
       {
@@ -1943,17 +1913,6 @@ int main(int argc, char **argv)
    {
       int64_t a, d;
       run_no_cb = run_no;
-      for (unsigned event=0;event<noption_events;event++)
-      {
-         if (option_events[event].frame!=run_no) continue;
-         int index;
-         for(index=0;index<nopts;index++)
-            if(!strcmp(opts[index].key,option_events[event].key))break;
-         if(index==nopts) {if(nopts==MAX_OPTS)return 2;nopts++;}
-         snprintf(opts[index].key,sizeof(opts[index].key),"%s",option_events[event].key);
-         snprintf(opts[index].val,sizeof(opts[index].val),"%s",option_events[event].value);
-         opts_dirty=1;
-      }
       stick_on = stick_len && run_no >= stick_first &&
                  run_no < stick_first + stick_len;
       if (run_no == rt_runs)
