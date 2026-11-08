@@ -15,7 +15,7 @@ header = (repo / 'hw/xbox/nv2a/pgraph/pgraph.h').read_text()
 
 
 def function(source, name):
-    match = re.search(r'^(?:static )?(?:inline )?(?:__attribute__\(\(noinline\)\) )?(?:unsigned )?\w+ ' + name + r'\(', source, re.M)
+    match = re.search(r'^(?:static )?(?:inline )?(?:__attribute__\(\(noinline\)\) )?(?:unsigned )?\w+ \*?' + name + r'\(', source, re.M)
     assert match, name
     end = source.index('{', match.start()) + 1
     depth = 1
@@ -27,7 +27,7 @@ def function(source, name):
 
 tables = '\n'.join(re.search(r'static const VkFormat ' + name + r'\[\] = \{.*?\};', vertex, re.S)[0]
                     for name in ('float_to_count', 'ub_to_count', 's1_to_count', 's32k_to_count'))
-parts = [tables, function(common, 'pgraph_update_inline_value'), function(header, 'pgraph_inline_attr_size')]
+parts = [tables, function(common, 'pgraph_update_inline_value'), function(header, 'pgraph_inline_attr_size'), function(header, 'pgraph_inline_array_data')]
 parts += [function(vertex, name) for name in ('pgraph_vk_init_vertex_formats', 'pgraph_vk_bind_vertex_attributes')]
 parts += [function(draw, name) for name in ('get_size_and_count_for_format', 'remap_unaligned_attributes',
            'copy_remapped_attributes_to_inline_buffer', 'upload_converted_inline_array')]
@@ -37,9 +37,17 @@ with tempfile.TemporaryDirectory(prefix='vk-vertex-formats-') as directory:
     folder = Path(directory)
     (folder / 'test.c').write_text(code)
     exe = folder / ('test.exe' if os.name == 'nt' else 'test')
-    subprocess.run([sys.argv[2] if len(sys.argv)>2 else 'gcc', '-O2', '-std=gnu11',
+    command=[sys.argv[2] if len(sys.argv)>2 else 'gcc', '-O2', '-std=gnu11',
                     '-Wall', '-Wextra', '-Werror', '-Wno-unused-parameter', '-Wno-sign-compare',
                     '-fno-strict-aliasing', '-fsanitize=undefined', '-fsanitize-undefined-trap-on-error',
                     '-I' + str(repo), '-I' + str(repo / 'deps/vulkan-headers'),
-                    str(folder / 'test.c'), '-o', str(exe)], check=True)
+                    str(folder / 'test.c'), '-o', str(exe)]
+    subprocess.run(command,check=True)
     subprocess.run([str(exe)], check=True, timeout=30)
+    old='pg->inline_array_external ? pg->inline_array_external : pg->inline_array'
+    assert old in code
+    (folder / 'test.c').write_text(code.replace(old,'pg->inline_array',1))
+    subprocess.run(command,check=True)
+    bad=subprocess.run([str(exe)],capture_output=True,timeout=30)
+    assert bad.returncode==1 and b'FAIL line' in bad.stderr
+    print('Required negative control rejected: borrowed inline data ignored')

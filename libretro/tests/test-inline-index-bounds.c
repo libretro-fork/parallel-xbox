@@ -5,6 +5,10 @@
 #include <stddef.h>
 #include <stdio.h>
 #include <string.h>
+#include <errno.h>
+#include <stdlib.h>
+#undef assert
+#define assert(x) do { if (!(x)) { fprintf(stderr,"index bounds: %d: %s\n",__LINE__,#x); _Exit(1); } } while(0)
 #define NV2A_MAX_BATCH_LENGTH 512u
 #define NV2A_MAX_TEXTURES 4
 #define ARRAY_SIZE(a) (sizeof(a)/sizeof((a)[0]))
@@ -24,6 +28,7 @@ typedef struct {
  int32_t draw_arrays_start[1250],draw_arrays_count[1250];bool draw_arrays_prevent_connect;
  int ctx_switch_subchannel,flush_pending;
  bool texture_dirty[NV2A_MAX_TEXTURES];
+ bool light_dirty,point_params_dirty;
 } PGRAPHState;
 typedef struct {PGRAPHState pgraph;struct {uint8_t palette[768];int packed[256],dirty;} puserdac;} NV2AState;
 static NV2AState d;
@@ -45,8 +50,12 @@ static void check(void){
  assert(pg->inline_elements_min==lo&&pg->inline_elements_max==hi);
  assert(pg->inline_elements[NV2A_MAX_BATCH_LENGTH]==0x12345678&&pg->inline_elements[NV2A_MAX_BATCH_LENGTH+1]==0x89abcdef);
 }
-static void pfb_update_zcomp(NV2AState *state){assert(state==&d);}
+static unsigned releases,zcomp_updates;
+static bool restore_ok=true;
+static void pfb_update_zcomp(NV2AState *state){assert(state==&d);zcomp_updates++;}
 static void nv2a_unlock_fifo(NV2AState *state){assert(state==&d);check();}
+static bool nv2a_pramin_restore_mode(NV2AState *state,int version){assert(state==&d&&version==5);return restore_ok;}
+static void nv2a_migration_release(NV2AState *state){assert(state->pgraph.light_dirty&&state->pgraph.point_params_dirty&&state->pgraph.flush_pending==1);releases++;nv2a_unlock_fifo(state);}
 void pgraph_reset_draw_arrays(PGRAPHState *);
 void pgraph_reset_inline_buffers(PGRAPHState *);
 /* PRODUCTION */
@@ -89,5 +98,7 @@ int main(void){
  reset();draw(20,2);used=99;method_ARRAY_ELEMENT16(&d,&d.pgraph,2,0x1800,0,NULL,0,&used,false);assert(!used&&d.pgraph.draw_arrays_length==1&&!nref);check();
  reset();for(unsigned i=0;i<ARRAY_SIZE(words);i++)words[i]=rnd();packet(false,false,ARRAY_SIZE(words));used=99;method_ARRAY_ELEMENT16(&d,&d.pgraph,2,0x1800,0,NULL,0,&used,false);assert(!used);check();
  reset();words[0]=UINT32_MAX;packet(false,true,1);words[0]=0;packet(false,true,1);assert(!nv2a_post_load(&d,5));check();
+ unsigned before=releases,updates=zcomp_updates;restore_ok=false;
+ assert(nv2a_post_load(&d,5)==-EINVAL&&releases==before+1&&zcomp_updates==updates);
  puts("inline index packets/bounds: 65536 complementary packed endpoint pairs, 100000 mixed operations, consumed/traced words, generated/wrapping ranges, partial capacity and legacy-load rebuild passed; UB traps enabled");return 0;
 }

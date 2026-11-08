@@ -331,6 +331,13 @@ lends, and test the existing nonblocking frontend finish contract. A wait
 negative control must fail. These three checks now run in shader contracts;
 1,000 inline batches, 36 handoff cases and 40,000 frame requests pass locally.
 This restores tests of earlier runtime changes, not new rendering behavior.
+The index-load fixture also models the existing PRAMIN-restore/release
+boundary, requiring release even on rejection after rebuilding bounds.
+Vertex-format tests use the actual borrowed-inline accessor and poison
+canonical storage while testing borrowed input. Another 13,504 array/inline
+cases and all signed 16-bit conversions pass. Required negative controls
+reject ignored lends and a missing migration release. Both join per-commit
+shader contracts without changing runtime sources or accepted baselines.
 
 Require the known bad cold-play replay to fail and the candidate to pass;
 retain the original failure and a same-hardware clean-binary comparison.

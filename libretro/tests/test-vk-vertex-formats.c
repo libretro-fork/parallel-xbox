@@ -45,6 +45,7 @@ typedef struct {
     PGRAPHVkState *vk_renderer_state;VertexAttribute vertex_attributes[16];
     uint16_t compressed_attrs,uniform_attrs,swizzle_attrs;
     hwaddr dma_vertex_a,dma_vertex_b;uint32_t inline_array[4096];
+    uint32_t *inline_array_external;
 } PGRAPHState;
 typedef struct { PGRAPHState pgraph;uint8_t *vram_ptr; } NV2AState;
 typedef struct { int failed; } Error;
@@ -137,6 +138,7 @@ int main(void) {
     }
     /* Inline layouts retain the NV2A's four-byte footprint for each source
      * attribute, including three-byte and six-byte values. */
+    for(unsigned borrowed=0;borrowed<2;borrowed++)
     for(unsigned converted=0;converted<2;converted++) for(unsigned components=1;components<=4;components++)
     for(unsigned count=1;count<=17;count++) for(unsigned rotated=0;rotated<2;rotated++) {
         PGRAPHVkState r;NV2AState d;reset(&r,&d);PGRAPHState *pg=&d.pgraph;
@@ -149,7 +151,9 @@ int main(void) {
         unsigned stride=0;for(unsigned j=0;j<4;j++) {
             pg->vertex_attributes[j].inline_array_offset=stride;stride+=pgraph_inline_attr_size(&pg->vertex_attributes[j]);
         }
-        memcpy(pg->inline_array,ram,(size_t)stride*count);
+        if(borrowed){memset(pg->inline_array,0xce,sizeof(pg->inline_array));pg->inline_array_external=(uint32_t *)ram;}
+        else memcpy(pg->inline_array,ram,(size_t)stride*count);
+        const uint8_t *input=borrowed?ram:(const uint8_t *)pg->inline_array;
         pgraph_vk_bind_vertex_attributes(&d,0,count-1,true,stride,count-1);
         float provoking[4][4];for(unsigned j=0;j<4;j++) memcpy(provoking[j],pg->vertex_attributes[j].inline_value,16);
         VkFormat source_formats[4];unsigned source_offsets[4];
@@ -159,7 +163,7 @@ int main(void) {
         assert(offset==(rotated?48:32) && queries==before);
         unsigned output_stride=r.vertex_binding_descriptions[0].stride;
         for(unsigned v=0;v<count;v++) for(unsigned j=0;j<4;j++) {
-            const uint8_t *in=(const uint8_t *)pg->inline_array+v*stride+source_offsets[j];
+            const uint8_t *in=input+v*stride+source_offsets[j];
             uint8_t *out=gold+offset+v*output_stride+r.vertex_attribute_offsets[j];
             if(converted && j<3) oracle(out,in,source_formats[j]);
             else {
@@ -168,7 +172,7 @@ int main(void) {
             }
         }
         uint8_t *actual=rotated?alternate:stage;
-        if(!converted) memcpy(gold+offset,pg->inline_array,(size_t)stride*count);
+        if(!converted) memcpy(gold+offset,input,(size_t)stride*count);
         assert(!memcmp(actual,gold,sizeof(gold)));
         for(unsigned j=0;j<4;j++) {
             assert(pg->vertex_attributes[j].inline_array_offset==source_offsets[j]);

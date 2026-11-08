@@ -20,3 +20,10 @@ with tempfile.TemporaryDirectory(prefix='index-bounds-',dir=r.parent) as directo
  p=Path(directory);(p/'test.c').write_text(code);exe=p/('test.exe' if os.name=='nt' else 'test')
  subprocess.run([cc,'-O2','-std=gnu11','-Wall','-Wextra','-Werror','-Wno-unused-parameter','-Wno-sign-compare','-fsanitize=undefined','-fsanitize-undefined-trap-on-error',str(p/'test.c'),'-o',str(exe)],check=True,env=env)
  subprocess.run([str(exe)],check=True,env=env)
+ old='nv2a_migration_release(d);'
+ assert old in code
+ (p/'test.c').write_text(code.replace(old,'if (false) nv2a_migration_release(d);'))
+ subprocess.run([cc,'-O2','-std=gnu11','-Wall','-Wextra','-Werror','-Wno-unused-parameter','-Wno-sign-compare','-fsanitize=undefined','-fsanitize-undefined-trap-on-error',str(p/'test.c'),'-o',str(exe)],check=True,env=env)
+ bad=subprocess.run([str(exe)],capture_output=True,env=env)
+ assert bad.returncode==1 and b'releases' in bad.stderr
+ print('Required negative control rejected: migration owner not released on rejection')
