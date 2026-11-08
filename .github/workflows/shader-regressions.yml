@@ -72,6 +72,10 @@ jobs:
         env:
           COMMIT: ${{ matrix.commit }}
         run: git -C driver worktree add --detach ../candidate "$COMMIT"
+      - name: Install blend-oracle header dependency
+        run: |
+          sudo apt-get -qy update
+          sudo apt-get -qy install libgl-dev
       - name: PSO identity, stable jobs, output ownership and file-cache publication
         shell: bash
         run: |
