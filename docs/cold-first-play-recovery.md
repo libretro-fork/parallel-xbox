@@ -338,6 +338,10 @@ canonical storage while testing borrowed input. Another 13,504 array/inline
 cases and all signed 16-bit conversions pass. Required negative controls
 reject ignored lends and a missing migration release. Both join per-commit
 shader contracts without changing runtime sources or accepted baselines.
+The general QCOW2 integration fixture also uses the core's C11 language
+standard for its existing `max_align_t` owner storage. Conversion cases pass
+locally; runtime and alignment are unchanged. The hosted ARM64 PRAMIN timeout
+remains a separately recorded unqualified platform result, not a relaxed gate.
 
 Require the known bad cold-play replay to fail and the candidate to pass;
 retain the original failure and a same-hardware clean-binary comparison.

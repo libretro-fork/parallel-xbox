@@ -412,7 +412,7 @@ wine*)
     done
     ;;
 esac
-${cc} -O2 -std=gnu99 -Wall -DLR_FILE_FILESTREAM=0 -I"$lrc/include" -o "$work/bin/qcow2test" "$here/test-qcow2.c" \
+${cc} -O2 -std=gnu11 -Wall -DLR_FILE_FILESTREAM=0 -I"$lrc/include" -o "$work/bin/qcow2test" "$here/test-qcow2.c" \
     "$here/../../block/qcow2-raw.c" "$here/../../block/libretro-qcow2.c" \
     "$here/../../block/libretro-file.c" \
     "$lrc/encodings/encoding_deflate.c" "$lrc/encodings/encoding_crc32.c" \

@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Compile the QCOW2 integration test as C11, matching the core and its existing aligned view-owner storage. This fixes the legacy C99 test build without changing alignment or runtime code.
+
 - Restore index-load and Vulkan vertex-format fixtures for existing migration helpers and borrowed inline data. Add poisoned-canonical borrowed-input coverage and rejection controls for ignored lends and unreleased migration owners, and run both checks in shader/PSO contracts. No runtime changes.
 
 - Restore inline-upload/migration, nonblocking frontend handoff and block-memory fixtures after earlier runtime changes, and include them in shader/PSO contracts. Test actual medium kinds and CHD fail-fast behavior, newer migration fields, and the existing asynchronous handoff; reject reintroduced frontend waits. Runtime code is unchanged.
