@@ -82,6 +82,7 @@ jobs:
           done
           python3 driver/libretro/tests/test-pre-module-keys.py candidate cc --geometry-clear-baseline --check-only 2>&1 | tee results/module-keys.log
           python3 driver/libretro/tests/test-throughput-gate.py 2>&1 | tee results/throughput-gate.log
+          python3 driver/libretro/tests/test-shader-compile-gate.py 2>&1 | tee results/compiler-gate.log
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -140,11 +141,14 @@ jobs:
       - name: Compare fresh compiler invocations under SPIR-V 1.5 and 1.6
         run: |
           set -o pipefail
-          python3 driver/libretro/tests/benchmark-shader-compile.py --baseline reference --candidate candidate --corpus corpus --output results/comparison --prepare-corpus --validator spirv-val 2>&1 | tee results/comparison.log
+          cpu=$(python3 -c 'import os; print(max(os.sched_getaffinity(0)))')
+          lscpu > results/cpu.txt
+          python3 driver/libretro/tests/benchmark-shader-compile.py --baseline reference --candidate candidate --corpus corpus --output results/comparison --prepare-corpus --validator spirv-val --cpu "$cpu" 2>&1 | tee results/comparison.log
       - name: Require the timing gate to reject an injected slow compiler
         run: |
           set +e
-          python3 driver/libretro/tests/benchmark-shader-compile.py --baseline candidate --candidate candidate --corpus corpus --output results/negative-control --inject-candidate-delay > results/negative-control.log 2>&1
+          cpu=$(python3 -c 'import os; print(max(os.sched_getaffinity(0)))')
+          python3 driver/libretro/tests/benchmark-shader-compile.py --baseline candidate --candidate candidate --corpus corpus --output results/negative-control --inject-candidate-delay --cpu "$cpu" > results/negative-control.log 2>&1
           result=$?
           set -e
           cat results/negative-control.log

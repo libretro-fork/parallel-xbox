@@ -76,8 +76,14 @@ int main(int argc, char **argv)
 #endif
                 uint64_t duration = now_ns()-start;
                 if (!ok) { fprintf(stderr, "%s: %s\n", path, result.error); return 1; }
-                fprintf(out, "%u,%u,%u,%u,%llu,%zu,%zu\n", id, stage, target,
-                        iteration, (unsigned long long)duration, result.num_words, size-1);
+                unsigned instructions = 0;
+                for (size_t pc = 5; pc < result.num_words;) {
+                    unsigned words = result.words[pc] >> 16;
+                    if (!words || words > result.num_words-pc) return 1;
+                    pc += words; instructions++;
+                }
+                fprintf(out, "%u,%u,%u,%u,%llu,%zu,%zu,%u\n", id, stage, target,
+                        iteration, (unsigned long long)duration, result.num_words, size-1, instructions);
                 if (argc == 5 && !iteration) {
                     char name[8192];
                     int length = snprintf(name, sizeof(name), "%s/%u-%u.spv", argv[4], id, target);

@@ -4,6 +4,7 @@ SPDX-License-Identifier: GPL-2.0-or-later
 """
 import argparse
 import csv
+import ctypes
 import hashlib
 import importlib.util
 import json
@@ -22,11 +23,19 @@ def digest(path):
             return hashlib.sha256(view).hexdigest()
 
 
+def module_growth(before, after):
+    if before.keys() != after.keys() or any(n <= 0 for n in (*before.values(), *after.values())):
+        raise ValueError('incomplete or invalid emitted-module comparison')
+    return [dict(module=k[0], target=k[1], baseline=n, candidate=after[k])
+            for k, n in before.items() if after[k] > n]
+
+
 def main():
     p = argparse.ArgumentParser(description=__doc__)
     for name in ('baseline', 'candidate', 'corpus', 'output'):
         p.add_argument('--'+name, type=Path, required=True)
     p.add_argument('--cc', default='cc')
+    p.add_argument('--cpu', type=int, help='pin comparison processes to one allowed logical CPU')
     p.add_argument('--validator', help='spirv-val executable; required by GitHub CI')
     p.add_argument('--inject-candidate-delay', action='store_true', help='test-only regression control; must fail the gate')
     p.add_argument('--prepare-corpus', action='store_true', help='append a sentinel to scratch GLSL exports in place')
@@ -40,6 +49,20 @@ def main():
             not 0 < a.max_slowdown < 1 or not 0 < a.max_noise < 1):
         p.error('require >=2 modules/stage, >=1 iteration and >=2 ABBA blocks')
     a.output = a.output.resolve(); a.output.mkdir(parents=True, exist_ok=False)
+    if a.cpu is not None:
+        if a.cpu < 0:
+            raise ValueError('invalid CPU')
+        if os.name == 'nt':
+            if a.cpu >= 64:
+                raise ValueError('Windows benchmark CPU must be within one processor group')
+            kernel = ctypes.WinDLL('kernel32', use_last_error=True)
+            kernel.GetCurrentProcess.restype = ctypes.c_void_p
+            kernel.SetProcessAffinityMask.argtypes = [ctypes.c_void_p, ctypes.c_size_t]
+            kernel.SetProcessAffinityMask.restype = ctypes.c_int
+            if not kernel.SetProcessAffinityMask(kernel.GetCurrentProcess(), 1 << a.cpu):
+                raise OSError(ctypes.get_last_error(), 'benchmark affinity rejected')
+        else:
+            os.sched_setaffinity(0, {a.cpu})
     roots = {'baseline': a.baseline.resolve(), 'candidate': a.candidate.resolve()}
     candidates = {0: [], 1: [], 2: []}
     seen = {0: set(), 1: set(), 2: set()}
@@ -109,7 +132,10 @@ def main():
     gate = importlib.util.module_from_spec(spec); spec.loader.exec_module(gate)
     totals = {'baseline': [], 'candidate': []}; stage_totals = {i: {'baseline': [], 'candidate': []} for i in candidates}
     per_shader = {'baseline': {}, 'candidate': {}}
+    shader_runs = {'baseline': {}, 'candidate': {}}
     durations = {'baseline': [], 'candidate': []}
+    module_words = {'baseline': {}, 'candidate': {}}
+    module_instructions = {'baseline': {}, 'candidate': {}}
     for block in range(a.blocks):
         for slot, name in enumerate(('baseline', 'candidate', 'candidate', 'baseline')):
             output = a.output/f'{block}-{slot}-{name}.csv'
@@ -120,8 +146,9 @@ def main():
             expected = {(i, stage, target, iteration)
                         for i, (stage, _) in enumerate(chosen) for target in range(2)
                         for iteration in range(a.iterations)}
-            if (len(rows) != len(expected) or any(len(r) != 7 for r in rows) or
-                    {tuple(r[:4]) for r in rows} != expected or any(r[4] <= 0 or r[5] <= 0 for r in rows)):
+            if (len(rows) != len(expected) or any(len(r) != 8 for r in rows) or
+                    {tuple(r[:4]) for r in rows} != expected or
+                    any(r[4] <= 0 or r[5] <= 0 or r[7] <= 0 for r in rows)):
                 raise ValueError('incomplete or invalid compiler sample')
             totals[name].append(sum(r[4] for r in rows))
             for stage in candidates:
@@ -129,6 +156,16 @@ def main():
             for row in rows:
                 per_shader[name].setdefault((row[0], row[2]), []).append(row[4])
                 durations[name].append(row[4])
+                key = (row[0], row[2])
+                if key in module_words[name] and module_words[name][key] != row[5]:
+                    raise ValueError('nondeterministic emitted module size')
+                module_words[name][key] = row[5]
+                if key in module_instructions[name] and module_instructions[name][key] != row[7]:
+                    raise ValueError('nondeterministic emitted instruction count')
+                module_instructions[name][key] = row[7]
+            for key in per_shader[name]:
+                shader_runs[name].setdefault(key, []).append(statistics.median(
+                    r[4] for r in rows if (r[0], r[2]) == key))
             print(f'{block}-{slot} {name}: {totals[name][-1]/1e6:.3f} ms compilation', flush=True)
     result = gate.assess(totals['baseline'], totals['candidate'], a.max_slowdown, a.max_noise)
     # These are aggregate nanoseconds, not callback throughput. Never label FPS.
@@ -139,17 +176,35 @@ def main():
         stages[str(stage)].pop('baseline_fps'); stages[str(stage)].pop('candidate_fps')
     # A large isolated shader regression must not disappear in the corpus total.
     outliers = []
+    noisy_outliers = []
     for key, before in per_shader['baseline'].items():
         after = per_shader['candidate'][key]
         ratio = statistics.median(after)/statistics.median(before)-1
         if ratio > 0.10 and statistics.median(after)-statistics.median(before) > 50000:
-            outliers.append(dict(module=key[0], target=key[1], slowdown=ratio))
+            # A single noisy process must not become a claimed regression.
+            # Keep the same budget, but require agreement across ABBA blocks.
+            check = gate.assess(shader_runs['baseline'][key],
+                                shader_runs['candidate'][key], 0.10, a.max_noise)
+            check.pop('baseline_fps'); check.pop('candidate_fps')
+            entry = dict(module=key[0], target=key[1], slowdown=ratio,
+                         comparison=check)
+            (outliers if check['status'] == 'regression' else noisy_outliers).append(entry)
     states = [result['status']]+[x['status'] for x in stages.values()]
-    result['status'] = 'inconclusive' if 'inconclusive' in states else ('regression' if 'regression' in states or outliers else 'pass')
-    result.update(stages=stages, shader_outliers=outliers, compiler_hashes=hashes,
+    word_growth = module_growth(module_words['baseline'], module_words['candidate'])
+    instruction_growth = module_growth(module_instructions['baseline'], module_instructions['candidate'])
+    result['status'] = ('regression' if word_growth or instruction_growth else
+                       ('inconclusive' if 'inconclusive' in states or noisy_outliers else
+                        ('regression' if 'regression' in states or outliers else 'pass')))
+    result.update(stages=stages, shader_outliers=outliers,
+                  noisy_shader_outliers=noisy_outliers, compiler_hashes=hashes,
                   corpus=[dict(stage=s, file=p.relative_to(a.corpus.resolve()).as_posix(), sha256=h, bytes=n) for s, (p, h, n) in chosen],
                   iterations=a.iterations, blocks=a.blocks, compiler=a.cc,
+                  cpu=a.cpu,
                   max_slowdown=a.max_slowdown, max_noise=a.max_noise,
+                  emitted_word_totals={k: sum(v.values()) for k, v in module_words.items()},
+                  emitted_word_regressions=word_growth,
+                  emitted_instruction_totals={k: sum(v.values()) for k, v in module_instructions.items()},
+                  emitted_instruction_regressions=instruction_growth,
                   injected_negative_control=a.inject_candidate_delay,
                   distributions_ns={name: dict(p50=statistics.median(values),
                     p95=sorted(values)[min(len(values)-1, int(len(values)*.95))],

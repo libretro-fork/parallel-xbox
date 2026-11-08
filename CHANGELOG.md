@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Shader regression CI now ratchets emitted words and instructions per input/target, pins paired compiler measurements to one allowed CPU, and reports unstable isolated samples as unqualified. Expand GPU initializer coverage to helper arrays/vectors, do-loops and switch blocks. This changes tests only; cold-first-play smoothness remains BAD and regressed.
+
 - Build the shader dictionary test tool's archive dependencies from a clean checkout, including historical comparison trees. The shader CI now prepares those dependencies explicitly and avoids fetching unused Git blob history. This fixes a first-run CI build failure hidden by an already-built local archive.
 
 - Treat cold-first-play shader/PSO smoothness as a known open regression. Add mandatory development rules linking smooth first play, zero-copy borrowed lifetimes and non-slurping file I/O, plus per-commit GitHub shader/PSO contracts, paired compilation comparisons, SPIR-V/software-GPU validation and a trusted hardware qualification hook. This adds test infrastructure and a recovery plan; it does not claim the gameplay stutter is fixed.
