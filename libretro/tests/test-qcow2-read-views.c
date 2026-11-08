@@ -43,12 +43,15 @@ struct iovec { void *iov_base; size_t iov_len; };
 typedef void BlockCompletionFunc(void *,int);
 typedef struct {BlockCompletionFunc *cb;void *opaque;int ret;bool live;} BlockAIOCB;
 /* REQUEST */
-typedef struct {struct {int kind;LRQcow2 *qcow2;LRFile *file;uint64_t base;int64_t length;bool writable;} m;} BlockBackend;
+typedef struct {struct {int kind;LRQcow2 *qcow2;LRFile *file;void *chd;uint64_t base;int64_t length;bool writable;} m;} BlockBackend;
 #define LR_MEDIUM_QCOW2 2
 #define LR_MEDIUM_FILE 1
 static BlockAIOCB pending[64];static unsigned queued,legacy_reads,releases,calls,req_live,scratch_live;
 static BlockAIOCB *lr_disk_submit(BlockBackend *blk,int ret,BlockCompletionFunc *cb,void *opaque)
 {for(unsigned i=0;i<64;i++)if(!pending[i].live){pending[i]=(BlockAIOCB){cb,opaque,ret,true};queued++;return &pending[i];}abort();}
+/* This oracle covers raw/QCOW2 owners; fail if a CHD escapes that scope. */
+static BlockAIOCB *lr_disk_chd_read_view(BlockBackend *blk,int64_t off,size_t size,
+ const void **data,void **owner,BlockCompletionFunc *cb,void *opaque){abort();}
 /* BLOCK */
 static BlockAIOCB *blk_aio_preadv(BlockBackend *blk,int64_t off,QEMUIOVector *v,int flags,BlockCompletionFunc *cb,void *opaque)
 {legacy_reads++;
@@ -88,7 +91,11 @@ static size_t qemu_iovec_from_buf(QEMUIOVector *v,size_t off,const void *src,siz
 {assert(!off&&size==v->size);size_t left=size;for(int i=0;i<v->niov;i++){size_t n=v->iov[i].iov_len<left?v->iov[i].iov_len:left;memcpy(v->iov[i].iov_base,src,n);src=(const uint8_t*)src+n;left-=n;}assert(!left);return size;}
 typedef struct {BlockAIOCB *aiocb;} DMA;
 typedef struct {DMA *dma;} IDEBus;
-typedef struct {QLIST_HEAD(,IDEBufferedRequest) buffered_requests;BlockBackend *blk;IDEBus *bus;} IDEState;
+typedef struct {QLIST_HEAD(,IDEBufferedRequest) buffered_requests;BlockBackend *blk;IDEBus *bus;bool atapi_dma_buffered;} IDEState;
+static unsigned pio_cancels;
+static void ide_atapi_pio_cancel(IDEState *s){(void)s;pio_cancels++;}
+/* Real unbuffered abandonment is exercised by test-dma-read-view. */
+static bool ide_abandon_dma_view(IDEBus *bus){(void)bus;return false;}
 static void blk_drain(BlockBackend *blk){for(unsigned i=0;i<64;i++)if(pending[i].live)finish(&pending[i]);}
 #define trace_ide_cancel_dma_sync_buffered(cb,req) ((void)0)
 #define trace_ide_cancel_dma_sync_remaining() ((void)0)
@@ -128,7 +135,8 @@ static void mapped_cases(const char *path)
  /* Close followed by cancellation must release the mapping without publication. */
  file=lr_file_open(path,false,false);assert(file);file->mapped=mapping;file->mapped_size=size;blk.m.file=file;
  memset(out,0xcc,sizeof(out));first=ide_buffered_readv(&state,0,&a,1,completed,&canceled);
- lr_file_close(file);unsigned before=calls;ide_cancel_dma_sync(&state);assert(calls==before+1);
+ lr_file_close(file);unsigned before=calls,pio_before=pio_cancels;state.atapi_dma_buffered=true;
+ ide_cancel_dma_sync(&state);assert(calls==before+1&&pio_cancels==pio_before+1&&!state.atapi_dma_buffered);
  finish(first);assert(calls==before+1);
  for(unsigned i=0;i<sizeof(out);i++)assert(out[i]==0xcc);
  ide_buffered_read_cache_clear();assert(!req_live&&!scratch_live);
@@ -275,7 +283,8 @@ int main(int argc,char **argv)
  memset(out,0xcc,cs);int canceled=-ECANCELED;
  first=ide_buffered_readv(&state,cs/512,&a,cs/512,completed,&canceled);
  assert(q->view_owner->held);unsigned before=calls;
- ide_cancel_dma_sync(&state);assert(calls==before+1);
+ unsigned pio_before=pio_cancels;state.atapi_dma_buffered=true;
+ ide_cancel_dma_sync(&state);assert(calls==before+1&&pio_cancels==pio_before+1&&!state.atapi_dma_buffered);
  lr_qcow2_close(q);lr_file_close(file);blk.m.qcow2=NULL;
  finish(first);assert(calls==before+1);
  for(size_t i=0;i<cs;i++)assert(out[i]==0xcc);
