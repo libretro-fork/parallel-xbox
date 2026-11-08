@@ -22,12 +22,16 @@ Current cold-first-play smoothness stays BAD/regressed.
 
 The qualifier writes `public-report/callback-runs.jsonl` and the CSV files it
 references. The workflow passes the same `--revisions-json` matrix and pinned
-`--accepted` SHA to both the qualifier and the repository gate:
+`--accepted` SHA to both the qualifier and the repository gate. Configure
+`SHADER_CPU_AFFINITY_JSON` on the trusted runner's repository as a sorted JSON
+array of logical CPU IDs, for example `[0,1,2,3]`. The same configured set is
+passed to both commands; never infer it from a measured run:
 
 ```sh
 python3 libretro/tests/gate-cold-play-frames.py \
   --report "$OUTPUT/public-report" \
-  --revisions-json "$REVISIONS" --accepted "$ACCEPTED"
+  --revisions-json "$REVISIONS" --accepted "$ACCEPTED" \
+  --cpu-affinity-json "$CPU_AFFINITY"
 ```
 
 Every requested candidate needs its parent and pinned accepted comparison;
@@ -48,14 +52,14 @@ reusing its verified application cache. Do not delete user caches or assume
 an undocumented Windows environment variable isolates them. Record bundled
 seed coverage and actual cache verification in the qualifier's other reports.
 
-## JSONL schema 1
+## JSONL schema 2
 
 Each line is one object with exactly these fields. Blank/oversized records,
 duplicate JSON keys, nonfinite values and unknown schema/fields are rejected.
 
 | Fields | Meaning |
 | --- | --- |
-| `schema` | Integer 1. |
+| `schema` | Integer 2. Schema 1 is unqualified, not upgraded by filling in guessed observations. |
 | `commit`, `reference`, `kind` | Exact requested pair; kind `parent` or `accepted`. Full lowercase commit SHAs. |
 | `revision` | Actual built revision selected by the ABBA slot. |
 | `renderer` | `opengl` or `vulkan`. |
@@ -64,12 +68,30 @@ duplicate JSON keys, nonfinite values and unknown schema/fields are rejected.
 | `case` | `doa3-first-fights`. |
 | `file` | Unique relative `.csv` path confined to `public-report`, including resolved symlinks. |
 | `hardware` | Stable host/GPU/driver fixture ID, 1-128 ASCII letters/digits/`_.-`. |
+| `cpu_affinity_start`, `cpu_affinity_end` | Observed process CPU sets immediately before and after the workload, both identical to the separately configured reference set. |
 | `options_sha256` | SHA-256 of actual effective options, identical within each renderer. |
 | `binary_sha256` | SHA-256 of the actual clean core, identical for each revision. |
 | `clean_core`, `fresh_process` | Boolean true; no per-draw instrumentation in timed cores. |
 | `overlapping_work` | Boolean false; no overlapping builds/tests/emulator benchmarks. |
 | `image_readbacks`, `image_allocations` | Integer zero; booleans do not satisfy them. |
 | `driver_cache` | `isolated-empty` for cache-empty, `warmed-controlled` for warm-persistent. |
+
+CPU sets are nonempty, sorted arrays of unique integer logical IDs, excluding
+booleans, with at most 1,024 entries and IDs in 0-65,535. The adapter must use
+one stable OS-specific numbering scheme, including processor-group identity
+on Windows. It applies the configured affinity before starting the workload,
+observes the actual process set at both boundaries and records those values,
+rather than copying the requested set into the observations. Missing policy,
+missing observations, invalid sets or any mismatch are unqualified. This is
+process-affinity evidence, not proof of thread placement, cache-domain
+topology, frequency stability or unchanged affinity between observations.
+Those controls still belong to the trusted fixture service.
+
+This schema change follows the discovery of a 32-logical-CPU launcher where
+earlier reference runs reported a 16-CPU mask. It does not explain or erase
+the held prewarm candidate's 16.994 ms callback, relax a deadline, or promote
+any new timing into an accepted reference. Existing captured evidence stays
+unchanged; new qualification must capture actual observations.
 
 The capture adapter uses the supported DOA3 build's passive progression
 metadata outside `retro_run`. It must verify the executable and addresses;

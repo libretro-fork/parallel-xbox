@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Require configured CPU affinity and matching observed start/end process CPU sets in the cold-play evidence gate. Reject missing, malformed, changed or legacy affinity evidence instead of comparing different CPU domains under the same hardware ID. Wire the policy through trusted-hardware CI and add rejection controls. Runtime code and all timing limits are unchanged; the held prewarm experiment and shader-stutter regression remain unresolved.
+
 - Build the QCOW2 file-call counting fixture's production backend as C11, matching its aligned retained decode buffers and the core build. Restore the test after C99 rejected `max_align_t`; runtime code and copy/I/O assertions are unchanged.
 
 - Run the shader compiler's injected-slowdown control after a completed comparison even when the real timings fail or are inconclusive. Preserve the original red result and all timing limits; skip the control when prerequisites prevented comparison or the job was canceled. Runtime code is unchanged.

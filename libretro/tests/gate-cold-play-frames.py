@@ -26,7 +26,8 @@ SLOWDOWN_LIMIT = 0.05
 NOISE_LIMIT = 0.075
 FIELDS = set('schema commit reference kind revision renderer cache block slot file '
              'hardware options_sha256 binary_sha256 clean_core fresh_process '
-             'overlapping_work image_readbacks image_allocations driver_cache case'.split())
+             'overlapping_work image_readbacks image_allocations driver_cache case '
+             'cpu_affinity_start cpu_affinity_end'.split())
 
 
 def check(condition, message):
@@ -55,6 +56,13 @@ def digest_string(value, length):
 
 def integer(value, low, high):
     return type(value) is int and low <= value <= high
+
+
+def cpu_set(value):
+    check(type(value) is list and 0 < len(value) <= 1024 and
+          all(integer(cpu, 0, 65535) for cpu in value) and
+          value == sorted(set(value)), 'invalid CPU affinity set')
+    return tuple(value)
 
 
 def frame_file(root, name):
@@ -128,8 +136,9 @@ def read_frames(path):
                 misses=[dict(callback=i, duration_us=d, live=n) for d, i, n in sorted(misses, reverse=True)])
 
 
-def audit(root, revisions, accepted):
+def audit(root, revisions, accepted, cpu_affinity):
     root = Path(root).resolve()
+    expected_affinity = cpu_set(cpu_affinity)
     check(digest_string(accepted, 40), 'accepted reference must be a full pinned SHA')
     check(type(revisions) is dict and set(revisions) == {'include'} and
           type(revisions['include']) is list and 0 < len(revisions['include']) <= 64,
@@ -160,7 +169,10 @@ def audit(root, revisions, accepted):
             check(index < 8192 and len(line) <= 16384, 'oversized manifest record/count')
             run = load_json(line)
             check(type(run) is dict and set(run) == FIELDS and type(run['schema']) is int and
-                  run['schema'] == 1, 'unsupported callback manifest schema')
+                  run['schema'] == 2, 'unsupported callback manifest schema')
+            check(cpu_set(run['cpu_affinity_start']) == expected_affinity and
+                  cpu_set(run['cpu_affinity_end']) == expected_affinity,
+                  'CPU affinity differs from configured reference set')
             check(integer(run['block'], 0, 1) and integer(run['slot'], 0, 3), 'invalid ABBA position')
             key = tuple(run[n] for n in ('commit', 'reference', 'kind', 'renderer', 'cache', 'block', 'slot'))
             check(key in expected and key not in seen, 'unexpected or duplicate run')
@@ -214,6 +226,7 @@ def audit(root, revisions, accepted):
               'unqualified' if any(c['status'] != 'pass' for c in comparisons) else 'pass')
     return dict(status=status, scope='callback gate only; not full GPU/presentation qualification',
                 deadline_us=DEADLINE_US, noise_limit=NOISE_LIMIT, slowdown_limit=SLOWDOWN_LIMIT,
+                cpu_affinity=list(expected_affinity),
                 failures=failures, comparisons=comparisons,
                 runs=[dict(key=list(key), **run) for key, run in seen.items()])
 
@@ -223,10 +236,13 @@ def main():
     parser.add_argument('--report', type=Path, required=True)
     parser.add_argument('--revisions-json', required=True)
     parser.add_argument('--accepted', required=True)
+    parser.add_argument('--cpu-affinity-json', default='',
+                        help='Configured reference CPU set as a sorted JSON array; missing is unqualified')
     args = parser.parse_args()
     root = args.report.resolve()
     try:
-        result = audit(root, load_json(args.revisions_json), args.accepted)
+        result = audit(root, load_json(args.revisions_json), args.accepted,
+                       load_json(args.cpu_affinity_json))
     except (ValueError, OSError, TypeError, KeyError) as error:
         result = dict(status='unqualified', error=str(error))
     # Keep a bounded, metadata-only summary even when the evidence is rejected.

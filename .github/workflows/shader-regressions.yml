@@ -259,23 +259,25 @@ jobs:
           REVISIONS: ${{ needs.revisions.outputs.matrix }}
           ACCEPTED: ${{ vars.SHADER_ACCEPTED_BASELINE }}
           QUALIFIER: ${{ vars.SHADER_HARDWARE_QUALIFIER }}
+          CPU_AFFINITY: ${{ vars.SHADER_CPU_AFFINITY_JSON }}
         shell: bash
         run: |
           set -euo pipefail
-          test -n "$ACCEPTED" && test -n "$QUALIFIER"
+          test -n "$ACCEPTED" && test -n "$QUALIFIER" && test -n "$CPU_AFFINITY"
           # Executable is provisioned on the trusted runner, not downloaded by the core.
           # Contract and cache/scene requirements are in docs/cold-first-play-recovery.md.
-          "$QUALIFIER" --revisions-json "$REVISIONS" --accepted "$ACCEPTED" --output "$RUNNER_TEMP/shader-cold-play-$GITHUB_RUN_ID"
+          "$QUALIFIER" --revisions-json "$REVISIONS" --accepted "$ACCEPTED" --cpu-affinity-json "$CPU_AFFINITY" --output "$RUNNER_TEMP/shader-cold-play-$GITHUB_RUN_ID"
       - name: Audit raw callback evidence independently of the fixture exit code
         if: always()
         env:
           REVISIONS: ${{ needs.revisions.outputs.matrix }}
           ACCEPTED: ${{ vars.SHADER_ACCEPTED_BASELINE }}
+          CPU_AFFINITY: ${{ vars.SHADER_CPU_AFFINITY_JSON }}
         shell: bash
         run: |
           python3 libretro/tests/gate-cold-play-frames.py \
             --report "$RUNNER_TEMP/shader-cold-play-$GITHUB_RUN_ID/public-report" \
-            --revisions-json "$REVISIONS" --accepted "$ACCEPTED"
+            --revisions-json "$REVISIONS" --accepted "$ACCEPTED" --cpu-affinity-json "$CPU_AFFINITY"
       - uses: actions/upload-artifact@v4
         if: always()
         with:

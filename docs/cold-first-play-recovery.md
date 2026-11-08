@@ -229,7 +229,10 @@ Administrator setup still required, not claimed complete:
   service and `SHADER_HARDWARE_QUALIFIER` executable path. Then set
   `SHADER_HARDWARE_ENABLED=true`. Never execute private assets or untrusted PR
   code automatically on that machine.
-- The qualifier receives all revision/reference pairs and the accepted SHA.
+- The qualifier receives all revision/reference pairs, the accepted SHA and
+  the explicitly configured `SHADER_CPU_AFFINITY_JSON` logical CPU set. Record
+  observed start/end process affinity in schema-2 callback manifests; missing
+  or changed affinity is unqualified, not guessed from the host identity.
   It must implement the cache/scene matrix above, return nonzero for a new
   hitch, invalid progression, absent fixtures or inconclusive run, and put
   only sanitized metadata/timings in `public-report/`. Its implementation,

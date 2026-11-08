@@ -16,6 +16,7 @@ gate = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(gate)
 head, reference = 'a' * 40, 'b' * 40
 matrix = {'include': [dict(commit=head, reference=reference, kind='parent')]}
+affinity = list(range(16))
 
 
 def fixture(path, commit=head, ref=reference, kind='parent'):
@@ -26,12 +27,13 @@ def fixture(path, commit=head, ref=reference, kind='parent'):
                 for slot in range(4):
                     revision = ref if slot in (0, 3) else commit
                     name = f'{commit[:8]}-{kind}-{renderer}-{cache}-{block}-{slot}.csv'
-                    runs.append(dict(schema=1, commit=commit, reference=ref, kind=kind,
+                    runs.append(dict(schema=2, commit=commit, reference=ref, kind=kind,
                                      revision=revision, renderer=renderer, cache=cache, block=block,
                                      slot=slot, file=name, hardware='synthetic-only',
                                      options_sha256='c' * 64, binary_sha256=revision[0] * 64,
                                      clean_core=True, fresh_process=True, overlapping_work=False,
                                      image_readbacks=0, image_allocations=0,
+                                     cpu_affinity_start=affinity.copy(), cpu_affinity_end=affinity.copy(),
                                      driver_cache=('isolated-empty' if cache == 'cache-empty' else
                                                    'warmed-controlled'), case='doa3-first-fights'))
                     # Synthetic fresh boot/menu, intro, 600 consecutive live
@@ -69,7 +71,8 @@ def first_candidate(runs):
     return next(r for r in runs if r['slot'] == 1)
 
 
-def expect(label, expected, mutate=lambda p, r: None, matrix_override=None, accepted=reference):
+def expect(label, expected, mutate=lambda p, r: None, matrix_override=None, accepted=reference,
+           cpu_affinity=affinity):
     with tempfile.TemporaryDirectory(prefix='callback-gate-') as temporary:
         path = Path(temporary)
         runs = fixture(path)
@@ -78,7 +81,7 @@ def expect(label, expected, mutate=lambda p, r: None, matrix_override=None, acce
             for run in runs:
                 output.write(json.dumps(run) + '\n')
         try:
-            result = gate.audit(path, matrix_override or matrix, accepted)
+            result = gate.audit(path, matrix_override or matrix, accepted, cpu_affinity)
         except (ValueError, OSError, TypeError, KeyError) as error:
             result = {'status': 'unqualified', 'error': str(error)}
         assert result['status'] == expected, (label, expected, result)
@@ -93,6 +96,10 @@ def expect(label, expected, mutate=lambda p, r: None, matrix_override=None, acce
 
 
 expect('synthetic valid evidence (not hardware qualification)', 'pass')
+expect('noncontiguous/group-aware logical IDs', 'pass',
+       lambda p, r: [run.update(cpu_affinity_start=[1, 3, 65, 65535],
+                               cpu_affinity_end=[1, 3, 65, 65535]) for run in r],
+       cpu_affinity=[1, 3, 65, 65535])
 
 
 def add_accepted(path, runs):
@@ -115,6 +122,7 @@ expect('every commit in a multi-commit push', 'pass', add_commit,
                          dict(commit='e' * 40, reference=reference, kind='accepted')]})
 for label, duration, index in (('retained 116.504 ms live hitch', 116504, 400),
                                ('retained 170.166 ms live hitch', 170166, 400),
+                               ('retained 16.994 ms prewarm-candidate hitch', 16994, 30),
                                ('retained 17.421 ms intro hitch', 17421, 2)):
     expect(label, 'regression', lambda p, r, d=duration, i=index:
            change_frames(p, first_candidate(r), lambda rows: rows[i].__setitem__(3, d)))
@@ -152,10 +160,19 @@ for name, value in (('driver_cache', 'uncontrolled'), ('clean_core', False),
                     ('revision', reference), ('hardware', ''),
                     ('options_sha256', 'f' * 64), ('binary_sha256', 'f' * 64),
                     ('case', 'checkpoint-only'), ('file', '../private.csv'),
-                    ('schema', 2), ('passed', True)):
+                    ('schema', 1), ('schema', 3), ('passed', True)):
     expect('reject ' + name + '=' + str(value), 'unqualified',
            lambda p, r, k=name, v=value: first_candidate(r).__setitem__(k, v))
 expect('missing run', 'unqualified', lambda p, r: r.pop())
+for value in (None, [], [True], [-1], [65536], [1, 0], [0, 0], '0xffff', [0.0], list(range(1025))):
+    expect('invalid configured CPU affinity ' + str(value)[:40], 'unqualified', cpu_affinity=value)
+for field in ('cpu_affinity_start', 'cpu_affinity_end'):
+    for value in (None, [], [True], [-1], [65536], [1, 0], [0, 0], '0xffff', list(range(32))):
+        expect('reject observed ' + field + '=' + str(value), 'unqualified',
+               lambda p, r, k=field, v=value: first_candidate(r).__setitem__(k, v))
+    expect('missing ' + field, 'unqualified', lambda p, r, k=field: first_candidate(r).pop(k))
+expect('same changed set on every run is not the configured reference', 'unqualified',
+       lambda p, r: [run.update(cpu_affinity_start=list(range(32)), cpu_affinity_end=list(range(32))) for run in r])
 expect('duplicate run', 'unqualified', lambda p, r: r.append(copy.deepcopy(r[0])))
 expect('missing accepted reference', 'unqualified', accepted='')
 expect('uncovered accepted reference', 'unqualified', accepted='d' * 40)
@@ -181,7 +198,7 @@ expect('oversized CSV record', 'unqualified', lambda p, r:
 with tempfile.TemporaryDirectory(prefix='callback-gate-cli-') as temporary:
     path = Path(temporary)
     command = [sys.executable, str(tool), '--report', str(path), '--revisions-json',
-               json.dumps(matrix), '--accepted', reference]
+               json.dumps(matrix), '--accepted', reference, '--cpu-affinity-json', json.dumps(affinity)]
     result = subprocess.run(command, capture_output=True, text=True)
     assert result.returncode == 2 and json.loads((path / 'callback-gate.json').read_text())['status'] == 'unqualified'
     (path / 'callback-runs.jsonl').write_text('{"schema":1,"schema":1}\n')
@@ -193,6 +210,8 @@ with tempfile.TemporaryDirectory(prefix='callback-gate-cli-') as temporary:
         for run in runs:
             output.write(json.dumps(run) + '\n')
     assert subprocess.run(command, capture_output=True).returncode == 0
+    assert subprocess.run(command[:-2], capture_output=True).returncode == 2
+    assert subprocess.run(command[:-1] + ['not-json'], capture_output=True).returncode == 2
     change_frames(path, first_candidate(runs), lambda rows: rows[400].__setitem__(3, 116504))
     assert subprocess.run(command, capture_output=True).returncode == 1
     assert json.loads((path / 'callback-gate.json').read_text())['failures']
