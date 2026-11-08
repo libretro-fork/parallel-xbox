@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Allow the user-requested modest gameplay measurement noise margin: 7.5% instead of 5% for the callback-evidence comparison only. Keep the 5% slowdown/boot-maximum limits and 16.683 ms fight deadline unchanged; shader compiler/output ratchets are unchanged. Preserve earlier results and add boundary controls proving that 6% noise is tolerated, 8% noise stays unqualified and a 6% slowdown still fails. Runtime code is unchanged; this does not establish stutter recovery.
+
 - Audit trusted hardware-CI callback evidence independently of the fixture's exit code. Missing cold/warm ABBA runs, uncontrolled driver-cache state, bad progression, noisy comparisons and frame hitches cannot report a pass. Preserve whole-boot maxima and reject hitches even when averages improve; exercise the retained 116.5 ms live and 17.4 ms intro failures in asset-free CI controls. Stream bounded timing records without copying payloads. Runtime code is unchanged; physical qualification and shader-stutter recovery remain open.
 
 - OpenGL keeps dynamic lighting-family requests pending until both required vertex variants fit in the generation queue. A one-slot opening could previously lose the second variant and leave the family specializing indefinitely. Reuse existing owned records without extra buffers, payload copies or waits. Add exhaustive queue-pressure/retry/lifetime checks and a required lost-variant negative control to shader CI. This does not close uncovered first-use Vulkan PSO stalls.

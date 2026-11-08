@@ -82,7 +82,7 @@ def expect(label, expected, mutate=lambda p, r: None, matrix_override=None, acce
         except (ValueError, OSError, TypeError, KeyError) as error:
             result = {'status': 'unqualified', 'error': str(error)}
         assert result['status'] == expected, (label, expected, result)
-        if label == 'stable mean regression':
+        if label in ('stable mean regression', 'six percent slowdown still fails'):
             assert any(c['status'] == 'regression' for c in result['comparisons'])
             assert not result['failures'], 'must exercise the mean gate, not a max/hitch shortcut'
         if label == 'bounded hitch summary retains total and worst':
@@ -136,6 +136,13 @@ def mean_regression(path, runs):
 
 
 expect('stable mean regression', 'regression', mean_regression)
+expect('six percent slowdown still fails', 'regression', lambda p, r:
+       [change_frames(p, run, lambda rows: [row.__setitem__(3, 5300) for row in rows[1:]])
+        for run in r if run['slot'] in (1, 2)])
+expect('six percent reference noise is allowed', 'pass', lambda p, r:
+       change_frames(p, r[0], lambda rows: [row.__setitem__(3, 5300) for row in rows[1:]]))
+expect('eight percent reference noise remains unqualified', 'unqualified', lambda p, r:
+       change_frames(p, r[0], lambda rows: [row.__setitem__(3, 5400) for row in rows[1:]]))
 expect('noisy reference is not a pass', 'unqualified', lambda p, r:
        change_frames(p, r[0], lambda rows: [row.__setitem__(3, 6000) for row in rows[1:]]))
 for name, value in (('driver_cache', 'uncontrolled'), ('clean_core', False),

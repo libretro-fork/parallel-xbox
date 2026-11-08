@@ -99,8 +99,16 @@ and reference runs. Faster averages or noisy repeats do not erase a hitch
 or bless an already-regressed reference. Whole-boot candidate maxima over
 the reference maximum by 5% also fail; startup spikes are retained. Paired
 whole/fight/live run-mean checks reuse the existing throughput assessor with
-unchanged 5% slowdown and 5% noise limits. Noise means unqualified. No timing
+5% slowdown and 7.5% noise limits. Excess noise means unqualified. No timing
 sample is discarded as warmup, and no automated baseline promotion occurs.
+
+On 2026-11-08 the user requested modest measurement wiggle room after
+confirming the benchmark host was otherwise idle. This separately recorded
+policy adjustment raises only the callback-comparison noise allowance from
+5% to 7.5%. It does not raise the 5% slowdown/whole-boot-maximum limits, the
+16,683 us fight deadline, or any compiler/output budget. Keep the original
+5% results and show both decisions when auditing retained measurements;
+do not rerun unchanged binaries until green or relabel previous failures.
 
 The parser streams bounded metadata lines, rejects escaping/oversized files
 and keeps only bounded duration scalars for percentile calculation. It does

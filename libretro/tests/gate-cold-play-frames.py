@@ -22,7 +22,8 @@ SPEC.loader.exec_module(THROUGHPUT)
 RENDERERS = ('opengl', 'vulkan')
 CACHES = ('cache-empty', 'warm-persistent')
 DEADLINE_US = 16683
-LIMIT = 0.05
+SLOWDOWN_LIMIT = 0.05
+NOISE_LIMIT = 0.075
 FIELDS = set('schema commit reference kind revision renderer cache block slot file '
              'hardware options_sha256 binary_sha256 clean_core fresh_process '
              'overlapping_work image_readbacks image_allocations driver_cache case'.split())
@@ -199,20 +200,20 @@ def audit(root, revisions, accepted):
                 for scope in ('whole', 'fight', 'live'):
                     before = [run[scope]['mean_us'] for i, run in enumerate(runs) if i % 4 in (0, 3)]
                     after = [run[scope]['mean_us'] for i, run in enumerate(runs) if i % 4 in (1, 2)]
-                    result = THROUGHPUT.assess(before, after, LIMIT, LIMIT)
+                    result = THROUGHPUT.assess(before, after, SLOWDOWN_LIMIT, NOISE_LIMIT)
                     result.pop('baseline_fps')
                     result.pop('candidate_fps')
                     comparisons.append(dict(commit=c, reference=r, kind=kind, renderer=backend,
                                             cache=cache, scope=scope, **result))
                 before_max = max(run['whole']['max_us'] for i, run in enumerate(runs) if i % 4 in (0, 3))
                 after_max = max(run['whole']['max_us'] for i, run in enumerate(runs) if i % 4 in (1, 2))
-                if after_max > before_max * (1 + LIMIT):
+                if after_max > before_max * (1 + SLOWDOWN_LIMIT):
                     failures.append(dict(commit=c, reference=r, renderer=backend, cache=cache,
                                          issue='new whole-boot maximum', before_us=before_max, after_us=after_max))
     status = ('regression' if failures or any(c['status'] == 'regression' for c in comparisons) else
               'unqualified' if any(c['status'] != 'pass' for c in comparisons) else 'pass')
     return dict(status=status, scope='callback gate only; not full GPU/presentation qualification',
-                deadline_us=DEADLINE_US, noise_limit=LIMIT, slowdown_limit=LIMIT,
+                deadline_us=DEADLINE_US, noise_limit=NOISE_LIMIT, slowdown_limit=SLOWDOWN_LIMIT,
                 failures=failures, comparisons=comparisons,
                 runs=[dict(key=list(key), **run) for key, run in seen.items()])
 
