@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Extend Vulkan PSO readiness regression tests to every byte of the actual pipeline key, with colliding cache entries, empty pipeline handles and pending jobs. Reject shader-only readiness so matching shader code cannot hide different render passes, registers or vertex inputs. Runtime code is unchanged; synchronous first-use shader/PSO stalls remain open.
+
 - Allow the user-requested modest gameplay measurement noise margin: 7.5% instead of 5% for the callback-evidence comparison only. Keep the 5% slowdown/boot-maximum limits and 16.683 ms fight deadline unchanged; shader compiler/output ratchets are unchanged. Preserve earlier results and add boundary controls proving that 6% noise is tolerated, 8% noise stays unqualified and a 6% slowdown still fails. Runtime code is unchanged; this does not establish stutter recovery.
 
 - Audit trusted hardware-CI callback evidence independently of the fixture's exit code. Missing cold/warm ABBA runs, uncontrolled driver-cache state, bad progression, noisy comparisons and frame hitches cannot report a pass. Preserve whole-boot maxima and reject hitches even when averages improve; exercise the retained 116.5 ms live and 17.4 ms intro failures in asset-free CI controls. Stream bounded timing records without copying payloads. Runtime code is unchanged; physical qualification and shader-stutter recovery remain open.

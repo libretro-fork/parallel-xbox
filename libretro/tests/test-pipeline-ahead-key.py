@@ -120,6 +120,35 @@ int main(void) {
   if(success)assert(!memcmp(&slot.key,&expected,sizeof(expected)));
   cases++;
  }
+ /* A landed shader does not prove a different render pass, register or
+  * vertex-input PSO ready. Exercise every key byte under a forced hash
+  * collision, including a later exact entry in the same cache bin. */
+ PipelineKey wanted;memset(&wanted,0x36,sizeof(wanted));
+ PGRAPHVkState renderer={0};
+ const uint64_t collision_hash=0x42;
+ PipelineBinding resident={.node={.hash=collision_hash},.key=wanted,
+                           .pipeline=(VkPipeline)(uintptr_t)1};
+ PipelineBinding later=resident;
+ renderer.pipeline_cache.bins[collision_hash&3].first=&resident.node;
+ pump_d=0;pump_w_local=1;
+ pump_jobs[0]=(LibJob){.key=wanted,.hash=collision_hash,.full=true};
+ assert(pipeline_ready(&renderer,collision_hash,&wanted));
+ assert(pump_full_in_flight(collision_hash,&wanted));
+ for(size_t byte=0;byte<sizeof(wanted);byte++) {
+  ((uint8_t*)&resident.key)[byte]^=1;
+  ((uint8_t*)&pump_jobs[0].key)[byte]^=1;
+  assert(!pipeline_ready(&renderer,collision_hash,&wanted));
+  assert(!pump_full_in_flight(collision_hash,&wanted));
+  resident.node.next_bin=&later.node;
+  assert(pipeline_ready(&renderer,collision_hash,&wanted));
+  later.pipeline=VK_NULL_HANDLE;
+  assert(!pipeline_ready(&renderer,collision_hash,&wanted));
+  later.pipeline=(VkPipeline)(uintptr_t)1;
+  resident.node.next_bin=NULL;
+  ((uint8_t*)&resident.key)[byte]^=1;
+  ((uint8_t*)&pump_jobs[0].key)[byte]^=1;
+ }
+ printf("Exact PSO readiness: %zu key-byte collision/chain/empty-handle controls PASS\n",sizeof(wanted)*4);
  printf("ShaderState=%zu PipelineKey=%zu bytes\n",sizeof(ShaderState),sizeof(PipelineKey));
  printf("Pipeline ahead: %u actual-layout/XXH3/poisoned-slot/module-order/drain-release/backpressure/caller-lifetime cases PASS\n",cases);
 }
@@ -142,6 +171,8 @@ with tempfile.TemporaryDirectory(prefix='pipeline-ahead-key-') as tmp:
 
  for label,target,old,new in [
   ('cached key collision',ready,'!memcmp(&binding->key, key, sizeof(*key))','key != NULL'),
+  ('shader-only readiness',ready,'!memcmp(&binding->key, key, sizeof(*key))',
+   '!memcmp(&binding->key.shader_state, &key->shader_state, sizeof(key->shader_state))'),
   ('empty cached pipeline',ready,'binding->pipeline != VK_NULL_HANDLE','true'),
   ('in-flight key collision',flight_fn,'!memcmp(&j->key, key, sizeof(*key))','key != NULL')]:
   assert old in target
