@@ -235,6 +235,13 @@ Administrator setup still required, not claimed complete:
   only sanitized metadata/timings in `public-report/`. Its implementation,
   fixtures and physical GPU runs are remaining recovery work, not a shipped
   guarantee from this workflow hook.
+- After the service, the workflow independently audits raw callback evidence
+  with `gate-cold-play-frames.py`, including when the service fails. The
+  [callback evidence contract](cold-play-callback-evidence.md) defines the
+  bounded JSONL/CSV format, complete comparisons and rejection controls.
+  Missing artifacts, a hitched reference or inconclusive timings cannot
+  become a green result through the service's exit code alone. This added
+  callback gate is not the full GPU/presentation/ownership qualifier.
 
 Until hardware qualification exists and recovery passes, CPU/software-GPU
 green checks do not authorize describing cold play as fixed. Documentation

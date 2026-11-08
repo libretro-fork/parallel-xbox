@@ -87,6 +87,7 @@ jobs:
           python3 driver/libretro/tests/test-pre-module-keys.py candidate cc --geometry-clear-baseline --check-only 2>&1 | tee results/module-keys.log
           python3 driver/libretro/tests/test-throughput-gate.py 2>&1 | tee results/throughput-gate.log
           python3 driver/libretro/tests/test-shader-compile-gate.py 2>&1 | tee results/compiler-gate.log
+          python3 driver/libretro/tests/test-cold-play-frame-gate.py candidate 2>&1 | tee results/cold-play-frame-gate.log
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -260,6 +261,16 @@ jobs:
           # Executable is provisioned on the trusted runner, not downloaded by the core.
           # Contract and cache/scene requirements are in docs/cold-first-play-recovery.md.
           "$QUALIFIER" --revisions-json "$REVISIONS" --accepted "$ACCEPTED" --output "$RUNNER_TEMP/shader-cold-play-$GITHUB_RUN_ID"
+      - name: Audit raw callback evidence independently of the fixture exit code
+        if: always()
+        env:
+          REVISIONS: ${{ needs.revisions.outputs.matrix }}
+          ACCEPTED: ${{ vars.SHADER_ACCEPTED_BASELINE }}
+        shell: bash
+        run: |
+          python3 libretro/tests/gate-cold-play-frames.py \
+            --report "$RUNNER_TEMP/shader-cold-play-$GITHUB_RUN_ID/public-report" \
+            --revisions-json "$REVISIONS" --accepted "$ACCEPTED"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
