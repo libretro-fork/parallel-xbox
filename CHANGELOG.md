@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Keep the IDE buffered-read ownership fixture limited to its real completion/submission functions and queue limit. An adjacent DMA-reset helper no longer breaks this test's build. Existing callback reentry, zero steady-state allocations and balanced owner-release assertions remain intact; runtime code is unchanged.
+
 - Restore general-build regression tests after helper changes: extract the complete x86 exit guard without relying on optional logging, use the real borrowed PRAMIN accessor in the guest-wake fixture, and check texture reuse with pending ordinary surfaces as well as byte aliases. Add a negative control for stale ordinary-surface reuse. Test changes only; the cold-play regression remains open.
 
 - Vulkan keeps specialization queued until its complete pipeline is ready, checks exact keys/non-null handles, and adopts completed jobs even with GPL disabled. Stop splitting fully dynamic PSOs on the unused static stencil-write key bit. Seed banks and one-shot flags now end with their renderer; disabling Smooth First Play submits no further seed work, and idle pipeline workers need no completion poll. Reuse native references and retirement without new geometry/SPIR-V copies or threads. Uncovered first-use PSO stalls remain an open regression.

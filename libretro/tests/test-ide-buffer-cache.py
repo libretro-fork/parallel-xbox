@@ -4,11 +4,19 @@ from pathlib import Path
 import os,re,shlex,subprocess,sys,tempfile
 r=Path(sys.argv[1]).resolve();cc=sys.argv[2] if len(sys.argv)>2 else 'cc'
 s=Path(os.environ.get('IDE_CACHE_SOURCE',r/'hw/ide/core.c')).read_text();h=Path(os.environ.get('IDE_CACHE_HEADER',r/'hw/ide/ide-internal.h')).read_text();q=(r/'include/qemu/iov.h').read_text()
-a=s.index('static void ide_buffered_readv_cb(');z=s.index('/**\n * Cancel all pending DMA requests.',a)
+a=s.index('static void ide_buffered_readv_cb(')
+# Adjacent DMA-reset helpers are independent of buffered PIO ownership.
+# Extract the two complete functions, not everything up to a later comment.
+def function(start):
+ b=s.index('{',start)+1;depth=1
+ while depth:depth+=(s[b]=='{')-(s[b]=='}');b+=1
+ return s[start:b]
+limit=re.search(r'^#define MAX_BUFFERED_REQS .+$',s,re.M).group()
+reads=function(a)+'\n'+limit+'\n'+function(s.index('BlockAIOCB *ide_buffered_readv('))
 cache=s[s.index('/* One completed request per owner'):a] if '/* One completed request per owner' in s else 'static void ide_buffered_read_cache_clear(void) {}\n'
 req=re.search(r'typedef struct IDEBufferedRequest \{.*?\} IDEBufferedRequest;',h,re.S)[0]
 qiov=q[q.index('typedef struct QEMUIOVector'):q.index('void qemu_iovec_init(QEMUIOVector')]
-code=Path(__file__).with_suffix('.c').read_text().replace('/* QIOV */',qiov).replace('/* REQUEST */',req).replace('/* PRODUCTION */',cache+s[a:z])
+code=Path(__file__).with_suffix('.c').read_text().replace('/* QIOV */',qiov).replace('/* REQUEST */',req).replace('/* PRODUCTION */',cache+reads)
 with tempfile.TemporaryDirectory(prefix='ide-cache-') as tmp:
  p=Path(tmp);binary=os.environ.get('IDE_CACHE_BINARY',str(p/'test'))
  code=('#define HAVE_IDE_BUFFER_CACHE 1\n' if '/* One completed request per owner' in s else '')+('#define IDE_RELEASE_BEFORE_CALLBACK 1\n' if 'cb(cb_opaque, ret);' in s else '')+code

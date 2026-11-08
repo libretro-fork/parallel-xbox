@@ -314,6 +314,11 @@ negative controls. Guest-wake tests use the production borrowed PRAMIN
 accessor. Texture fixtures cover absent/present surfaces and pending uploads
 regardless of reinterpretation, and reject the former byte-alias-only rule.
 This does not promote the runtime or its driver-cache state to a smooth LKG.
+The IDE fixture follow-up likewise changes no runtime: extract complete
+buffered read functions and their production queue limit instead of pulling
+in adjacent unrelated DMA-reset code. Preserve byte/gap/error/orphan/reentry,
+zero steady-state allocations and balanced owner-release checks. The separate
+cancellation, restart, trim and write-generation checks also pass locally.
 
 Require the known bad cold-play replay to fail and the candidate to pass;
 retain the original failure and a same-hardware clean-binary comparison.
