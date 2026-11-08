@@ -319,6 +319,12 @@ buffered read functions and their production queue limit instead of pulling
 in adjacent unrelated DMA-reset code. Preserve byte/gap/error/orphan/reentry,
 zero steady-state allocations and balanced owner-release checks. The separate
 cancellation, restart, trim and write-generation checks also pass locally.
+The existing blend oracle now reflects the same proven dynamic stencil bit
+projection (73,728 register/format/feature cases). Recording-epoch fixtures
+model the existing inline-lend materialization hook, exercise 192,000
+retirement schedules, and reject a finish omitting the hook. Both tests now
+run in per-commit shader contracts too. This is test-only; runtime evidence
+and unresolved first-use failures remain unchanged.
 
 Require the known bad cold-play replay to fail and the candidate to pass;
 retain the original failure and a same-hardware clean-binary comparison.

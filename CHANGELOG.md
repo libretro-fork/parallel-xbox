@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Include existing blend-key and Vulkan recording-lifetime tests in each shader/PSO contract run. Update the blend oracle for dynamic stencil identity, model the existing inline-lend materialization hook in the recording fixture, and reject a finish that omits it. No runtime changes.
+
 - Keep the IDE buffered-read ownership fixture limited to its real completion/submission functions and queue limit. An adjacent DMA-reset helper no longer breaks this test's build. Existing callback reentry, zero steady-state allocations and balanced owner-release assertions remain intact; runtime code is unchanged.
 
 - Restore general-build regression tests after helper changes: extract the complete x86 exit guard without relying on optional logging, use the real borrowed PRAMIN accessor in the guest-wake fixture, and check texture reuse with pending ordinary surfaces as well as byte aliases. Add a negative control for stale ordinary-surface reuse. Test changes only; the cold-play regression remains open.

@@ -56,6 +56,10 @@ typedef struct { PGRAPHState pgraph; } NV2AState;
 static const struct { int staging; } pgraph_vk_staged_buffers[]={{0},{2},{4}};
 static unsigned submits,waits,reclaims,reports,teardowns,sync_begins,sync_ends;
 static bool expect_staged,host_flushed,queue_locked;
+static unsigned materializations;
+static void pgraph_materialize_inline_array(PGRAPHState *pg) {
+    assert(pg && pg->vk_renderer_state); materializations++;
+}
 static PGRAPHVkState *recording_state;
 static VkSemaphore expected_frontend_wait;
 static unsigned xemu_cost_segn;
@@ -144,7 +148,9 @@ int main(void) {
             unsigned old_sync_begins=sync_begins,old_sync_ends=sync_ends;
             unsigned old_submits=submits,old_waits=waits,old_slot=r.slot;
             unsigned serial=r.submit_count;
+            unsigned old_materializations=materializations;
             pgraph_vk_finish(pg,why);
+            assert(materializations==old_materializations+1);
             assert(!r.in_command_buffer && !r.in_render_pass && !r.query_in_flight&&!queue_locked&&!r.display.shown_pending);
             assert(sync_begins==old_sync_begins+expect_staged&&sync_ends==old_sync_ends+expect_staged);
             assert(submits==old_submits+1 && r.submit_count==serial+1);
@@ -158,6 +164,7 @@ int main(void) {
             /* A finish with no new recording must not advance the epoch. */
             int epoch=pg->draw_time;
             pgraph_vk_finish(pg,why);assert(pg->draw_time==epoch);
+            assert(materializations==old_materializations+2);
             pgraph_vk_begin_command_buffer(pg);
             /* Old surface/pipeline stamps are not pending in this recording,
              * even when the previous slot's fence has not retired. */

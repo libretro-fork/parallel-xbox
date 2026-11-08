@@ -133,7 +133,8 @@ static void reference_pipeline_regs(PGRAPHState *pg, uint32_t *out)
         out[6] = 0;
         out[2] &= ~(NV_PGRAPH_CONTROL_0_ZENABLE |
                           NV_PGRAPH_CONTROL_0_ZFUNC |
-                          NV_PGRAPH_CONTROL_0_ZWRITEENABLE);
+                          NV_PGRAPH_CONTROL_0_ZWRITEENABLE |
+                          NV_PGRAPH_CONTROL_0_STENCIL_WRITE_ENABLE);
         out[3] = 0;
         out[4] = 0;
     }
