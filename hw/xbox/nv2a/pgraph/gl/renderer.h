@@ -432,7 +432,7 @@ typedef struct PGRAPHGLState {
      * every flip, invalidated by any bind outside bind_textures. */
     GLuint tex_shadow_name[NV2A_MAX_TEXTURES];
     GLenum tex_shadow_target[NV2A_MAX_TEXTURES];
-    bool tex_shadow_valid;
+    uint8_t tex_shadow_valid_mask; /* Render-owned, one bit per texture unit. */
     TextureBinding *texture_binding[NV2A_MAX_TEXTURES];
     Lru texture_cache;
     TextureLruNode *texture_cache_entries;

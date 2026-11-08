@@ -231,18 +231,18 @@ static void apply_texture_parameters(PGRAPHGLState *r,
     }
 }
 
-/* After a bind outside bind_textures: every bind reaches the driver until
- * the flip resets the shadow. */
+/* External binds make every unit unknown. Normal texture binding establishes
+ * units independently; a helper can invalidate earlier units mid-pass. */
 void pgraph_gl_tex_shadow_invalidate(PGRAPHGLState *r)
 {
-    r->tex_shadow_valid = false;
+    r->tex_shadow_valid_mask = 0;
 }
 
 void pgraph_gl_tex_shadow_reset(PGRAPHGLState *r)
 {
     memset(r->tex_shadow_name, 0, sizeof(r->tex_shadow_name));
     memset(r->tex_shadow_target, 0, sizeof(r->tex_shadow_target));
-    r->tex_shadow_valid = true;
+    r->tex_shadow_valid_mask = (1u << NV2A_MAX_TEXTURES) - 1;
     /* Units are in an unknown state after an external bind: rebind all. */
     for (int i = 0; i < NV2A_MAX_TEXTURES; i++) {
         glActiveTexture(GL_TEXTURE0 + i);
@@ -318,7 +318,8 @@ void bind_textures(NV2AState *d, bool highres_depth)
         /* FIXME: What happens if texture is disabled but stage is active? */
 
         if (!enabled) {
-            if (r->tex_shadow_valid && r->tex_shadow_name[i] == 0 &&
+            if ((r->tex_shadow_valid_mask & (1u << i)) &&
+                r->tex_shadow_name[i] == 0 &&
                 r->tex_shadow_target[i] == 0) {
                 continue;
             }
@@ -329,6 +330,7 @@ void bind_textures(NV2AState *d, bool highres_depth)
             glBindTexture(GL_TEXTURE_3D, 0);
             r->tex_shadow_name[i] = 0;
             r->tex_shadow_target[i] = 0;
+            r->tex_shadow_valid_mask |= 1u << i;
             continue;
         }
         glActiveTexture(GL_TEXTURE0 + i);
@@ -453,12 +455,13 @@ void bind_textures(NV2AState *d, bool highres_depth)
             if (reusable) {
                 touch_texture_sources(pg, surface, cube_faces, surf_to_tex_cube);
                 TextureBinding *tb = r->texture_binding[i];
-                if (!(r->tex_shadow_valid &&
+                if (!((r->tex_shadow_valid_mask & (1u << i)) &&
                       r->tex_shadow_name[i] == tb->gl_texture &&
                       r->tex_shadow_target[i] == tb->gl_target)) {
                     glBindTexture(tb->gl_target, tb->gl_texture);
                     r->tex_shadow_name[i] = tb->gl_texture;
                     r->tex_shadow_target[i] = tb->gl_target;
+                    r->tex_shadow_valid_mask |= 1u << i;
                 }
                 apply_texture_parameters(r,
                                          r->texture_binding[i],
@@ -615,6 +618,7 @@ void bind_textures(NV2AState *d, bool highres_depth)
         }
         r->tex_shadow_name[i] = key_out->binding->gl_texture;
         r->tex_shadow_target[i] = key_out->binding->gl_target;
+        r->tex_shadow_valid_mask |= 1u << i;
 
         key_out->possibly_dirty = false;
         TextureBinding *binding = key_out->binding;
@@ -674,6 +678,10 @@ void bind_textures(NV2AState *d, bool highres_depth)
                 glBindTexture(r->texture_binding[i]->gl_target, 0);
                 r->tex_shadow_name[i] = 0;
                 r->tex_shadow_target[i] = 0;
+                /* Only the old target was cleared; the new target remains
+                 * bound. Do not let a disabled-stage fast path treat this
+                 * unit as entirely empty on its next visit. */
+                r->tex_shadow_valid_mask &= ~(1u << i);
             }
             texture_binding_destroy(r->texture_binding[i]);
         }

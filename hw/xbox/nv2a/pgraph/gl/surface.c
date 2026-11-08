@@ -106,9 +106,6 @@ static void texpool_put(PGRAPHGLState *r, GLuint tex, hwaddr addr,
 
 void pgraph_gl_set_surface_scale_factor(NV2AState *d, unsigned int scale)
 {
-    /* External texture binds below desync the per-unit shadow. */
-    pgraph_gl_tex_shadow_invalidate(d->pgraph.gl_renderer_state);
-
     PGRAPHState *pg = &d->pgraph;
     PGRAPHGLState *r = pg->gl_renderer_state;
 
@@ -3639,6 +3636,10 @@ void pgraph_gl_surface_flush(NV2AState *d)
 {
     PGRAPHState *pg = &d->pgraph;
     PGRAPHGLState *r = pg->gl_renderer_state;
+
+    /* The caller only queues the flush. Binding metadata belongs to this
+     * render thread, including when a scale change initiated the request. */
+    pgraph_gl_tex_shadow_invalidate(r);
 
     bool update_surface = (r->color_binding || r->zeta_binding);
 
