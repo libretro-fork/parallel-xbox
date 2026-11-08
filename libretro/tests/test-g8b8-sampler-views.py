@@ -31,7 +31,10 @@ code = r'''
 #include <stdint.h>
 #include <stddef.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
+#undef assert
+#define assert(x) do { if (!(x)) { fprintf(stderr,"FAIL sampler view line=%d\n",__LINE__); _Exit(1); } } while(0)
 typedef uint64_t hwaddr;
 typedef unsigned GLenum, GLuint;
 typedef int GLint;
@@ -46,9 +49,9 @@ _Static_assert(sizeof(TextureBinding) == sizeof(LegacyTextureBinding), "binding 
 _Static_assert(offsetof(TextureBinding, scale) == offsetof(LegacyTextureBinding, scale), "binding tail moved");
 /* PREDICATE */
 static bool reuse_gate(TextureBinding *tbind, bool dirty, bool g8b8_lod_clamp,
-                       bool surf_to_tex_bytes, bool upload) {
+                       bool surf_to_tex_bytes, bool upload, bool has_surface) {
     struct { bool texture_dirty[1]; } pg_value = {{dirty}}, *pg = &pg_value;
-    struct { bool upload_pending; } surface_value = {upload}, *surface = &surface_value;
+    struct { bool upload_pending; } surface_value = {upload}, *surface = has_surface ? &surface_value : NULL;
     int i = 0;
     /* GUARD */
         return true;
@@ -107,7 +110,7 @@ int main(void) {
             assert(ka.g8b8_lod_clamp == mip_a && kb.g8b8_lod_clamp == mip_b);
             assert(!!memcmp(&ka, &kb, sizeof(ka)) == (mip_a != mip_b));
             TextureBinding binding = {.g8b8_lod_clamp = mip_a};
-            assert(reuse_gate(&binding, false, mip_b, false, false) == (mip_a == mip_b));
+            assert(reuse_gate(&binding, false, mip_b, false, false, true) == (mip_a == mip_b));
             transitions++;
         }
         TextureKey ordinary; LegacyTextureKey old;
@@ -123,15 +126,16 @@ int main(void) {
             if (clamp) assert(names[1] == GL_TEXTURE_MIN_LOD && values[1] == level);
         }
     }
-    for (unsigned bits = 0; bits < 64; bits++) {
+    for (unsigned bits = 0; bits < 128; bits++) {
         TextureBinding binding = {.g8b8_lod_clamp = bits & 1, .byte_reinterpret = !!(bits & 8)};
         bool dirty = bits & 2, requested = bits & 4, bytes = bits & 16, upload = bits & 32;
+        bool has_surface = bits & 64;
         bool expected = !dirty && binding.g8b8_lod_clamp == requested &&
-                        binding.byte_reinterpret == bytes && !(bytes && upload);
-        assert(reuse_gate(&binding, dirty, requested, bytes, upload) == expected);
+                        binding.byte_reinterpret == bytes && !(has_surface && upload);
+        assert(reuse_gate(&binding, dirty, requested, bytes, upload, has_surface) == expected);
         gates++;
     }
-    assert(!reuse_gate(NULL, false, false, false, false));
+    assert(!reuse_gate(NULL, false, false, false, false, false));
     shape.min_mipmap_level = 0; assert(!g8b8_sampler_lod_clamp(&shape, 3u << 16));
     shape.min_mipmap_level = 16; assert(!g8b8_sampler_lod_clamp(&shape, 3u << 16));
     shape.min_mipmap_level = 1;
@@ -206,3 +210,12 @@ with tempfile.TemporaryDirectory(prefix="g8b8-views-") as folder:
     subprocess.run([sys.argv[2] if len(sys.argv) > 2 else "cc", "-std=gnu11", "-O2",
                     "-Wall", "-Wextra", "-Werror", "-I", str(repo), str(c), "-o", str(binary)], check=True)
     subprocess.run([str(binary)], check=True)
+    # A pending ordinary surface is stale too, not just a byte alias.
+    old = '!(surface && surface->upload_pending)'
+    assert old in code
+    c.write_text(code.replace(old, '!(surf_to_tex_bytes && surface && surface->upload_pending)', 1))
+    subprocess.run([sys.argv[2] if len(sys.argv) > 2 else "cc", "-std=gnu11", "-O2",
+                    "-Wall", "-Wextra", "-Werror", "-I", str(repo), str(c), "-o", str(binary)], check=True)
+    rejected = subprocess.run([str(binary)], capture_output=True)
+    assert rejected.returncode == 1 and b'FAIL sampler view' in rejected.stderr
+    print('Required negative control rejected: pending ordinary surface reused')

@@ -9,8 +9,10 @@ e=s.index('\n}\n',a)+3
 helper=s[a:e]
 s=(r/'accel/tcg/cpu-exec.c').read_text(encoding='utf8')
 a=s.index('    if (*tb_exit > TB_EXIT_IDX1) {',s.index('trace_exec_tb_exit'))
-e=s.index('        if (qemu_loglevel_mask',a)
-wrapper='static void sync_exit(CPUState *cpu, TranslationBlock *last_tb, int *tb_exit) {\n'+s[a:e]+'\n}\n}\n'
+# Extract the complete guarded statement; logging after it is optional.
+e=s.index('{',a)+1;depth=1
+while depth:depth+=(s[e]=='{')-(s[e]=='}');e+=1
+wrapper='static void sync_exit(CPUState *cpu, TranslationBlock *last_tb, int *tb_exit) {\n'+s[a:e]+'\n}\n'
 code=Path(__file__).with_suffix('.c').read_text(encoding='utf8').replace('/* PRODUCTION */',helper+'\n'+wrapper)
 with tempfile.TemporaryDirectory(prefix='fixed-tb-sync-') as d:
  p=Path(d);exe=p/'test.exe';flags=[sys.argv[2] if len(sys.argv)>2 else 'cc','-O2','-std=gnu11','-Wall','-Wextra','-Werror','-fsanitize=undefined','-fsanitize-undefined-trap-on-error']+shlex.split(os.environ.get('TB_SYNC_CFLAGS',''))

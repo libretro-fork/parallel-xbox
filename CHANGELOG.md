@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Restore general-build regression tests after helper changes: extract the complete x86 exit guard without relying on optional logging, use the real borrowed PRAMIN accessor in the guest-wake fixture, and check texture reuse with pending ordinary surfaces as well as byte aliases. Add a negative control for stale ordinary-surface reuse. Test changes only; the cold-play regression remains open.
+
 - Vulkan keeps specialization queued until its complete pipeline is ready, checks exact keys/non-null handles, and adopts completed jobs even with GPL disabled. Stop splitting fully dynamic PSOs on the unused static stencil-write key bit. Seed banks and one-shot flags now end with their renderer; disabling Smooth First Play submits no further seed work, and idle pipeline workers need no completion poll. Reuse native references and retirement without new geometry/SPIR-V copies or threads. Uncovered first-use PSO stalls remain an open regression.
 
 - Shader regression CI now ratchets emitted words and instructions per input/target, pins paired compiler measurements to one allowed CPU, and reports unstable isolated samples as unqualified. Expand GPU initializer coverage to helper arrays/vectors, do-loops and switch blocks. This changes tests only; cold-first-play smoothness remains BAD and regressed.

@@ -307,6 +307,14 @@ and recreated the shared Vulkan device, then reset and resumed live play.
 Audio totals matched with zero cadence errors. That smoke is not a timing
 comparison; the release build excludes its passive guest-state probe.
 
+The subsequent general-build fixture repair changes no runtime source:
+reuse the byte-identical `d51d97ceb4` runtime evidence above. Its frozen
+legacy x86 boundary comparison still exercises 1,048,576 cases and three
+negative controls. Guest-wake tests use the production borrowed PRAMIN
+accessor. Texture fixtures cover absent/present surfaces and pending uploads
+regardless of reinterpretation, and reject the former byte-alias-only rule.
+This does not promote the runtime or its driver-cache state to a smooth LKG.
+
 Require the known bad cold-play replay to fail and the candidate to pass;
 retain the original failure and a same-hardware clean-binary comparison.
 Show no new obvious compiler interruption relative to the verified smooth

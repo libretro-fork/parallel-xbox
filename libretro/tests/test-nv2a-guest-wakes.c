@@ -17,8 +17,9 @@ typedef struct NV2AState {
  struct { int thread_running,halt,guest_kicks,guest_done,fifo_kick,fifo_ec;
           int regs[0x2000],pending_interrupts,enabled_interrupts; } pfifo;
  struct { uint32_t pending_interrupts,enabled_interrupts,start; } pcrtc;
- unsigned ramin;uint8_t ramin_ptr[4096],vram_ptr[256];
+ unsigned ramin;uint8_t ramin_ptr[4096],vram_ptr[256];uint8_t *pramin_top;
 } NV2AState;
+#include "hw/xbox/nv2a/ramin.h"
 static NV2AState *g_nv2a;
 static unsigned lr_gpu_completed_at_slice;
 static unsigned wakes;static int expect_guest;
@@ -41,7 +42,6 @@ static uint32_t pgraph_reg_r(PGRAPHState *pg,unsigned addr) {return pg->regs[add
 static void pgraph_reg_set_mask_atomic(PGRAPHState *pg,unsigned addr,uint32_t mask,uint32_t value) { SET_MASK(pg->regs[addr/4],mask,value); }
 static void pgraph_reg_w_guest(PGRAPHState *pg,unsigned addr,uint32_t value) {pg->regs[addr/4]=value;}
 static void pgraph_rdi_write(PGRAPHState *pg,unsigned select,unsigned address,uint64_t value) {(void)pg;(void)select;(void)address;(void)value;}
-static size_t memory_region_size(const unsigned *m) {(void)m;return 4096;}
 static uint32_t ldl_le_p(const uint32_t *p) {return *p;}
 static void nv2a_update_irq(NV2AState *d) {(void)d;}
 typedef struct { int unused; } CPUState;
