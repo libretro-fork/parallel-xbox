@@ -39,3 +39,16 @@ with tempfile.TemporaryDirectory(prefix="glslgen-queue-") as temporary:
     subprocess.run(command, check=True)
     if not os.environ.get("GLSLGEN_SKIP_RUN"):
         subprocess.run([str(binary)], check=True, timeout=90)
+        # Copying the published key back onto the worker's stack violates the
+        # direct-owner input contract even if the emitted values match.
+        borrow = "const ShaderModuleCacheKey *key = &gen_jobs[i].key;"
+        assert production.count(borrow) == 1
+        copied = production.replace(borrow,
+            "ShaderModuleCacheKey snapshot = gen_jobs[i].key;\n"
+            "    const ShaderModuleCacheKey *key = &snapshot;", 1)
+        (directory / "glslgen-production.h").write_text(copied)
+        mutant_binary = directory / ("snapshot.exe" if windows else "snapshot")
+        subprocess.run(command[:-1] + [str(mutant_binary)], check=True)
+        result = subprocess.run([str(mutant_binary)], capture_output=True, timeout=90)
+        assert result.returncode, "worker key snapshot escaped the borrow control"
+        print("Required negative control rejected: generator input copied away from its queue owner")

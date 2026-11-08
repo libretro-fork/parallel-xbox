@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- The OpenGL GLSL worker borrows each immutable published job key through generation instead of copying the full key onto its stack. The producer's bounded owned snapshot and release/acquire completion protocol remain unchanged. Extend concurrent slot-reuse tests to verify direct owner inputs and reject a restored worker snapshot. Local 16-process cold/warm callback comparisons, identical-image and save/load/reset checks passed. Delivered under the user-approved targeted exception for uncontrolled driver caches; controlled driver-cold qualification remains unavailable, and this does not establish shader-stutter recovery.
+
 - Extend Vulkan PSO readiness regression tests to every byte of the actual pipeline key, with colliding cache entries, empty pipeline handles and pending jobs. Reject shader-only readiness so matching shader code cannot hide different render passes, registers or vertex inputs. Runtime code is unchanged; synchronous first-use shader/PSO stalls remain open.
 
 - Allow the user-requested modest gameplay measurement noise margin: 7.5% instead of 5% for the callback-evidence comparison only. Keep the 5% slowdown/boot-maximum limits and 16.683 ms fight deadline unchanged; shader compiler/output ratchets are unchanged. Preserve earlier results and add boundary controls proving that 6% noise is tolerated, 8% noise stays unqualified and a 6% slowdown still fails. Runtime code is unchanged; this does not establish stutter recovery.

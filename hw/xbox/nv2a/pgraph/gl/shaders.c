@@ -1780,18 +1780,21 @@ static bool gen_job_generate(int i)
     if (retro_atomic_load_acquire_int(&gen_jobs[i].state) != GEN_QUEUED) {
         return false;
     }
-    ShaderModuleCacheKey key = gen_jobs[i].key;
+    /* QUEUED acquisition lends this immutable slot through generation.
+     * The render thread cannot recycle its key until it acquires COMPLETE;
+     * no generator retains the state after returning. */
+    const ShaderModuleCacheKey *key = &gen_jobs[i].key;
     bool locs = gl_sso_enabled();
-    GenVshGlslOptions vo = key.vsh.glsl_opts;
-    GenGeomGlslOptions go = key.geom.glsl_opts;
-    GenPshGlslOptions po = key.psh.glsl_opts;
+    GenVshGlslOptions vo = key->vsh.glsl_opts;
+    GenGeomGlslOptions go = key->geom.glsl_opts;
+    GenPshGlslOptions po = key->psh.glsl_opts;
     vo.locations = go.locations = po.locations = locs;
     MString *code =
-        key.kind == GL_VERTEX_SHADER ?
-            pgraph_glsl_gen_vsh(&key.vsh.state, vo) :
-        key.kind == GL_GEOMETRY_SHADER ?
-            pgraph_glsl_gen_geom(&key.geom.state, go) :
-            pgraph_glsl_gen_psh(&key.psh.state, po);
+        key->kind == GL_VERTEX_SHADER ?
+            pgraph_glsl_gen_vsh(&key->vsh.state, vo) :
+        key->kind == GL_GEOMETRY_SHADER ?
+            pgraph_glsl_gen_geom(&key->geom.state, go) :
+            pgraph_glsl_gen_psh(&key->psh.state, po);
     if (!code) {
         /* A stale seed key may request an unnecessary geometry shader. */
         code = mstring_from_str("");

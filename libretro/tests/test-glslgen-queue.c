@@ -22,9 +22,11 @@ typedef struct { unsigned value; } MString;
 static retro_atomic_int_t stop, generated;
 
 static bool gl_sso_enabled(void) { return true; }
+static void check_borrowed_state(const unsigned *state);
 static MString *generate(const unsigned *state, GenVshGlslOptions options)
 {
     MString *code;
+    check_borrowed_state(state);
     assert(options.locations);
     retro_atomic_fetch_add_int(&generated, 1);
     if (!(*state % 17))
@@ -46,6 +48,25 @@ static MString *mstring_from_str(const char *empty)
 
 #include "glslgen-production.h"
 
+/* Generators borrow a published owner, never a stack copy or recycled slot.
+ * This function runs on the worker; the render thread cannot alter the key
+ * until COMPLETE is published after the generator returns. */
+static void check_borrowed_state(const unsigned *state)
+{
+    for (unsigned i = 0; i < GEN_JOBS; i++) {
+        if (state == &gen_jobs[i].key.vsh.state ||
+            state == &gen_jobs[i].key.geom.state ||
+            state == &gen_jobs[i].key.psh.state) {
+            assert(retro_atomic_load_acquire_int(&gen_jobs[i].state) == GEN_QUEUED);
+            unsigned before = *state;
+            if (!(before % 997)) retro_sleep(1);
+            assert(*state == before);
+            return;
+        }
+    }
+    assert(!"generator input must borrow its published queue slot");
+}
+
 int main(void)
 {
     unsigned submitted = 0, completed = 0, empty = 0;
@@ -59,6 +80,7 @@ int main(void)
         key.vsh.state = key.geom.state = key.psh.state = value;
         assert(gen_job_push(&key, !!(value & 1), !!(value & 2)));
         assert(gen_job_push(&key, !!(value & 1), !!(value & 2)));
+        memset(&key, 0xee, sizeof(key));
         submitted++;
     }
     assert(!gen_jobs_have_free(1));
@@ -75,12 +97,16 @@ int main(void)
                 unsigned value = gen_jobs[i].key.vsh.state;
                 assert(value == gen_jobs[i].key.geom.state);
                 assert(value == gen_jobs[i].key.psh.state);
+                assert(!gen_jobs[i].key.vsh.glsl_opts.locations);
+                assert(!gen_jobs[i].key.geom.glsl_opts.locations);
+                assert(!gen_jobs[i].key.psh.glsl_opts.locations);
                 assert(gen_jobs[i].gate == !!(value & 1));
                 assert(gen_jobs[i].seed == !!(value & 2));
                 assert(gen_jobs[i].code->value ==
                        (value % 17 ? (value ^ 0x12345678U) : 0));
                 free(gen_jobs[i].code);
                 gen_jobs[i].code = NULL;
+                memset(&gen_jobs[i].key, 0xdd, sizeof(gen_jobs[i].key));
                 gen_jobs[i].used = false;
                 retro_atomic_store_relaxed_int(&gen_jobs[i].state, GEN_IDLE);
                 completed++;
@@ -95,6 +121,7 @@ int main(void)
             /* A duplicate in flight must not generate a second source. */
             assert(gen_job_push(&key, !!(value & 1), !!(value & 2)));
             retro_eventcount_notify(&gen_ready);
+            memset(&key, 0xee, sizeof(key));
             if (!(value % 997))
                 retro_sleep(1); /* repeatedly let the worker park */
         } else {
