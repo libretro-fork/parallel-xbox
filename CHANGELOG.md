@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Build the QCOW2 file-call counting fixture's production backend as C11, matching its aligned retained decode buffers and the core build. Restore the test after C99 rejected `max_align_t`; runtime code and copy/I/O assertions are unchanged.
+
 - Run the shader compiler's injected-slowdown control after a completed comparison even when the real timings fail or are inconclusive. Preserve the original red result and all timing limits; skip the control when prerequisites prevented comparison or the job was canceled. Runtime code is unchanged.
 
 - Restore the QCOW2 retained-read CI fixture for current IDE cancellation and backend capability fields. Keep the buffered-request oracle separate from unbuffered DMA abandonment, preserve sanitizer/copy/allocation/lifetime checks, and require rejection of leaked view owners and canceled payload publication. Runtime code is unchanged; general CI timeouts and cold-play qualification remain separate open checks.

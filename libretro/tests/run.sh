@@ -462,7 +462,8 @@ if command -v qemu-img >/dev/null 2>&1; then
 fi
 
 # Count the production qcow2 layer's file calls without replacing its backend.
-${cc} -O2 -std=gnu99 -Wall -DLR_FILE_FILESTREAM=0 -I"$here/../.." -I"$lrc/include" \
+# The production retained decode buffer uses C11 max_align_t/_Alignas.
+${cc} -O2 -std=gnu11 -Wall -DLR_FILE_FILESTREAM=0 -I"$here/../.." -I"$lrc/include" \
     -Dlr_file_sync=counted_sync -Dlr_file_zero=counted_zero -Dlr_file_pwrite=counted_pwrite \
     -Dlr_file_pread=counted_pread -Dlr_file_preadv=counted_preadv -Dlr_file_pwritev=counted_pwritev \
     -c "$here/../../block/libretro-qcow2.c" -o "$work/bin/qcow2-spans.o"
