@@ -45,6 +45,7 @@ typedef struct {
     PGRAPHVkState *vk_renderer_state;VertexAttribute vertex_attributes[16];
     uint16_t compressed_attrs,uniform_attrs,swizzle_attrs;
     hwaddr dma_vertex_a,dma_vertex_b;uint32_t inline_array[4096];
+    uint32_t *inline_array_external;
 } PGRAPHState;
 typedef struct { PGRAPHState pgraph;uint8_t *vram_ptr; } NV2AState;
 typedef struct { int failed; } Error;

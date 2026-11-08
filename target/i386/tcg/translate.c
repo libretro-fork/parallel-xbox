@@ -22,6 +22,7 @@
 #include "qemu/host-utils.h"
 #include "cpu.h"
 #include "hw/xbox/xbe-runtime.h"
+#include "hw/xbox/nv2a/pgraph/sun-shadow-hooks.h"
 #include "accel/tcg/cpu-mmu-index.h"
 #include "exec/translation-block.h"
 #include "tcg/tcg-op.h"
@@ -4606,13 +4607,49 @@ static const TranslatorOps i386_tr_ops = {
     .tb_stop            = i386_tr_tb_stop,
 };
 
+static void i386_tr_sun_tb_start(DisasContextBase *base, CPUState *cpu)
+{
+    i386_tr_tb_start(base, cpu);
+    if (base->pc_first == PGRAPH_SUN_DRAW_UP_PC || base->pc_first == PGRAPH_SUN_DRAW_INDEXED_PC) {
+        DisasContext *dc = container_of(base, DisasContext, base);
+        gen_update_eip_cur(dc);
+        gen_helper_xemu_sun_camera(tcg_env, tcg_constant_tl(base->pc_first));
+    }
+}
+
+static void i386_tr_sun_translate_insn(DisasContextBase *base, CPUState *cpu)
+{
+    if (base->pc_next != base->pc_first &&
+        (base->pc_next == PGRAPH_SUN_DRAW_UP_PC || base->pc_next == PGRAPH_SUN_DRAW_INDEXED_PC)) {
+        /* Enter the seam in a fresh TB, with registers/flags materialized.
+         * Do not add a helper outside the decoder's fault rollback boundary. */
+        DisasContext *dc = container_of(base, DisasContext, base);
+        base->num_insns--;
+        tcg_remove_ops_after(dc->prev_insn_end);
+        base->insn_start = dc->prev_insn_start;
+        base->is_jmp = DISAS_TOO_MANY;
+        return;
+    }
+    i386_tr_translate_insn(base, cpu);
+}
+
+static const TranslatorOps i386_tr_sun_ops = {
+    .init_disas_context = i386_tr_init_disas_context,
+    .tb_start = i386_tr_sun_tb_start,
+    .insn_start = i386_tr_insn_start,
+    .translate_insn = i386_tr_sun_translate_insn,
+    .tb_stop = i386_tr_tb_stop,
+};
+
 void x86_translate_code(CPUState *cpu, TranslationBlock *tb,
                         int *max_insns, vaddr pc, void *host_pc)
 {
     DisasContext dc;
 
     tcg_ctx->disas_ctx = &dc;
-    translator_loop(cpu, tb, max_insns, pc, host_pc, &i386_tr_ops, &dc.base);
+    /* Selection happens once per translation, never in generated Off code. */
+    translator_loop(cpu, tb, max_insns, pc, host_pc,
+                    xemu_sun_camera_enabled ? &i386_tr_sun_ops : &i386_tr_ops, &dc.base);
     tcg_ctx->disas_ctx = NULL;
 }
 

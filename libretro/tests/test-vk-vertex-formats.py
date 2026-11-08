@@ -14,8 +14,10 @@ common = (repo / 'hw/xbox/nv2a/pgraph/vertex.c').read_text()
 header = (repo / 'hw/xbox/nv2a/pgraph/pgraph.h').read_text()
 
 
+draw=draw.replace('#include "draw-stream.inc"', (repo/'hw/xbox/nv2a/pgraph/vk/draw-stream.inc').read_text())
+
 def function(source, name):
-    match = re.search(r'^(?:static )?(?:inline )?(?:__attribute__\(\(noinline\)\) )?(?:unsigned )?\w+ ' + name + r'\(', source, re.M)
+    match = re.search(r'^(?:static )?(?:inline )?(?:__attribute__\(\(noinline\)\) )?(?:unsigned )?\w+ [* ]*' + name + r'\(', source, re.M)
     assert match, name
     end = source.index('{', match.start()) + 1
     depth = 1
@@ -27,7 +29,8 @@ def function(source, name):
 
 tables = '\n'.join(re.search(r'static const VkFormat ' + name + r'\[\] = \{.*?\};', vertex, re.S)[0]
                     for name in ('float_to_count', 'ub_to_count', 's1_to_count', 's32k_to_count'))
-parts = [tables, function(common, 'pgraph_update_inline_value'), function(header, 'pgraph_inline_attr_size')]
+parts = [tables, function(common, 'pgraph_update_inline_value'), function(header, 'pgraph_inline_attr_size'),
+         function(header, 'pgraph_inline_array_data')]
 parts += [function(vertex, name) for name in ('pgraph_vk_init_vertex_formats', 'pgraph_vk_bind_vertex_attributes')]
 parts += [function(draw, name) for name in ('get_size_and_count_for_format', 'remap_unaligned_attributes',
            'copy_remapped_attributes_to_inline_buffer', 'upload_converted_inline_array')]

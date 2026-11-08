@@ -4,6 +4,8 @@ from pathlib import Path
 import re,os,sys,subprocess,tempfile
 r=Path(sys.argv[1]).resolve();cc=sys.argv[2] if len(sys.argv)>2 else 'gcc'
 s=(r/'hw/xbox/nv2a/pgraph/vk/draw.c').read_text()
+s=s.replace('#include "draw-stream.inc"', (r/'hw/xbox/nv2a/pgraph/vk/draw-stream.inc').read_text())
+
 def function(name):
  m=re.search(r'^static (?:int|void) '+name+r'\(',s,re.M);assert m,name
  a=s.index('{',m.start());b=a+1;depth=1

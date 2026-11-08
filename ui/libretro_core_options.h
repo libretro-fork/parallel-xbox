@@ -603,8 +603,23 @@ struct retro_core_option_v2_definition option_defs_us[] = {
         },
         "100"
     },
+    /* Runtime-supported game enhancement slot. With a NULL key it is absent
+     * from registration in every options API, including legacy frontends. */
+    { NULL, NULL, NULL, NULL, NULL, NULL, { { NULL, NULL } }, NULL },
     { NULL, NULL, NULL, NULL, NULL, NULL, { { NULL, NULL } }, NULL },
 };
+
+static inline void libretro_set_sun_option_definition(bool available)
+{
+    size_t index=sizeof(option_defs_us)/sizeof(option_defs_us[0])-2;
+    if(available) option_defs_us[index]=(struct retro_core_option_v2_definition){
+        "xemu_doaxvb_sun_shadows", "DOAXVB Sun Shadows", NULL,
+        "Adds directional character and scene shadows for the verified USA DOAXVB build (Vulkan). "
+        "Uses the previous completed scene's map (one frame of shadow latency), resets on camera cuts and state loads. "
+        "No additional geometry copies. Off adds no rendering work. Changes take effect within one second.",
+        NULL,"video",{{"disabled","Off"},{"enabled","On"},{NULL,NULL}},"disabled"};
+    else memset(&option_defs_us[index],0,sizeof(option_defs_us[index]));
+}
 
 struct retro_core_options_v2 options_us = {
    option_cats_us,

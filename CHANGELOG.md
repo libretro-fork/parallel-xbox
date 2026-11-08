@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Add experimental DOAXVB Sun Shadows, default Off, exposed only after authenticating the supported USA 1.1106 executable on Vulkan. Rigid, skinned and stage-0 cutout casters borrow the current native GPU streams, palette and descriptors without additional geometry copies. Receivers use the preceding completed scene's filtered map; cuts, state loads, toggles and resets invalidate it. Off retains ordinary render dispatch and creates no shadow GPU resources. Original game shadows remain; programmable and blended draws are excluded. See `docs/doaxvb-sun-shadows.txt` for coverage and limits.
+
 - Vulkan shader locals are initialized each time their declaration executes. Nested loops and repeated blocks no longer retain values from an earlier iteration, preventing incorrect shader calculations. No extra geometry copies, resource retention or shadow work is added.
 
 - OpenGL refreshes scene textures after the CPU rewrites their source surfaces, including individual cubemap faces. Pending uploads can no longer bypass refresh through the texture-reuse fast path. Clean sources keep their existing fast path; no allocations, extra copies for clean textures or extended borrowed lifetimes are added.
@@ -9,7 +11,6 @@
 - Specular highlights use the programmed NV2A coefficient curve instead of reconstructing a power and applying `pow`. Front and back materials work in both lighting paths, including partial coefficient writes and bounded exceptional denominators. Existing uniform uploads carry the coefficient triples; no texture/vertex copies, staging buffers or extended borrowed lifetimes are added. Legacy snapshot slots remain readable.
 
 - Fixed-function material-source lighting matches the hardware's precombined scene term and applies vertex ambient colors to each light's ambient contribution. This prevents brightened material colors and incorrect vertex-color tints. Static and dynamic lighting share the correction using existing constants and uniforms; no new resource copies or borrowed lifetimes are introduced.
-
 
 - Lines and filled polygons retain their stage-3 texture coordinates when a game leaves point-sprite mode enabled. Generated sprite coordinates are used only for point draws and polygons rasterized as points. Both renderers reuse the existing pass-through shader state; no new geometry, buffers, resource copies or borrowed lifetimes are introduced.
 
@@ -127,11 +128,9 @@
 
 - DSP: compiled-block coverage is published with bitmap range masks instead of one update per program word.
 
-
 - Strengthen Vulkan completion-drain tests to distinguish idle polling from pending-but-empty work, verify state credits through final markers and quiesce, and reject shortcuts that skip unfinished states. Renderer behavior is unchanged.
 
 - DSP: repeated writes to an invalidated program word skip redundant block-cache scans until recompilation covers the word again.
-
 
 - Add real-queue Vulkan completion-drain regression coverage for ready-table bytes, eviction/adoption ownership, FIFO order and state markers. Cross-cache concurrent controls rejected the first render-side copy-removal candidates, so the rendering path is unchanged.
 
@@ -143,13 +142,11 @@
 
 - Audio: outbound DSP DMA borrows validated program-RAM spans directly; incoming program writes still use invalidating callbacks.
 
-
 - Add real-queue Vulkan worker completion regression coverage for exact record bytes, wrapping, queue drops and transferred reference ownership. This is test coverage for copy-removal work; renderer behavior is unchanged.
 
 - Audio: sequential callback-backed DSP DMA skips repeated memory-path and channel-index dispatch while retaining every per-word callback.
 
 - Audio: callback-backed interleaved DSP output now advances a channel cursor, retaining per-word callback order without repeated sample-index division.
-
 
 - Add an exact-size SPSC write reservation as a prerequisite for direct worker record construction. Refresh the consumer cursor only when cached room cannot cover the requested record; reject physical wraps and non-fitting records without publication. Existing queue callers and renderer behavior are unchanged.
 
@@ -282,7 +279,6 @@
 
 - Remove AES/PCLMUL execution helpers and crypto engines unused by the fixed Xbox Pentium III. Keep opcode decoding and feature checks, including illegal-instruction and instruction-fetch fault ordering.
 
-
 - Strengthen speculative pipeline handoff coverage with the real shader-state/render-pass/key layouts and XXH3. Check poisoned slot reuse, complete owned key bytes and a full ring becoming available during completion draining before attempting further copy removal. Renderer behavior is unchanged.
 
 - DSP: execute short X/Y memory bit-test calls natively, preserving source memory, conditional stack saves and loop-end handling.
@@ -291,10 +287,7 @@
 
 - Generate and identify Xbox EEPROMs with libretro-common streaming SHA-1, preserving all custom keyed states and exact EEPROM bytes while removing the duplicate QEMU SHA-1 engine.
 
-
-
 - DSP: execute register bit-test calls natively, retaining accumulator limiting, current status flags and correct stack saves.
-
 
 - Skip clearing the 264-byte fragment shader state immediately before copying it into a Vulkan module key. Keep unused union bytes, options and padding initialized so complete key bytes and cache identity stay the same; prewarm construction is unchanged.
 
@@ -311,7 +304,6 @@
 - DSP: execute X:qq conditional bit-test calls natively with correct return-address saves and single peripheral reads.
 
 - DSP: execute X:qq absolute bit-test jumps natively, retaining single peripheral reads and correct loop-end handling.
-
 
 - DSP: execute X:qq bit-test relative branches natively, preserving flags and reading peripherals once on taken, untaken and loop-end paths.
 
@@ -442,11 +434,9 @@
 
 - DSP: compile effective-address X/Y MOVEC control stores without interpreter fallback. Preserve address updates and SSH stack pops, including the destination across helper calls. Add 89,088 regression boundaries and a repeated-store program.
 
-
 - Add an all-or-nothing two-span SPSC write as the queue prerequisite for borrowed shader states. Copy spans directly into plain or mirrored rings and publish once after both are complete; reject oversized or non-fitting records without a partial write. Existing queue callers and renderer behavior are unchanged.
 
 - Return DMA descriptor storage before completion callbacks so successor transfers reuse it, reserve larger SG hints in one resize, and clear the owner cache on content close. Remove descriptor-cache TLS and fix the completion-reference leak when cancelling a mapping wait; guest payload mapping and copies are unchanged.
-
 
 - Add per-lookup LRU key callbacks so borrowed shader-state spans can compare against and initialize owned cache entries without changing shared cache callbacks. Preserve normal lookup code generation, collision checks, recency and eviction behavior; renderer view integration remains pending.
 
@@ -472,7 +462,6 @@
 - Build only geometry/vertex module keys during Vulkan prewarming, avoiding an unused fragment key. Preserve full shader lookup and worker keys, module-reference order and GPU compilation policy.
 
 - Skip IDE restart bottom-half allocation and wakeup on ordinary VM resumes when no disk error needs retrying. Preserve deferred/coalesced retry handling for actual errors; avoid housekeeping work around save/load and reset.
-
 
 - Prewarm Vulkan pre-rasterization libraries directly from their stage and render-pass inputs, avoiding temporary full shader bindings and pipeline keys. Preserve library identity, create info, module references and compilation policy.
 
@@ -646,7 +635,6 @@
 - Use safe unused space in the second Vulkan vertex-snapshot arena before falling back to synchronous settlement when the active arena fills. No additional buffer or intermediary copy is allocated.
 - Stream shader-seed replacements through libretro-common atomic-file primitives instead of assembling a whole-file byte array. Borrow preserved sections while writing the temporary file, unmap before commit, and retain exact section order, valid-prefix behavior and failure cleanup. Reject overflowing malformed section sizes before reading.
 
-
 - Stop forcing Vulkan vertex-snapshot submissions and GPU waits at the 75% arena threshold. Recycle only already-completed arenas with no current draw references; otherwise use the remaining safe capacity.
 - Recover Vulkan image allocations that exceed or fragment the startup reservation instead of treating its fixed capacity as a fatal out-of-memory limit. Reclaim completed images before overflow allocation, preserve in-flight resources and release empty overflow blocks; normal reuse and startup buffer backing remain unchanged.
 
@@ -654,9 +642,7 @@
 
 - Defer shader-seed merge payload copies until a new record requires a write. Keep small borrowed references during deduplication, then copy accepted records into one exact-sized merge buffer; unchanged seeds avoid that payload allocation entirely. Preserve order, caps and unmap-before-write ownership.
 
-
 - Keep the bound GL/Vulkan shader when SHADERCTL or SHADERPROG writes change only ignored bits, or restore the same live fields before drawing. Share key masks with the dirty check; preserve live-field invalidation and dynamic siblings without new snapshots or GPU work.
-
 
 - Reuse known Vulkan submission completion at eager-submit and deferred-flip readiness checks, avoiding redundant driver queries without postponing slot retirement or adding frame buffering.
 - Use native x86-64 SSE square root for positive normal inputs and signed zero under all four guest rounding modes, preserving inexact flags and the caller's MXCSR. Batch packed inputs in 128-bit groups; avoid state switching when matching rounding and sticky flags make it safe. Isolate the remaining SoftFloat square-root shortcuts from host rounding/flushing settings too.
@@ -664,7 +650,6 @@
 
 - Avoid redundant Vulkan fence-status queries during routine retirement when submission completion is already proved, while preserving slot cleanup and GPU resource ownership.
 - Reuse fragment shader keys across ignored combiner-control bits. Preserve stage count, MUX selection and per-stage constant flags; dynamic combiner uniforms still receive the complete guest register.
-
 
 - Keep idle GL/Vulkan query retirement responsive to frame, reset and shutdown requests by polling availability between interruptible libretro-common eventcount parks instead of waiting inside the graphics driver.
 - Reuse fragment shader keys across ignored upper SHADERPROG bits. Preserve all four five-bit texture modes and existing shader/cache formats.
@@ -679,17 +664,14 @@
 
 - Reuse fragment shader keys across unused clip-plane comparison settings. Preserve every active clip comparison, including stages without an enabled texture sampler, and skip unused clip-register reads.
 
-
 - Compare ordinary COMISS/UCOMISS and COMISD/UCOMISD inputs directly by their IEEE bit encodings, avoiding the general SoftFloat comparison call. Preserve signed-zero equality and all guest status flags; NaNs and subnormal inputs retain the original exceptional path, independently of CPU Boost and host FP mode.
 - Reset dynamic line-width metadata when initializing Vulkan pipeline-cache entries. Fresh or recycled clear-pipeline nodes no longer inherit a prior line pipeline's flag or uninitialized allocation bytes, avoiding incorrect line-width state emission. No key/cache format changes.
 - Reuse fragment shader keys across unused convolution-kernel settings in shadow and non-PROJECT2D texture stages. Active convolution and generated shader code remain unchanged.
-
 
 - Load GL shader seed states before stored module keys, copying module keys only when no usable state array exists. Avoid allocating and copying the key array that state-based sibling rebuilding immediately discards; preserve module-only fallback and local-first contents.
 
 - Specialize TCG translation-block hash lookups at their call sites, removing generic hash-reader dispatch and indirect comparison calls on uncontended misses. Preserve atomic publication, sequence-lock retries and RCU reclamation; keep the primary jump-cache hit path separate.
 - Add a standalone paired fragment-compiler benchmark with uninstrumented timing, separate allocation profiling and uniform-layout checks. It measures compiler work without adding emulator diagnostics or runtime overhead.
-
 
 - Reject stale Vulkan static vertex-input pipelines when the active attribute list shrinks. Check the existing zeroed key tail before accepting a matching prefix, including transitions to no attributes. Dynamic vertex-input devices retain their current reuse path; no key or pipeline-cache format changes.
 - Preserve complete seed state/key representations with explicit byte copies when compacting or collecting them, including padding used by byte-hashed keys.
@@ -716,7 +698,6 @@
 
 - Omit unused convolution tables from generated fragment shaders. Ordinary shaders have smaller source and SPIR-V modules; convolution stages share one table pair. Existing shader cache keys remain valid.
 
-
 - Keep the direct index shift for Vulkan ready queues of 32 entries or fewer; it copies less than amortized window compaction, including zero shifted indices for a single entry.
 
 - Adopt the oldest ready Vulkan shader module by advancing the existing index window, avoiding an active-index shift on each FIFO hit. Preserve remaining module order, free-slot uniqueness and reference ownership without extra storage.
@@ -724,9 +705,7 @@
 - Complete Vulkan synchronous readbacks through the shared newest-fence drain. Wait once for the readback submission instead of separately waiting on older uploads; keep FIFO resource retirement and reset the now-empty staging rings for reuse. Required readback completion still waits.
 - Skip the free-node search when an LRU cache is full, proceeding directly to the existing eligible-victim search. Return immediately from empty eviction, flush and active-visit operations using the existing counts; preserve ordering, callbacks and ownership without extra storage.
 
-
 - Keep convolution-filter texel spacing fixed after projective texture-coordinate division in GL and Vulkan. Prevent the blur footprint from shrinking or growing with Q, using the existing nine reads and kernel weights.
-
 
 - Combine independent SSE rounding/flush eligibility checks into one mode predicate before native arithmetic. Preserve CPU Boost, host-MXCSR tracking and all software fallback conditions while removing two conditional branches from the inspected Win64 native helper path.
 
@@ -735,20 +714,17 @@
 
 - Add GPU regression coverage for signed G8B8 mip filtering near texel boundaries, checking lower clamps, addressing, mixed filters and mip tails against an independent model. This is test-only coverage.
 
-
 - Drain Vulkan command slots with at most one fence wait, using the latest pending submission on their shared queue. Skip the wait when retirement is already proved; preserve ownership cleanup and timestamps after completion. Actual unfinished drains still wait.
 
 - Keep the shader-worker regression fixture on the production ready-index window, adoption and clear helpers so CI continues checking exact FIFO order and source ownership after compaction changes.
 
 - Keep signed G8B8 bump/color gathers aligned with their interpolation weights near texel boundaries. This prevents host coordinate rounding from selecting the wrong neighboring block, without extra texture reads or CPU/GPU synchronization.
 
-
 - Inline the Xbox translation-block state calculation in the dispatcher and indirect-branch lookup. Keep one shared calculation and the generic target hook, avoiding the out-of-line state-return call without changing lookup keys or debug policy.
 
 - Reuse Vulkan retirement serials during command-slot reclamation. When allocation retries already proved a submission complete, skip its redundant fence wait while preserving normal ownership, garbage and timestamp cleanup. Unfinished submissions keep their existing wait policy.
 
 - Reduce floating-depth bilinear shader reads from four samples to one unfiltered gather in GL and Vulkan, preserving decode-before-filter results without extra CPU/GPU synchronization.
-
 
 - Amortize Vulkan shader-ready cache index compaction with a small sliding window, preserving oldest-first eviction and module reference ownership. Keep miss scans contiguous and outline successful-take bookkeeping; module capacity is unchanged.
 
@@ -767,9 +743,7 @@
 
 - Decode NV2A floating 16-bit depth texels on the GPU before shadow filtering/comparison in GL and Vulkan. Keep native surface copies separate from encoded RAM, including CPU-overwrite transitions, without adding GPU readbacks or conversion passes.
 
-
 - Convert Vulkan YUY2 video overlays one pixel pair per compute invocation, sharing packed reads and chroma arithmetic. Preserve integer color output, odd final pixels, captured staging snapshots and CPU fallback.
-
 
 - Replace OpenGL flip completion waits with deferred fence retirement. Keep subsequent FIFO methods behind a pending flip while the frontend continues, and read cost queries only after their frame fence completes. No new image copies, shader variants, locks or frame queue.
 - Assemble Chihiro JVS replies directly into the caller buffer, removing the intermediate framed-response buffer and copy. Truncated prefixes, checksums, escaping ownership and command side effects are preserved.
@@ -789,7 +763,6 @@
 - Fetch 16/32-bit instruction operands directly from the mapped first translation page, preserving aligned atomic reads, byte swapping and existing page-crossing/MMIO handling.
 - Fixed 16-bit depth textures now retain min/mag filtering at mip zero in Vulkan, correcting affected shadow comparisons, including Force LOD0, without shader readbacks or waits.
 
-
 - Fetch opcode and prefix bytes directly from the already-mapped first translation page, avoiding the general page-crossing loader call on that path. Second-page, MMIO and fault handling remain unchanged.
 
 - Reuse the TLB-resolved RAM address for CPU Boost unchanged-store checks instead of looking up the same RAM block again. Dirty tracking, watchpoints and invalidation decisions are preserved.
@@ -797,16 +770,13 @@
 - Compose OpenGL display images on the renderer context and hand them over through owned mailbox slots, removing the CPU frame-end acknowledgement wait without adding an image-copy pass. Restore the frontend GL context after renderer setup and order display-slot reuse with GPU fences.
 - Vulkan color volumes with stored mip chains now preserve min/mag filtering when sampling is restricted to mip zero, including Force LOD0; lower mip data and volume layout stay intact.
 
-
 - Reduce CPU Boost unchanged-store comparison work with exact-width scalar reads, preserving unaligned accesses, page boundaries and invalidation decisions. No additional host CPU instruction requirements.
 
 - Remove the unused multi-threaded TCG selector and configuration path that startup always overrode. Initialize one translator explicitly and retain the existing Xbox CPU limit; translation behavior and cache controls are unchanged.
 - Single-level Vulkan color volumes now preserve minification versus magnification filtering at mip zero, including Force LOD0, without adding GPU readbacks or waits.
 
-
 - Remove redundant mutexes from TCG region allocation and host-code indexing under the core's serialized vCPU/safe-work ownership. Enforce one translator/region and retain existing block recycling, fault/unwind lookup and flush behavior; jump/page synchronization is unchanged.
 - Vulkan color cubemaps now retain min/mag filtering at mip zero, including Force LOD0, while keeping lower mips unread and the cube layout intact.
-
 
 - Bypass generic chardev write locking for the default unlogged null UART sinks, which discard bytes without shared mutable state. Logged sinks and real backends retain their existing write/retry/error behavior.
 
@@ -820,14 +790,12 @@
 - Skip unused palette DMA resolution during non-indexed Vulkan texture staging, avoiding redundant descriptor work and validation of palette state those formats never read. Indexed texture uploads are unchanged.
 - Vulkan mip-filtered 2D color textures now preserve min/mag selection at LOD0, including single-level images, guest clamps and Force LOD0, without reading lower mips.
 
-
 - Load both OpenGL shader-seed sections from one local mapping and one embedded-dictionary inflation, copying local/embedded records directly into their final arrays instead of temporary duplicated arrays and reallocations. Seed ordering and file format are unchanged.
 
 - Upload eligible linear depth/stencil surfaces from imported guest RAM directly into the GPU unpack input, avoiding the CPU staging reservation/copy. Padded rows use bounded GPU-copy batches; swizzled/unimported/misaligned inputs retain staging.
 
 - Keep short OpenGL visibility-query lists inside pooled report objects and transfer those objects directly to the report queue, removing per-report query-array allocation for up to eight intervals; long lists grow geometrically and all lists release on clear/completion/teardown.
 - Vulkan now preserves different minification and magnification filters for nonmip 2D color textures, keeping reads on the base level even when the image has a mip chain.
-
 
 - Avoid waiting for a busy Vulkan display command-buffer slot during gameplay. Keep the previous image published and retry on a later scanout check, including display-mode-only changes, without allocating another frame slot. Shutdown draining remains unchanged.
 
@@ -837,7 +805,6 @@
 
 - Upload only a few dirty page runs for large OpenGL vertex spans, retaining bulk uploads for dense/fragmented changes and private stale tracking when surfaces consume shared dirty bits.
 - Linear textures now consistently use one stored level, preventing Vulkan upload assertions and incorrect signed G8B8 filtering when mip-count or clamp fields are stale.
-
 
 - Skip per-page inspection of wholly clean or dirty bitmap chunks during display dirty-run collection, preserving concurrent-write and clipped-range behavior.
 - Fixed signed bump filtering and Vulkan min/mag selection when linear G8B8 textures request mip filters, matching their single-level storage.
@@ -936,15 +903,11 @@
 
 - Vulkan image allocation pressure now reclaims deferred images whose draw, display and upload work has finished, instead of failing while reusable memory is waiting in the retirement list. Driver image-creation memory errors receive one reclamation retry, with allocation-stage diagnostics if recovery fails. Headless regression tests protect live and in-flight images.
 
-
 - Long-immediate DSP comparisons now run natively, removing OutRun 2's remaining hot interpreter fallback. Negative 24-bit compare immediates now sign-extend correctly in the interpreter, and native compares clear stale internal status bits. Independent arithmetic/flags tests and production-block loop/code-write regressions cover both engines.
-
 
 - Register-count DOR, DO and REP loops now run in native DSP code, including status and stack-register sources. Setup preserves count-read order, accumulator limiting and zero-count repeats. New regression matrices and nested-loop programs guard against interpreter fallback and stale status/count values.
 
-
 - DSP program-memory writes now run natively for ordinary data and address registers, removing OutRun 2's hottest interpreter fallback. Self-modifying code and REP bodies redispatch after writes, while unchanged words retain cached code. Short absolute MOVEM addresses now decode across the full six-bit range. Regression tests cover transfers and code invalidation on x86-64 and AArch64.
-
 
 - Compile REP and DOR setup natively even when setup coincides with a DO-loop boundary. Preserve repeat zero-count expansion, the first post-processing pass, saved loop state and stack errors without reinterpreting the instruction. Add 7,056 boundary cases and a 65,536-iteration repeat program checked against the interpreter and chunked JIT.
 
@@ -990,7 +953,6 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 - Vulkan: specialize compressed-volume CPU reordering for 8/16-byte BC blocks, reducing runtime copy-size dispatch while retaining direct VRAM and generic fallback behavior.
 
-
 - Compile immediate and effective-address DSP jumps, conditional jumps and conditional subroutine calls natively. Preserve untaken-branch address updates, loop completion, stack errors and long-interrupt call behavior without reinterpreting the instruction. Add exhaustive condition/status tests and a production-block jump/call regression.
 
 - OHCI asynchronous transfers are tracked per USB endpoint, so one pending transfer no longer stalls unrelated endpoints. Compact endpoint keys and reusable, demand-sized payload buffers replace the shared 8 KiB buffer. Reset, detach and state load cancel host requests; guest descriptors resume after loading. Completions delivered during endpoint flush are consumed in the same service pass. TD service is bounded so malformed descriptor cycles cannot monopolize a frame.
@@ -1017,8 +979,6 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 - R6G5B5 textures: decode Morton texels directly into GL RGB or Vulkan RGBA, eliminating raw scratch and the Vulkan alpha-expansion pass. Small exact channel tables preserve signed endpoints and integer rounding.
 
-
-
 - APU streaming segments may start at physical RAM address zero without terminating the core. The source bytes are played normally, with no skipped audio cycle, extra buffering or new synchronization. The rare jingle signature probe is kept out of the ordinary voice-processing stack.
 - Pack fallback Vulkan depth/stencil readbacks directly into mapped readback
   storage when the device range permits, removing the intermediate packed-buffer
@@ -1026,9 +986,7 @@ What changed in the libretro core of this fork, newest first. Changes that come 
   Allocate one fixed host-pack descriptor set at startup and refresh it after
   readback-buffer growth; no extra pixel buffer or per-download allocation.
 
-
 - Paletted textures: expand Morton indices directly to final RGBA pixels for OpenGL and Vulkan CPU fallback uploads, eliminating the intermediate index buffer and second traversal. Keep Vulkan GPU unswizzle preferred.
-
 
 - OHCI preserves in-flight USB payloads when another transfer is blocked, including completed packets awaiting writeback. Blocked descriptors now skip guest-memory reads, payload copies and device lookup.
 - Renderer regression tests now exercise non-neutral bump luminance, negative scale and saturation across all channel-sign masks. The audited single-level paths already match the reference model, so emulator behavior is unchanged.
@@ -1037,13 +995,11 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 - OpenGL: reuse lazy fallback-transfer scratch capacity instead of reallocating on every scaled/irregular upload or readback; discard obsolete contents on growth and release the buffer with the renderer.
 
-
 - Signed G8B8 lower mip clamps one/two now support mixed min/mag filters. OpenGL applies a sampler minimum without rebasing the image, matching Vulkan filter selection for unsigned channels too. Positive lower clamps reuse minification-only reconstruction; Force LOD0 retains mixed filtering. Separate cached views preserve existing nonmipmap sampler behavior. Existing zero-lower-clamp keys/programs and serialized state layout remain unchanged.
 - Pack only visible texels when linear Vulkan textures need staging, avoiding
   guest row-padding copies and staging-ring reservations. Retain direct VRAM
   reads and the single-copy fast path for tightly packed rows. Sparse pitches
   save substantial bytes; tiny padded rows can have extra row-copy overhead.
-
 
 - OpenGL: swap flipped readback rows in place on AVX2 CPUs without a heap row temporary; keep the tuned portable copy path and handle empty/single-row images safely.
 
@@ -1057,14 +1013,12 @@ What changed in the libretro core of this fork, newest first. Changes that come 
   support once at initialization; keep CPU conversion on unsupported devices
   and defer image-dependent descriptor bindings to a retired upload slot.
 
-
 - OpenGL: upload representable pitched surfaces directly and expand pitched CPU fallbacks without repacking; remove the dedicated 4 MiB pitch scratch buffer.
 
 - Reuse fence-retired Vulkan video-overlay image allocations through the existing
   budget-aware image pool, and keep the dimension-independent sampler across
   mode changes. Repeated modes avoid fresh VRAM allocations when a compatible
   image has retired; new modes and replacement image views can still allocate.
-
 
 - Signed G8B8 textures with matching min/mag filters now decode before mip filtering when the lower mip clamp selects level one or two. Vulkan explicit fetches enforce that lower bound even on drivers whose LOD query omits it. Existing zero-lower-clamp shader keys and programs remain unchanged; mixed filters and higher lower clamps retain their previous path.
 
@@ -1077,7 +1031,6 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 - Vulkan: convert packed video overlays directly into the GPU image, avoiding CPU RGBA staging and its buffer-to-image copy; roughly halve CPU-written overlay bytes while preserving native filtering.
 
-
 - Signed G8B8 mip filtering now supports mirrored repeat on either or both axes, paired with wrap or clamp-to-edge. Texels reflect at each edge before signed interpolation, including mixed min/mag filters and Force LOD0. Existing supported address modes retain their shader keys and generated programs.
 
 - Reuse Vulkan PVIDEO pixels while their guest RAM source is unchanged:
@@ -1089,10 +1042,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
   chroma and byte-exact color rounding. Stop RAM dirty queries at the first
   clean consumer instead of consulting every bitmap.
 
-
 - Signed G8B8 mip filtering now handles wrapping on one texture axis and clamp-to-edge on the other, including mixed min/mag filters and Force LOD0. Each axis addresses texels independently before signed interpolation. Existing equal-address shaders and serialized shader-state layout are preserved.
 - Windows: replace libepoxy with libretro-common GL dispatch; keep shared worker contexts and Vulkan/GL interop.
-
 
 - Base-only wrapping signed G8B8 textures with matching filters now reuse the existing point/gather shader keys, extending the same specialization already used for clamp-to-edge. Mixed filters and real mip selection retain their existing programs; no runtime diagnostic logging is added.
 
@@ -1241,7 +1192,6 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 - CPU callback dispatch uses a libretro-common MPSC queue and eventcount completion. The single guest CPU no longer needs SMP exclusion locks or unused halt/ioctl synchronization objects. GLib interned strings and default context use immutable atomic publication; global random draws use an atomic counter. Other emulator locks remain.
 
-
 - Reduced worker wakeup overhead, especially short Windows handoffs, while preserving support for older Windows versions and existing high-resolution timeout handling.
 
 - x87 double loads and register moves now retain their precision when single-precision arithmetic is selected. The hard-FPU cache keeps binary64 values and rounds affected arithmetic results explicitly; soft-FPU double loads widen at extended precision before restoring the control state. This corrects integer conversions that previously saw an already-truncated input. Hard-FPU remains a binary64 approximation of x87.
@@ -1252,32 +1202,25 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 - QEMU's command-line parser is gone: the core always started the machine with the same seven options, which QEMU parsed through its full table of about a hundred. The core now hands each one to what it sets directly, and the option table, its 5,850-line source and the code only other options reached (about 10,000 lines) are gone. QEMU no longer looks for a host qemu.conf at start either. Nothing else changes for someone using the core.
 
-
 - Signed G8B8 mipmapped textures now decode each texel before filtering within and between mip levels in both renderers. Matching point/linear reconstruction with wrap addressing and a zero lower mip clamp is covered; Force LOD0 remains effective. No runtime diagnostic logging is added.
 - Windows asynchronous network handlers now accept raw Winsock handles as well as CRT-wrapped sockets. Failed raw-handle event registration leaves an existing handler intact, and readiness masks follow the supplied read/write callbacks. Winsock event registration makes raw sockets nonblocking; no new waits or synchronization primitives are added.
-
 
 - RDPMC reads of the Xbox CPU's two unmodelled performance counters now return zero instead of an illegal-instruction fault. Privilege checks and virtualization intercepts remain active, unsupported indices raise a general-protection fault, and repeated reads do not produce diagnostic logging. Performance event counting itself is not emulated.
 
 - OpenGL and Vulkan retry overflowing barycentric depth calculations in a shared power-of-two coordinate frame. Ordinary calculations retain their previous arithmetic path; very large projected coordinates can now produce finite interpolation weights instead of NaNs without additional shader variants or GPU/CPU synchronization. GL binaries from older generator revisions are rebuilt; existing seed states remain usable.
 - CPU Boost retains class-specific translations in a secondary cache consulted only after a primary miss, avoiding repeated global code-table lookups. The primary generated lookup is unchanged. This costs 1 MiB of preallocated CPU metadata, with no mid-game cache allocation or guest-buffer copy; code and page invalidation cover both caches.
 
-
 - Single-level signed G8B8 textures now honor mixed point/linear LOD0 minification and magnification filters, including sampler LOD bias, in both renderers. Vulkan preserves minification selection without sampling another mip level. Matching-filter shader paths are unchanged; no runtime diagnostic logging is added.
 - The Conexant TV encoder now advances its field counter with each guest vblank, including while the previous interrupt is still pending. Encoder registers, the SMBus transaction and its read cursor are preserved in savestates, so the counter can stay aligned with guest frame/flip tracking after a load.
 
-
 - OpenGL and Vulkan use the Xbox forced destination-alpha value when blending on XRGB-style targets, fixing colors that depended on unused host alpha bits. Vulkan applies the correction to both static pipeline keys and dynamic blend state, including guest format changes sharing the same host attachment format.
 
-
 - Guest indirect branches use the x86 state hook directly with CPU boost both enabled and disabled, and avoid the debug-flag helper call during normal execution. Single-step, one-instruction and no-chain debug modes keep their existing flag policy.
-
 
 - Vulkan devices with host query reset keep render passes open across visibility-report boundaries, avoiding repeated pass setup and pipeline binds. Query scopes still close at real pass boundaries, and game visibility queries do not overlap cost-model occlusion queries. Devices requiring command-buffer query resets retain their existing path.
 
 - Signed G8B8 textures now decode each texel before bilinear filtering and supply signed color values to the combiner in both renderers, fixing the speckled water in the tested Ninja Gaiden Black scene. This covers single-level, projective 2D textures with matching point or linear filters; mixed filters, mip chains, texture-border layouts, color keys and signed alpha-kill retain their previous paths. Force Quality Filtering preserves the sampling footprint of G8B8 data. No runtime diagnostic logging is added.
 - Vulkan converts unsupported three-component byte/short and signed-scaled short vertex formats directly into mapped staging memory, including inline arrays. Device capabilities are checked once at renderer startup; guest dword padding and provoking values remain intact, and GPUs supporting the native formats keep their existing upload path.
-
 
 - Vulkan vertex remapping skips leading vertices that the draw does not use, keeps packed copies contiguous, and specializes small strided copies. Remap metadata is passed by reference rather than copied; existing indices, staging capacity and in-flight snapshot protection are preserved.
 
@@ -1298,7 +1241,6 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 - Frontend VFS reads validate the full scatter/gather range before any provider I/O. Empty reads no longer seek, and invalid or overflowing requests leave the provider cursor and destination unchanged.
 
-
 - Vulkan surface conversion no longer hangs on GPUs with compute workgroup limits below 1024. Workgroup selection respects both invocation and dimension limits.
 - Network reception resumes after the guest returns RX buffers, including descriptors returned without a register write. Recovery polling stops when reception is disabled or ready, and is rebuilt after loading a savestate.
 - The GPU's PBUS PCI configuration mirror handles both hardware aliases and byte/word accesses through the normal PCI write masks.
@@ -1307,9 +1249,7 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 - Reject negative-length block discards before dispatch, including memory-backed media, instead of silently accepting an invalid range.
 
-
 - Block I/O completion excludes the active callback from nested drains and cancellation, preventing duplicate callbacks and pending-counter underflow while retaining its request slot until return.
-
 
 - CPU Boost invalidates stale entry flag assumptions after variable-count shifts, fixing incorrect carry/overflow reads. It compares reconstructed byte/32-bit subtraction operands at block entry instead of materializing all flags for relational conditions. SAHF also skips discarded flag calculations when overflow is already known clear. Both retain pending floating-point publication and safe block-class handling.
 - Added an opt-in bump-filter observation probe covering 192 G8B8 sampling cases. Rendering behavior is unchanged.
