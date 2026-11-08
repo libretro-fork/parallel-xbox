@@ -144,12 +144,16 @@ jobs:
           Path('results/validation.txt').write_text(f'{len(files)} exported modules validated\n')
           PY
       - name: Compare fresh compiler invocations under SPIR-V 1.5 and 1.6
+        id: compiler-comparison
         run: |
           set -o pipefail
           cpu=$(python3 -c 'import os; print(max(os.sched_getaffinity(0)))')
           lscpu > results/cpu.txt
           python3 driver/libretro/tests/benchmark-shader-compile.py --baseline reference --candidate candidate --corpus corpus --output results/comparison --prepare-corpus --validator spirv-val --cpu "$cpu" 2>&1 | tee results/comparison.log
       - name: Require the timing gate to reject an injected slow compiler
+        # A real comparison failure must remain red, but must not hide a broken
+        # rejection control. Skip only when comparison never ran or was canceled.
+        if: ${{ !cancelled() && (steps.compiler-comparison.outcome == 'success' || steps.compiler-comparison.outcome == 'failure') }}
         run: |
           set +e
           cpu=$(python3 -c 'import os; print(max(os.sched_getaffinity(0)))')

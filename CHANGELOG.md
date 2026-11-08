@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Run the shader compiler's injected-slowdown control after a completed comparison even when the real timings fail or are inconclusive. Preserve the original red result and all timing limits; skip the control when prerequisites prevented comparison or the job was canceled. Runtime code is unchanged.
+
 - Restore the QCOW2 retained-read CI fixture for current IDE cancellation and backend capability fields. Keep the buffered-request oracle separate from unbuffered DMA abandonment, preserve sanitizer/copy/allocation/lifetime checks, and require rejection of leaked view owners and canceled payload publication. Runtime code is unchanged; general CI timeouts and cold-play qualification remain separate open checks.
 
 - OpenGL recovers texture-binding knowledge per unit after external helpers invalidate it, so stable draws can suppress redundant binds without an extra all-unit clearing pass. Target switches remain unknown until the new target is rebound or the disabled stage clears every target. Reuse existing binding metadata and native resources without texture copies, queries, allocations or resource ownership changes; keep scale-change invalidation on the render-thread flush. Add mid-pass, target-switch and owner-routing regression controls to shader CI. Local 16-run comparisons, identical images and save/load/reset checks passed. Delivered under a separate user-approved targeted exception for uncontrolled driver caches; controlled driver-cold qualification remains unavailable, and shader-stutter recovery remains open.
