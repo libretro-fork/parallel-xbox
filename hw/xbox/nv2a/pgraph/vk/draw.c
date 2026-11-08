@@ -338,6 +338,9 @@ void pgraph_vk_finalize_pipelines(PGRAPHState *pg)
         g_array_free(r->pump.retry[i], true);
     }
     g_free(r->pump.state_hash);
+    /* Shader finalization releases the seed bank next. Retired progress
+     * must not retain its borrowed base or the freed retry/hash arrays. */
+    memset(&r->pump, 0, sizeof(r->pump));
     destroy_framebuffer_cache(r);
     finalize_clear_shaders(pg);
     finalize_pipeline_cache(pg);
@@ -840,7 +843,8 @@ static inline void pipeline_reg_values(PGRAPHState *pg, uint32_t *out)
         out[6] = 0;
         out[2] &= ~(NV_PGRAPH_CONTROL_0_ZENABLE |
                     NV_PGRAPH_CONTROL_0_ZFUNC |
-                    NV_PGRAPH_CONTROL_0_ZWRITEENABLE);
+                    NV_PGRAPH_CONTROL_0_ZWRITEENABLE |
+                    NV_PGRAPH_CONTROL_0_STENCIL_WRITE_ENABLE);
         out[3] = 0;
         out[4] = 0;
     }
@@ -1403,11 +1407,12 @@ static bool pump_in_flight(bool frag, uint64_t hash)
     return false;
 }
 
-static bool pump_full_in_flight(uint64_t key_hash)
+static bool pump_full_in_flight(uint64_t key_hash, const PipelineKey *key)
 {
     for (unsigned i = pump_d; i < pump_w_local; i++) {
         LibJob *j = &pump_jobs[i % PUMP_RING];
-        if (j->full && j->hash == key_hash) {
+        if (j->full && j->hash == key_hash &&
+            !memcmp(&j->key, key, sizeof(*key))) {
             return true;
         }
     }
@@ -1741,14 +1746,22 @@ static int pump_state(PGRAPHState *pg, const ShaderState *st,
 void pgraph_vk_libpump_step(PGRAPHState *pg)
 {
     PGRAPHVkState *r = pg->vk_renderer_state;
+    if (!r || !r->device) {
+        return;
+    }
+    /* Full PSOs use the worker even without GPL. Adopt their completed
+     * results before the library-only guard, otherwise a queued state can
+     * keep its dynamic sibling indefinitely. No worker means no drain. */
+    if (pipe_started && pump_d != pump_w_local) {
+        pump_drain(pg);
+    }
     /* The library keys only omit what the driver takes dynamically; with a
      * static pipeline state the pump could not predict a draw's key. */
-    if (!r || !r->pipeline_library || !r->dyn_cull_front ||
-        !r->dyn_blend || !r->dyn_vertex_input || !r->device ||
+    if (!g_config.perf.shader_seeding || !r->pipeline_library || !r->dyn_cull_front ||
+        !r->dyn_blend || !r->dyn_vertex_input ||
         !r->color_binding) {
         return;
     }
-    pump_drain(pg);
     unsigned n;
     const ShaderState *states = pgraph_vk_seed_pump_states(&n);
     if (!n) {
@@ -2155,6 +2168,23 @@ static void pipeline_job_fill(PGRAPHState *pg, const ShaderState *st,
     lib_job_link(job);
 }
 
+static bool pipeline_ready(PGRAPHVkState *r, uint64_t hash,
+                           const PipelineKey *key)
+{
+    unsigned bin = lru_hash_to_bin(&r->pipeline_cache, hash);
+    LruNode *node;
+    QTAILQ_FOREACH(node, &r->pipeline_cache.bins[bin], next_bin) {
+        if (node->hash == hash) {
+            PipelineBinding *binding = container_of(node, PipelineBinding, node);
+            if (binding->pipeline != VK_NULL_HANDLE &&
+                !memcmp(&binding->key, key, sizeof(*key))) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
 /* A state met for the first time draws with its dynamic sibling while the
  * worker makes its pipeline for the draw's state - the key the sibling
  * draws with, its shaders in place of the sibling's - into the pipeline
@@ -2183,9 +2213,16 @@ static void pipeline_ahead(PGRAPHState *pg, const PipelineKey *draw_key)
            sizeof(*key) - after_shader);
     memcpy(&key->shader_state, &r->ahead_state, sizeof(ShaderState));
     uint64_t hash = fast_hash((const uint8_t *)key, sizeof(*key));
-    if (lru_contains_hash(&r->pipeline_cache, hash) ||
-        pump_full_in_flight(hash)) {
+    if (pipeline_ready(r, hash, key)) {
         pgraph_vk_spec_pipeline_landed(r->ahead_hash);
+        return;
+    }
+    if (pump_full_in_flight(hash, key)) {
+        /* Another draw already queued this PSO. It is not ready: keep the
+         * correct sibling bound until pump_drain lands the actual result.
+         * Premature PIPE_LANDED makes the next draw adopt specialization
+         * and synchronously compile a duplicate while its worker runs. */
+        pgraph_vk_spec_pipeline_queued(r->ahead_hash);
         return;
     }
     ShaderModuleInfo *geom, *vsh, *psh;

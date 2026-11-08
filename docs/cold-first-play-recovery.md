@@ -242,6 +242,71 @@ and CI changes leave the existing runtime regression explicitly open.
 
 ## Completion evidence
 
+### Handoff, key and lifetime repairs
+
+In-flight full PSOs remain queued, preserving the correct dynamic sibling
+until render-thread adoption. A ready cache probe requires an exact complete
+key and a non-null pipeline; in-flight deduplication compares complete keys
+too. Completed demand PSOs are drained before GPL/dynamic-state/attachment
+warmup guards. Only a started worker with pending jobs is polled.
+
+Stencil write masks are dynamic with the extended dynamic-state group, so
+`STENCIL_WRITE_ENABLE` no longer splits that in-memory PSO key. Static-device
+keys retain the bit. Compatibility decision: no serialized format bump;
+`PipelineKey` is an ephemeral host lookup key. Its layout, `ShaderState`,
+module keys, generated shader code and driver-cache validation are unchanged.
+
+Disabling seeding stops new seed submissions without skipping outstanding
+native ownership retirement. The bank and one-shot flag are reset after
+worker quiescence on renderer finalization. Retired pump progress is cleared
+before its borrowed bank base is released. Lookups borrow existing immutable
+keys only during the call. No new geometry/SPIR-V payload copies, threads,
+per-draw clocks or persistent guest pointers are introduced.
+
+Production-function tests cover 40,960 ahead-key cases, 1,024 completion
+service configurations, 200,000 register-key projections against a frozen
+reference, and repeated renderer generations/option transitions. Required
+negative controls reject premature readiness, hash collisions, null handles,
+GPL-only completion servicing, stale seed flags and early bank release.
+
+The broader complete-PSO seed warmer is held in a separate local experiment,
+not part of these repairs. Its first state-verified comparison failed warm
+play qualification (about 13% worse means and new deadline misses). Preserve
+that evidence. CPU cache-domain affinity is an additional controlled repeat,
+not permission to erase failures or claim recovery from warmed driver data.
+
+Earlier fixed-input private tests omitted creation of fresh system folders;
+their "warm" labels were invalid because writes did not persist. Keep their
+blocking-API traces, but do not use them as cache comparisons. The corrected
+private runner verifies persistence and 600 live-round callbacks through
+bounded read-only test probes, with image checks separate from timing.
+
+The narrow repair's controlled repeat used two ABBA blocks, each with four
+fresh boots and their persistent-cache repeats (16 processes, 9,600 verified
+live callbacks). Native-cache-empty runs had 130 learned descriptors; they
+were not descriptor-empty. On Ryzen 9 9950X3D/RTX 5090, Vulkan/no-GPL/8x, all
+live callbacks stayed below 16.683 ms. Cold live means changed -0.89%; warm
+means +0.035%, within the comparison's noise allowance. Worst live callbacks
+were 12.620/13.460 ms baseline cold/warm and 12.094/13.900 ms candidate.
+Process affinity was confined to the 96 MiB L3 domain for both revisions;
+no system power/clock settings changed. Driver cache state was uncontrolled.
+These are host callback measurements, not presented-frame latency or proof
+that uncovered first-use driver compilation is fixed.
+
+A separate two-block ABBA comparison started eight processes with neither
+learned descriptors nor a native pipeline cache. It verified another 4,800
+live callbacks, with no 16.683 ms misses in either revision. Means were
+indistinguishable (-0.13% candidate); worst live callbacks were 13.316 ms
+baseline and 12.473 ms candidate. The bundled dictionary has no DOA3 entry.
+The same driver-cache caveat applies. This qualifies the narrow repair for
+this first-fight workload, not all scenes, utility PSOs or cold-driver states.
+
+Separate first-fight captures were byte-identical at 5760x3840. A lifecycle
+smoke saved and loaded twice (zero RAM differences), closed/reloaded content
+and recreated the shared Vulkan device, then reset and resumed live play.
+Audio totals matched with zero cadence errors. That smoke is not a timing
+comparison; the release build excludes its passive guest-state probe.
+
 Require the known bad cold-play replay to fail and the candidate to pass;
 retain the original failure and a same-hardware clean-binary comparison.
 Show no new obvious compiler interruption relative to the verified smooth

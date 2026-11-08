@@ -1213,7 +1213,8 @@ static void vk_spec_queue_view(uint64_t h, const ShaderStateView *view)
     vk_spec_queue_impl(h, NULL, view);
 }
 
-static GArray *vk_pump_states; /* covers then states, for the library pump */
+static GArray *vk_pump_states; /* renderer-lifetime covers then seed states */
+static bool vk_seed_done;
 
 static void vk_pump_remember(const ShaderState *st)
 {
@@ -1623,12 +1624,13 @@ void pgraph_vk_init_shaders(PGRAPHState *pg)
  * worth per flip. */
 void pgraph_vk_seed_service(void)
 {
-    static bool done;
-    if (!done && pgraph_seed_game_tag()) {
-        done = true;
+    if (!vk_seed_done && g_config.perf.shader_seeding && pgraph_seed_game_tag()) {
+        vk_seed_done = true;
         vk_seed_siblings();
     }
-    vk_seed_step();
+    if (g_config.perf.shader_seeding) {
+        vk_seed_step();
+    }
 }
 
 /* Shutdown writeback, on the pfifo thread (see pgraph_vk_process_pending):
@@ -1651,4 +1653,11 @@ void pgraph_vk_finalize_shaders(PGRAPHState *pg)
     destroy_descriptor_set_layout(pg);
     destroy_descriptor_pool(pg);
     vk_spec_quiesce();
+    /* Pipeline finalization already drained jobs, whose keys are owned by
+     * their slots/cache entries. No lend into this bank survives a step. */
+    if (vk_pump_states) {
+        g_array_free(vk_pump_states, TRUE);
+        vk_pump_states = NULL;
+    }
+    vk_seed_done = false;
 }

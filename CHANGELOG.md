@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Vulkan keeps specialization queued until its complete pipeline is ready, checks exact keys/non-null handles, and adopts completed jobs even with GPL disabled. Stop splitting fully dynamic PSOs on the unused static stencil-write key bit. Seed banks and one-shot flags now end with their renderer; disabling Smooth First Play submits no further seed work, and idle pipeline workers need no completion poll. Reuse native references and retirement without new geometry/SPIR-V copies or threads. Uncovered first-use PSO stalls remain an open regression.
+
 - Shader regression CI now ratchets emitted words and instructions per input/target, pins paired compiler measurements to one allowed CPU, and reports unstable isolated samples as unqualified. Expand GPU initializer coverage to helper arrays/vectors, do-loops and switch blocks. This changes tests only; cold-first-play smoothness remains BAD and regressed.
 
 - Build the shader dictionary test tool's archive dependencies from a clean checkout, including historical comparison trees. The shader CI now prepares those dependencies explicitly and avoids fetching unused Git blob history. This fixes a first-run CI build failure hidden by an already-built local archive.
