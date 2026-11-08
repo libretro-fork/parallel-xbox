@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Restore CPU Boost carry-class specialization after the generic-entry change reduced DOA3 copyright-screen throughput from about 203 to 167 FPS in repeated paired tests. Add a checkpoint-based ABBA throughput gate with fixed options, warmup exclusion, noise detection and a known-regression negative control. No game-specific dispatch or rendering copies are added.
+
 - Remove the experimental DOAXVB Sun Shadows enhancement and its per-game core option. Restore ordinary rendering without build verification, camera hooks, alternate FIFO dispatch or shadow resource allocation.
 
 - Vulkan shader locals are initialized each time their declaration executes. Nested loops and repeated blocks no longer retain values from an earlier iteration, preventing incorrect shader calculations. No extra geometry copies, resource retention or shadow work is added.
@@ -39,7 +41,6 @@
 
 - DSP: sparse cache flushes use word summaries to skip empty publication-bitmap words; focused Linux sanitizer and ARM64 checks now run independently in CI.
 
-- CPU: share translated blocks across incoming carry-flag states and retain direct links through dynamic flag updates. Reduces CPU overhead on JSRF's title screen and in Ninja Gaiden Black while preserving guest clocks and frame pacing.
 
 - CPU: recognize Gunvalkyrie's register-swapped RAM wait loop, reducing wasted CPU work on its title/menu screen while retaining guest frame timing and interrupt handling.
 

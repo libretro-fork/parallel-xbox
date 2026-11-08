@@ -1049,15 +1049,26 @@ static CCPrepare gen_prepare_eflags_c_entry(DisasContext *s)
 
 /*
  * CPU boost: the TB flags a jump out of the block finds its next block with
- * Generic carry entries let direct jumps stay linked even when the lazy
- * flags leaving this block are only known at runtime.
+ * (the CF class of the CC_OP it leaves); false when that CC_OP is only known
+ * at run time, and the jump has to look the block up then.
  */
 static bool gen_exit_tb_flags(DisasContext *s, uint32_t *flags)
 {
-    *flags = s->flags;
-    if (xemu_cpu_boost) {
-        *flags |= tb_cf_flags(TB_CF_ANY);
+    int cf_class;
+
+    if (!xemu_cpu_boost) {
+        *flags = s->flags;
+        return true;
     }
+    if (s->cc_op != CC_OP_DYNAMIC) {
+        cf_class = x86_cc_op_cf_class(s->cc_op);
+    } else if (s->cc_op_entry && s->cf_entry_class != TB_CF_ANY) {
+        s->cf_entry_used = true;
+        cf_class = s->cf_entry_class;
+    } else {
+        return false;
+    }
+    *flags = s->flags | tb_cf_flags(cf_class);
     return true;
 }
 
@@ -4394,8 +4405,7 @@ static void i386_tr_init_disas_context(DisasContextBase *dcbase, CPUState *cpu)
     dc->cs_base = dc->base.tb->cs_base;
     dc->pc_save = dc->base.pc_next;
     dc->flags = flags & ~TB_CF_FLAGS_MASK;
-    /* No entry-class assumptions: direct predecessors may change CC_OP. */
-    dc->cf_entry_class = xemu_cpu_boost ? TB_CF_ANY : tb_cf_class_of_flags(flags);
+    dc->cf_entry_class = tb_cf_class_of_flags(flags);
     dc->cc_op_entry = true;
     dc->cf_entry_used = false;
     dc->cpl = cpl;

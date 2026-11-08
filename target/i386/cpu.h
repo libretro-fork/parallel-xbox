@@ -201,11 +201,11 @@ typedef enum X86Seg {
 #define HF_FPU_PC_MASK       (1 << HF_FPU_PC_SHIFT)
 
 /*
- * Carry classes use TB flag bits no hflag uses (2, 30 and 31; never set
- * in env->hflags). CPU Boost selects TB_CF_ANY for entry and exit keys:
- * one translation can retain direct links across changing lazy-flag states.
- * Reads of incoming carry use the general helper; carry produced within
- * the block still has its statically known arithmetic fast paths.
+ * CPU boost: the class of CF the CC_OP a block starts with has, kept in
+ * TB flag bits no hflag uses (2, 30 and 31; never set in env->hflags), so
+ * a block whose code needs CF before it sets the flags (INC/DEC first in a
+ * loop, ADC, SBB, JC) computes it inline instead of calling
+ * helper_cc_compute_c (x86_get_tb_cpu_state, translate.c).
  */
 #define TB_CF_UNKNOWN 0 /* any other CC_OP: the helper */
 #define TB_CF_SRC_NZ  1 /* INC, DEC, MUL: CC_SRC != 0 */
@@ -215,10 +215,12 @@ typedef enum X86Seg {
 #define TB_CF_SUBL    5 /* (uint32_t)(CC_DST + CC_SRC) < (uint32_t)CC_SRC */
 #define TB_CF_SUBB    6 /* (uint8_t)(CC_DST + CC_SRC) < (uint8_t)CC_SRC */
 /*
- * A block valid for every incoming carry class. Incoming carry, when read,
- * is resolved from the runtime CC_OP. Both CPU-state lookups and direct
- * exits request this class with CPU Boost enabled, making direct links safe
- * even when the preceding block's CC_OP is only known at runtime.
+ * Never a CPU state's: the class of a block that reads neither CF nor the
+ * CC_OP it starts with before setting the flags, so its code is the same for
+ * every class; it is translated once, with these bits (XEMU_TB_CF_ANY), and
+ * the lookups fall back to it. Translated again (a retranslation), it gets
+ * the code that works for any class: the helper, no goto_tb on the CC_OP it
+ * started with.
  */
 #define TB_CF_ANY     7
 #define TB_CF_FLAGS_MASK ((3u << 30) | (1u << 2))

@@ -24,6 +24,12 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
+      - name: Carry specialization rejects the DOA3 throughput regression
+        run: python3 libretro/tests/test-tb-lookup-state.py . cc
+      - name: Incoming carry arithmetic stays inline and correct
+        run: python3 libretro/tests/test-byte-carry.py . cc
+      - name: Throughput gate rejects large drops and inconclusive measurements
+        run: python3 libretro/tests/test-throughput-gate.py
       - name: Texgen viewer changes preserve packed modes and uniform storage
         run: python3 libretro/tests/test-texgen-viewer.py . cc
       - name: Back material uniforms stay live without retaining borrowed data
