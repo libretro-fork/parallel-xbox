@@ -498,8 +498,8 @@ SEEDSHADERS_OBJS := $(call obj,$(addprefix $(CORE_DIR)/hw/xbox/nv2a/pgraph/, \
 		glsl/vsh-ff.c glsl/vsh-prog.c glsl/uniform-cache.c texture.c swizzle.c)) \
 	$(OBJS_GLSLC) $(OBJS_VSH) $(OBJS_GLIB) $(OBJS_LRCOMMON)
 $(SEEDSHADERS): $(CORE_DIR)/libretro/tests/seedshaders.c $(SEEDSHADERS_OBJS) \
-		$(LIBQEMUUTIL)
-	$(CC) -O2 $(CFLAGS_TARGET) $(if $(filter win,$(platform)),-static,) -o $@ $< $(filter-out $<,$^) \
+		$(LIBQEMUUTIL) $(filter %.a,$(DEPS_LIBS))
+	$(CC) -O2 $(CFLAGS_TARGET) $(if $(filter win,$(platform)),-static,) -o $@ $< $(filter-out $< $(filter %.a,$(DEPS_LIBS)),$^) \
 		$(DEPS_LIBS) $(OS_LIBS)
 seedshaders: $(SEEDSHADERS)
 

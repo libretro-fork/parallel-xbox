@@ -17,6 +17,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          filter: blob:none
       - id: revisions
         env:
           EVENT: ${{ github.event_name }}
@@ -66,6 +67,7 @@ jobs:
         with:
           path: driver
           fetch-depth: 0
+          filter: blob:none
       - name: Check candidate source with the current test harness
         env:
           COMMIT: ${{ matrix.commit }}
@@ -100,6 +102,7 @@ jobs:
         with:
           path: driver
           fetch-depth: 0
+          filter: blob:none
       - name: Create separate parent/accepted and candidate source trees
         env:
           COMMIT: ${{ matrix.commit }}
@@ -114,6 +117,10 @@ jobs:
           sudo apt-get -qy update
           sudo apt-get -qy install build-essential pkg-config libepoxy-dev spirv-tools
           set -o pipefail
+          # Historical seedshaders targets omitted this link prerequisite.
+          # Build it first without modifying the reference source or racing goals.
+          make -C reference -j2 ./deps/libslirp.a 2>&1 | tee results/reference-dependencies.log
+          make -C candidate -j2 ./deps/libslirp.a 2>&1 | tee results/candidate-dependencies.log
           make -C reference -j2 seedshaders 2>&1 | tee results/reference-build.log
           make -C candidate -j2 seedshaders 2>&1 | tee results/candidate-build.log
           reference/libretro/tests/seedshaders reference/data/shader_seeds.bin corpus/reference 2>&1 | tee results/reference-dictionary.log
@@ -179,6 +186,7 @@ jobs:
         with:
           path: driver
           fetch-depth: 0
+          filter: blob:none
       - env:
           COMMIT: ${{ matrix.commit }}
         run: git -C driver worktree add --detach ../candidate "$COMMIT"
@@ -231,6 +239,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          filter: blob:none
       - name: Run the administrator-provisioned cold/warm fixture service
         env:
           REVISIONS: ${{ needs.revisions.outputs.matrix }}

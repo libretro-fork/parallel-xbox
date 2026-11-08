@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Build the shader dictionary test tool's archive dependencies from a clean checkout, including historical comparison trees. The shader CI now prepares those dependencies explicitly and avoids fetching unused Git blob history. This fixes a first-run CI build failure hidden by an already-built local archive.
+
 - Treat cold-first-play shader/PSO smoothness as a known open regression. Add mandatory development rules linking smooth first play, zero-copy borrowed lifetimes and non-slurping file I/O, plus per-commit GitHub shader/PSO contracts, paired compilation comparisons, SPIR-V/software-GPU validation and a trusted hardware qualification hook. This adds test infrastructure and a recovery plan; it does not claim the gameplay stutter is fixed.
 
 - Restore CPU Boost carry-class specialization after the generic-entry change reduced DOA3 copyright-screen throughput from about 203 to 167 FPS in repeated paired tests. Add a checkpoint-based ABBA throughput gate with fixed options, warmup exclusion, noise detection and a known-regression negative control. No game-specific dispatch or rendering copies are added.
