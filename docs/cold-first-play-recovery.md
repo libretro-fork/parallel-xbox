@@ -325,6 +325,12 @@ model the existing inline-lend materialization hook, exercise 192,000
 retirement schedules, and reject a finish omitting the hook. Both tests now
 run in per-commit shader contracts too. This is test-only; runtime evidence
 and unresolved first-use failures remain unchanged.
+Further fixture-only repairs use the actual block medium enum and reject
+synchronous CHD reads, model newer pre-load fields without retaining inline
+lends, and test the existing nonblocking frontend finish contract. A wait
+negative control must fail. These three checks now run in shader contracts;
+1,000 inline batches, 36 handoff cases and 40,000 frame requests pass locally.
+This restores tests of earlier runtime changes, not new rendering behavior.
 
 Require the known bad cold-play replay to fail and the candidate to pass;
 retain the original failure and a same-hardware clean-binary comparison.

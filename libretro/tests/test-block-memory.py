@@ -33,7 +33,7 @@ typedef int MemTxResult;
 typedef struct { void *iov_base; size_t iov_len; } IOV;
 typedef IOV LRFileIOV;
 typedef struct { IOV *iov; int niov; size_t size; } QEMUIOVector;
-enum { LR_MEDIUM_NONE, LR_MEDIUM_FILE, LR_MEDIUM_QCOW2, LR_MEDIUM_VFS, LR_MEDIUM_MEMORY };
+/* MEDIUM KIND */
 typedef struct { int kind; int64_t length, base, vfs_position; bool writable;
                  void *file, *qcow2, *vfs, *as; } LRMedium;
 typedef struct { LRMedium m; } BlockBackend;
@@ -109,10 +109,13 @@ int main(void) {
     assert(lr_disk_rw(&b,b.m.length,&scattered,false) == -EIO && !calls);
     b.m.kind = LR_MEDIUM_NONE;
     assert(lr_disk_rw(&b,0,&empty,false) == -ENOMEDIUM && !calls);
+    b.m.kind = LR_MEDIUM_CHD;
+    assert(lr_disk_rw(&b,0,&empty,false) == -ENOTSUP && !calls);
+    assert(lr_disk_rw(&b,0,&empty,true) == -ENOTSUP && !calls);
     puts("block memory: empty spans skipped; nonempty offsets/errors, bounds and permissions preserved PASS");
     puts("block memory: read/write/zero errors propagated, later transfers stopped: PASS");
 }
-'''.replace("/* PRODUCTION */", function("static int lr_disk_rw(") + "\n" + function("int lr_disk_zero("))
+'''.replace("/* MEDIUM KIND */", re.search(r'typedef enum \{[^}]*\} LRMediumKind;',source,re.S).group()).replace("/* PRODUCTION */", function("static int lr_disk_rw(") + "\n" + function("int lr_disk_zero("))
 with tempfile.TemporaryDirectory(prefix="block-memory-") as tmp:
     unit = Path(tmp) / "test.c"
     unit.write_text(code)

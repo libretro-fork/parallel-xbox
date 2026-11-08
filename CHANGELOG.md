@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Restore inline-upload/migration, nonblocking frontend handoff and block-memory fixtures after earlier runtime changes, and include them in shader/PSO contracts. Test actual medium kinds and CHD fail-fast behavior, newer migration fields, and the existing asynchronous handoff; reject reintroduced frontend waits. Runtime code is unchanged.
+
 - Install OpenGL headers for the blend oracle in the shader-contract CI job, matching the general build's existing dependency. This fixes the clean-runner fixture compile failure; runtime and timing gates are unchanged.
 
 - Include existing blend-key and Vulkan recording-lifetime tests in each shader/PSO contract run. Update the blend oracle for dynamic stencil identity, model the existing inline-lend materialization hook in the recording fixture, and reject a finish that omits it. No runtime changes.

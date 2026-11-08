@@ -21,8 +21,13 @@ typedef struct {
  uint32_t *inline_array_external;bool inline_array_external_committed;
  unsigned inline_elements_length,inline_elements_min,inline_elements_max,inline_buffer_length;
  bool two_side_light_en;PGRAPHVkState *vk_renderer_state;
+ bool texture_matrix_enable[4];
+ float material_alpha,back_material_alpha,specular_power,specular_power_back;
+ float specular_params[6],specular_params_back[6],point_params[8];
+ float light_infinite_half_vector[8][3],light_infinite_direction[8][3];
+ float light_local_position[8][3],light_local_attenuation[8][3];
 } PGRAPHState;
-typedef struct {PGRAPHState pgraph;} NV2AState;
+typedef struct {PGRAPHState pgraph;bool migration_parked;} NV2AState;
 typedef struct {struct {uint32_t *(*inline_array_begin)(NV2AState*);} ops;} PGRAPHRenderer;
 static PGRAPHRenderer renderer;
 static const PGRAPHRenderer *pgraph_renderer(PGRAPHState *pg){(void)pg;return &renderer;}
@@ -101,7 +106,9 @@ int main(void)
  packet(words+13,7,false);assert(!memcmp(d.pgraph.inline_array,words,20*4));
  /* Restore over a live external view: incoming CPU bytes must win. */
  pgraph_reset_inline_buffers(&d.pgraph);packet(words+3,5,false);assert(d.pgraph.inline_array_external);
- assert(!nv2a_pre_load(&d)&&locks==1&&!d.pgraph.inline_array_external&&!d.pgraph.inline_array_external_committed);
+ d.pgraph.back_material_alpha=1.0f;d.pgraph.point_params[7]=2.0f;
+ assert(!nv2a_pre_load(&d)&&locks==1&&d.migration_parked&&!d.pgraph.inline_array_external&&!d.pgraph.inline_array_external_committed);
+ assert(!d.pgraph.back_material_alpha&&!d.pgraph.point_params[7]);
  memcpy(d.pgraph.inline_array,snapshot,13*4);d.pgraph.inline_array_length=13;
  packet(words+13,7,false);assert(!memcmp(d.pgraph.inline_array,words,20*4));
  VkDeviceSize out;assert(!pgraph_vk_commit_inline_array(&d.pgraph,80,&out));

@@ -8,7 +8,8 @@ a=source.index('static void lr_finish_frame(void)')
 b=source.index('/* One frame of guest time,',a)
 code=Path(__file__).with_suffix('.c').read_text().replace('/* PRODUCTION */',source[a:b])
 request=(repo/'hw/xbox/nv2a/nv2a.c').read_text()
-a=request.index('int nv2a_libretro_frame_end(void)');b=request.index('/* Whether',a)
+a=request.index('int nv2a_libretro_frame_end(void)');b=request.index('{',a)+1;depth=1
+while depth:depth+=(request[b]=='{')-(request[b]=='}');b+=1
 request=request[a:b]
 request_test=r'''#include <assert.h>
 #include <stdbool.h>
@@ -47,6 +48,13 @@ with tempfile.TemporaryDirectory(prefix='frame-completion-') as directory:
  p=Path(directory);(p/'test.c').write_text(code);exe=p/'test.exe'
  subprocess.run([sys.argv[2] if len(sys.argv)>2 else 'cc','-O2','-std=c11','-Wall','-Wextra','-Werror','-fsanitize=undefined','-fsanitize-undefined-trap-on-error',str(p/'test.c'),'-o',str(exe)],check=True)
  subprocess.run([str(exe)],check=True)
+ old='nv2a_libretro_frame_end();'
+ assert old in code
+ (p/'test.c').write_text(code.replace(old,old+' main_loop_wait(false);',1))
+ subprocess.run([sys.argv[2] if len(sys.argv)>2 else 'cc','-O2','-std=c11','-Wall','-Wextra','-Werror','-fsanitize=undefined','-fsanitize-undefined-trap-on-error',str(p/'test.c'),'-o',str(exe)],check=True)
+ rejected=subprocess.run([str(exe)],capture_output=True)
+ assert rejected.returncode==1 and b'frame handoff:' in rejected.stderr
+ print('Required negative control rejected: synchronous frontend finish wait')
  (p/'test.c').write_text(request_test)
  subprocess.run([sys.argv[2] if len(sys.argv)>2 else 'cc','-O2','-std=c11','-Wall','-Wextra','-Werror','-fsanitize=undefined','-fsanitize-undefined-trap-on-error',str(p/'test.c'),'-o',str(exe)],check=True)
  subprocess.run([str(exe)],check=True)
