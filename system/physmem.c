@@ -1004,48 +1004,19 @@ void physical_memory_dirty_bits_cleared(ram_addr_t start, ram_addr_t length)
     }
 }
 
-static bool physical_memory_get_dirty(ram_addr_t start, ram_addr_t length,
-                                      unsigned client)
-{
-    DirtyMemoryBlocks *blocks;
-    unsigned long end, page;
-    unsigned long idx, offset, base;
-    bool dirty = false;
-
-    assert(client < DIRTY_MEMORY_NUM);
-
-    end = TARGET_PAGE_ALIGN(start + length) >> TARGET_PAGE_BITS;
-    page = start >> TARGET_PAGE_BITS;
-
-    WITH_RCU_READ_LOCK_GUARD() {
-        blocks = retro_atomic_load_acquire_ptr(&ram_list.dirty_memory[client]);
-
-        idx = page / DIRTY_MEMORY_BLOCK_SIZE;
-        offset = page % DIRTY_MEMORY_BLOCK_SIZE;
-        base = page - offset;
-        while (page < end) {
-            unsigned long next = MIN(end, base + DIRTY_MEMORY_BLOCK_SIZE);
-            unsigned long num = next - base;
-            unsigned long found = find_next_bit(blocks->blocks[idx],
-                                                num, offset);
-            if (found < num) {
-                dirty = true;
-                break;
-            }
-
-            page = next;
-            idx++;
-            offset = 0;
-            base += DIRTY_MEMORY_BLOCK_SIZE;
-        }
-    }
-
-    return dirty;
-}
-
 bool physical_memory_get_dirty_flag(ram_addr_t addr, unsigned client)
 {
-    return physical_memory_get_dirty(addr, 1, client);
+    unsigned long page = addr >> TARGET_PAGE_BITS;
+    unsigned long idx = page / DIRTY_MEMORY_BLOCK_SIZE;
+    unsigned long offset = page % DIRTY_MEMORY_BLOCK_SIZE;
+    DirtyMemoryBlocks *blocks;
+
+    assert(client < DIRTY_MEMORY_NUM);
+    /* This API queries exactly one page. Borrow the current bitmap owner
+     * through the bit read; no range traversal or retained metadata view. */
+    RCU_READ_LOCK_GUARD();
+    blocks = retro_atomic_load_acquire_ptr(&ram_list.dirty_memory[client]);
+    return test_bit(offset, blocks->blocks[idx]);
 }
 
 bool physical_memory_is_clean(ram_addr_t addr)

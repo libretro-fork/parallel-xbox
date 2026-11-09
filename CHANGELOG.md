@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Query single-client guest RAM dirtiness with one direct bitmap read instead of a generic range scan, including the translated-code invalidation path. Preserve the client assertion, acquire publication and scoped RCU lend. Extend boundary and metadata-generation tests to all six individual clients with required wrong-consumer, missing-owner and inverted-result rejection controls. No allocations, payload copies, guest-time or invalidation-policy changes. Gameplay timing is advisory under the user's delivery instruction; no whole-core speedup or shader-stutter recovery is claimed.
+
 - Check a single guest RAM page directly across dirty consumers under one RCU read-side lend, replacing repeated generic range scans. Preserve consumer order, acquire loads, short-circuit behavior and bitmap retirement; add boundary and owner tests. Actual-core metadata-query probes measured roughly 4.8-6.0x faster queries with identical results and unchanged bitmap states. Native/WSL boundary, PVIDEO, TLB and host-reuse checks passed. Delivered at the user's explicit direction independently of gameplay timing qualification; ongoing GL/Vulkan comparisons are advisory, not passes. No game-FPS or stutter-recovery claim, and no guest-time or rendering policy changes.
 
 - Add production programmable-vertex MUL/MAD GPU regression tests: 32,768 masked-lane comparisons and 6,400 independent product goldens per device, covering signed zero, exceptional values, finite overflow and existing denormal behavior. Require deliberately missing zero corrections to fail, and run the tests in shader/PSO CI. Runtime shaders remain byte-identical; the vector-selection experiment and cold-play smoothness remain unqualified.
