@@ -1050,14 +1050,26 @@ bool physical_memory_get_dirty_flag(ram_addr_t addr, unsigned client)
 
 bool physical_memory_is_clean(ram_addr_t addr)
 {
-    /* One clean consumer already requires dirty handling. Avoid traversing
-     * the other bitmaps once that is known; no state is consumed here. */
-    return !(physical_memory_get_dirty_flag(addr, DIRTY_MEMORY_NV2A) &&
-             physical_memory_get_dirty_flag(addr, DIRTY_MEMORY_NV2A_TEX) &&
-             physical_memory_get_dirty_flag(addr, DIRTY_MEMORY_NV2A_PVIDEO) &&
-             physical_memory_get_dirty_flag(addr, DIRTY_MEMORY_VGA) &&
-             physical_memory_get_dirty_flag(addr, DIRTY_MEMORY_CODE) &&
-             physical_memory_get_dirty_flag(addr, DIRTY_MEMORY_MIGRATION));
+    static const unsigned clients[] = {
+        DIRTY_MEMORY_NV2A, DIRTY_MEMORY_NV2A_TEX, DIRTY_MEMORY_NV2A_PVIDEO,
+        DIRTY_MEMORY_VGA, DIRTY_MEMORY_CODE, DIRTY_MEMORY_MIGRATION,
+    };
+    unsigned long page = addr >> TARGET_PAGE_BITS;
+    unsigned long idx = page / DIRTY_MEMORY_BLOCK_SIZE;
+    unsigned long offset = page % DIRTY_MEMORY_BLOCK_SIZE;
+
+    /* One page, one RCU lend. The bitmap arrays may grow, but their owner
+     * remains live through the last bit test. Preserve consumer ordering
+     * and stop as soon as a clean consumer requires dirty handling. */
+    RCU_READ_LOCK_GUARD();
+    for (unsigned i = 0; i < ARRAY_SIZE(clients); i++) {
+        DirtyMemoryBlocks *blocks =
+            retro_atomic_load_acquire_ptr(&ram_list.dirty_memory[clients[i]]);
+        if (!test_bit(offset, blocks->blocks[idx])) {
+            return true;
+        }
+    }
+    return false;
 }
 
 static bool physical_memory_all_dirty(ram_addr_t start, ram_addr_t length,

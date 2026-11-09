@@ -19,6 +19,8 @@
 #define DIRTY_MEMORY_BLOCK_SIZE (sizeof(unsigned long)*CHAR_BIT)
 #define PAGES (DIRTY_MEMORY_BLOCK_SIZE*4)
 #define RAM_SIZE (PAGES*4096)
+#define ARRAY_SIZE(x) (sizeof(x)/sizeof(*(x)))
+#define RCU_READ_LOCK_GUARD() ((void)0)
 #define WITH_RCU_READ_LOCK_GUARD() for(int once=1;once;once=0)
 typedef uint64_t ram_addr_t;typedef uint64_t hwaddr;
 typedef struct {unsigned long *blocks[4];} DirtyMemoryBlocks;
@@ -30,6 +32,7 @@ static void bitmap_set_atomic(unsigned long *w,unsigned long offset,unsigned lon
 static bool xen_enabled(void){return false;}
 static void xen_hvm_modified_memory(ram_addr_t a,ram_addr_t b){(void)a;(void)b;assert(false);}
 static unsigned dirty_lookups;
+static bool test_bit(unsigned long offset,const unsigned long *words){dirty_lookups++;return !!(words[offset/(sizeof(unsigned long)*CHAR_BIT)]&(1ul<<(offset%(sizeof(unsigned long)*CHAR_BIT))));}
 static bool physical_memory_get_dirty_flag(ram_addr_t addr,unsigned client){dirty_lookups++;unsigned long p=(unsigned long)(addr>>12);assert(p<PAGES&&client<DIRTY_MEMORY_NUM);return !!(bits[client][p/DIRTY_MEMORY_BLOCK_SIZE]&(1ul<<(p%DIRTY_MEMORY_BLOCK_SIZE)));}
 static bool physical_memory_all_dirty(ram_addr_t start,ram_addr_t length,unsigned client){for(hwaddr p=start>>12;p<(TARGET_PAGE_ALIGN(start+length)>>12);p++)if(!physical_memory_get_dirty_flag(p<<12,client))return false;return true;}
 static bool physical_memory_test_and_clear_dirty(ram_addr_t start,ram_addr_t length,unsigned client){bool dirty=false;for(hwaddr p=start>>12;p<(TARGET_PAGE_ALIGN(start+length)>>12);p++){dirty|=physical_memory_get_dirty_flag(p<<12,client);bits[client][p/DIRTY_MEMORY_BLOCK_SIZE]&=~(1ul<<(p%DIRTY_MEMORY_BLOCK_SIZE));}return dirty;}
