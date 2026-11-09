@@ -994,16 +994,43 @@ static void vk_spec_compile_state(const ShaderState *st)
     }
 }
 
+/* The input ring owns the immutable state until read_end. Keep that lend
+ * through the compiler's last read instead of copying every complete record
+ * to the worker stack. Byte-addressed wrapped/unaligned records retain one
+ * bounded snapshot; incomplete records are left for the producer. */
+static bool vk_spec_process_input(void)
+{
+    const void *record;
+    size_t contiguous = retro_spsc_read_begin(&vk_spec_in, &record);
+    if (contiguous >= sizeof(ShaderState) &&
+        (uintptr_t)record % _Alignof(ShaderState) == 0) {
+        if (!retro_atomic_load_acquire_int(&vk_spec_cancel)) {
+            vk_spec_compile_state(record);
+        }
+        retro_spsc_read_end(&vk_spec_in, sizeof(ShaderState));
+    } else {
+        retro_spsc_read_end(&vk_spec_in, 0);
+        if (!contiguous ||
+            retro_spsc_read_avail(&vk_spec_in) < sizeof(ShaderState)) {
+            return false;
+        }
+        ShaderState state;
+        if (retro_spsc_read(&vk_spec_in, &state, sizeof(state)) != sizeof(state)) {
+            return false;
+        }
+        if (!retro_atomic_load_acquire_int(&vk_spec_cancel)) {
+            vk_spec_compile_state(&state);
+        }
+    }
+    retro_atomic_fetch_sub_int(&vk_spec_inflight, 1);
+    retro_eventcount_notify(&vk_spec_idle_ec);
+    return true;
+}
+
 static void *vk_spec_worker_fn(void *opaque)
 {
     for (;;) {
-        ShaderState st;
-        if (retro_spsc_read(&vk_spec_in, &st, sizeof(st)) == sizeof(st)) {
-            if (!retro_atomic_load_acquire_int(&vk_spec_cancel)) {
-                vk_spec_compile_state(&st);
-            }
-            retro_atomic_fetch_sub_int(&vk_spec_inflight, 1);
-            retro_eventcount_notify(&vk_spec_idle_ec);
+        if (vk_spec_process_input()) {
             continue;
         }
         int key = retro_eventcount_prepare_wait(&vk_spec_ec);

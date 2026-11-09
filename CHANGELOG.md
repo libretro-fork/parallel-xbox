@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Let Vulkan's shader compiler worker borrow contiguous aligned input records until its last compiler read instead of copying each 2,620-byte state to the stack. Keep one bounded snapshot for wrapped or unaligned records, preserve cancellation and quiescence notification, and leave partial records unconsumed. Add real-ring ownership, producer-reuse and copy-count checks to shader CI. No shader semantics or cold-play recovery claim.
+
 - Queue Vulkan upload-time pre-rasterization library creation on the existing bounded pipeline worker. Keep module references and create-info in the final queue slot, skip optional work when full, and retire a worker result if a draw has already published the library. Shader-module acquisition and uncovered draw misses can still be synchronous; cold-play recovery remains open.
 
 - Use native Vulkan BGRA vertex fetch where the device supports it, sharing the unswizzled shader interface for D3D byte colors without changing vertex bytes or buffer lifetimes. Keep the existing shader swizzle on unsupported devices. Vertex layout/lifetime checks and GPU fetch values pass; no reduction in first-use PSO misses or frame-time improvement is established. Rendered-image equivalence and full lifecycle qualification remain uncompleted; the cold-play regression remains open.
