@@ -1371,6 +1371,39 @@ static bool vk_spec_start(void)
     return true;
 }
 
+/* The render thread exclusively owns the native module LRU. Borrow its
+ * entries only during this scan, then pin all exact matches before calling
+ * anything that can drain jobs or evict another cache owner. A partial hit
+ * acquires nothing; worker preparation remains the miss path. */
+static bool vk_pre_ref_resident_modules(PGRAPHVkState *r, VkPreRequest *request)
+{
+    ShaderModuleInfo *resident[2] = {0};
+    for (unsigned i = 0; i < request->count; i++) {
+        unsigned bin = lru_hash_to_bin(&r->shader_module_cache, request->hashes[i]);
+        LruNode *node;
+        QTAILQ_FOREACH(node, &r->shader_module_cache.bins[bin], next_bin) {
+            if (node->hash != request->hashes[i]) {
+                continue;
+            }
+            ShaderModuleCacheEntry *entry =
+                container_of(node, ShaderModuleCacheEntry, node);
+            if (entry->module_info &&
+                !memcmp(&entry->key, &request->keys[i], sizeof(entry->key))) {
+                resident[i] = entry->module_info;
+                break;
+            }
+        }
+        if (!resident[i]) {
+            return false;
+        }
+    }
+    for (unsigned i = 0; i < request->count; i++) {
+        pgraph_vk_ref_shader_module(resident[i]);
+        request->modules[i] = resident[i];
+    }
+    return true;
+}
+
 bool pgraph_vk_queue_pre_modules(PGRAPHState *pg, const ShaderState *state,
                                   const VkPrewarmState *pipeline)
 {
@@ -1411,6 +1444,23 @@ bool pgraph_vk_queue_pre_modules(PGRAPHState *pg, const ShaderState *state,
                 request->count = 0;
                 return true;
             }
+        }
+        if (vk_pre_ref_resident_modules(r, request)) {
+            ShaderModuleInfo *geom = request->count == 2 ? request->modules[0] : NULL;
+            ShaderModuleInfo *vsh = request->modules[request->count - 1];
+            if (pgraph_vk_pre_library_ready(pg, pipeline, vsh, geom)) {
+                /* Consumed by the native pipeline slot or released on hit. */
+                memset(request->modules, 0, sizeof(request->modules));
+                request->count = 0;
+                return true;
+            }
+            /* Pipeline pressure: the final request slot owns both references
+             * and this bounded snapshot through its later ADOPTED retry. */
+            request->pipeline = *pipeline;
+            retro_atomic_store_relaxed_int(&request->phase, VK_PRE_ADOPTED);
+            vk_pre_owner = pg;
+            vk_pre_live++;
+            return true;
         }
         request->pipeline = *pipeline;
         /* Key storage is final before the pointer publication. No key or

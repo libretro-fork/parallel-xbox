@@ -11,7 +11,7 @@ def fn(name):
     return s[m.start():end]
 types='\n'.join(re.search(r'typedef struct '+n+r' \{.*?\} '+n+r';',h,re.S)[0] for n in ('ShaderModuleCacheKey','ShaderModuleCacheEntry','RenderPassState','VkPrewarmState'))
 globals=s[s.index('#define VK_PRE_REQUESTS'):s.index('static ShaderSource *vk_pre_take_ready(',s.index('#define VK_PRE_REQUESTS'))]
-parts='\n'.join(fn(n) for n in ('vk_pre_state_module_keys','vk_pre_take_ready','shader_module_cache_entry_init_pre','vk_pre_process_input','pgraph_vk_queue_pre_modules','vk_pre_service','vk_pre_clear','vk_spec_drain'))
+parts='\n'.join(fn(n) for n in ('vk_pre_ref_resident_modules','vk_pre_state_module_keys','vk_pre_take_ready','shader_module_cache_entry_init_pre','vk_pre_process_input','pgraph_vk_queue_pre_modules','vk_pre_service','vk_pre_clear','vk_spec_drain'))
 assert 'vk_pre_' not in fn('shader_module_cache_entry_init')
 assert 'vk_module_spirv' not in fn('shader_module_cache_entry_init_pre')
 assert fn('vk_spec_quiesce').index('vk_pre_owner = NULL;') < fn('vk_spec_quiesce').index('retro_atomic_store_release_int(&vk_spec_cancel, 1);')
@@ -23,7 +23,10 @@ with tempfile.TemporaryDirectory(prefix='pre-module-worker-') as d:
     cmd=[cc,'-O2','-std=gnu11','-Wall','-Wextra','-Werror','-pthread','-fsanitize=undefined','-fsanitize-undefined-trap-on-error','-I'+str(p),'-I'+str(r),'-I'+str(r/'include'),'-I'+str(r/'libretro-common/include'),'-I'+str(r/'deps/vulkan-headers'),str(src),'-o',str(exe)]
     src.write_text(code);subprocess.run(cmd,env=env,check=True);subprocess.run([str(exe)],env=env,check=True,timeout=60)
     controls=[
-        ('duplicate request queued',code.replace('request->count = 0;\n                return true;', 'request->count = 0;\n                break;',1)),
+        ('resident hash collision accepted',code.replace('!memcmp(&entry->key, &request->keys[i], sizeof(entry->key))','entry != NULL',1)),
+        ('resident owner not pinned',code.replace('pgraph_vk_ref_shader_module(resident[i]);','(void)resident[i];',1)),
+        ('resident retry owner lost',code.replace('request->modules[i] = resident[i];','request->modules[i] = NULL;',1)),
+        ('duplicate request queued',code.replace('request->count = 0;\n                return true;', 'break;',1)),
         ('colliding shader keys dropped',re.sub(r' &&\s*!memcmp\(pending->keys, request->keys,\s*request->count \* sizeof\(request->keys\[0\]\)\)', '',code,count=1)),
         ('different pipeline snapshot dropped',code.replace('!memcmp(&pending->pipeline, pipeline, sizeof(*pipeline))','pipeline != NULL',1)),
         ('render-thread compiler invocation',code.replace('request->pipeline = *pipeline;','request->pipeline = *pipeline;\n        vk_spec_compile_module(&request->keys[0], request->hashes[0]);',1)),

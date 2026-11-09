@@ -118,3 +118,36 @@ This does not move vkCreateShaderModule off the render thread or cover an
 unknown PSO. Blind native-module creation on the compiler worker would also
 create objects for cache hits; eliminating that duplication and preserving
 native module-cache ownership is a prerequisite for a safe future handoff.
+
+Upload preparation now probes the render-thread module LRU by hash and exact
+full keys without invoking its initializer/compiler. Entry pointers are
+borrowed only during the scan; all required modules are pinned after every
+match is proven, then passed directly to native library preparation. Partial,
+null or colliding entries acquire nothing and keep the existing worker miss
+path. Ready hits and available pipeline slots need no new pipeline snapshot or
+CPU compiler job. Pipeline pressure retains references and one bounded state
+snapshot in the existing ADOPTED request slot, safe across cache eviction.
+Request sizes, input callbacks, shader generation and cache schemas are
+unchanged. Canonical key construction still has its existing bounded input
+snapshots; this does not claim a wholly zero-copy input path.
+
+The process-global PGRAPH program digest gate remains an open readiness issue:
+it cannot prove acceptance or readiness in a new renderer or metadata context.
+An experiment removed it but caused tens of thousands of additional state/key
+snapshots and optional library lookups. DOA3 and Crazy Taxi 3 preparation jobs
+increased and CT3 had a slower cold capture; those uncontrolled results remain
+unqualified and retained, not a performance pass. The delivered resident-reuse
+change preserves callback frequency. Retry/generation repair needs a cheaper
+input-lend/canonical-key design before broadening preparation coverage.
+
+The retained JSRF GPL-enabled count captures reduce CPU preparation queue
+publications from 59 to 8 with fresh core caches and 59 to 7 warm, with the
+same 59 upload callbacks. Pipeline snapshots fall from 12272 to 1664 bytes
+in each capture (the warm case includes one resident pressure snapshot).
+These are preparation/snapshot counts, not actual compiler invocations or
+a total-copy/latency win. DOA3 and CT3 did not show the same cold job reduction.
+Parent and candidate both exhibit large uncontrolled first-use hitches. An
+opt-in matched-harness probe measured the new lookup below 2 microseconds,
+and a parent draw-path fragment-library creation span of 261 milliseconds;
+not every callback hitch is explained or attributed between compilation,
+driver cache I/O and scheduling. Remaining synchronous misses stay open.

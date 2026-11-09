@@ -17,8 +17,10 @@
 typedef struct ShaderSource {unsigned refs;} ShaderSource;
 typedef struct ShaderModuleInfo {unsigned refs;} ShaderModuleInfo;
 typedef struct Lru Lru;
-typedef struct LruNode {uint64_t hash;} LruNode;
-struct Lru {void (*init_node)(Lru *,LruNode *,const void *);};
+typedef struct LruNode {uint64_t hash;struct LruNode *next;} LruNode;
+struct Lru {void (*init_node)(Lru *,LruNode *,const void *);LruNode *bins[8];};
+#define QTAILQ_FOREACH(n,h,f) for((n)=*(h);(n);(n)=(n)->next)
+static unsigned lru_hash_to_bin(Lru *l,uint64_t hash) {(void)l;return hash%8;}
 typedef struct PGRAPHVkState {bool use_push_constants_for_uniform_attrs;Lru shader_module_cache;} PGRAPHVkState;
 struct PGRAPHState {PGRAPHVkState *vk_renderer_state;};
 /* TYPES */
@@ -39,7 +41,7 @@ static ShaderModuleInfo modules[VK_PRE_REQUESTS][2];
 static ShaderModuleCacheKey expected[VK_PRE_REQUESTS][2];
 static VkPrewarmState expected_pipeline[VK_PRE_REQUESTS];
 static _Thread_local bool in_worker;
-static bool accept_pipeline,cache_hit,start_ok=true,collide,stress;
+static bool accept_pipeline,cache_hit,start_ok=true,collide,stress,resident_case;
 static unsigned compiles,adoptions,transfers,work_wakes,idle_wakes,starts;
 static bool need_geometry;
 bool pgraph_glsl_need_geom(const GeomState *s) {(void)s;return need_geometry;}
@@ -96,11 +98,12 @@ static ShaderModuleInfo *get_and_ref_shader_module_for_key(PGRAPHVkState *r,cons
 }
 static bool pgraph_vk_pre_library_ready(PGRAPHState *pg,const VkPrewarmState *pipeline,ShaderModuleInfo *vsh,ShaderModuleInfo *geom) {
     assert(pg && !in_worker);
-    VkPreRequest *request=(VkPreRequest *)((char *)pipeline - offsetof(VkPreRequest,pipeline));
-    unsigned j=(unsigned)(request-vk_pre_requests);assert(j<VK_PRE_REQUESTS);
+    unsigned j=VK_PRE_REQUESTS;
+    for(unsigned k=0;k<VK_PRE_REQUESTS;k++)if(vsh==&modules[k][0] || vsh==&modules[k][1]){j=k;break;}
+    assert(j<VK_PRE_REQUESTS);VkPreRequest *request=&vk_pre_requests[j];
     if(!stress)assert(!memcmp(pipeline,&expected_pipeline[j],sizeof(*pipeline)));
     else assert(pipeline->push_size==request->keys[request->count-1].vsh.state.programmable.program_data[0][0]%8*16);
-    assert(vsh==&modules[j][request->count-1] && vsh->refs==1);
+    assert(vsh==&modules[j][request->count-1] && vsh->refs && (resident_case || vsh->refs==1));
     assert((request->count==2)==!!geom);
     if(!accept_pipeline)return false;
     pgraph_vk_unref_shader_module(pg->vk_renderer_state,vsh);
@@ -120,6 +123,47 @@ static void *stress_worker(void *unused) {
     (void)unused;in_worker=true;
     for(unsigned n=0;n<8192;) {if(vk_pre_process_input())n++;else sched_yield();}
     return NULL;
+}
+static void resident_matrix(PGRAPHState *pg) {
+    PGRAPHVkState *r=pg->vk_renderer_state;unsigned cases=0;resident_case=true;
+    for(unsigned generation=0;generation<64;generation++)for(unsigned bits=0;bits<128;bits++) {
+        clean_owners();assert(retro_atomic_load_acquire_int(&vk_spec_inflight)==0);
+        memset(r->shader_module_cache.bins,0,sizeof(r->shader_module_cache.bins));
+        unsigned base=generation&1?UINT_MAX-1:generation*13;
+        vk_pre_write_local=base;retro_atomic_store_relaxed_int(&vk_pre_write,(int)base);retro_atomic_store_relaxed_int(&vk_pre_read,(int)base);
+        retro_atomic_store_relaxed_int(&vk_spec_cancel,0);cache_hit=false;collide=bits&8;need_geometry=bits&1;accept_pipeline=!(bits&4);
+        ShaderState state={0};state.vsh.programmable.program_data[0][0]=generation;state.vsh.uniform_attrs=3;
+        ShaderModuleCacheKey keys[2];unsigned count=vk_pre_state_module_keys(&state,r->use_push_constants_for_uniform_attrs,keys);
+        ShaderModuleCacheEntry entries[2]={0},decoy={0};unsigned variant=(bits>>4)&3;
+        for(unsigned i=0;i<count;i++) {
+            entries[i].key=keys[i];entries[i].module_info=variant==2?NULL:&modules[0][i];modules[0][i].refs=1;
+            entries[i].node.hash=fast_hash((const uint8_t *)&keys[i],sizeof(keys[i]));
+            unsigned bin=lru_hash_to_bin(&r->shader_module_cache,entries[i].node.hash);
+            if(!(bits&2) || i+1<count){entries[i].node.next=r->shader_module_cache.bins[bin];r->shader_module_cache.bins[bin]=&entries[i].node;}
+        }
+        decoy.key=keys[0];decoy.key.kind=VK_SHADER_STAGE_FRAGMENT_BIT;decoy.module_info=&modules[7][0];modules[7][0].refs=1;
+        decoy.node.hash=entries[0].node.hash;unsigned bin=lru_hash_to_bin(&r->shader_module_cache,decoy.node.hash);
+        decoy.node.next=r->shader_module_cache.bins[bin];r->shader_module_cache.bins[bin]=&decoy.node;
+        if(variant==1)state.vsh.programmable.program_data[0][0]^=0x100;
+        VkPrewarmState pipeline={0};pipeline.push_size=bits&64?48:16;pipeline.render_pass.color_format=VK_FORMAT_R8G8B8A8_UNORM;expected_pipeline[0]=pipeline;
+        unsigned wakes=work_wakes,comp=compiles;bool hit=!(bits&2) && variant!=1 && variant!=2;
+        assert(pgraph_vk_queue_pre_modules(pg,&state,&pipeline));
+        assert(compiles==comp && work_wakes==wakes+!hit);
+        assert(vk_pre_write_local==base+!hit);
+        for(unsigned i=0;i<count;i++)assert(modules[0][i].refs==1u+(hit&&!accept_pipeline));
+        assert(vk_pre_live==(hit? !accept_pipeline:1));
+        memset(&state,0xcc,sizeof(state));memset(&pipeline,0xdd,sizeof(pipeline));
+        /* Evict the cache's owners before an ADOPTED retry: only the final
+         * request slot's references may keep native modules alive now. */
+        memset(r->shader_module_cache.bins,0,sizeof(r->shader_module_cache.bins));
+        for(unsigned i=0;i<count;i++)pgraph_vk_unref_shader_module(r,&modules[0][i]);
+        pgraph_vk_unref_shader_module(r,&modules[7][0]);
+        if(hit&&!accept_pipeline){accept_pipeline=true;vk_pre_service(pg);assert(!vk_pre_live);}
+        retro_atomic_store_release_int(&vk_spec_cancel,1);in_worker=true;while(vk_pre_process_input()){}in_worker=false;
+        assert(retro_atomic_load_acquire_int(&vk_spec_inflight)==0);vk_pre_clear(r);clean_owners();cases++;
+    }
+    retro_atomic_store_relaxed_int(&vk_spec_cancel,0);collide=false;resident_case=false;accept_pipeline=false;
+    printf("Pre-module resident lends: %u exact/partial/null/collision lookups, geometry variants, backpressure, caller poisoning, cache eviction before retry and rollover cases PASS; no compiler job for resident owners\n",cases);
 }
 static void duplicate_matrix(PGRAPHState *pg) {
     PGRAPHVkState *r=pg->vk_renderer_state;unsigned cases=0;
@@ -165,6 +209,7 @@ static void duplicate_matrix(PGRAPHState *pg) {
 }
 int main(void) {
     PGRAPHVkState r={.shader_module_cache={.init_node=shader_module_cache_entry_init}};PGRAPHState pg={&r};unsigned cases=0;
+    resident_matrix(&pg);
     duplicate_matrix(&pg);
     for(unsigned generation=0;generation<128;generation++)for(unsigned bits=0;bits<64;bits++) {
         clean_owners();assert(retro_atomic_load_acquire_int(&vk_spec_inflight)==0);

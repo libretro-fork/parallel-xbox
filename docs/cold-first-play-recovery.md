@@ -54,6 +54,25 @@ instruction to execute blindly. In particular:
 
 ### 1. Freeze evidence and a genuine acceptance reference
 
+The repeat-run corpus also includes **JSRF - Jet Set Radio Future (USA)**
+(title ID 5345000A). Run both OpenGL and Vulkan with fresh and populated core
+caches, preserving driver-cache qualification separately. The current
+reproducible smoke sequence is 6,000 frames from a fresh boot with no inputs,
+at native internal resolution; its endpoint is a 3D attract scene. Keep a
+separate scene capture to verify that endpoint, then collect repeat counts
+and timings without readbacks. Include save/two exact RAM restores/reset as
+a separate lifecycle case. Report this as boot/attract coverage, never as
+interactive gameplay or a substitute for DOA3 first-fight qualification.
+Include **Crazy Taxi 3 - High Roller (USA)** in the same repeat matrix on
+both renderers. Verify its 3D attract intro with a separate capture before
+qualifying the chosen no-input frame window; log boot/attract and lifecycle
+coverage separately from interactive gameplay. Keep each game's caches and
+capture artifacts separate, and repeat parent/candidate cold and warm runs
+with matching per-game settings.
+
+Record image/build hashes and matching options for parent/candidate repeats;
+no private game image is distributed with CI or tests.
+
 Preserve the current bad binary, startup commit, options, driver/GPU/OS,
 harness hash, cache manifests and failing frame IDs before changing code.
 Identify and replay a last-known-good cold-play build; the November 6 build
