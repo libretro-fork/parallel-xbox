@@ -15,7 +15,7 @@ code = r'''
 #include <stdio.h>
 #include <stdlib.h>
 typedef struct {
-    bool device, pipeline_library, dyn_cull_front, dyn_blend, dyn_vertex_input, color_binding;
+    bool device, pipeline_library, dyn_cull_front, dyn_blend, dyn_vertex_input, color_binding, zeta_binding;
 } PGRAPHVkState;
 typedef struct { PGRAPHVkState *vk_renderer_state; } PGRAPHState;
 static bool pipe_started;
@@ -27,10 +27,10 @@ static void pump_drain(PGRAPHState *pg) { (void)pg; drains++; }
     pumped++;
 }
 int main(void) {
-    for (unsigned bits = 0; bits < 1024; bits++) {
+    for (unsigned bits = 0; bits < 2048; bits++) {
         PGRAPHVkState r = {.device=bits&2, .pipeline_library=bits&4,
             .dyn_cull_front=bits&8, .dyn_blend=bits&16,
-            .dyn_vertex_input=bits&32, .color_binding=bits&64};
+            .dyn_vertex_input=bits&32, .color_binding=bits&64,.zeta_binding=bits&1024};
         PGRAPHState pg = {.vk_renderer_state=(bits&1) ? &r : NULL};
         pipe_started=bits&128; drains=pumped=0;
         g_config.perf.shader_seeding=bits&256;
@@ -38,14 +38,14 @@ int main(void) {
         pgraph_vk_libpump_step(&pg);
         bool alive=(bits&1) && r.device;
         unsigned expected_drain=alive && pipe_started && pump_w_local;
-        unsigned expected_pump=alive && g_config.perf.shader_seeding && r.pipeline_library && r.dyn_cull_front &&
-            r.dyn_blend && r.dyn_vertex_input && r.color_binding;
+        unsigned expected_pump=alive && g_config.perf.shader_seeding && r.dyn_cull_front &&
+            r.dyn_blend && r.dyn_vertex_input && (r.color_binding||r.zeta_binding);
         if (drains != expected_drain || pumped != expected_pump) {
             fprintf(stderr,"FAIL completion bits=%u drains=%u expected=%u\n",bits,drains,expected_drain);
             return 1;
         }
     }
-    puts("Pipeline completion: 1024 renderer/device/GPL/dynamic/attachment/worker/option/idle cases PASS");
+    puts("Pipeline completion: 2048 renderer/device/GPL/dynamic/attachment/worker/option/idle cases PASS");
 }
 '''
 with tempfile.TemporaryDirectory(prefix='pipeline-completion-') as folder:
@@ -67,3 +67,10 @@ with tempfile.TemporaryDirectory(prefix='pipeline-completion-') as folder:
     result = subprocess.run([str(executable)], capture_output=True, timeout=30)
     assert result.returncode == 1 and b'FAIL completion' in result.stderr
     print('Required negative control rejected: GPL-only completion servicing')
+
+    for name,mutant in [('GPL-only seed preparation',prefix.replace('!g_config.perf.shader_seeding ||','!g_config.perf.shader_seeding || !r->pipeline_library ||',1)),('depth-only preparation skipped',prefix.replace('(!r->color_binding && !r->zeta_binding)','!r->color_binding',1))]:
+        assert mutant!=prefix,name
+        fixture.write_text(code.replace('/* PRODUCTION */',mutant));subprocess.run(command,check=True)
+        bad=subprocess.run([str(executable)],capture_output=True,timeout=30)
+        assert bad.returncode==1 and b'FAIL completion' in bad.stderr,name
+        print('Required negative control rejected:',name)

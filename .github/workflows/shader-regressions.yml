@@ -89,6 +89,7 @@ jobs:
           python3 driver/libretro/tests/test-gl-spec-preparation.py candidate cc 2>&1 | tee results/gl-spec-preparation.log
           python3 driver/libretro/tests/test-dirty-page-fast.py candidate cc 2>&1 | tee results/dirty-page-fast.log
           python3 driver/libretro/tests/test-vk-clear-no-pipeline.py candidate cc 2>&1 | tee results/vk-clear-no-pipeline.log
+          python3 driver/libretro/tests/test-pipeline-seed-full.py candidate cc 2>&1 | tee results/pipeline-seed-full.log
           python3 driver/libretro/tests/test-dirty-range-owner.py candidate cc 2>&1 | tee results/dirty-range-owner.log
           python3 driver/libretro/tests/test-pvideo-dirty.py candidate cc 2>&1 | tee results/pvideo-dirty.log
           python3 driver/libretro/tests/test-throughput-gate.py 2>&1 | tee results/throughput-gate.log

@@ -43,6 +43,7 @@ int main(void){
   if(memcmp(before,after,sizeof(before)))goto fail;
   r.raw[2]^=NV_PGRAPH_CONTROL_0_STENCIL_WRITE_ENABLE;
   uint32_t toggled[9];pipeline_reg_values(&pg,toggled);
+  if(flags==3)for(unsigned i=0;i<9;i++)if(after[i]||toggled[i])goto fail;
   if((after[2]^toggled[2])!=(r.dyn_cull_front?0:NV_PGRAPH_CONTROL_0_STENCIL_WRITE_ENABLE))goto fail;
   for(unsigned i=0;i<9;i++)if(i!=2 && after[i]!=toggled[i])goto fail;
   cases++;continue;
