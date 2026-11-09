@@ -12,7 +12,7 @@ static void workload(NV2AState *d,bool mixed) {
         }
         if(mixed && i%11==0) end_render_pass(r);
         pg->clearing=mixed && i%13==0;pg->zpass_pixel_count_enable=!mixed || i%7!=0;
-        begin_draw(pg);draw_triangle(pg);end_draw(pg);
+        begin_draw(pg);if(!pg->clearing || clear_needs_color_draw(r))draw_triangle(pg);end_draw(pg);
         if(!pg->clearing && pg->zpass_pixel_count_enable) total+=64;
         r->pipeline_binding_changed=false;
     }

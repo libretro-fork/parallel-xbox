@@ -6,6 +6,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <vulkan/vulkan.h>
+#include "../../hw/xbox/nv2a/nv2a_regs.h"
 #define container_of(p,t,m) ((t *)((char *)(p)-offsetof(t,m)))
 #define XEMU_COST_SEGS 1024
 enum { NV2A_PROF_QUERY, NV2A_PROF_PIPELINE_RENDERPASSES, NV2A_PROF_PIPELINE_BIND };
@@ -18,6 +19,8 @@ typedef struct {
     int num_queries_in_flight,max_queries_in_flight;
     PipelineBinding *pipeline_binding;bool pipeline_binding_changed,dyn_vertex_input;
     struct {bool valid;float line_width;} dyn_last;
+    struct {bool valid;} vi_last;
+    void *color_binding;unsigned clear_parameter;
     bool cost_recording,cost_recording_samples,cost_pools_reset,cost_pending_samples;
     int cost_recording_slot,cost_pending_slot;
     bool cost_seg_recorded[XEMU_COST_SEGS],cost_seg_recorded_samples[XEMU_COST_SEGS];

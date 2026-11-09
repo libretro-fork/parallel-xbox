@@ -11,7 +11,7 @@ repo=Path(sys.argv[1]).resolve()
 source=(repo/'hw/xbox/nv2a/pgraph/vk/draw.c').read_text()
 parts=[]
 for name in ('begin_query','end_query','begin_render_pass','vk_cost_close_recorded_queries',
-             'end_render_pass','vk_cost_probe_active','vk_cost_materialize','begin_draw','end_draw'):
+             'end_render_pass','vk_cost_probe_active','vk_cost_materialize','clear_needs_color_draw','begin_draw','end_draw'):
     match=re.search(r'^static (?:void|bool) '+name+r'\([^;{]*\)\s*\{',source,re.M);assert match,name
     end=source.index('{',match.start())+1;depth=1
     while depth:depth+=(source[end]=='{')-(source[end]=='}');end+=1

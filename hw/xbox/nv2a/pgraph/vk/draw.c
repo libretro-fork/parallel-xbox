@@ -3417,6 +3417,14 @@ void pgraph_vk_end_nondraw_commands(PGRAPHState *pg, VkCommandBuffer cmd)
 // buffer. For other reasons though (like descriptor set amount, surface
 // changes, etc) we do flush often.
 
+/* Only masked color clears rasterize a triangle. Attachment clears need
+ * the compatible render pass/framebuffer, never a graphics pipeline. */
+static bool clear_needs_color_draw(PGRAPHVkState *r)
+{
+    uint32_t color = r->clear_parameter & NV097_CLEAR_SURFACE_COLOR;
+    return r->color_binding && color && color != NV097_CLEAR_SURFACE_COLOR;
+}
+
 static void begin_pre_draw(PGRAPHState *pg)
 {
     PGRAPHVkState *r = pg->vk_renderer_state;
@@ -3438,19 +3446,27 @@ static void begin_pre_draw(PGRAPHState *pg)
     assert(!r->color_binding || r->color_binding->initialized);
     assert(!r->zeta_binding || r->zeta_binding->initialized);
 
-    if (pg->clearing) {
-        create_clear_pipeline(pg);
+    VkRenderPass render_pass;
+    if (pg->clearing && !clear_needs_color_draw(r)) {
+        RenderPassState state;
+        init_render_pass_state(pg, &state);
+        render_pass = get_render_pass(r, &state);
     } else {
-        create_pipeline(pg);
+        if (pg->clearing) {
+            create_clear_pipeline(pg);
+        } else {
+            create_pipeline(pg);
+        }
+        render_pass = r->pipeline_binding->render_pass;
     }
 
-    bool render_pass_dirty = r->pipeline_binding->render_pass != r->render_pass;
+    bool render_pass_dirty = render_pass != r->render_pass;
 
     if (r->framebuffer_dirty || render_pass_dirty) {
         pgraph_vk_ensure_not_in_render_pass(pg);
     }
     if (render_pass_dirty) {
-        r->render_pass = r->pipeline_binding->render_pass;
+        r->render_pass = render_pass;
         r->framebuffer_dirty = true;
     }
     /* update_descriptor_sets may finish the recording (descriptor pool full):
@@ -3543,6 +3559,15 @@ static void begin_draw(PGRAPHState *pg)
     }
 
     vk_cost_materialize(pg);
+
+    if (pg->clearing && !clear_needs_color_draw(r)) {
+        /* No draw follows: do not bind/dereference a possibly absent PSO.
+         * Preserve the clear's dynamic-state invalidation and draw scope. */
+        r->dyn_last.valid = false;
+        r->vi_last.valid = false;
+        r->in_draw = true;
+        return;
+    }
 
     if (must_bind_pipeline) {
         nv2a_profile_inc_counter(NV2A_PROF_PIPELINE_BIND);

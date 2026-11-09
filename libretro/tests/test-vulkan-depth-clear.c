@@ -106,17 +106,18 @@ int main(void) {
     VkValidationFeatureEnableEXT feature=VK_VALIDATION_FEATURE_ENABLE_SYNCHRONIZATION_VALIDATION_EXT;
     VkValidationFeaturesEXT vf={.sType=VK_STRUCTURE_TYPE_VALIDATION_FEATURES_EXT,.enabledValidationFeatureCount=1,.pEnabledValidationFeatures=&feature};
     VkApplicationInfo app={.sType=VK_STRUCTURE_TYPE_APPLICATION_INFO,.apiVersion=VK_API_VERSION_1_1};
-    VkInstanceCreateInfo ici={.sType=VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,.pNext=&vf,.pApplicationInfo=&app,
-        .enabledLayerCount=1,.ppEnabledLayerNames=&layer,.enabledExtensionCount=2,.ppEnabledExtensionNames=extensions};
+    bool validation_enabled=!getenv("VK_CLEAR_NO_VALIDATION");
+    VkInstanceCreateInfo ici={.sType=VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,.pNext=validation_enabled?&vf:NULL,.pApplicationInfo=&app,
+        .enabledLayerCount=validation_enabled?1:0,.ppEnabledLayerNames=&layer,.enabledExtensionCount=validation_enabled?2:0,.ppEnabledExtensionNames=extensions};
     VkInstance instance;VK_CHECK(vkCreateInstance(&ici,NULL,&instance));
     PFN_vkCreateDebugUtilsMessengerEXT create=(void *)vkGetInstanceProcAddr(instance,"vkCreateDebugUtilsMessengerEXT");
     PFN_vkDestroyDebugUtilsMessengerEXT destroy=(void *)vkGetInstanceProcAddr(instance,"vkDestroyDebugUtilsMessengerEXT");
     VkDebugUtilsMessengerCreateInfoEXT mi={.sType=VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT,
         .messageSeverity=VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT,.messageType=7,.pfnUserCallback=validation};
-    VkDebugUtilsMessengerEXT messenger;VK_CHECK(create(instance,&mi,NULL,&messenger));
+    VkDebugUtilsMessengerEXT messenger=VK_NULL_HANDLE;if(validation_enabled)VK_CHECK(create(instance,&mi,NULL,&messenger));
     uint32_t n=1;VkPhysicalDevice gpu;VK_CHECK(vkEnumeratePhysicalDevices(instance,&n,&gpu));
     vkGetPhysicalDeviceMemoryProperties(gpu,&memory_properties);
-    VkPhysicalDeviceProperties props;vkGetPhysicalDeviceProperties(gpu,&props);puts(props.deviceName);
+    VkPhysicalDeviceProperties props;vkGetPhysicalDeviceProperties(gpu,&props);printf("%s; validation=%d\n",props.deviceName,validation_enabled);
     uint32_t nq=32;VkQueueFamilyProperties families[32];vkGetPhysicalDeviceQueueFamilyProperties(gpu,&nq,families);
     unsigned family=0;while(family<nq && !(families[family].queueFlags&VK_QUEUE_GRAPHICS_BIT)) family++;
     assert(family<nq);float priority=1;
@@ -141,7 +142,7 @@ int main(void) {
         NV2AState d={.pgraph={.vk_renderer_state=&r,.scale=scale,.surface_binding_dim={8,6}}};
         RenderPassState state={VK_FORMAT_R8G8B8A8_UNORM,VK_FORMAT_D32_SFLOAT_S8_UINT};
         r.render_pass=create_render_pass(&r,&state);
-        VkBuffer buffer;VkBufferCreateInfo bi={.sType=VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,.size=pixels*5,.usage=VK_BUFFER_USAGE_TRANSFER_DST_BIT};
+        VkBuffer buffer;VkBufferCreateInfo bi={.sType=VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,.size=pixels*9+8*6*scale*scale*4,.usage=VK_BUFFER_USAGE_TRANSFER_DST_BIT};
         VK_CHECK(vkCreateBuffer(device,&bi,NULL,&buffer));VkMemoryRequirements req;vkGetBufferMemoryRequirements(device,buffer,&req);
         VkMemoryAllocateInfo ai={.sType=VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,.allocationSize=req.size,
             .memoryTypeIndex=memory_type(req.memoryTypeBits,VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT|VK_MEMORY_PROPERTY_HOST_COHERENT_BIT)};
@@ -175,6 +176,15 @@ int main(void) {
         VkBufferImageCopy copies[2]={{.imageSubresource={VK_IMAGE_ASPECT_DEPTH_BIT,0,0,1},.imageExtent={w,h,1}},
             {.bufferOffset=pixels*4,.imageSubresource={VK_IMAGE_ASPECT_STENCIL_BIT,0,0,1},.imageExtent={w,h,1}}};
         vkCmdCopyImageToBuffer(cmd,depth.handle,VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,buffer,2,copies);
+        size_t color_offset=pixels*5;
+        for(unsigned i=0;i<2;i++){
+            unsigned cw=c[i].width*scale,ch=c[i].height*scale;
+            barrier(cmd,colors[i],VK_IMAGE_ASPECT_COLOR_BIT,VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,VK_PIPELINE_STAGE_TRANSFER_BIT,VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,VK_ACCESS_TRANSFER_READ_BIT);
+            VkBufferImageCopy copy={.bufferOffset=color_offset,.imageSubresource={VK_IMAGE_ASPECT_COLOR_BIT,0,0,1},.imageExtent={cw,ch,1}};
+            vkCmdCopyImageToBuffer(cmd,colors[i].handle,VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,buffer,1,&copy);
+            color_offset+=(size_t)cw*ch*4;
+        }
         VkBufferMemoryBarrier bb={.sType=VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,.srcAccessMask=VK_ACCESS_TRANSFER_WRITE_BIT,
             .dstAccessMask=VK_ACCESS_HOST_READ_BIT,.srcQueueFamilyIndex=VK_QUEUE_FAMILY_IGNORED,.dstQueueFamilyIndex=VK_QUEUE_FAMILY_IGNORED,
             .buffer=buffer,.size=VK_WHOLE_SIZE};
@@ -189,6 +199,16 @@ int main(void) {
             bool stencil=changed || (gx<=2 && gy<=1);float value;memcpy(&value,mapped+(y*w+x)*4,4);
             assert(value==(changed?0.25f:0.75f));assert(mapped[pixels*4+y*w+x]==(stencil?0x3c:0xa5));
         }
+        color_offset=pixels*5;
+        for(unsigned i=0;i<2;i++){
+            unsigned cw=c[i].width*scale,ch=c[i].height*scale;
+            for(unsigned y=0;y<ch;y++)for(unsigned x=0;x<cw;x++){
+                bool red=i==0&&x/scale>=1&&x/scale<=5&&y/scale>=2&&y/scale<=4;
+                const uint8_t *pixel=mapped+color_offset+((size_t)y*cw+x)*4;
+                assert(pixel[0]==(red?255:0)&&pixel[1]==0&&pixel[2]==0&&pixel[3]==255);
+            }
+            color_offset+=(size_t)cw*ch*4;
+        }
         vkUnmapMemory(device,mem);vkDestroyFence(device,fence,NULL);vkDestroyBuffer(device,buffer,NULL);vkFreeMemory(device,mem,NULL);
         for(int i=0;i<r.framebuffer_cache_n;i++) vkDestroyFramebuffer(device,r.framebuffer_cache[i].framebuffer,NULL);
         vkDestroyRenderPass(device,r.render_pass,NULL);
@@ -197,7 +217,7 @@ int main(void) {
         }
         VK_CHECK(vkResetCommandBuffer(cmd,0));
     }
-    vkDestroyCommandPool(device,pool,NULL);vkDestroyDevice(device,NULL);destroy(instance,messenger,NULL);vkDestroyInstance(instance,NULL);
-    printf("larger-depth clear: 1x/2x/4x, small/full/small framebuffer reuse and preserved depth/stencil passed; validation_errors=%u\n",errors);
+    vkDestroyCommandPool(device,pool,NULL);vkDestroyDevice(device,NULL);if(messenger)destroy(instance,messenger,NULL);vkDestroyInstance(instance,NULL);
+    printf("larger-depth clear: 1x/2x/4x, small/full/small framebuffer reuse and exact color/depth/stencil without a bound pipeline passed; validation_errors=%u\n",errors);
     return errors?1:0;
 }

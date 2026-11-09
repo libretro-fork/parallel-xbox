@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Stop creating and binding Vulkan graphics pipelines for full-color and depth/stencil attachment clears. Select the compatible render pass directly and preserve framebuffer retirement, query closure, dynamic-state invalidation and the following draw; partial-channel color clears retain their existing shaded path. Add 1,572,864 production setup/transition cases with five rejection controls and GPU color/depth/stencil checks at 1x/2x/4x to shader CI. No new resources, allocations or payload copies. Partial clears and general shader/PSO misses remain unfinished; no whole-core stutter-recovery claim.
+
 - Prepare the fixed OpenGL compressed-volume decoder during renderer texture initialization instead of compiling/linking it on the first affected upload. Native VTC and unsupported compute paths skip preparation; initialization failure keeps the exact CPU decoder without draw-side compilation retries. Preserve the static shader-source lend, renderer-owned program/buffer and existing upload data path. Add real-GPU value/state tests, compile/link-status fault checks and required draw-creation rejection controls to shader CI. Record remaining GL shader and Vulkan full-PSO/GPL/clear synchronous paths; cold-play recovery remains open.
 
 - Strengthen shader review and evidence rules: image equivalence before key reductions, correlated hitch attribution, separate work/latency claims, fresh-process restores, generation allocations and cold/warm tail comparisons. Documentation only; runtime, CI requirements, cache defaults and existing qualification failures are unchanged.

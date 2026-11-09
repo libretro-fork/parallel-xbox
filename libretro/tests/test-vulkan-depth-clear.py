@@ -24,8 +24,9 @@ with tempfile.TemporaryDirectory(prefix='vulkan-depth-clear-') as directory:
     folder = Path(directory)
     (folder / 'test.c').write_text(code)
     exe = folder / ('test.exe' if os.name == 'nt' else 'test')
-    subprocess.run([sys.argv[2] if len(sys.argv)>2 else 'gcc', '-O2', '-std=gnu11',
+    command=[sys.argv[2] if len(sys.argv)>2 else 'gcc', '-O2', '-std=gnu11',
                     '-Wall', '-Wextra', '-Werror', '-Wno-unused-parameter',
-                    '-Wno-sign-compare', '-Wno-type-limits', '-I' + str(repo), str(folder / 'test.c'),
-                    '-lvulkan', '-o', str(exe)], check=True)
+                    '-Wno-sign-compare', '-Wno-type-limits', '-I' + str(repo), '-I'+str(repo/'deps/vulkan-headers'),str(folder / 'test.c'),'-o',str(exe)]
+    command+=['-LC:/Windows/System32','-l:vulkan-1.dll','-static'] if os.name=='nt' else ['-lvulkan']
+    subprocess.run(command,check=True)
     subprocess.run([str(exe)], check=True, timeout=30)
