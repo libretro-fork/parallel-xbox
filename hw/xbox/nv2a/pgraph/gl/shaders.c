@@ -1742,30 +1742,7 @@ static void spec_queue(PGRAPHGLState *r, uint64_t h, const ShaderState *st)
     }
 }
 
-static bool comb_async_take(PGRAPHGLState *r, PshState *out, bool *gate)
-{
-    if (pgraph_glsl_psh_dynamic_pending_take(out)) {
-        *gate = true;
-        return true;
-    }
-    if (r->spec_pending_r != r->spec_pending_w) {
-        /* Async compiles slow the synchronous ones down in the driver
-         * (MEASURED): at most 12 speculative ones in flight. */
-        int in_flight = 0;
-        for (unsigned i = 0; i < ARRAY_SIZE(comb_async); i++) {
-            in_flight += comb_async[i].used && !comb_async[i].gate;
-        }
-        if (in_flight >= 12) {
-            return false;
-        }
-        *out = r->spec_pending[r->spec_pending_r %
-                               ARRAY_SIZE(r->spec_pending)].psh;
-        r->spec_pending_r++;
-        *gate = false;
-        return true;
-    }
-    return false;
-}
+
 
 /* GLSL generation worker: sources are CPU string work, kept off the render
  * thread, which only submits finished ones to GL. Jobs go by key; holding
@@ -1884,7 +1861,41 @@ static bool gen_jobs_have_free(unsigned needed)
 static bool module_known(PGRAPHGLState *r, const ShaderModuleCacheKey *key)
 {
     uint64_t hash = fast_hash((const void *)key, sizeof(*key));
-    return lru_contains_hash(&r->shader_module_cache, hash);
+    Lru *cache = &r->shader_module_cache;
+    unsigned bin = lru_hash_to_bin(cache, hash);
+    LruNode *node;
+    QTAILQ_FOREACH(node, &cache->bins[bin], next_bin) {
+        ShaderModuleCacheEntry *module =
+            container_of(node, ShaderModuleCacheEntry, node);
+        if (node->hash == hash && !memcmp(&module->key, key, sizeof(*key))) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool comb_async_take(PGRAPHGLState *r, PshState *out, bool *gate)
+{
+    if (pgraph_glsl_psh_dynamic_pending_take(out)) {
+        *gate = true;
+        return true;
+    }
+    if (r->spec_pending_r != r->spec_pending_w) {
+        /* Async compiles slow the synchronous ones down in the driver
+         * (MEASURED): at most 12 speculative ones in flight. */
+        int in_flight = 0;
+        for (unsigned i = 0; i < ARRAY_SIZE(comb_async); i++) {
+            in_flight += comb_async[i].used && !comb_async[i].gate;
+        }
+        if (in_flight >= 12 || !gen_jobs_have_free(3)) {
+            return false;
+        }
+        *out = r->spec_pending[r->spec_pending_r %
+                               ARRAY_SIZE(r->spec_pending)].psh;
+        *gate = false;
+        return true;
+    }
+    return false;
 }
 
 /* The input is owned: compact accepted siblings over records already read.
@@ -2137,34 +2148,38 @@ static void comb_async_service(PGRAPHGLState *r, unsigned max_items)
     PshState st;
     bool gate;
     while (gen_jobs_have_free(1) && comb_async_take(r, &st, &gate)) {
+        if (!gate) {
+            /* The draw's exact stage keys: one vertex prefix, optional
+             * geometry (including its UI-clamp option), and fragment. The
+             * three-slot reservation keeps this owned record pending under
+             * pressure. Only this thread changes job-slot ownership. */
+            const ShaderState *queued =
+                &r->spec_pending[r->spec_pending_r %
+                                 ARRAY_SIZE(r->spec_pending)];
+            ShaderModuleCacheKey keys[3];
+            bool need_gs = state_module_keys(queued, keys);
+            bool fragment_cached = module_known(r, &keys[2]);
+            for (unsigned stage = need_gs ? 0 : 1; stage < 3; stage++) {
+                bool cached = stage == 2 ? fragment_cached :
+                                          module_known(r, &keys[stage]);
+                if (!cached) {
+                    fed |= gen_job_push(&keys[stage], false, false);
+                }
+            }
+            /* No queue view survives this point. Jobs own immutable keys;
+             * cached stages retain their existing native owners. */
+            r->spec_pending_r++;
+            if (fragment_cached) {
+                spec_track_adopted(r, &st);
+            }
+            continue;
+        }
         ShaderModuleCacheKey key;
         memset(&key, 0, sizeof(key));
         key.kind = GL_FRAGMENT_SHADER;
         key.psh.state = st;
-        /* gated combiners must reach adoption even if cached: keep them */
-        if (!gate && module_known(r, &key)) {
-            /* Already cached (seeded, say): no compile, but adopt it, or
-             * the state keeps its first-meet cover forever. */
-            spec_track_adopted(r, &st);
-            continue;
-        }
+        /* Gated combiners must reach adoption even if cached. */
         fed |= gen_job_push(&key, gate, false);
-    }
-
-    /* ...vertex modules of queued specialised states (both variants)... */
-    for (unsigned qi = r->spec_pending_r;
-         qi != r->spec_pending_w && gen_jobs_have_free(1); qi++) {
-        ShaderState *qs = &r->spec_pending[qi % ARRAY_SIZE(r->spec_pending)];
-        for (int prefix = 0; prefix < 2; prefix++) {
-            ShaderModuleCacheKey key;
-            memset(&key, 0, sizeof(key));
-            key.kind = GL_VERTEX_SHADER;
-            key.vsh.state = qs->vsh;
-            key.vsh.glsl_opts.prefix_outputs = prefix;
-            if (!module_known(r, &key)) {
-                fed |= gen_job_push(&key, false, false);
-            }
-        }
     }
 
     /* ...and dynamic vertex families (both variants). */

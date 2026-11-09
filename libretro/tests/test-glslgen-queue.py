@@ -12,7 +12,7 @@ root = Path(sys.argv[1]).resolve()
 compiler = shlex.split(sys.argv[2] if len(sys.argv) > 2 else "cc")
 source = (root / "hw/xbox/nv2a/pgraph/gl/shaders.c").read_text()
 begin = source.index("#define GEN_JOBS 16")
-end = source.index("/* Already generated, queued, or cached?", begin)
+end = source.index("static bool module_known(", begin)
 production = source[begin:end]
 # Give the production worker a shutdown point for this bounded test only.
 production = production.replace("for (;;) {", "while (!retro_atomic_load_acquire_int(&stop)) {", 1)
