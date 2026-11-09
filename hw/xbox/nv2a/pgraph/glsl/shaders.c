@@ -56,6 +56,11 @@ void pgraph_glsl_snapshot_shader_regs(PGRAPHState *pg)
             pgraph_reg_r(pg, NV_PGRAPH_TEXFILTER0 + i * 4) &
             NV_PGRAPH_TEXFILTER0_SHADER_FIELDS;
     }
+    pg->shader_reg_snap[9] = pgraph_reg_r(pg, NV_PGRAPH_CONTROL_0) &
+                             NV_PGRAPH_CONTROL_0_SHADER_FIELDS;
+    pg->shader_reg_snap[10] = pgraph_reg_r(pg, NV_PGRAPH_CONTROL_3) &
+                              NV_PGRAPH_CONTROL_3_SHADER_FIELDS;
+    pg->shader_reg_snap[11] = pg->surface_scale_factor > 1;
 }
 
 static bool shader_reg_dirty(PGRAPHState *pg, unsigned int reg, uint32_t fields,
@@ -103,11 +108,15 @@ bool pgraph_glsl_check_shader_state_dirty(PGRAPHState *pg,
     if (pg->program_data_dirty) {
         return true;
     }
+    /* Both renderers also flag CONTROL_0 for native/upscaled transitions,
+     * without changing the register. Preserve that host-input invalidation. */
+    if ((pg->surface_scale_factor > 1) != pg->shader_reg_snap[11]) {
+        return true;
+    }
 
     unsigned int regs[] = {
         NV_PGRAPH_COMBINECTL,      NV_PGRAPH_COMBINESPECFOG0,
-        NV_PGRAPH_COMBINESPECFOG1, NV_PGRAPH_CONTROL_0,
-        NV_PGRAPH_CONTROL_3,       NV_PGRAPH_CSV0_C,
+        NV_PGRAPH_COMBINESPECFOG1, NV_PGRAPH_CSV0_C,
         NV_PGRAPH_CSV0_D,          NV_PGRAPH_CSV1_A,
         NV_PGRAPH_CSV1_B,          NV_PGRAPH_POINTSIZE,
         NV_PGRAPH_SHADERCLIPMODE,
@@ -122,6 +131,20 @@ bool pgraph_glsl_check_shader_state_dirty(PGRAPHState *pg,
 
     if (shader_reg_dirty(pg, NV_PGRAPH_SETUPRASTER,
                          NV_PGRAPH_SETUPRASTER_SHADER_FIELDS, 0)) {
+        return true;
+    }
+    /* Legacy dynamic siblings still use register writes as re-selection
+     * opportunities while async work lands. Preserve those wakeups until
+     * every completion path has independent retry scheduling. */
+    if (state->psh.combiner_dynamic &&
+        (pgraph_is_reg_dirty(pg, NV_PGRAPH_CONTROL_0) ||
+         pgraph_is_reg_dirty(pg, NV_PGRAPH_CONTROL_3))) {
+        return true;
+    }
+    if (shader_reg_dirty(pg, NV_PGRAPH_CONTROL_0,
+                         NV_PGRAPH_CONTROL_0_SHADER_FIELDS, 9) ||
+        shader_reg_dirty(pg, NV_PGRAPH_CONTROL_3,
+                         NV_PGRAPH_CONTROL_3_SHADER_FIELDS, 10)) {
         return true;
     }
 

@@ -59,6 +59,16 @@ ShaderState pgraph_glsl_get_shader_state(PGRAPHState *pg);
      NV_PGRAPH_TEXFILTER0_RSIGNED | NV_PGRAPH_TEXFILTER0_GSIGNED |      \
      NV_PGRAPH_TEXFILTER0_BSIGNED)
 
+/* Keep ZENABLE: it selects the upscaled UI-clamp shader family. Alpha
+ * function/reference are conservatively retained even on dynamic families. */
+#define NV_PGRAPH_CONTROL_0_SHADER_FIELDS \
+    (NV_PGRAPH_CONTROL_0_ALPHATESTENABLE | NV_PGRAPH_CONTROL_0_ALPHAFUNC | \
+     NV_PGRAPH_CONTROL_0_ALPHAREF | NV_PGRAPH_CONTROL_0_ZENABLE | \
+     NV_PGRAPH_CONTROL_0_Z_PERSPECTIVE_ENABLE)
+#define NV_PGRAPH_CONTROL_3_SHADER_FIELDS \
+    (NV_PGRAPH_CONTROL_3_SHADEMODE | NV_PGRAPH_CONTROL_3_PROVOKING_VERTEX | \
+     NV_PGRAPH_CONTROL_3_FOGENABLE | NV_PGRAPH_CONTROL_3_FOG_MODE)
+
 bool pgraph_glsl_check_shader_state_dirty(PGRAPHState *pg,
                                           const ShaderState *state);
 

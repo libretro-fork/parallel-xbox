@@ -366,7 +366,7 @@ typedef struct PGRAPHState {
     DECLARE_BITMAP(regs_dirty, 0x2000 / sizeof(uint32_t));
     /* The shader-relevant fields of the registers the dirty map can only
      * flag whole, as they stood when the current shader state was built. */
-    uint32_t shader_reg_snap[9];
+    uint32_t shader_reg_snap[12];
 
     bool clearing; // FIXME: Internal
     retro_atomic_int_t waiting_for_flip;

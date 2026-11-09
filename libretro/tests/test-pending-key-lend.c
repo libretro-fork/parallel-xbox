@@ -22,9 +22,9 @@ typedef struct {bool full;struct{ShaderState shader_state;}key;uint64_t state_ha
 typedef struct PGRAPHVkState {Lru shader_cache;ShaderBinding *shader_binding;bool shader_bindings_changed,sibling_retry;unsigned sibling_ticket,sibling_generation;} PGRAPHVkState;
 struct PGRAPHState {
  PGRAPHVkState *vk_renderer_state;bool program_data_dirty,two_side_light_en;
- uint16_t uniform_attrs,swizzle_attrs,compressed_attrs;unsigned primitive_mode;
+ uint16_t uniform_attrs,swizzle_attrs,compressed_attrs;unsigned primitive_mode,surface_scale_factor;
  struct{unsigned zeta_format;}surface_shape;bool texture_matrix_enable[4];
- uint32_t shader_reg_snap[9],raw[0x2000/4];bool dirty[0x2000/4];
+ uint32_t shader_reg_snap[12],raw[0x2000/4];bool dirty[0x2000/4];
 };
 unsigned pgraph_glsl_dynamic_gen;
 static LibJob pump_jobs[PUMP_RING];static unsigned pump_d,pump_w_local;

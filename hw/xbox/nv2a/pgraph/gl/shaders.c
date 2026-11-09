@@ -1497,6 +1497,9 @@ void pgraph_gl_uniform_sources_invalidate(PGRAPHGLState *r)
     r->vsh_uni_src.valid = false;
     r->vsh_uni_src.ff_valid = false;
     uniform_cache_invalidate(&r->uni_cache);
+    /* Restored program words/registers need a fresh shader-state selection;
+     * do not rely on an incidental whole-register dirty write to wake it. */
+    r->shader_binding = NULL;
 }
 
 /* prog 0: the program bound with glUseProgram. */

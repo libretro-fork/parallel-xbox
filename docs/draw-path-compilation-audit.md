@@ -303,3 +303,43 @@ Its sanitizer caught two pre-existing signed bit-31 expressions used by the
 guard. Their unsigned literals preserve the 32-bit register values and key
 schema; sanitizer suppression is not used. Remaining synchronous misses and
 fresh-process/image qualification gaps stay open.
+
+The shared shader dirty guard now compares CONTROL_0/CONTROL_3 writes on
+their shader-consumed fields instead of treating every write as a new shader
+identity. Depth-function/write and color-write changes still reach their normal
+pipeline/dynamic-state paths; they no longer require constructing an identical
+ShaderState. Keep alpha enable/function/reference, Z perspective, fog enable/mode,
+shade mode and provoking vertex. Keep ZENABLE because it selects the upscaled
+UI-clamp family. No ShaderState/PipelineKey field or key/schema version changes.
+
+Both renderers also flag CONTROL_0 when crossing native/upscaled resolution
+without changing the register. A separate native/upscaled class snapshot keeps
+that host-input invalidation. The existing nine-word host snapshot becomes
+twelve words: two masked controls and that class, twelve added bytes per device.
+The snapshot remains owned by PGRAPH, is not migrated or queued, and does not
+clone shader/geometry/file payloads. It adds three scalar snapshots at the
+existing register-map clear; no allocation, mapping or resource ownership changes.
+Legacy dynamic siblings retain whole-register write wakeups until every async
+completion route has independent retry scheduling. Pending native worker-key
+lends keep their existing exact binding, generation and guest-input guards.
+
+The regression oracle extracts consumed VSH, geometry, fragment and UI-selector
+expressions, audits control dependencies, and exercises all register bits across
+randomized values. It covers unchanged writes, relevant changes, native/upscaled
+transitions and retained legacy-sibling wakeups. In the final guarded cold Vulkan
+DOA3 first-fight run, no pending key lends were active and 80,402 checks returned
+clean despite control writes. Those calls avoid the old whole-register-triggered
+2,620-byte capture path: 210,653,240 bytes of captured-state output by ABI size.
+This is work accounting, not measured bus traffic or a frame-time claim. Ordinary
+guest program/texture changes and remaining shader-driven captures still occur.
+Driver caches, varying encountered states and overlapping private CPU diagnostics
+leave latency and cold-play recovery unqualified. The transient unguarded build
+and its profiles are retained separately from final guarded runtime evidence.
+
+GL flush now also invalidates its borrowed host shader-binding view, matching
+the Vulkan load invalidation. Uniform-source invalidation alone did not ensure
+restored program words selected a fresh shader. Cached programs retain their
+native owners; no object is deleted or copied by clearing this view. The next
+draw reselects actual restored state without waiting for an unrelated control
+write. This GL-only refinement receives separate three-game lifecycle checks
+and a final GL image comparison; the Vulkan rendering path is unchanged.
