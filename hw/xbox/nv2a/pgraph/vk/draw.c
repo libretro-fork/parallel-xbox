@@ -1516,8 +1516,8 @@ static void pump_submit(LibJob *job)
 
 /* A state's pipeline layout: the descriptor set, and the vertex shader's
  * uniform attributes as push constants when they fit. */
-static VkPipelineLayout create_pipeline_layout(PGRAPHVkState *r,
-                                               const ShaderState *st)
+static VkPipelineLayout create_pipeline_layout_size(PGRAPHVkState *r,
+                                                    uint32_t push_size)
 {
     VkPipelineLayoutCreateInfo info = {
         .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
@@ -1528,7 +1528,7 @@ static VkPipelineLayout create_pipeline_layout(PGRAPHVkState *r,
         .stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
         .offset = 0,
         // FIXME: Minimize push constants
-        .size = push_constant_size(r, st),
+        .size = push_size,
     };
     if (range.size) {
         info.pushConstantRangeCount = 1;
@@ -1537,6 +1537,12 @@ static VkPipelineLayout create_pipeline_layout(PGRAPHVkState *r,
     VkPipelineLayout layout;
     VK_CHECK(vkCreatePipelineLayout(r->device, &info, NULL, &layout));
     return layout;
+}
+
+static VkPipelineLayout create_pipeline_layout(PGRAPHVkState *r,
+                                               const ShaderState *st)
+{
+    return create_pipeline_layout_size(r, push_constant_size(r, st));
 }
 
 /* Dynamic states of a library built ahead of its draw (pump, prewarm), the
@@ -1699,23 +1705,22 @@ void pgraph_vk_libpump_step(PGRAPHState *pg)
 /* Queue upload-time library work in its final native slot. No ShaderState,
  * vertex data or shader payload is copied into the queue: referenced modules
  * cover the worker's last use. A full queue defers optional preparation. */
-static void prewarm_pre_library(PGRAPHState *pg, const ShaderState *state,
-                                const RenderPassState *rp)
+bool pgraph_vk_pre_library_ready(PGRAPHState *pg, const VkPrewarmState *pipeline,
+                                  ShaderModuleInfo *vsh, ShaderModuleInfo *geom)
 {
     PGRAPHVkState *r = pg->vk_renderer_state;
     pump_drain(pg);
     LibJob *job = pump_slot();
     if (!job) {
-        return;
+        return false;
     }
-    ShaderModuleInfo *geom, *vsh;
-    pgraph_vk_ref_pre_state_modules(r, state, &geom, &vsh);
     job->ci.stageCount = pre_stages(job->stages, vsh, geom);
-    ahead_pre_state(state, &job->raster, &job->ia);
+    job->raster = pipeline->raster;
+    job->ia = pipeline->ia;
     job->vi.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
     job->hash = gpl_pre_hash(r, vsh->module,
                              geom ? geom->module : VK_NULL_HANDLE,
-                             rp, &job->raster, &job->ia, &job->vi);
+                             &pipeline->render_pass, &job->raster, &job->ia, &job->vi);
     bool found;
     gpl_lookup(r, false, job->hash, &found);
     if (!found) {
@@ -1732,7 +1737,7 @@ static void prewarm_pre_library(PGRAPHState *pg, const ShaderState *state,
         if (geom) {
             pgraph_vk_unref_shader_module(r, geom);
         }
-        return;
+        return true;
     }
     job->device = r->device;
     job->cache = r->vk_pipeline_cache;
@@ -1740,7 +1745,7 @@ static void prewarm_pre_library(PGRAPHState *pg, const ShaderState *state,
     if (geom) {
         job->mods[job->nmods++] = geom;
     }
-    job->layout = create_pipeline_layout(r, state);
+    job->layout = create_pipeline_layout_size(r, pipeline->push_size);
     job->vp = (VkPipelineViewportStateCreateInfo){
         .sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO,
         .viewportCount = 1,
@@ -1748,8 +1753,11 @@ static void prewarm_pre_library(PGRAPHState *pg, const ShaderState *state,
     };
     job->dyn = (VkPipelineDynamicStateCreateInfo){
         .sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO,
-        .dynamicStateCount = ahead_dynamic_states(r, state, job->dyn_states),
+        .dynamicStateCount = pipeline->num_dynamic,
     };
+    assert(pipeline->num_dynamic <= ARRAY_SIZE(job->dyn_states));
+    memcpy(job->dyn_states, pipeline->dynamic_states,
+           pipeline->num_dynamic * sizeof(job->dyn_states[0]));
     job->lib_info = (VkGraphicsPipelineLibraryCreateInfoEXT){
         .sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_LIBRARY_CREATE_INFO_EXT,
         .flags = VK_GRAPHICS_PIPELINE_LIBRARY_VERTEX_INPUT_INTERFACE_BIT_EXT |
@@ -1758,13 +1766,14 @@ static void prewarm_pre_library(PGRAPHState *pg, const ShaderState *state,
     job->ci.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
     job->ci.flags = VK_PIPELINE_CREATE_LIBRARY_BIT_KHR;
     job->ci.layout = job->layout;
-    job->ci.renderPass = get_render_pass(r, (RenderPassState *)rp);
+    job->ci.renderPass = get_render_pass(r, (RenderPassState *)&pipeline->render_pass);
     pump_submit(job);
+    return true;
 }
 
 /* Only the vertex side is known at upload time; fragment and attachment
- * state may still change before the draw. Module acquisition can still be
- * synchronous; library creation runs on the existing pipeline worker. */
+ * state may still change before the draw. CPU compilation and library
+ * creation are queued separately; an uncovered draw keeps its correct path. */
 void pgraph_vk_prewarm_shaders(NV2AState *d)
 {
     PGRAPHState *pg = &d->pgraph;
@@ -1790,9 +1799,12 @@ void pgraph_vk_prewarm_shaders(NV2AState *d)
         return;
     }
 
-    RenderPassState rp_state;
-    init_render_pass_state(pg, &rp_state);
-    prewarm_pre_library(pg, &state, &rp_state);
+    VkPrewarmState pipeline = {0};
+    init_render_pass_state(pg, &pipeline.render_pass);
+    ahead_pre_state(&state, &pipeline.raster, &pipeline.ia);
+    pipeline.num_dynamic = ahead_dynamic_states(r, &state, pipeline.dynamic_states);
+    pipeline.push_size = push_constant_size(r, &state);
+    pgraph_vk_queue_pre_modules(pg, &state, &pipeline);
 }
 
 /* A whole pipeline's create info, for the shader state st (its modules

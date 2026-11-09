@@ -88,6 +88,8 @@ jobs:
           python3 driver/libretro/tests/test-gl-prewarm-traversal.py candidate cc 2>&1 | tee results/gl-prewarm-traversal.log
           python3 driver/libretro/tests/test-prewarm-library-worker.py candidate cc 2>&1 | tee results/prewarm-library-worker.log
           python3 driver/libretro/tests/test-worker-input-view.py candidate cc 2>&1 | tee results/worker-input-view.log
+          python3 driver/libretro/tests/test-pre-module-worker.py candidate cc 2>&1 | tee results/pre-module-worker.log
+          python3 driver/libretro/tests/test-sibling-queue.py candidate cc 2>&1 | tee results/sibling-queue.log
           python3 driver/libretro/tests/test-gl-spec-preparation.py candidate cc 2>&1 | tee results/gl-spec-preparation.log
           python3 driver/libretro/tests/test-dirty-page-fast.py candidate cc 2>&1 | tee results/dirty-page-fast.log
           python3 driver/libretro/tests/test-vk-clear-no-pipeline.py candidate cc 2>&1 | tee results/vk-clear-no-pipeline.log

@@ -29,13 +29,14 @@ static unsigned initialized,steps,freed;
 static const char *pgraph_seed_game_tag(void){CHECK(g_config.perf.shader_seeding);return tag?"fixture":NULL;}
 static void vk_seed_siblings(void){CHECK(!vk_pump_states);initialized++;bank.generation=initialized;vk_pump_states=&bank;}
 static void vk_seed_step(void){CHECK(g_config.perf.shader_seeding);steps++;}
+static void vk_pre_service(PGRAPHState *pg){CHECK(pg&&pg->vk_renderer_state);}
 static void vk_seed_write(PGRAPHState *pg){(void)pg;}
 static void retro_eventcount_free(unsigned *p){(void)p;}
 static void shader_cache_finalize(PGRAPHState *pg){(void)pg;CHECK(pipeline_quiesced);}
 static void destroy_descriptor_sets(PGRAPHState *pg){(void)pg;}
 static void destroy_descriptor_set_layout(PGRAPHState *pg){(void)pg;}
 static void destroy_descriptor_pool(PGRAPHState *pg){(void)pg;}
-static void vk_spec_quiesce(void){quiesced=true;}
+static void vk_spec_quiesce(PGRAPHVkState *r){CHECK(r);quiesced=true;}
 static void g_array_free(GArray *p,bool all){CHECK(quiesced&&pipeline_quiesced&&p==&bank&&all);freed++;}
 /* PRODUCTION */
 int main(void){
@@ -56,14 +57,14 @@ int main(void){
  }
  puts("Seed lifetime: Off/late-title/enable/disable and three renderer generations; no stale bank, early free or repeated initialization PASS");
 }
-'''.replace('/* PRODUCTION */',service+'\n'+finalize)
+'''.replace('/* PRODUCTION */',service+'\n'+finalize).replace('pgraph_vk_seed_service();','pgraph_vk_seed_service(&pg);')
 with tempfile.TemporaryDirectory(prefix='seed-lifetime-') as folder:
  p=Path(folder);c=p/'test.c';exe=p/('test.exe' if os.name=='nt' else 'test')
  command=[cc,'-std=gnu11','-O2','-Wall','-Wextra','-Werror','-fsanitize=undefined','-fsanitize-undefined-trap-on-error',str(c),'-o',str(exe)]
  c.write_text(code);subprocess.run(command,check=True);subprocess.run([str(exe)],check=True)
  for label,old,new in [
   ('stale one-shot flag','vk_seed_done = false;','/* missing flag reset */'),
-  ('bank released before worker quiescence','    vk_spec_quiesce();','    if(vk_pump_states){g_array_free(vk_pump_states,TRUE);vk_pump_states=NULL;}\n    vk_spec_quiesce();')]:
+  ('bank released before worker quiescence','    vk_spec_quiesce(pg->vk_renderer_state);','    if(vk_pump_states){g_array_free(vk_pump_states,TRUE);vk_pump_states=NULL;}\n    vk_spec_quiesce(pg->vk_renderer_state);')]:
   assert old in code
   c.write_text(code.replace(old,new,1));subprocess.run(command,check=True)
   bad=subprocess.run([str(exe)],capture_output=True)

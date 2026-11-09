@@ -1234,7 +1234,19 @@ typedef enum FinishReason {
 // draw.c
 void pgraph_vk_init_pipelines(PGRAPHState *pg);
 void pgraph_vk_libpump_step(PGRAPHState *pg);
-void pgraph_vk_seed_service(void);
+/* Immutable upload-time raster metadata; no guest or descriptor pointers. */
+typedef struct VkPrewarmState {
+    RenderPassState render_pass;
+    VkPipelineRasterizationStateCreateInfo raster;
+    VkPipelineInputAssemblyStateCreateInfo ia;
+    VkDynamicState dynamic_states[24];
+    uint32_t num_dynamic, push_size;
+} VkPrewarmState;
+bool pgraph_vk_queue_pre_modules(PGRAPHState *pg, const ShaderState *state,
+                                  const VkPrewarmState *pipeline);
+bool pgraph_vk_pre_library_ready(PGRAPHState *pg, const VkPrewarmState *pipeline,
+                                  ShaderModuleInfo *vsh, ShaderModuleInfo *geom);
+void pgraph_vk_seed_service(PGRAPHState *pg);
 const ShaderState *pgraph_vk_seed_pump_states(unsigned *count);
 bool pgraph_vk_seed_spv_ready_hash(uint64_t hash);
 void pgraph_vk_spec_pipeline_queued(uint64_t state_hash);

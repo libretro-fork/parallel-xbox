@@ -10,12 +10,14 @@
 #define assert(x) do { if (!(x)) { fprintf(stderr,"FAIL line %d: %s\n",__LINE__,#x);_Exit(1); } } while(0)
 #define NV2A_VERTEXSHADER_ATTRIBUTES 16
 #define PUMP_RING 64
+#define ARRAY_SIZE(a) (sizeof(a)/sizeof((a)[0]))
 typedef struct { VkShaderModule module;unsigned refs; } ShaderModuleInfo;
 typedef struct { VkVertexInputBindingDescription binding_descriptions[16];VkVertexInputAttributeDescription attribute_descriptions[16]; } PipelineKey;
 typedef struct { unsigned tag;bool geometry; } ShaderState;
 typedef struct { unsigned tag; } RenderPassState;
 typedef struct { VkDevice device;VkPipelineCache vk_pipeline_cache; } PGRAPHVkState;
 typedef struct { PGRAPHVkState *vk_renderer_state; } PGRAPHState;
+/* PREWARM */
 /* JOB */
 static LibJob pump_jobs[PUMP_RING];
 static unsigned pump_w_local,pump_d,acquires,releases,drains,starts,wakes,layouts,destroyed,layout_drops,stores;
@@ -62,7 +64,7 @@ static uint64_t gpl_pre_hash(PGRAPHVkState *r,VkShaderModule v,VkShaderModule g,
 }
 static VkPipeline gpl_lookup(PGRAPHVkState *r,bool frag,uint64_t hash,bool *found) {assert(r && !frag && hash==expected_hash);*found=cached;return cached?(VkPipeline)(uintptr_t)11:VK_NULL_HANDLE;}
 static void gpl_store(PGRAPHVkState *r,bool frag,uint64_t hash,VkPipeline pipeline) {assert(r && !frag && hash==expected_hash && pipeline==(VkPipeline)(uintptr_t)21);stores++;}
-static VkPipelineLayout create_pipeline_layout(PGRAPHVkState *r,const ShaderState *s) {assert(r && s);layouts++;return (VkPipelineLayout)(uintptr_t)31;}
+static VkPipelineLayout create_pipeline_layout_size(PGRAPHVkState *r,uint32_t size) {assert(r && size==16);layouts++;return (VkPipelineLayout)(uintptr_t)31;}
 static int ahead_dynamic_states(PGRAPHVkState *r,const ShaderState *s,VkDynamicState *out) {assert(r && s);out[0]=VK_DYNAMIC_STATE_VIEWPORT;out[1]=VK_DYNAMIC_STATE_SCISSOR;return 2;}
 static VkRenderPass get_render_pass(PGRAPHVkState *r,RenderPassState *rp) {assert(r && rp->tag==71);return (VkRenderPass)(uintptr_t)41;}
 static void vkDestroyPipeline(VkDevice d,VkPipeline p,const VkAllocationCallbacks *a) {assert(d && p==(VkPipeline)(uintptr_t)21 && !a);destroyed++;}
@@ -78,18 +80,26 @@ int main(void) {
         bool full=bits&4,duplicate=bits&8,other=bits&16;
         expected_hash=700+generation;pump_d=generation;pump_r=(int)pump_d;pump_w_local=pump_d+(full?64:duplicate?1:0);
         if(duplicate && !full) {LibJob *old=&pump_jobs[pump_d%64];pipeline_job_reset(old);old->hash=expected_hash;old->full=other;}
-        unsigned before=pump_w_local;prewarm_pre_library(&pg,&state,&rp);
+        VkPrewarmState pipeline={.render_pass=rp,.push_size=16};
+        ahead_pre_state(&state,&pipeline.raster,&pipeline.ia);
+        pipeline.num_dynamic=ahead_dynamic_states(&r,&state,pipeline.dynamic_states);
+        ShaderModuleInfo *vsh,*geom;pgraph_vk_ref_pre_state_modules(&r,&state,&geom,&vsh);
+        unsigned before=pump_w_local;bool accepted=pgraph_vk_pre_library_ready(&pg,&pipeline,vsh,geom);
         bool skip=full || cached || (duplicate && !other);
-        assert(drains==1 && acquires==!full && layouts==!skip);
+        assert(accepted==!full && drains==1 && acquires==1 && layouts==!skip);
         assert(pump_w_local==before+!skip && starts==!skip && wakes==!skip);
         assert(releases==(full?0u:skip?1u+state.geometry:0u));
-        assert(vertex.refs==!skip && geometry.refs==(!skip && state.geometry));
+        assert(vertex.refs==(full||!skip) && geometry.refs==((full||!skip) && state.geometry));
+        if(full) {pgraph_vk_unref_shader_module(&r,vsh);if(geom)pgraph_vk_unref_shader_module(&r,geom);}
         if(!skip) {
             LibJob *j=&pump_jobs[before%64];unsigned tag=state.tag;bool geo=state.geometry;
             memset(&state,0xcc,sizeof(state));memset(&rp,0xcc,sizeof(rp));
+            memset(&pipeline,0xdd,sizeof(pipeline));
             assert(j->ci.stageCount==(geo?2u:1u) && j->stages[0].module==(VkShaderModule)(uintptr_t)(tag+100));
             assert(j->ci.renderPass==(VkRenderPass)(uintptr_t)41 && j->layout==(VkPipelineLayout)(uintptr_t)31);
             assert(j->ci.pStages==j->stages && j->dyn.pDynamicStates==j->dyn_states);
+            assert(j->dyn_states[0]==VK_DYNAMIC_STATE_VIEWPORT && j->dyn_states[1]==VK_DYNAMIC_STATE_SCISSOR);
+            assert(j->raster.lineWidth==1 && j->ia.topology==(geo?VK_PRIMITIVE_TOPOLOGY_LINE_LIST:VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST));
             bool cancelled=bits&32;j->result=cancelled?VK_NULL_HANDLE:(VkPipeline)(uintptr_t)21;cached=bits&16;
             /* Older pending jobs were tested above; consume this completion
              * alone through the real cancellation/adoption/release path. */

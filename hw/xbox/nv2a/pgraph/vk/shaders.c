@@ -59,6 +59,8 @@ static MString *vk_module_glsl(const ShaderModuleCacheKey *key);
 static ShaderSource *vk_module_spirv(const ShaderModuleCacheKey *key);
 static ShaderSource *vk_spec_take_ready(const ShaderModuleCacheKey *key,
                                          uint64_t h);
+static ShaderSource *vk_pre_take_ready(const ShaderModuleCacheKey *key,
+                                       uint64_t hash);
 
 const size_t MAX_UNIFORM_ATTR_VALUES_SIZE = NV2A_VERTEXSHADER_ATTRIBUTES * 4 * sizeof(float);
 
@@ -482,6 +484,23 @@ static void shader_module_cache_entry_init(Lru *lru, LruNode *node,
     pgraph_vk_ref_shader_module(module->module_info);
 }
 
+/* Installed only during the render-thread owner's ready-request adoption.
+ * There is no compiler fallback here, and the ordinary cache initializer
+ * gains no prewarm branch or lookup. Words transfer directly from their
+ * request owner into the native module creation call. */
+static void shader_module_cache_entry_init_pre(Lru *lru, LruNode *node,
+                                               const void *key)
+{
+    PGRAPHVkState *r = container_of(lru, PGRAPHVkState, shader_module_cache);
+    ShaderModuleCacheEntry *module =
+        container_of(node, ShaderModuleCacheEntry, node);
+    memcpy(&module->key, key, sizeof(module->key));
+    ShaderSource *spv = vk_pre_take_ready(&module->key, node->hash);
+    assert(spv);
+    module->module_info = pgraph_vk_create_shader_module_from_spirv(r, spv);
+    pgraph_vk_ref_shader_module(module->module_info);
+}
+
 static void shader_module_cache_entry_post_evict(Lru *lru, LruNode *node)
 {
     PGRAPHVkState *r = container_of(lru, PGRAPHVkState, shader_module_cache);
@@ -640,6 +659,53 @@ static unsigned vk_spec_undrained; /* states queued, not yet drained: what
 static QemuThread vk_spec_thread;
 static bool vk_spec_started;
 static bool vk_spec_push_constants;
+
+/* Eight immutable key owners, not a second shader payload queue. Only
+ * pointers enter the small SPSC ring. QUEUED owns keys through the compiler's
+ * last read; READY publishes referenced words to the render-thread owner.
+ * ADOPTED retains module references while the pipeline queue is full. */
+#define VK_PRE_REQUESTS 8
+#define VK_PRE_FREE 0
+#define VK_PRE_QUEUED 1
+#define VK_PRE_READY 2
+#define VK_PRE_ADOPTED 3
+#define VK_PRE_CANCELLED 4
+typedef struct VkPreRequest {
+    ShaderModuleCacheKey keys[2];
+    uint64_t hashes[2];
+    ShaderSource *words[2];
+    ShaderModuleInfo *modules[2];
+    VkPrewarmState pipeline;
+    unsigned count;
+    retro_atomic_int_t phase;
+} VkPreRequest;
+static VkPreRequest vk_pre_requests[VK_PRE_REQUESTS];
+static VkPreRequest *vk_pre_ring[VK_PRE_REQUESTS];
+static retro_atomic_int_t vk_pre_write, vk_pre_read;
+static unsigned vk_pre_write_local;
+static unsigned vk_pre_live; /* render thread only */
+static VkPreRequest *vk_pre_ready_lend; /* scoped to synchronous cache adoption */
+/* Native PGRAPH owner, render thread only; quiesce clears it before draining
+ * results so cache finalization cannot enqueue new device work. */
+static PGRAPHState *vk_pre_owner;
+static void vk_pre_service(PGRAPHState *pg);
+
+static ShaderSource *vk_pre_take_ready(const ShaderModuleCacheKey *key,
+                                       uint64_t hash)
+{
+    VkPreRequest *request = vk_pre_ready_lend;
+    if (request) {
+        for (unsigned i = 0; i < request->count; i++) {
+            if (request->words[i] && request->hashes[i] == hash &&
+                !memcmp(&request->keys[i], key, sizeof(*key))) {
+                ShaderSource *words = request->words[i];
+                request->words[i] = NULL;
+                return words;
+            }
+        }
+    }
+    return NULL;
+}
 
 /* Modules the worker made, keyed by their cache key's hash: looked up
  * when the module cache makes a module, so that takes the words rather
@@ -1027,14 +1093,41 @@ static bool vk_spec_process_input(void)
     return true;
 }
 
+static bool vk_pre_process_input(void)
+{
+    unsigned read = (unsigned)retro_atomic_load_relaxed_int(&vk_pre_read);
+    if (read == (unsigned)retro_atomic_load_acquire_int(&vk_pre_write)) {
+        return false;
+    }
+    VkPreRequest *request = vk_pre_ring[read % VK_PRE_REQUESTS];
+    if (retro_atomic_load_acquire_int(&vk_spec_cancel)) {
+        retro_atomic_store_release_int(&request->phase, VK_PRE_CANCELLED);
+    } else {
+        for (unsigned i = 0; i < request->count; i++) {
+            request->words[i] = vk_spec_compile_module(&request->keys[i],
+                                                       request->hashes[i]);
+        }
+        /* No request read survives publication: the owner may adopt it now. */
+        retro_atomic_store_release_int(&request->phase, VK_PRE_READY);
+    }
+    retro_atomic_store_release_int(&vk_pre_read, (int)(read + 1));
+    retro_atomic_fetch_sub_int(&vk_spec_inflight, 1);
+    retro_eventcount_notify(&vk_spec_idle_ec);
+    return true;
+}
+
 static void *vk_spec_worker_fn(void *opaque)
 {
     for (;;) {
-        if (vk_spec_process_input()) {
+        bool worked = vk_spec_process_input();
+        worked |= vk_pre_process_input();
+        if (worked) {
             continue;
         }
         int key = retro_eventcount_prepare_wait(&vk_spec_ec);
-        if (retro_spsc_read_avail(&vk_spec_in)) {
+        if (retro_spsc_read_avail(&vk_spec_in) ||
+            retro_atomic_load_relaxed_int(&vk_pre_read) !=
+                retro_atomic_load_acquire_int(&vk_pre_write)) {
             retro_eventcount_cancel_wait(&vk_spec_ec);
             continue;
         }
@@ -1078,6 +1171,11 @@ static void vk_spec_drain(void)
                 vk_spec_track[t].phase = VK_SPEC_ADOPTED;
             }
         }
+    }
+    /* Binding already services this completion path on unseen states. Adopt
+     * pre-raster words here as well, before a draw could compile them again. */
+    if (vk_pre_owner) {
+        vk_pre_service(vk_pre_owner);
     }
 }
 
@@ -1155,8 +1253,78 @@ void pgraph_vk_spec_pipeline_landed(uint64_t state_hash)
  * waited for (a fraction of a millisecond), then what landed and every
  * track are dropped. The worker stays, idle, for the next renderer. */
 static GArray *vk_seed_pending;
-static void vk_spec_quiesce(void)
+static void vk_pre_clear(PGRAPHVkState *r)
 {
+    assert(!vk_pre_ready_lend);
+    for (unsigned j = 0; j < VK_PRE_REQUESTS; j++) {
+        VkPreRequest *request = &vk_pre_requests[j];
+        for (unsigned i = 0; i < request->count; i++) {
+            if (request->words[i]) {
+                pgraph_vk_shader_source_unref(request->words[i]);
+                request->words[i] = NULL;
+            }
+            if (request->modules[i]) {
+                pgraph_vk_unref_shader_module(r, request->modules[i]);
+                request->modules[i] = NULL;
+            }
+        }
+        request->count = 0;
+        retro_atomic_store_relaxed_int(&request->phase, VK_PRE_FREE);
+    }
+    vk_pre_live = 0;
+    vk_pre_owner = NULL;
+}
+
+static void vk_pre_service(PGRAPHState *pg)
+{
+    if (!vk_pre_live) {
+        return;
+    }
+    PGRAPHVkState *r = pg->vk_renderer_state;
+    for (unsigned j = 0; j < VK_PRE_REQUESTS; j++) {
+        VkPreRequest *request = &vk_pre_requests[j];
+        int phase = retro_atomic_load_acquire_int(&request->phase);
+        if (phase == VK_PRE_READY) {
+            assert(!vk_pre_ready_lend);
+            void (*saved_init)(Lru *, LruNode *, const void *) =
+                r->shader_module_cache.init_node;
+            assert(saved_init == shader_module_cache_entry_init);
+            r->shader_module_cache.init_node = shader_module_cache_entry_init_pre;
+            vk_pre_ready_lend = request;
+            for (unsigned i = 0; i < request->count; i++) {
+                request->modules[i] = get_and_ref_shader_module_for_key(r,
+                                                        &request->keys[i]);
+                /* A cache hit needs no words; the request still owns them. */
+                if (request->words[i]) {
+                    pgraph_vk_shader_source_unref(request->words[i]);
+                    request->words[i] = NULL;
+                }
+            }
+            vk_pre_ready_lend = NULL;
+            r->shader_module_cache.init_node = saved_init;
+            retro_atomic_store_relaxed_int(&request->phase, VK_PRE_ADOPTED);
+            phase = VK_PRE_ADOPTED;
+        }
+        if (phase == VK_PRE_ADOPTED) {
+            ShaderModuleInfo *geom = request->count == 2 ? request->modules[0] : NULL;
+            ShaderModuleInfo *vsh = request->modules[request->count - 1];
+            if (pgraph_vk_pre_library_ready(pg, &request->pipeline, vsh, geom)) {
+                /* The pipeline slot consumed or released both references. */
+                memset(request->modules, 0, sizeof(request->modules));
+                request->count = 0;
+                retro_atomic_store_relaxed_int(&request->phase, VK_PRE_FREE);
+                vk_pre_live--;
+            }
+        }
+    }
+    if (!vk_pre_live) {
+        vk_pre_owner = NULL;
+    }
+}
+
+static void vk_spec_quiesce(PGRAPHVkState *r)
+{
+    vk_pre_owner = NULL;
     if (!vk_spec_started) {
         return;
     }
@@ -1170,6 +1338,7 @@ static void vk_spec_quiesce(void)
         retro_eventcount_commit_wait(&vk_spec_idle_ec, key);
     }
     retro_atomic_store_release_int(&vk_spec_cancel, 0);
+    vk_pre_clear(r);
     vk_spec_drain();
     vk_spec_ready_clear();
     vk_spec_modules_clear();
@@ -1183,15 +1352,14 @@ static void vk_spec_quiesce(void)
     }
 }
 
-static inline QEMU_ALWAYS_INLINE void vk_spec_queue_impl(
-    uint64_t h, const ShaderState *st, const ShaderStateView *view)
+static bool vk_spec_start(void)
 {
     if (!vk_spec_started) {
         if (!retro_spsc_init(&vk_spec_in, VK_SPEC_RING * sizeof(ShaderState)) ||
             !retro_spsc_init(&vk_spec_out, 3 * VK_SPEC_RING * sizeof(VkSpecDone)) ||
             !retro_eventcount_init(&vk_spec_ec) ||
             !retro_eventcount_init(&vk_spec_idle_ec)) {
-            return; /* no memory: every state compiles where it is met */
+            return false; /* no memory: retain the correct uncovered path */
         }
         for (unsigned i = 0; i < VK_SPEC_READY; i++) {
             vk_spec_ready_order[i] = i;
@@ -1199,6 +1367,52 @@ static inline QEMU_ALWAYS_INLINE void vk_spec_queue_impl(
         vk_spec_started = true;
         qemu_thread_create(&vk_spec_thread, "vk-firstmeet", vk_spec_worker_fn,
                            NULL, QEMU_THREAD_DETACHED);
+    }
+    return true;
+}
+
+bool pgraph_vk_queue_pre_modules(PGRAPHState *pg, const ShaderState *state,
+                                  const VkPrewarmState *pipeline)
+{
+    PGRAPHVkState *r = pg->vk_renderer_state;
+    assert(!vk_pre_owner || vk_pre_owner == pg);
+    vk_pre_service(pg);
+    if (vk_pre_live == VK_PRE_REQUESTS ||
+        vk_pre_write_local - (unsigned)retro_atomic_load_acquire_int(&vk_pre_read) >= VK_PRE_REQUESTS ||
+        !vk_spec_start()) {
+        return false;
+    }
+    for (unsigned j = 0; j < VK_PRE_REQUESTS; j++) {
+        VkPreRequest *request = &vk_pre_requests[j];
+        if (retro_atomic_load_relaxed_int(&request->phase) != VK_PRE_FREE) {
+            continue;
+        }
+        request->count = vk_pre_state_module_keys(state,
+                                    r->use_push_constants_for_uniform_attrs, request->keys);
+        request->pipeline = *pipeline;
+        for (unsigned i = 0; i < request->count; i++) {
+            request->hashes[i] = fast_hash((const uint8_t *)&request->keys[i],
+                                           sizeof(request->keys[i]));
+        }
+        /* Key storage is final before the pointer publication. No key or
+         * shader payload clone crosses this queue handoff. */
+        retro_atomic_store_relaxed_int(&request->phase, VK_PRE_QUEUED);
+        vk_pre_ring[vk_pre_write_local % VK_PRE_REQUESTS] = request;
+        vk_pre_owner = pg;
+        vk_pre_live++;
+        retro_atomic_fetch_add_int(&vk_spec_inflight, 1);
+        retro_atomic_store_release_int(&vk_pre_write, (int)++vk_pre_write_local);
+        retro_eventcount_notify(&vk_spec_ec);
+        return true;
+    }
+    return false;
+}
+
+static inline QEMU_ALWAYS_INLINE void vk_spec_queue_impl(
+    uint64_t h, const ShaderState *st, const ShaderStateView *view)
+{
+    if (!vk_spec_start()) {
+        return;
     }
     if (vk_spec_find(h) >= 0) {
         return;
@@ -1649,8 +1863,9 @@ void pgraph_vk_init_shaders(PGRAPHState *pg)
 /* Per flip: once the game is named (retail disc name from startup, or
  * Chihiro's detected title), read its seeds and feed the worker a ring's
  * worth per flip. */
-void pgraph_vk_seed_service(void)
+void pgraph_vk_seed_service(PGRAPHState *pg)
 {
+    vk_pre_service(pg);
     if (!vk_seed_done && g_config.perf.shader_seeding && pgraph_seed_game_tag()) {
         vk_seed_done = true;
         vk_seed_siblings();
@@ -1679,7 +1894,7 @@ void pgraph_vk_finalize_shaders(PGRAPHState *pg)
     destroy_descriptor_sets(pg);
     destroy_descriptor_set_layout(pg);
     destroy_descriptor_pool(pg);
-    vk_spec_quiesce();
+    vk_spec_quiesce(pg->vk_renderer_state);
     /* Pipeline finalization already drained jobs, whose keys are owned by
      * their slots/cache entries. No lend into this bank survives a step. */
     if (vk_pump_states) {

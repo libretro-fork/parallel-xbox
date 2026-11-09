@@ -23,6 +23,8 @@
 #define VK_SPEC_ADOPTED 2
 static retro_spsc_t vk_spec_out;
 static bool vk_spec_started;
+static PGRAPHState *vk_pre_owner;
+static void vk_pre_service(PGRAPHState *pg) {(void)pg;assert(false);}
 static struct { uint64_t hash; int phase; } vk_spec_track[1024];
 static unsigned vk_spec_undrained;
 static ShaderSource sources[64];

@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Compile Vulkan upload-time vertex/geometry modules on the existing shader worker before preparing their libraries. Eight bounded requests construct keys directly in final storage and pass pointers, retain SPIR-V/module owners through adoption and pipeline backpressure, and release them after native worker quiescence. No fragment compilation or extra shader payload clone is added to the handoff. The ordinary module-cache initializer is unchanged; ready-request adoption uses a scoped initializer with no compiler fallback. Unknown draw misses and render-thread shader-module creation remain open.
+
 - Keep proven shader compilation regressions classified as regressions when another stage or shader comparison is noisy. Report aggregate and per-stage qualification separately so a near-zero aggregate delta does not conceal the reason CI rejected a run. Add 1,296 mixed-status cases; timing budgets and unqualified results are unchanged. Runtime is unchanged.
 
 - Let Vulkan's shader compiler worker borrow contiguous aligned input records until its last compiler read instead of copying each 2,620-byte state to the stack. Keep one bounded snapshot for wrapped or unaligned records, preserve cancellation and quiescence notification, and leave partial records unconsumed. Add real-ring ownership, producer-reuse and copy-count checks to shader CI. No shader semantics or cold-play recovery claim.

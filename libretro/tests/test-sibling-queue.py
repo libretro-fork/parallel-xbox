@@ -13,7 +13,7 @@ cc = sys.argv[2] if len(sys.argv) > 2 else 'gcc'
 source = (repo / 'hw/xbox/nv2a/pgraph/vk/shaders.c').read_text(encoding='utf-8')
 header = (repo / 'hw/xbox/nv2a/pgraph/vk/renderer.h').read_text(encoding='utf-8')
 def function(name):
-    m = re.search(r'^static (?:inline QEMU_ALWAYS_INLINE )?void ' + name + r'\([^;]*?\)\s*\{', source, re.M)
+    m = re.search(r'^static (?:inline QEMU_ALWAYS_INLINE )?(?:void|bool) ' + name + r'\([^;]*?\)\s*\{', source, re.M)
     assert m, name
     a = source.index('{', m.start())
     b, depth = a + 1, 1
@@ -25,7 +25,7 @@ view = source[source.index('enum {\n    VK_SHADER_HEAD_BYTES'):source.index('sta
 key = re.search(r'typedef struct ShaderModuleCacheKey \{.*?\} ShaderModuleCacheKey;', header, re.S)[0]
 record = re.search(r'typedef struct VkSpecDone \{.*?\} VkSpecDone;', source, re.S)[0]
 reference = Path(__file__).with_name('sibling-queue-reference.h').read_text(encoding='utf-8')
-functions = reference + '\n' + '\n'.join(function(n) for n in ('vk_spec_queue_impl', 'vk_spec_queue', 'vk_spec_queue_view'))
+functions = reference + '\n' + '\n'.join(function(n) for n in ('vk_spec_start', 'vk_spec_queue_impl', 'vk_spec_queue', 'vk_spec_queue_view'))
 code = Path(__file__).with_suffix('.c').read_text(encoding='utf-8').replace('/* TYPES */', key + '\n' + record + '\n' + view).replace('/* FUNCTIONS */', functions)
 env = os.environ.copy()
 env['PATH'] = str(Path(cc).resolve().parent) + os.pathsep + env.get('PATH', '')
