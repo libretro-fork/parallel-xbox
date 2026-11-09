@@ -167,6 +167,32 @@ static void backend_opcache_checks(void)
         dispose(m);
     }
 }
+static void fresh_interrupt_fallback_checks(void)
+{
+    for (unsigned mode = 0; mode < 4; mode++) {
+        Machine *m = machine_new(true);
+        dsp_core_t *c = m->dsp->backend;
+        REQUIRE(c->jit);
+        c->pc = 0;
+        c->pram[0] = 0x0ace78; /* deliberate legacy out-of-width BSET #24,A */
+        c->registers[DSP_REG_SR] = mode << DSP_SR_S0;
+        c->interrupt_state = DSP_INTERRUPT_DISABLED;
+        c->interrupt_pipeline_count = 0;
+        c->interrupt_instr_fetch = 0x20;
+        c->interrupt_save_pc = 0x60;
+        c->interrupt_ipl_to_raise = 2;
+        c->is_idle = false;
+        m->dsp->save_cycles = 0;
+        uint64_t calls = dspjit_test_flush_calls();
+        uint64_t fallback = dspjit_test_fallback_count();
+        uint64_t entries = dspjit_test_entry_count();
+        m->dsp->ops->run(m->dsp, 1);
+        REQUIRE(dspjit_test_flush_calls() == calls);
+        REQUIRE(dspjit_test_fallback_count() == fallback + 1);
+        REQUIRE(dspjit_test_entry_count() == entries);
+        dispose(m);
+    }
+}
 static double seconds(void)
 {
 #ifdef _WIN32
@@ -334,7 +360,9 @@ int main(int argc, char **argv)
         c->is_idle = false;
         m->dsp->save_cycles = 0;
         uint64_t fallback = dspjit_test_fallback_count();
+        uint64_t flush_calls = dspjit_test_flush_calls();
         m->dsp->ops->run(m->dsp, 1);
+        REQUIRE(dspjit_test_flush_calls() == flush_calls);
         REQUIRE(dspjit_test_fallback_count() == fallback + 1);
         REQUIRE(c->loop_rep);
         resets = dspjit_test_flush_resets();
@@ -515,6 +543,8 @@ int main(int argc, char **argv)
     dispose(m);
     REQUIRE(dspjit_test_fallback_count() == 4); /* one deliberate legacy REP call per scale */
     backend_opcache_checks();
+    fresh_interrupt_fallback_checks();
+    REQUIRE(dspjit_test_fallback_count() == 8); /* deliberate legacy REP/IRQ cases only */
     printf("DSP flush: %u empty/normal/REP/interrupt cache checks pass\n",checks);
     return 0;
 }

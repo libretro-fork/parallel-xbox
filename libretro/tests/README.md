@@ -4912,12 +4912,12 @@ rewinds the arena, then clears coverage and retires published entries in
 marked pointer tables. Untouched slots are already empty. Per-word
 invalidation does not reset dirty bits. No saved state changes.
 
-The 18997 focused checks cover initially empty flushes, populated/repeated
+The 19018 focused checks cover initially empty flushes, populated/repeated
 empty flushes, all eight normal scaling/LF identities, direct CLR-to-NOP code
 replacement after flush, REP fallback-to-native replacement, and interrupt-only
 publication/replacement through all four scales and six pipeline stages.
 The intentional legacy REP negative path makes one call per scaling mode; its
-replacement must run natively without an additional fallback. Normal and
+replacement must run natively without an additional fallback. Supported normal and
 interrupt paths add no fallbacks. Both native CI steps run this target.
 
 Empty flushes perform no pointer retirement or coverage clearing. The C
@@ -5228,3 +5228,25 @@ interrupt and REP translations must initialize their own state independently
 of the previous block. The undefined-behavior trap fixture rejects a negative
 control omitting interrupt-retirement reset. Release timing uses builds
 without DSPJIT_TEST and waits for local builds and native sweeps to finish.
+
+The private translation workspace now uses unzeroed allocation. Its emitter
+is initialized empty before any eligibility check: cold REP and interrupt
+rejections can consult overflow before translate_begin runs. Other state is
+initialized by translation setup and per-kind stub construction. Workspace
+destruction frees the allocation without reading uninitialized fields.
+On the measured Windows x86-64 layout this avoids requesting zero-initialized
+storage for 55,408 bytes per DSP. It does not prove physical memory traffic:
+allocators and OS demand-zero pages can satisfy a fresh allocation cheaply.
+
+The common test allocator supplies 0xA5 contents for raw allocations under
+DSPJIT_TEST. Focused cold REP and interrupt fallback cases check that rejected
+legacy out-of-width opcodes do not spuriously flush the empty JIT arena.
+The raw flush-attempt counter includes empty calls; the existing reset counter
+still counts populated-table retirement only. Four deliberate REP and four
+interrupt fallback cases remain separate from supported-program native audits.
+
+Whole create/destroy timing on the local Windows host remained highly variable
+with both 20,000- and 200,000-iteration samples. Those lifecycle timings are
+unqualified, not a performance pass or a demonstrated speedup. This change
+establishes a reduced zero-initialization request and correctness with poisoned
+storage; it makes no lifecycle, game-startup, FPS or Rust-comparison claim.

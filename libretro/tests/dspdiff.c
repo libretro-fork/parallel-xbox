@@ -43,6 +43,17 @@ int trace_events_enabled_count;
 uint16_t _TRACE_DSP56K_EXECUTE_INSTRUCTION_DISASM_DSTATE;
 
 /* what the core's DSP sources need of GLib */
+void *g_malloc(size_t n)
+{
+    void *p = malloc(n ? n : 1);
+    if (!p) abort();
+#ifdef DSPJIT_TEST
+    /* Exercise allocator contents that cannot masquerade as a zeroed cache. */
+    memset(p, 0xA5, n);
+#endif
+    return p;
+}
+
 void *g_malloc0(size_t n)
 {
     void *p = calloc(1, n ? n : 1);

@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- DSP JIT: avoid requesting a fully zeroed translation workspace at creation. Initialize the emitter explicitly for early REP/interrupt fallback checks and verify cold fallback paths with poisoned allocation contents.
+
 - Bound OpenGL shader-cache prewarm directory traversal by the existing flip quota instead of enumerating and allocating paths for the whole cache in one flip. Retain only two directory handles and current base/bucket paths; consume borrowed entry names immediately and close traversal owners on completion or renderer teardown. Preserve mapped binary admission and key ownership. Add sanitizer-backed quota, invalidated-name, cancellation and off-path I/O tests with five required rejection controls. Coordinated 16-process cold/warm comparisons recorded zero fight deadline misses; run-mean comparisons remain inconclusive. Images were byte-identical, and save/load/reset plus early teardown passed. Delivered under an explicit user-approved targeted qualification exception for inconclusive means and uncontrolled driver caches. Controlled driver-cold qualification and shader-stutter recovery remain open.
 
 - DSP JIT: reset translation flags and counters explicitly instead of clearing emitter and pointer fields that are immediately replaced. Poisoned-state tests check reset completeness across normal, interrupt and REP translation.

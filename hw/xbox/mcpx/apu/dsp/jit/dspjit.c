@@ -66,6 +66,8 @@
 static uint64_t test_invalidation_scans;
 uint64_t dspjit_test_invalidation_scans(void) { return test_invalidation_scans; }
 static uint64_t test_flush_resets;
+static uint64_t test_flush_calls;
+uint64_t dspjit_test_flush_calls(void) { return test_flush_calls; }
 uint64_t dspjit_test_flush_resets(void) { return test_flush_resets; }
 static uint64_t test_flush_pointer_bytes;
 uint64_t dspjit_test_flush_pointer_bytes(void) { return test_flush_pointer_bytes; }
@@ -5005,7 +5007,10 @@ DspJit *dspjit_create(dsp_core_t *core)
         return NULL;
     }
 #if DSPJIT_HOST
-    jit->tr = g_new0(Tr, 1);
+    jit->tr = g_new(Tr, 1);
+    /* Eligibility can reject REP/interrupt code before translate_begin.
+     * Dispatch must see a defined, non-overflowing emitter in that case. */
+    emit_init(&jit->tr->e, NULL, 0);
     emit_trampolines(jit);
 #endif
     return jit;
@@ -5034,6 +5039,9 @@ static DspJitPublication *dspjit_published_entries(DspJit *jit, unsigned table)
 
 void dspjit_flush(DspJit *jit)
 {
+#ifdef DSPJIT_TEST
+    test_flush_calls++;
+#endif
     jit->cache_used = jit->cache_base;
     /* Even an unsuccessful translation can consume arena space. Rewind it
      * above, but do not rewrite already-empty coverage and pointer tables. */
