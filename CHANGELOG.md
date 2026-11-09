@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Prepare exact Vulkan graphics pipeline layouts once during renderer initialization and lend them to draws, clears and compiler jobs. Stop creating layouts on first use and destroying duplicates on worker adoption or PSO eviction. Retire shared owners after workers, GPU slots and cached pipelines/libraries; descriptor-layout lifetime and shader/PSO keys are unchanged. The bounded owner table is 144 bytes on 64-bit builds and prepares two layouts without attribute push constants or eighteen with them. Add all-mask range, borrowed-owner and teardown checks to CI.
+
 - Verify exact Vulkan GPL metadata on digest matches, including direct-index lookup and queued pre-raster work, so collisions cannot reuse or discard a different library. Construct worker keys directly in existing job storage and retain only distinguishing metadata in each cache entry; dynamic vertex-input entries omit their proven-zero tail. No shader/geometry payload copy or persistent-cache format change. Add forced-collision, poisoned-lend and moving-array checks to CI.
 
 - Identify Vulkan GPL shader modules with renderer-owned 64-bit IDs so driver handle reuse cannot select a library compiled for an older module. Pass the exact stage owners into library lookup and keep upload-time prewarming on the same identity path; guard empty vertex-input spans before copying key metadata. No extra module allocation, shader payload copy or retained module owner is added. Add forced-handle-reuse, high-bit identity, metadata-equivalence and null-span sanitizer controls to shader CI. These library keys are renderer-local; persistent shader/PSO formats and generated code are unchanged.

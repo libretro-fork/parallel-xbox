@@ -171,7 +171,8 @@ int main(void) {
             assert(stamp<r.command_buffer_start_time);
             if(finish_is_async(why)) assert(r.slot_fence_pending[old_slot]);
             /* A pipeline from the old recording may be evicted now, but its
-             * handles must remain queued for deferred fence-based deletion. */
+             * pipeline must remain queued for deferred fence-based deletion;
+             * its shared layout belongs to the renderer, not this entry. */
             PipelineBinding pipeline={.draw_time=stamp,
                 .pipeline=(VkPipeline)(uintptr_t)51,.layout=(VkPipelineLayout)(uintptr_t)52};
             r.pipeline_binding=&pipeline;
@@ -180,7 +181,7 @@ int main(void) {
             assert(r.trash_n==n+1 && r.pipeline_binding==NULL);
             assert(pipeline.pipeline==VK_NULL_HANDLE && pipeline.layout==VK_NULL_HANDLE);
             assert(r.trash[n].pipeline==(VkPipeline)(uintptr_t)51);
-            assert(r.trash[n].layout==(VkPipelineLayout)(uintptr_t)52);
+            assert(r.trash[n].layout==VK_NULL_HANDLE);
             assert(r.trash[n].retire_after==r.submit_count+1);
             if(finish_is_async(why)) assert(r.slot_fence_pending[old_slot]);
             /* No-op display/readback/upload inspection emits no submission. */

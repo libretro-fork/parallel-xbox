@@ -79,3 +79,22 @@ This increases metadata memory and adds exact comparisons to library lookup;
 it is a collision-correctness tradeoff, not an established latency win. Full
 ready-PSO hits bypass this lookup. The job union reuses existing key storage;
 alignment may change its total size. Persistent cache schemas are unchanged.
+
+Graphics pipeline layouts now have one renderer-generation owner: the empty
+clear layout and one exact descriptor/push-range layout per possible uniform
+attribute count. Initialization creates two layouts when push constants are
+unavailable, otherwise eighteen (0 through 16 vec4 attributes plus clear).
+The 64-bit handle table costs 144 bytes; this bounded initialization work is
+not PSO compilation or speculative shader precompilation. All create infos
+match the former per-use layout shapes, including an empty descriptor-free
+clear layout. No key/schema or emitted shader changes are required.
+
+Draw jobs, queued jobs and cached bindings borrow immutable layout handles.
+Queue completion/cancellation and cache eviction no longer destroy those
+shared owners. Pipeline jobs quiesce, pipeline cache entries retire, native
+GPU slots settle and GPL libraries are released before the layout table is
+destroyed; shader teardown releases the descriptor-set layout afterward.
+No payload snapshots, additional resource references, queues, look-up
+allocations or new waits are introduced. This removes draw/upload-time
+vkCreatePipelineLayout calls; uncovered vkCreateGraphicsPipelines and final
+GPL linking remain synchronous violations. Cold-play recovery stays open.

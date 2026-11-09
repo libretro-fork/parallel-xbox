@@ -91,7 +91,7 @@ typedef struct PipelineKey {
 typedef struct PipelineBinding {
     LruNode node;
     PipelineKey key;
-    VkPipelineLayout layout;
+    VkPipelineLayout layout; /* borrowed from renderer graphics/clear table */
     VkPipeline pipeline;
     VkRenderPass render_pass;
     unsigned int draw_time;
@@ -737,6 +737,9 @@ typedef struct PGRAPHVkState {
     bool in_render_pass;
     bool in_draw;
 
+    /* Exact graphics-layout owners; jobs/cache entries borrow until teardown. */
+    VkPipelineLayout graphics_pipeline_layouts[NV2A_VERTEXSHADER_ATTRIBUTES + 1];
+    VkPipelineLayout clear_pipeline_layout;
     Lru pipeline_cache;
     VkPipelineCache vk_pipeline_cache;
     /* Pipeline cache persistence helper (pgraph_vk_save_pipeline_cache) */

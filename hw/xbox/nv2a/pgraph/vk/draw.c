@@ -34,6 +34,8 @@
 static void pcache_save_now(void *arg);
 static void pump_quiesce(PGRAPHState *pg);
 static void gpl_init(PGRAPHVkState *r);
+static void init_pipeline_layouts(PGRAPHVkState *r);
+static void finalize_pipeline_layouts(PGRAPHVkState *r);
 static void gpl_finalize(PGRAPHVkState *r);
 static void destroy_framebuffer_cache(PGRAPHVkState *r);
 static bool vk_cost_probe_active(PGRAPHState *pg);
@@ -151,8 +153,8 @@ static void pipeline_cache_entry_post_evict(Lru *lru, LruNode *node)
 
     /* An in-flight slot may still execute draws bound to this pipeline:
      * destroy it once every slot has settled. */
-    struct XemuVkTrashEntry e = { .pipeline = snode->pipeline,
-                                  .layout = snode->layout };
+    /* Layouts are renderer-owned lends, shared by cache entries and jobs. */
+    struct XemuVkTrashEntry e = { .pipeline = snode->pipeline };
     pgraph_vk_trash_push(r, &e);
     snode->pipeline = VK_NULL_HANDLE;
     snode->layout = VK_NULL_HANDLE;
@@ -323,6 +325,7 @@ void pgraph_vk_init_pipelines(PGRAPHState *pg)
 {
     PGRAPHVkState *r = pg->vk_renderer_state;
 
+    init_pipeline_layouts(r);
     init_pipeline_cache(pg);
     gpl_init(r);
     init_clear_shaders(pg);
@@ -349,6 +352,7 @@ void pgraph_vk_finalize_pipelines(PGRAPHState *pg)
     pgraph_vk_wait_all_slots(r);
     pgraph_vk_trash_drain(r);
     gpl_finalize(r);
+    finalize_pipeline_layouts(r);
     finalize_render_passes(r);
 }
 
@@ -739,13 +743,7 @@ static void create_clear_pipeline(PGRAPHState *pg)
         .pDynamicStates = dynamic_states,
     };
 
-    VkPipelineLayoutCreateInfo pipeline_layout_info = {
-        .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
-    };
-
-    VkPipelineLayout layout;
-    VK_CHECK(vkCreatePipelineLayout(r->device, &pipeline_layout_info, NULL,
-                                    &layout));
+    VkPipelineLayout layout = r->clear_pipeline_layout;
 
     VkGraphicsPipelineCreateInfo pipeline_info = {
         .sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
@@ -1023,7 +1021,7 @@ typedef struct {
     uint64_t state_hash; /* full: the shader state it was met as */
     VkDevice device;
     VkPipelineCache cache;
-    VkPipelineLayout layout;
+    VkPipelineLayout layout; /* renderer lend through worker completion */
     ShaderModuleInfo *mods[3];
     int nmods;
     VkGraphicsPipelineCreateInfo ci;
@@ -1463,7 +1461,6 @@ static void pipeline_land(PGRAPHState *pg, LibJob *job)
         snode->draw_time = pg->draw_time;
     } else {
         vkDestroyPipeline(r->device, job->result, NULL);
-        vkDestroyPipelineLayout(r->device, job->layout, NULL);
     }
     pgraph_vk_spec_pipeline_landed(job->state_hash);
 }
@@ -1480,7 +1477,6 @@ static void library_land(PGRAPHVkState *r, LibJob *job)
     } else {
         gpl_store(r, job->frag, job->hash, key, job->result);
     }
-    vkDestroyPipelineLayout(r->device, job->layout, NULL);
 }
 
 /* Land what the worker finished: libraries in the lookup tables, whole
@@ -1495,8 +1491,8 @@ static void pump_drain(PGRAPHState *pg)
     while (pump_d != done) {
         LibJob *job = &pump_jobs[pump_d % PUMP_RING];
         if (job->result == VK_NULL_HANDLE) {
-            /* cancelled at shutdown */
-            vkDestroyPipelineLayout(r->device, job->layout, NULL);
+            /* Cancelled jobs borrow renderer-owned layouts; release only
+             * their referenced modules below. */
         } else if (job->full) {
             pipeline_land(pg, job);
         } else {
@@ -1558,27 +1554,54 @@ static void pump_submit(LibJob *job)
 
 /* A state's pipeline layout: the descriptor set, and the vertex shader's
  * uniform attributes as push constants when they fit. */
-static VkPipelineLayout create_pipeline_layout_size(PGRAPHVkState *r,
-                                                    uint32_t push_size)
+/* All graphics users borrow these immutable device-generation owners.
+ * The descriptor set layout is created by shader initialization first. */
+static void init_pipeline_layouts(PGRAPHVkState *r)
 {
     VkPipelineLayoutCreateInfo info = {
         .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
-        .setLayoutCount = 1,
-        .pSetLayouts = &r->descriptor_set_layout,
     };
-    VkPushConstantRange range = {
-        .stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
-        .offset = 0,
-        // FIXME: Minimize push constants
-        .size = push_size,
-    };
-    if (range.size) {
-        info.pushConstantRangeCount = 1;
-        info.pPushConstantRanges = &range;
+    VK_CHECK(vkCreatePipelineLayout(r->device, &info, NULL,
+                                   &r->clear_pipeline_layout));
+    info.setLayoutCount = 1;
+    info.pSetLayouts = &r->descriptor_set_layout;
+    unsigned count = r->use_push_constants_for_uniform_attrs ?
+                     ARRAY_SIZE(r->graphics_pipeline_layouts) : 1;
+    for (unsigned i = 0; i < count; i++) {
+        VkPushConstantRange range = {
+            .stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
+            .size = i * 4 * sizeof(float),
+        };
+        info.pushConstantRangeCount = i ? 1 : 0;
+        info.pPushConstantRanges = i ? &range : NULL;
+        VK_CHECK(vkCreatePipelineLayout(r->device, &info, NULL,
+                                       &r->graphics_pipeline_layouts[i]));
     }
-    VkPipelineLayout layout;
-    VK_CHECK(vkCreatePipelineLayout(r->device, &info, NULL, &layout));
-    return layout;
+}
+
+/* Called after worker quiescence, GPU slot settlement and pipeline/library
+ * retirement, before the shader owner's descriptor layout is destroyed. */
+static void finalize_pipeline_layouts(PGRAPHVkState *r)
+{
+    for (unsigned i = 0; i < ARRAY_SIZE(r->graphics_pipeline_layouts); i++) {
+        if (r->graphics_pipeline_layouts[i]) {
+            vkDestroyPipelineLayout(r->device, r->graphics_pipeline_layouts[i], NULL);
+            r->graphics_pipeline_layouts[i] = VK_NULL_HANDLE;
+        }
+    }
+    vkDestroyPipelineLayout(r->device, r->clear_pipeline_layout, NULL);
+    r->clear_pipeline_layout = VK_NULL_HANDLE;
+}
+
+static VkPipelineLayout create_pipeline_layout_size(PGRAPHVkState *r,
+                                                    uint32_t push_size)
+{
+    const unsigned stride = 4 * sizeof(float);
+    assert(push_size % stride == 0);
+    unsigned index = push_size / stride;
+    assert(index < ARRAY_SIZE(r->graphics_pipeline_layouts));
+    assert(r->graphics_pipeline_layouts[index] != VK_NULL_HANDLE);
+    return r->graphics_pipeline_layouts[index];
 }
 
 static VkPipelineLayout create_pipeline_layout(PGRAPHVkState *r,

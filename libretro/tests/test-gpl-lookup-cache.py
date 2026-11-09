@@ -55,6 +55,7 @@ static void check(PGRAPHVkState *r,bool frag,uint64_t hash,const Key *key) {
  assert(got==want && found==want_found && allocations==before);cases++;
 }
 int main(void) {
+ (void)vkDestroyPipelineLayout;
  for(unsigned dynamic=0;dynamic<2;dynamic++) {
  PGRAPHVkState r={.device=(VkDevice)(uintptr_t)1,.dyn_vertex_input=dynamic};gpl_init(&r);
  assert(g_array_get_element_size(r.gpl_pre)==r.gpl_pre->size);
@@ -74,7 +75,7 @@ int main(void) {
  for(unsigned frag=0;frag<2;frag++) {
   LibJob job={.frag=frag,.hash=0,.result=(VkPipeline)(uintptr_t)9000,.layout=(VkPipelineLayout)(uintptr_t)1};
   GArray *table=frag?r.gpl_frag:r.gpl_pre;unsigned old=table->len;uint64_t drops=destroyed,old_layouts=layouts;
-  library_land(&r,&job);assert(table->len==old+1 && destroyed==drops && layouts==old_layouts+1);
+  library_land(&r,&job);assert(table->len==old+1 && destroyed==drops && layouts==old_layouts);
   job.result=(VkPipeline)(uintptr_t)9001;library_land(&r,&job);assert(table->len==old+1 && destroyed==drops+1);
   memset(frag?(void *)&job.frag_key:(void *)&job.pre_key,2,frag?sizeof(job.frag_key):sizeof(job.pre_key));
   job.result=(VkPipeline)(uintptr_t)9002;library_land(&r,&job);assert(table->len==old+2 && destroyed==drops+1);

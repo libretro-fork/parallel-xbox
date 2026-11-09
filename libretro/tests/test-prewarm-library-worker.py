@@ -27,6 +27,7 @@ with tempfile.TemporaryDirectory(prefix='prewarm-library-') as d:
     cmd=[cc,'-O2','-std=gnu11','-Wall','-Wextra','-Werror','-fsanitize=undefined','-fsanitize-undefined-trap-on-error','-I'+str(r/'deps/vulkan-headers'),str(src),'-o',str(exe)]
     src.write_text(code);subprocess.run(cmd,env=env,check=True);subprocess.run([str(exe)],env=env,check=True)
     controls=[
+        ('borrowed layout destroyed',code.replace('    bool found;\n    const void *key', '    vkDestroyPipelineLayout(r->device, job->layout, NULL);\n    bool found;\n    const void *key',1)),
         ('missing vertex owner',code.replace('job->mods[job->nmods++] = vsh;','(void)vsh;',1)),
         ('missing geometry owner',code.replace('job->mods[job->nmods++] = geom;','(void)geom;',1)),
         ('queued duplicate',code.replace('if (!pending->full && !pending->frag && pending->hash == job->hash &&', 'if (pending->full && !pending->frag && pending->hash == job->hash &&',1)),

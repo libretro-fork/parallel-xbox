@@ -72,6 +72,7 @@ static void vkDestroyPipeline(VkDevice d,VkPipeline p,const VkAllocationCallback
 static void vkDestroyPipelineLayout(VkDevice d,VkPipelineLayout p,const VkAllocationCallbacks *a) {assert(d && p==(VkPipelineLayout)(uintptr_t)31 && !a);layout_drops++;}
 /* PRODUCTION */
 int main(void) {
+    (void)vkDestroyPipelineLayout;
     unsigned cases=0;
     for(unsigned generation=0;generation<128;generation++)for(unsigned bits=0;bits<128;bits++) {
         memset(pump_jobs,0xa5,sizeof(pump_jobs));memset(&vertex,0,sizeof(vertex));memset(&geometry,0,sizeof(geometry));
@@ -112,7 +113,7 @@ int main(void) {
             /* Older pending jobs were tested above; consume this completion
              * alone through the real cancellation/adoption/release path. */
             pump_d=before;pump_r=(int)pump_w_local;pump_drain(&pg);
-            assert(pump_d==pump_w_local && destroyed==(!cancelled && cached) && stores==(!cancelled && !cached) && layout_drops==1);
+            assert(pump_d==pump_w_local && destroyed==(!cancelled && cached) && stores==(!cancelled && !cached) && layout_drops==0);
             assert(!vertex.refs && !geometry.refs);
         }
         cases++;

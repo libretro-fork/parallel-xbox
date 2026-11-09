@@ -56,3 +56,11 @@ with tempfile.TemporaryDirectory(prefix='vk-recording-epoch-') as directory:
     rejected=subprocess.run([str(exe)],capture_output=True,timeout=15,env=env)
     assert rejected.returncode and b'materializations' in rejected.stderr
     print('Required negative control rejected: finish omitted inline-lend materialization')
+
+    old='struct XemuVkTrashEntry e = { .pipeline = snode->pipeline };'
+    assert old in code
+    (folder / 'test.c').write_text(code.replace(old,'struct XemuVkTrashEntry e = { .pipeline = snode->pipeline, .layout = snode->layout };',1))
+    subprocess.run([cc,'-O2','-std=gnu11','-Wall','-Wextra','-Werror','-Wno-sign-compare','-I'+str(repo/'deps/vulkan-headers'),str(folder/'test.c'),'-o',str(exe)],check=True,env=env)
+    rejected=subprocess.run([str(exe)],capture_output=True,timeout=15,env=env)
+    assert rejected.returncode and b'r.trash[n].layout' in rejected.stderr
+    print('Required negative control rejected: eviction retires borrowed renderer layout')
