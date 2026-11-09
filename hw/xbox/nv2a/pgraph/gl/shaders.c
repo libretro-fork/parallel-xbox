@@ -1874,6 +1874,16 @@ static bool module_known(PGRAPHGLState *r, const ShaderModuleCacheKey *key)
     return false;
 }
 
+/* A fragment adoption marker alone cannot release a full draw recipe.
+ * Keys are temporary; resident modules keep their native cache owners. */
+static bool state_modules_known(PGRAPHGLState *r, const ShaderState *state)
+{
+    ShaderModuleCacheKey keys[3];
+    bool need_gs = state_module_keys(state, keys);
+    return (!need_gs || module_known(r, &keys[0])) &&
+           module_known(r, &keys[1]) && module_known(r, &keys[2]);
+}
+
 static bool comb_async_take(PGRAPHGLState *r, PshState *out, bool *gate)
 {
     if (pgraph_glsl_psh_dynamic_pending_take(out)) {
@@ -2490,8 +2500,9 @@ void pgraph_gl_bind_shaders(PGRAPHState *pg)
         uint64_t ph =
             fast_hash((const uint8_t *)&state.psh, sizeof(state.psh));
         int t = spec_track_find(r, ph);
-        if (t >= 0 && r->spec_track[t].phase == SPEC_ADOPTED) {
-            /* Module adopted off-thread: build the real binding below. */
+        if (t >= 0 && r->spec_track[t].phase == SPEC_ADOPTED &&
+            state_modules_known(r, &state)) {
+            /* All exact stages are resident: build the real binding below. */
             r->spec_track[t].phase = 0;
         } else {
             ShaderState fb = state;
@@ -2505,7 +2516,8 @@ void pgraph_gl_bind_shaders(PGRAPHState *pg)
                     uint64_t sh = fast_hash((const uint8_t *)&fb.psh,
                                             sizeof(fb.psh));
                     int ts = spec_track_find(r, sh);
-                    if (ts >= 0 && r->spec_track[ts].phase == SPEC_ADOPTED) {
+                    if (ts >= 0 && r->spec_track[ts].phase == SPEC_ADOPTED &&
+                        state_modules_known(r, &fb)) {
                         r->spec_track[ts].phase = 0;
                         generate_shaders(r, fbind); /* modules hit: cheap */
                     } else if (ts < 0) {

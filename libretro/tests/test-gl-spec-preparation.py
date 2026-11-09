@@ -28,6 +28,13 @@ records = source[a:b]
 a = source.index('    /* 2) Feed the worker:')
 b = source.index('    /* ...and dynamic vertex families', a)
 feed = source[a:b]
+# Compile both production draw predicates, not copies of the expected policy.
+draw_conditions=[]
+for variable, local in (('t','state'),('ts','fb')):
+    begin=source.index('if ('+variable+' >= 0 && r->spec_track['+variable+']')+4
+    end=source.index(') {',begin)
+    predicate=source[begin:end]
+    draw_conditions.append('static bool draw_ready_'+variable+'(PGRAPHGLState *r,int '+variable+',ShaderState '+local+'){return '+predicate+';}')
 code = r'''
 #include <stdint.h>
 #include <stdbool.h>
@@ -53,7 +60,8 @@ typedef struct LruNode {QTAILQ_ENTRY(LruNode) next_bin;uint64_t hash;} LruNode;
 typedef struct {QTAILQ_HEAD(,LruNode) bins[4];} Lru;
 typedef struct {LruNode node;ShaderModuleCacheKey key;} ShaderModuleCacheEntry;
 #define container_of(p,t,m) ((t *)((char *)(p)-offsetof(t,m)))
-typedef struct {ShaderState spec_pending[4];unsigned spec_pending_r,spec_pending_w;Lru shader_module_cache;} PGRAPHGLState;
+typedef struct {ShaderState spec_pending[4];unsigned spec_pending_r,spec_pending_w;Lru shader_module_cache;struct {int phase;} spec_track[1];} PGRAPHGLState;
+#define SPEC_ADOPTED 2
 static ShaderModuleCacheEntry cached[6];
 static unsigned cached_n;
 static unsigned lru_hash_to_bin(Lru *cache,uint64_t hash){(void)cache;return hash&3u;}
@@ -65,6 +73,7 @@ static void fixture_publish(retro_atomic_int_t *p,int value){CHECK(value==GEN_QU
 /* GEOM */
 /* KEYS */
 /* KNOWN */
+/* DRAW CONDITIONS */
 bool pgraph_glsl_psh_dynamic_pending_take(PshState *out){
  if(!dynamic_pending)return false;dynamic_pending--;
  memset(out,0,sizeof(*out));out->combiner_control=0xdeadu;return true;
@@ -108,6 +117,19 @@ static void run(unsigned occupied,unsigned cache_mask,bool geometry,unsigned cou
    entry->node.hash=fast_hash(&entry->key,sizeof(entry->key));
    unsigned bin=lru_hash_to_bin(&r.shader_module_cache,entry->node.hash);
    QTAILQ_INSERT_TAIL(&r.shader_module_cache.bins[bin],&entry->node,next_bin);
+  }
+ }
+ for(unsigned n=0;n<count;n++){
+  const ShaderState *state=&r.spec_pending[(start+n)%4];
+  unsigned required=geometry?7:6;
+  bool complete=(cache_mask&required)==required;
+  CHECK(state_modules_known(&r,state)==complete);
+  for(int phase=0;phase<=SPEC_ADOPTED;phase++){
+   r.spec_track[0].phase=phase;
+   CHECK(draw_ready_t(&r,-1,*state)==false);
+   CHECK(draw_ready_ts(&r,-1,*state)==false);
+   CHECK(draw_ready_t(&r,0,*state)==(complete&&phase==SPEC_ADOPTED));
+   CHECK(draw_ready_ts(&r,0,*state)==(complete&&phase==SPEC_ADOPTED));
   }
  }
  unsigned free_slots=0;
@@ -165,20 +187,22 @@ int main(void){
     (function(source,'static bool gen_job_push(')+'\n'+function(source,'static bool gen_jobs_have_free(unsigned needed)\n{')).replace(
         'retro_atomic_store_release_int(', 'fixture_publish(')).replace(
     '/* GEOM */',function(geom,'bool pgraph_glsl_need_geom(')).replace('/* KEYS */',function(source,'static bool state_module_keys(')).replace(
-    '/* KNOWN */',function(source,'static bool module_known(')).replace(
+    '/* KNOWN */',function(source,'static bool module_known(')+'\n'+function(source,'static bool state_modules_known(')).replace(
     '/* TAKE */',function(source,'static bool comb_async_take(').replace(
         'static bool comb_async_take(', 'static bool production_comb_async_take(', 1)).replace('/* FEED */',feed)
+
+code=code.replace('/* DRAW CONDITIONS */','\n'.join(draw_conditions))
 
 with tempfile.TemporaryDirectory(prefix='gl-spec-preparation-') as temporary:
     folder=Path(temporary);(folder/'qemu').mkdir()
     (folder/'qemu/osdep.h').write_text('#include <stdint.h>\n#include <stdbool.h>\n#include <stddef.h>\n')
     (folder/'qemu/mstring.h').write_text('typedef struct MString MString;\n')
     c=folder/'test.c';binary=folder/('test.exe' if os.name=='nt' else 'test')
-    command=[cc,'-O2','-std=gnu11','-Wall','-Wextra','-Werror','-Wno-misleading-indentation',
+    command=[cc,'-O2','-std=gnu11','-Wall','-Wextra','-Werror','-Wno-misleading-indentation','-Wno-unused-parameter',
              '-fsanitize=undefined','-fsanitize-undefined-trap-on-error','-I'+str(folder),'-I'+str(root),
              '-I'+str(root/'libretro-common/include'),str(c),'-o',str(binary)]
     c.write_text(code);subprocess.run(command,check=True);subprocess.run([str(binary)],check=True,timeout=120)
-    mutants=[('one-slot dequeue loses stages',code.replace('!gen_jobs_have_free(3)','!gen_jobs_have_free(1)',1)),
+    mutants=[('specialization draw guard removed',code.replace('&&\n            state_modules_known(r, &state)','',1)),('interpreter draw guard removed',code.replace('&&\n                        state_modules_known(r, &fb)','',1)),('fragment-only readiness',code.replace('return (!need_gs || module_known(r, &keys[0])) &&\n           module_known(r, &keys[1]) && module_known(r, &keys[2]);','(void)need_gs; return module_known(r, &keys[2]);',1)),('one-slot dequeue loses stages',code.replace('!gen_jobs_have_free(3)','!gen_jobs_have_free(1)',1)),
              ('retire before stage ownership',code.replace('        *gate = false;', '        r->spec_pending_r++;\n        *gate = false;',1)),
              ('omit geometry preparation',code.replace('unsigned stage = need_gs ? 0 : 1','unsigned stage = 1',1).replace('bool need_gs = state_module_keys(queued, keys);','(void)state_module_keys(queued, keys);',1)),
              ('fragment-only preparation',code.replace('unsigned stage = need_gs ? 0 : 1','unsigned stage = 2',1).replace('bool need_gs = state_module_keys(queued, keys);','(void)state_module_keys(queued, keys);',1)),

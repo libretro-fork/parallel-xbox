@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Require every exact vertex, optional geometry and fragment module before accepting a fragment-specialization readiness marker. Keep the current fallback available while stages remain pending, including canonical interpreter siblings. Passed 1,049,664 preparation/readiness cases per platform with eight required rejection controls. All sixteen isolated cold/warm parent timing comparisons passed with zero fight deadline misses. Repeat full-resolution images matched and save/load/reset passed; the initial image mismatch remains recorded. Delivered under an explicit user-approved targeted exception for uncontrolled driver caches. Controlled driver-cold qualification and shader stutter recovery remain open.
+
 - Preserve queued specialization state until its exact vertex, optional geometry and fragment keys are owned by generation jobs. Prevent early fragment dequeue from losing vertex preparation, and compare complete cached keys under hash collisions. Keep queue capacities, native owners and compile quotas unchanged. Passed 1,049,664 preparation cases per platform and 100,000 worker jobs. Sixteen coordinated cold/warm gameplay runs recorded zero fight deadline misses; mean timings remain inconclusive. Repeat full-resolution images matched and save/load/reset passed; an initial image mismatch and interrupted benchmark block remain recorded. Delivered under an explicit user-approved targeted exception for inconclusive means and uncontrolled driver caches. First-use stalls and controlled driver-cold recovery remain open.
 
 - DSP JIT: avoid requesting a fully zeroed translation workspace at creation. Initialize the emitter explicitly for early REP/interrupt fallback checks and verify cold fallback paths with poisoned allocation contents.
