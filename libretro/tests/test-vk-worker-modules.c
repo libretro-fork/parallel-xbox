@@ -19,9 +19,9 @@ static void *tracked_source_alloc(size_t n) { void *p=calloc(1,n); assert(p); re
 static void g_free(void *p) { if(p) { free(p); retro_atomic_fetch_sub_int(&live_sources,1); } }
 /* SOURCE FUNCTIONS */
 /* MODULE TYPES */
-typedef struct { unsigned device; } PGRAPHVkState;
+typedef struct { unsigned device;uint64_t next_shader_module_identity; } PGRAPHVkState;
 typedef struct {
- int refcnt; unsigned module; ShaderLayouts *layouts;
+ int refcnt; uint64_t identity;unsigned module; ShaderLayouts *layouts;
  ShaderUniformLayout uniforms,push_constants;
 } ShaderModuleInfo;
 static const uint32_t *expected_words;
@@ -145,6 +145,7 @@ int main(void)
  expected_words=a->words;PGRAPHVkState renderer={0};
  ShaderModuleInfo *one=pgraph_vk_create_shader_module_from_spirv(&renderer,pgraph_vk_shader_source_ref(a));
  ShaderModuleInfo *two=pgraph_vk_create_shader_module_from_spirv(&renderer,a);
+ assert(one->identity==1 && two->identity==2);
  assert(one->uniforms.uniforms==two->uniforms.uniforms && one->layouts==two->layouts);
  vk_spec_modules_clear(); /* destroys words/source but keeps shared layouts */
  /* One shared immutable layout and one allocation per mutable module. */

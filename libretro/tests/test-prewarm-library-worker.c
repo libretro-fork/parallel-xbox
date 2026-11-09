@@ -11,7 +11,7 @@
 #define NV2A_VERTEXSHADER_ATTRIBUTES 16
 #define PUMP_RING 64
 #define ARRAY_SIZE(a) (sizeof(a)/sizeof((a)[0]))
-typedef struct { VkShaderModule module;unsigned refs; } ShaderModuleInfo;
+typedef struct { VkShaderModule module;uint64_t identity;unsigned refs; } ShaderModuleInfo;
 typedef struct { VkVertexInputBindingDescription binding_descriptions[16];VkVertexInputAttributeDescription attribute_descriptions[16]; } PipelineKey;
 typedef struct { unsigned tag;bool geometry; } ShaderState;
 typedef struct { unsigned tag; } RenderPassState;
@@ -45,8 +45,8 @@ static void retro_atomic_store_release_int(int *p,int value) {
 }
 static void retro_eventcount_notify(int *p) {assert(p==&pipe_ec_work);wakes++;}
 static void pgraph_vk_ref_pre_state_modules(PGRAPHVkState *r,const ShaderState *s,ShaderModuleInfo **g,ShaderModuleInfo **v) {
-    assert(r);acquires++;vertex.module=(VkShaderModule)(uintptr_t)(s->tag+100);vertex.refs++;*v=&vertex;
-    *g=NULL;if(s->geometry){geometry.module=(VkShaderModule)(uintptr_t)(s->tag+1000);geometry.refs++;*g=&geometry;}
+    assert(r);acquires++;vertex.module=(VkShaderModule)(uintptr_t)(s->tag+100);vertex.identity=s->tag+50000;vertex.refs++;*v=&vertex;
+    *g=NULL;if(s->geometry){geometry.module=(VkShaderModule)(uintptr_t)(s->tag+1000);geometry.identity=s->tag+60000;geometry.refs++;*g=&geometry;}
 }
 static void pgraph_vk_unref_shader_module(PGRAPHVkState *r,ShaderModuleInfo *m) { assert(r && m->refs);m->refs--;releases++; }
 static int pre_stages(VkPipelineShaderStageCreateInfo *out,ShaderModuleInfo *v,ShaderModuleInfo *g) {
@@ -58,8 +58,8 @@ static void ahead_pre_state(const ShaderState *s,VkPipelineRasterizationStateCre
     *rs=(VkPipelineRasterizationStateCreateInfo){.sType=VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO,.lineWidth=1,.cullMode=s->tag%4};
     *ia=(VkPipelineInputAssemblyStateCreateInfo){.sType=VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,.topology=s->geometry?VK_PRIMITIVE_TOPOLOGY_LINE_LIST:VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST};
 }
-static uint64_t gpl_pre_hash(PGRAPHVkState *r,VkShaderModule v,VkShaderModule g,const RenderPassState *rp,const VkPipelineRasterizationStateCreateInfo *rs,const VkPipelineInputAssemblyStateCreateInfo *ia,const VkPipelineVertexInputStateCreateInfo *vi) {
-    assert(r && v==vertex.module && g==geometry.module && rp->tag==71 && rs->lineWidth==1 && ia->sType && vi->sType);
+static uint64_t gpl_pre_hash(PGRAPHVkState *r,uint64_t v,uint64_t g,const RenderPassState *rp,const VkPipelineRasterizationStateCreateInfo *rs,const VkPipelineInputAssemblyStateCreateInfo *ia,const VkPipelineVertexInputStateCreateInfo *vi) {
+    assert(r && v==vertex.identity && g==geometry.identity && rp->tag==71 && rs->lineWidth==1 && ia->sType && vi->sType);
     return expected_hash;
 }
 static VkPipeline gpl_lookup(PGRAPHVkState *r,bool frag,uint64_t hash,bool *found) {assert(r && !frag && hash==expected_hash);*found=cached;return cached?(VkPipeline)(uintptr_t)11:VK_NULL_HANDLE;}

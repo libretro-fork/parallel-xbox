@@ -203,6 +203,8 @@ ShaderModuleInfo *pgraph_vk_create_shader_module_from_spirv(PGRAPHVkState *r,
 {
     ShaderModuleInfo *info = alloc_shader_module_info(spirv->layouts);
     info->refcnt = 0;
+    assert(r->next_shader_module_identity != UINT64_MAX);
+    info->identity = ++r->next_shader_module_identity;
     info->module = pgraph_vk_create_shader_module_from_words(
         r, spirv->words, spirv->num_words);
     info->layouts = spirv->layouts;

@@ -1202,8 +1202,8 @@ static void gpl_store(PGRAPHVkState *r, bool frag, uint64_t hash,
  * pass and rasterizer/input state not set dynamically. The pass matters: a
  * linked pipeline takes its attachments from its first library, so a colour
  * pass with a depth-only fragment half lacks blend state (RADV: NULL deref). */
-static uint64_t gpl_pre_hash(PGRAPHVkState *r, VkShaderModule vsh,
-                             VkShaderModule geom,
+static uint64_t gpl_pre_hash(PGRAPHVkState *r, uint64_t vsh,
+                             uint64_t geom,
                              const RenderPassState *rp,
                              const VkPipelineRasterizationStateCreateInfo *raster,
                              const VkPipelineInputAssemblyStateCreateInfo *ia,
@@ -1219,8 +1219,8 @@ static uint64_t gpl_pre_hash(PGRAPHVkState *r, VkShaderModule vsh,
         uint32_t nb, na;
     } k;
     memset(&k, 0, sizeof(k));
-    k.vsh = (uint64_t)(uintptr_t)vsh;
-    k.geom = (uint64_t)(uintptr_t)geom;
+    k.vsh = vsh;
+    k.geom = geom;
     k.rp = *rp;
     k.raster = *raster;
     k.raster.pNext = NULL;
@@ -1237,10 +1237,14 @@ static uint64_t gpl_pre_hash(PGRAPHVkState *r, VkShaderModule vsh,
     if (!r->dyn_vertex_input) {
         k.nb = vi->vertexBindingDescriptionCount;
         k.na = vi->vertexAttributeDescriptionCount;
-        memcpy(k.bind, vi->pVertexBindingDescriptions,
-               k.nb * sizeof(k.bind[0]));
-        memcpy(k.attr, vi->pVertexAttributeDescriptions,
-               k.na * sizeof(k.attr[0]));
+        if (k.nb) {
+            memcpy(k.bind, vi->pVertexBindingDescriptions,
+                   k.nb * sizeof(k.bind[0]));
+        }
+        if (k.na) {
+            memcpy(k.attr, vi->pVertexAttributeDescriptions,
+                   k.na * sizeof(k.attr[0]));
+        }
     }
     return fast_hash((const uint8_t *)&k, sizeof(k));
 }
@@ -1271,7 +1275,7 @@ static uint32_t push_constant_size(PGRAPHVkState *r, const ShaderState *st)
 
 /* Identity of a fragment library: the fragment module, the render pass, the
  * push-constant size and the depth/blend state not set dynamically. */
-static uint64_t gpl_frag_hash(PGRAPHVkState *r, VkShaderModule psh,
+static uint64_t gpl_frag_hash(PGRAPHVkState *r, uint64_t psh,
                               const VkPipelineDepthStencilStateCreateInfo *ds,
                               const VkPipelineColorBlendStateCreateInfo *cb,
                               const RenderPassState *rp, uint32_t push_size)
@@ -1284,7 +1288,7 @@ static uint64_t gpl_frag_hash(PGRAPHVkState *r, VkShaderModule psh,
         uint32_t has_zeta, attachments, blend_valid, push_size;
     } k;
     memset(&k, 0, sizeof(k));
-    k.psh = (uint64_t)(uintptr_t)psh;
+    k.psh = psh;
     k.push_size = push_size;
     if (ds) {
         k.has_zeta = 1;
@@ -1303,17 +1307,21 @@ static uint64_t gpl_frag_hash(PGRAPHVkState *r, VkShaderModule psh,
 }
 
 /* The pre-rasterization library: the first num_pre_stages stages of full
- * (vertex, and geometry if any). Hash the same module handles passed to
- * the driver, matching the upload-time worker's library identity. */
+ * (vertex, and geometry if any). Native module identities remain distinct
+ * after a module dies and the driver reuses its handle. These library keys
+ * are renderer-local; persistent shader/PSO key formats are unchanged. */
 static VkPipeline gpl_get_pre(PGRAPHState *pg,
                               const VkGraphicsPipelineCreateInfo *full,
                               const RenderPassState *rp, VkPipelineLayout layout,
-                              int num_pre_stages)
+                              int num_pre_stages, const ShaderModuleInfo *vsh,
+                              const ShaderModuleInfo *geom)
 {
     PGRAPHVkState *r = pg->vk_renderer_state;
+    assert(full->pStages[0].module == vsh->module);
+    assert((num_pre_stages > 1) == (geom != NULL));
+    assert(!geom || full->pStages[1].module == geom->module);
     uint64_t hash = gpl_pre_hash(
-        r, full->pStages[0].module,
-        num_pre_stages > 1 ? full->pStages[1].module : VK_NULL_HANDLE,
+        r, vsh->identity, geom ? geom->identity : 0,
         rp, full->pRasterizationState,
         full->pInputAssemblyState, full->pVertexInputState);
     bool found;
@@ -1353,10 +1361,11 @@ static VkPipeline gpl_get_pre(PGRAPHState *pg,
 static VkPipeline gpl_get_frag(PGRAPHState *pg,
                                const VkGraphicsPipelineCreateInfo *full,
                                const PipelineKey *key, VkPipelineLayout layout,
-                               int num_stages)
+                               int num_stages, const ShaderModuleInfo *psh)
 {
     PGRAPHVkState *r = pg->vk_renderer_state;
-    uint64_t hash = gpl_frag_hash(r, r->shader_binding->psh.module_info->module,
+    assert(full->pStages[num_stages - 1].module == psh->module);
+    uint64_t hash = gpl_frag_hash(r, psh->identity,
                                   full->pDepthStencilState,
                                   full->pColorBlendState,
                                   &key->render_pass_state,
@@ -1718,8 +1727,8 @@ bool pgraph_vk_pre_library_ready(PGRAPHState *pg, const VkPrewarmState *pipeline
     job->raster = pipeline->raster;
     job->ia = pipeline->ia;
     job->vi.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
-    job->hash = gpl_pre_hash(r, vsh->module,
-                             geom ? geom->module : VK_NULL_HANDLE,
+    job->hash = gpl_pre_hash(r, vsh->identity,
+                             geom ? geom->identity : 0,
                              &pipeline->render_pass, &job->raster, &job->ia, &job->vi);
     bool found;
     gpl_lookup(r, false, job->hash, &found);
@@ -2223,9 +2232,12 @@ static void create_pipeline(PGRAPHState *pg)
         int num_active_shader_stages = job.ci.stageCount;
         /* The fragment stage is the last one. */
         VkPipeline pre = gpl_get_pre(pg, &job.ci, &key.render_pass_state, layout,
-                                     num_active_shader_stages - 1);
+                                     num_active_shader_stages - 1,
+                                     r->shader_binding->vsh.module_info,
+                                     r->shader_binding->geom.module_info);
         VkPipeline frag = gpl_get_frag(pg, &job.ci, &key, layout,
-                                       num_active_shader_stages);
+                                       num_active_shader_stages,
+                                       r->shader_binding->psh.module_info);
         VkPipeline libs[2] = { pre, frag };
         VkPipelineLibraryCreateInfoKHR link_info = {
             .sType = VK_STRUCTURE_TYPE_PIPELINE_LIBRARY_CREATE_INFO_KHR,

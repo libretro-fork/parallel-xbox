@@ -43,6 +43,19 @@ or queue lend survives teardown. Counter rollover and immediate slot reuse are
 covered independently of gameplay. Host module creation/adoption remains on
 the render thread; unknown draw misses still have their synchronous correct path.
 
+GPL library module identities are monotonically assigned by the render-thread
+cache owner, rather than derived from opaque driver handles. Handle values are
+not a persistent module identity ([Khronos object model](https://docs.vulkan.org/spec/latest/chapters/fundamentals.html#fundamentals-objectmodel)).
+Module destruction therefore cannot give a replacement module the identity of
+an older library. The counter belongs to the renderer; its library tables are
+destroyed before that renderer is released. This changes only renderer-local
+library lookup identities, so persistent shader/PSO formats need no version bump.
+Module metadata gains one 64-bit ID and the renderer gains one counter; module
+allocation counts, shader payload storage and reference lifetimes are unchanged.
+An identical shader recreated as a new module also receives a fresh ID and may
+need another library. Safely reusing equivalent recreations remains an open
+optimization; opaque-handle aliasing cannot supply that reuse correctly.
+
 Use diagnostic builds to count creation/link and compile-wait events by kind
 and callback, including utility and flip work. Release builds must contain
 none of those diagnostics. Pair separate image/lifecycle runs with clean

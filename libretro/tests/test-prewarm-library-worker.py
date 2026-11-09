@@ -31,6 +31,7 @@ with tempfile.TemporaryDirectory(prefix='prewarm-library-') as d:
         ('queued duplicate',code.replace('if (!pending->full && !pending->frag && pending->hash == job->hash)', 'if (pending->full && !pending->frag && pending->hash == job->hash)',1)),
         ('duplicate worker result retained',code.replace('vkDestroyPipeline(r->device, job->result, NULL);','if (!job->result) vkDestroyPipeline(r->device, job->result, NULL);',1)),
         ('missing dynamic-state snapshot',code.replace('memcpy(job->dyn_states, pipeline->dynamic_states,\n           pipeline->num_dynamic * sizeof(job->dyn_states[0]));','(void)pipeline->dynamic_states;',1)),
+        ('prepared library uses raw module handle',code.replace('gpl_pre_hash(r, vsh->identity,','gpl_pre_hash(r, (uint64_t)(uintptr_t)vsh->module,',1)),
     ]
     for name,mutant in controls:
         assert mutant!=code,name;src.write_text(mutant);subprocess.run(cmd,env=env,check=True)

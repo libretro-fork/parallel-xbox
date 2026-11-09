@@ -194,6 +194,8 @@ typedef struct SurfaceBinding {
 
 typedef struct ShaderModuleInfo {
     int refcnt;
+    /* Unique in this renderer, including after a driver handle is reused. */
+    uint64_t identity;
     VkShaderModule module;
     ShaderLayouts *layouts;
     ShaderUniformLayout uniforms;
@@ -887,6 +889,7 @@ typedef struct PGRAPHVkState {
     bool use_push_constants_for_uniform_attrs;
 
     Lru shader_module_cache;
+    uint64_t next_shader_module_identity; /* render-thread cache owner only */
     ShaderModuleCacheEntry *shader_module_cache_entries;
 
     // FIXME: Merge these into a structure
