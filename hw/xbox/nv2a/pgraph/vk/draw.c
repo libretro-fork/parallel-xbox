@@ -1675,6 +1675,23 @@ static void ahead_pre_state(const ShaderState *st,
 static int pump_state(PGRAPHState *pg, const ShaderState *st,
                       const RenderPassState *rp);
 
+/* The pass left bound at a flip need not cover earlier scene/overlay draws.
+ * Borrow one native owner per flip; copy only its format metadata before
+ * job filling can touch the render-pass array. No owner escapes this call. */
+static bool pump_next_render_pass(PGRAPHVkState *r, RenderPassState *rp)
+{
+    if (!r->render_passes->len) {
+        return false;
+    }
+    if (r->pump.next_pass >= r->render_passes->len) {
+        r->pump.next_pass = 0;
+    }
+    const RenderPass *pass = &g_array_index(r->render_passes, RenderPass,
+                                           r->pump.next_pass++);
+    *rp = pass->state;
+    return true;
+}
+
 void pgraph_vk_libpump_step(PGRAPHState *pg)
 {
     PGRAPHVkState *r = pg->vk_renderer_state;
@@ -1700,7 +1717,9 @@ void pgraph_vk_libpump_step(PGRAPHState *pg)
         return;
     }
     RenderPassState rp;
-    init_render_pass_state(pg, &rp);
+    if (!pump_next_render_pass(r, &rp)) {
+        return;
+    }
     int idx = -1;
     for (unsigned i = 0; i < r->pump.n; i++) {
         if (!memcmp(&r->pump.rp[i], &rp, sizeof(rp))) {
@@ -2027,7 +2046,7 @@ static void pipeline_job_fill(PGRAPHState *pg, const ShaderState *st,
         depth_stencil.front.reference = stencil_ref;
         depth_stencil.back = depth_stencil.front;
     }
-    if (r->zeta_binding) {
+    if (key->render_pass_state.zeta_format != VK_FORMAT_UNDEFINED) {
         job->ds = depth_stencil;
     }
 
@@ -2073,7 +2092,7 @@ static void pipeline_job_fill(PGRAPHState *pg, const ShaderState *st,
         .sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO,
         .logicOpEnable = VK_FALSE,
         .logicOp = VK_LOGIC_OP_COPY,
-        .attachmentCount = r->color_binding ? 1 : 0,
+        .attachmentCount = key->render_pass_state.color_format != VK_FORMAT_UNDEFINED,
         .blendConstants[0] = blend_constant[0],
         .blendConstants[1] = blend_constant[1],
         .blendConstants[2] = blend_constant[2],

@@ -225,3 +225,38 @@ rendered-image equivalence of a new selection and stutter recovery are not
 established by them. Their timings also overlapped contract tests and a release
 rebuild; driver-cache state remains uncontrolled. Complete fallback scheduling
 for the actual encountered render-pass/static keys remains open.
+
+Further diagnostics found a specific render-pass gap: the flip-time pump
+only prepared the attachments left bound at the flip. In a repeated DOA3 run,
+the cache contained exact dynamic sibling shader states for later color-only
+draws, but only their depth-attached PSOs. The native render-pass table already
+owned both identities. Preparation now selects one of those existing owners
+round-robin each flip, within the unchanged four-job/32-check budget and
+four-pass progress capacity. No draw-side scan, shader snapshot, new queue or
+extra reservation is added. A four-byte renderer cursor and the existing local
+eight-byte format snapshot identify the next pass; the native-array lend ends
+before job filling can touch that array. Jobs retain their existing final-slot
+keys, module references and renderer-owned render-pass/layout lends.
+The cursor fills existing alignment padding on the tested 64-bit ABI: the
+progress owner remains 128 bytes. The native-header fixture checks this size,
+as well as empty-bank/no-option work, delayed readiness, queue pressure,
+relocated owners, four-pass capacity and independent color/depth inputs.
+
+Pipeline job filling now derives depth-state presence and color attachment
+count from that job's exact render-pass key. Reading the currently bound
+surfaces would incorrectly configure a job for a previously encountered pass.
+All other static-state prerequisites remain unchanged: this seed service still
+requires the existing fully dynamic register/vertex-input coverage. An empty
+state bank queues nothing; completion remains independent of seed eligibility.
+
+In the candidate's second warm DOA3 repeat, 676 draws selected the ready sibling
+while one specialization was queued asynchronously. These are 676 draws served
+by one ready path, not 676 avoided compilations. The parent selected none in
+its two warm repeats. Full draw-creation counts were 15/14 for the parent and
+13/10 for the candidate; differing encountered/learned states and uncontrolled
+driver caches prevent treating that difference as a controlled latency result.
+The initial diagnostic/count runs also overlapped CPU contract tests/builds.
+Cold first play remains open: a genuinely empty bank still has no known states
+to prepare. The existing retry dirty flag can repeat bounded shader-state
+capture while the one job is pending; that cost is retained, not labelled
+zero-copy. No shader-word, geometry or file payload is copied by this change.

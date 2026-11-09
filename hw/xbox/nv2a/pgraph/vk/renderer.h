@@ -525,12 +525,13 @@ typedef struct PGRAPHVkState {
      * kept for the renderer's life (draw.c). */
     GArray *gpl_pre, *gpl_frag;
     PipelineLibraryLookup gpl_lookup_cache[2][64];
-    /* Library pump progress per render pass (draw.c): the next seed state
-     * and the states whose SPIR-V was not ready yet. The libraries die
-     * with the renderer, so a new renderer pumps again. */
+    /* Pump known native render passes round-robin (draw.c), retaining the
+     * next seed state and states whose SPIR-V was not ready yet per pass.
+     * These owners die with the renderer, so a new renderer pumps again. */
     struct {
         RenderPassState rp[4];
         unsigned n, pos[4], rpos[4];
+          unsigned next_pass;
         GArray *retry[4];
         uint64_t *state_hash;
         const ShaderState *state_hash_base;
