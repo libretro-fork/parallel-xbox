@@ -184,6 +184,13 @@ int main(void) {
             assert(r.trash[n].layout==VK_NULL_HANDLE);
             assert(r.trash[n].retire_after==r.submit_count+1);
             if(finish_is_async(why)) assert(r.slot_fence_pending[old_slot]);
+            /* A reserved async identity has never been bound. It owns no
+             * pipeline or layout and may be recycled in this recording. */
+            PipelineBinding pending={.draw_time=r.command_buffer_start_time,
+                .pipeline=VK_NULL_HANDLE,.layout=(VkPipelineLayout)(uintptr_t)52};
+            unsigned before_empty=r.trash_n;r.pipeline_binding=&pending;
+            pipeline_cache_entry_post_evict(&r.pipeline_cache,&pending.node);
+            assert(r.trash_n==before_empty && !r.pipeline_binding && !pending.layout);
             /* No-op display/readback/upload inspection emits no submission. */
             assert(submits==old_submits+1);
             /* A new clear/upload or draw in this recording remains pending. */

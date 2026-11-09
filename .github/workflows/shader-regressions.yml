@@ -81,7 +81,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p results
-          for test in test-pipeline-key-clear test-pipeline-job-view test-pipeline-ahead-key test-pipeline-completion-service test-seed-lifetime test-pipeline-register-key test-surface-blend test-vk-recording-epoch test-inline-upload-writer test-inline-index-bounds test-vk-vertex-formats test-frame-completion test-block-memory test-gl-dynamic-pair test-glslgen-queue test-worker-drain test-vk-worker-modules test-shader-cache-handoff test-file-retained-view test-pipeline-cache-export test-shader-layout test-spv-prefix-view test-gpl-lookup-cache test-pipeline-layout-lends; do
+          for test in test-pipeline-key-clear test-pipeline-job-view test-pipeline-ahead-key test-pipeline-completion-service test-seed-lifetime test-pipeline-register-key test-surface-blend test-vk-recording-epoch test-inline-upload-writer test-inline-index-bounds test-vk-vertex-formats test-frame-completion test-block-memory test-gl-dynamic-pair test-glslgen-queue test-worker-drain test-vk-worker-modules test-shader-cache-handoff test-file-retained-view test-pipeline-cache-export test-shader-layout test-spv-prefix-view test-gpl-lookup-cache test-pipeline-layout-lends test-ready-pipeline-sibling; do
             python3 "driver/libretro/tests/$test.py" candidate cc 2>&1 | tee "results/$test.log"
           done
           python3 driver/libretro/tests/test-pre-module-keys.py candidate cc --geometry-clear-baseline --check-only 2>&1 | tee results/module-keys.log

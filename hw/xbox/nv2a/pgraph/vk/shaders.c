@@ -1810,6 +1810,41 @@ static void update_shader_uniforms(PGRAPHState *pg)
     NV2A_VK_DGROUP_END();
 }
 
+/* Readiness is an exact cache query, never a cache initializer. The render
+ * thread owns these nodes through the caller's synchronous selection. */
+ShaderBinding *pgraph_vk_ready_shader_binding(PGRAPHVkState *r,
+                                              const ShaderState *state,
+                                              uint64_t hash)
+{
+    unsigned bin = lru_hash_to_bin(&r->shader_cache, hash);
+    LruNode *node;
+    QTAILQ_FOREACH(node, &r->shader_cache.bins[bin], next_bin) {
+        if (node->hash != hash) {
+            continue;
+        }
+        ShaderBinding *binding = container_of(node, ShaderBinding, node);
+        if (!memcmp(&binding->state, state, sizeof(*state)) &&
+            binding->vsh.module_info && binding->psh.module_info &&
+            (!pgraph_glsl_need_geom(&state->geom) || binding->geom.module_info)) {
+            return binding;
+        }
+    }
+    return NULL;
+}
+
+/* Called only after an exact ready pipeline and binding have been proven.
+ * No shader-cache mutation occurs between probe and this proven-hit touch. */
+void pgraph_vk_use_ready_shader_binding(PGRAPHState *pg, ShaderBinding *binding)
+{
+    PGRAPHVkState *r = pg->vk_renderer_state;
+    ShaderBinding *ready = get_shader_binding_for_state(r, &binding->state,
+                                                        binding->node.hash);
+    assert(ready == binding);
+    r->shader_binding = ready;
+    r->shader_bindings_changed = true;
+    update_shader_uniforms(pg);
+}
+
 static __attribute__((noinline)) ShaderBinding *vk_try_sibling_binding(
     PGRAPHVkState *r, const ShaderState *state, uint64_t h, int phase)
 {

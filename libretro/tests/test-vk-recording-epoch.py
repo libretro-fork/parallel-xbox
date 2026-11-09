@@ -64,3 +64,10 @@ with tempfile.TemporaryDirectory(prefix='vk-recording-epoch-') as directory:
     rejected=subprocess.run([str(exe)],capture_output=True,timeout=15,env=env)
     assert rejected.returncode and b'r.trash[n].layout' in rejected.stderr
     print('Required negative control rejected: eviction retires borrowed renderer layout')
+
+    mutant=code.replace('snode->pipeline == VK_NULL_HANDLE || ', '',1);assert mutant!=code
+    (folder/'test.c').write_text(mutant)
+    subprocess.run([cc,'-O2','-std=gnu11','-Wall','-Wextra','-Werror','-Wno-sign-compare','-I'+str(repo/'deps/vulkan-headers'),str(folder/'test.c'),'-o',str(exe)],check=True,env=env)
+    rejected=subprocess.run([str(exe)],capture_output=True,timeout=15,env=env)
+    assert rejected.returncode and b'Pipeline evicted while in use' in rejected.stderr
+    print('Required negative control rejected: empty pending key treated as GPU use')

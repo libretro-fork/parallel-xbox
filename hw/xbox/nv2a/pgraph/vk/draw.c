@@ -147,7 +147,7 @@ static void pipeline_cache_entry_post_evict(Lru *lru, LruNode *node)
     PGRAPHVkState *r = container_of(lru, PGRAPHVkState, pipeline_cache);
     PipelineBinding *snode = container_of(node, PipelineBinding, node);
 
-    assert((!r->in_command_buffer ||
+    assert((snode->pipeline == VK_NULL_HANDLE || !r->in_command_buffer ||
             snode->draw_time < r->command_buffer_start_time) &&
            "Pipeline evicted while in use!");
 
@@ -155,7 +155,9 @@ static void pipeline_cache_entry_post_evict(Lru *lru, LruNode *node)
      * destroy it once every slot has settled. */
     /* Layouts are renderer-owned lends, shared by cache entries and jobs. */
     struct XemuVkTrashEntry e = { .pipeline = snode->pipeline };
-    pgraph_vk_trash_push(r, &e);
+    if (snode->pipeline != VK_NULL_HANDLE) {
+        pgraph_vk_trash_push(r, &e);
+    }
     snode->pipeline = VK_NULL_HANDLE;
     snode->layout = VK_NULL_HANDLE;
     /* The node goes to another key (a pipeline the worker made landing,
@@ -2231,6 +2233,84 @@ static void pipeline_ahead(PGRAPHState *pg, const PipelineKey *draw_key)
     pgraph_vk_spec_pipeline_queued(r->ahead_hash);
 }
 
+/* A shader-level LANDED/seen marker does not prove a PSO for this render
+ * pass and static draw state. Reuse a fully ready exact sibling when one
+ * exists; never initialize a shader or manufacture an approximate draw. */
+static bool pipeline_use_ready_sibling(PGRAPHState *pg, PipelineKey *key,
+                                        uint64_t full_hash)
+{
+    PGRAPHVkState *r = pg->vk_renderer_state;
+    if (!pgraph_gpu_boost_gl() || key->shader_state.psh.combiner_dynamic) {
+        return false;
+    }
+    /* Project only fragment metadata in the existing draw key. The vertex
+     * program is never cloned for this lookup. Restore every byte on miss. */
+    PshState original;
+    memcpy(&original, &key->shader_state.psh, sizeof(original));
+    if (!pgraph_glsl_psh_canonicalize_dynamic(&key->shader_state.psh)) {
+        memcpy(&key->shader_state.psh, &original, sizeof(original));
+        return false;
+    }
+    uint64_t shader_hash = fast_hash((const uint8_t *)&key->shader_state,
+                                     sizeof(key->shader_state));
+    ShaderBinding *sibling = pgraph_vk_ready_shader_binding(r,
+                                        &key->shader_state, shader_hash);
+    uint64_t sibling_hash = fast_hash((const uint8_t *)key, sizeof(*key));
+    bool ready = sibling && pipeline_ready(r, sibling_hash, key);
+    PshState projected;
+    if (ready) {
+        memcpy(&projected, &key->shader_state.psh, sizeof(projected));
+    }
+    memcpy(&key->shader_state.psh, &original, sizeof(original));
+    if (!ready) {
+        return false;
+    }
+
+    /* No cache mutation or draining while the binding is borrowed. Full
+     * jobs pin native modules and snapshot the exact key once into their
+     * final slot; cache nodes may be recycled before worker completion. */
+    if (!pump_full_in_flight(full_hash, key)) {
+        LibJob *job = pump_slot();
+        if (job) {
+            ShaderBinding *full = r->shader_binding;
+            memcpy(&job->key, key, sizeof(job->key));
+            ShaderModuleInfo *vsh = full->vsh.module_info;
+            ShaderModuleInfo *geom = full->geom.module_info;
+            ShaderModuleInfo *psh = full->psh.module_info;
+            pgraph_vk_ref_shader_module(vsh);
+            if (geom) {
+                pgraph_vk_ref_shader_module(geom);
+            }
+            pgraph_vk_ref_shader_module(psh);
+            pipeline_job_fill(pg, &job->key.shader_state, vsh, geom, psh,
+                               &job->key, job);
+            job->hash = full_hash;
+            job->state_hash = full->node.hash;
+            job->mods[job->nmods++] = vsh;
+            if (geom) {
+                job->mods[job->nmods++] = geom;
+            }
+            job->mods[job->nmods++] = psh;
+            pump_submit(job);
+            pgraph_vk_spec_pipeline_queued(job->state_hash);
+        }
+    }
+    memcpy(&key->shader_state.psh, &projected, sizeof(projected));
+    pgraph_vk_use_ready_shader_binding(pg, sibling);
+    /* Re-evaluate the real shader state on the next draw even if the guest
+     * writes no registers. This retries a full queue and adopts the exact
+     * specialization after completion instead of remaining on the sibling.
+     * The existing host dirty flag adds no per-draw retry branch/storage. */
+    pg->program_data_dirty = true;
+    /* Proven-hit promotion cannot evict a borrowed ready pipeline. */
+    LruNode *node = lru_lookup(&r->pipeline_cache, sibling_hash, key);
+    PipelineBinding *binding = container_of(node, PipelineBinding, node);
+    assert(binding->pipeline != VK_NULL_HANDLE);
+    r->pipeline_binding_changed = r->pipeline_binding != binding;
+    r->pipeline_binding = binding;
+    return true;
+}
+
 static void create_pipeline(PGRAPHState *pg)
 {
     NV2A_VK_DGROUP_BEGIN("Creating pipeline");
@@ -2269,10 +2349,13 @@ static void create_pipeline(PGRAPHState *pg)
         return;
     }
 
+    memcpy(&snode->key, &key, sizeof(key));
+    if (pipeline_use_ready_sibling(pg, &key, hash)) {
+        NV2A_VK_DGROUP_END();
+        return;
+    }
     NV2A_VK_DPRINTF("Cache miss");
     nv2a_profile_inc_counter(NV2A_PROF_PIPELINE_GEN);
-
-    memcpy(&snode->key, &key, sizeof(key));
 
     /* The job holds the create info; it never leaves this thread. */
     static LibJob job;

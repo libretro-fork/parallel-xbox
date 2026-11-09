@@ -151,3 +151,46 @@ opt-in matched-harness probe measured the new lookup below 2 microseconds,
 and a parent draw-path fragment-library creation span of 261 milliseconds;
 not every callback hitch is explained or attributed between compilation,
 driver cache I/O and scheduling. Remaining synchronous misses stay open.
+
+Pipeline misses now have an additional exact-ready sibling path, including
+already-seen shader states whose new render-pass/static key has no PSO. The
+shader-hash seen/LANDED marker is not treated as proof for another draw key.
+Only an already-initialized complete ShaderBinding and complete exact PSO
+may be selected; readiness probes never invoke a cache initializer. Missing
+bindings, missing PSOs, partial native modules and collisions keep the old
+correct synchronous miss. This does not establish unknown-state coverage.
+
+Projection borrows the vertex/geometry prefix in the existing draw key and
+snapshots/restores only fragment metadata (two 264-byte PSH values on the
+tested ABI). On success, an optional full job snapshots the 3116-byte exact
+PipelineKey once into its existing final slot and pins native modules before
+any cache selection. This is an indispensable queued identity snapshot,
+including its program metadata, not a claim of wholly zero-copy keys; no
+SPIR-V or geometry resource payload is cloned. A full queue or matching
+in-flight job takes no additional key snapshot and never waits. Cache nodes
+can be evicted while the job owns its key/modules. Ready cache-hit promotion
+and uniform refresh finish before descriptor upload and actual draw binding.
+
+The existing host program_data_dirty flag requests real shader-state capture
+on the next draw after fallback. This retries queue saturation and adopts the
+exact completed PSO even when no guest register is written; it avoids retaining
+a recyclable cache-node pointer between draws. It can repeat bounded input
+state construction while specialization is pending, an explicit CPU/copy cost
+to measure against removed synchronous pipeline work. No new persistent retry
+storage or steady ready-hit branch is added. Remaining first-use, utility,
+missing-sibling and other synchronous creations/links remain open violations.
+
+An empty full-key reservation may outlive the draw while a worker owns its
+independent immutable key. Such a cache entry has never been bound: eviction
+must not apply an in-use GPU-pipeline assertion or enqueue empty GPU trash.
+Actual pipelines retain the native fence/slot retirement path and shared
+layouts remain renderer-owned. This distinction is covered in the recording
+and delayed-retirement regression fixture.
+
+Initial DOA3 first-fight, JSRF attract and Crazy Taxi 3 attract Vulkan cold/warm
+repeats did not select this new path: none had the required resident sibling
+ShaderBinding. The deterministic fixture exercises selection, queue saturation,
+owner eviction and completed adoption, but those game runs do not establish a
+reduction in draw-critical PSO work. Ready-PSO coverage without a materialized
+shader binding remains a separate open gap. Driver caches were uncontrolled and
+RetroArch was running during this correctness batch; its timings are unqualified.

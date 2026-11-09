@@ -1199,6 +1199,10 @@ void pgraph_vk_shader_seed_writeback(PGRAPHState *pg);
 void pgraph_vk_update_descriptor_sets(PGRAPHState *pg);
 void pgraph_vk_uniform_sources_invalidate(PGRAPHVkState *r);
 
+ShaderBinding *pgraph_vk_ready_shader_binding(PGRAPHVkState *r,
+                                              const ShaderState *state,
+                                              uint64_t hash);
+void pgraph_vk_use_ready_shader_binding(PGRAPHState *pg, ShaderBinding *binding);
 void pgraph_vk_bind_shaders(PGRAPHState *pg);
 void pgraph_vk_prewarm_shaders(NV2AState *d);
 void pgraph_vk_ref_pre_state_modules(PGRAPHVkState *r, const ShaderState *st,
