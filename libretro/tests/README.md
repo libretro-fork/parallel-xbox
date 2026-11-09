@@ -5206,3 +5206,14 @@ This DSP-only change does not establish shader/PSO cold-play recovery. The
 repository's shader contracts, compilation and software-GPU jobs must retain
 their actual results; absent reference-hardware cold/warm evidence remains
 unqualified, and the existing cold-first-play regression stays open.
+
+Deferred-stub construction no longer clears the whole record in release
+builds. Each kind sets every field its emitter consumes; instruction-related
+kinds snapshot retirement metadata, dirty flags and lazy status explicitly.
+The constructor still always assigns kind and jump. Test builds (DSPJIT_TEST)
+instead fill each allocated/reused record with 0xA5 before these assignments,
+so the existing native, stateful, sanitizer and ARM64 tests exercise nonzero
+prior storage. Missing initialization cannot silently rely on a fresh zeroed
+workspace. A negative control omitting dirty-flag initialization is rejected
+by the focused undefined-behavior trap test. Poisoning is not release timing
+instrumentation and is excluded from production benchmark builds.

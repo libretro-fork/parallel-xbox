@@ -366,7 +366,11 @@ static Stub *stub_new(Tr *t, int kind, size_t jump)
         t->nstubs = MAX_STUBS - 1;
     }
     s = &t->stubs[t->nstubs++];
-    memset(s, 0, sizeof(*s));
+    /* Each kind initializes every field its emitter consumes. Test reuse
+     * with nonzero storage so missing initialization cannot rely on zeroes. */
+#ifdef DSPJIT_TEST
+    memset(s, 0xA5, sizeof(*s));
+#endif
     s->kind = kind;
     s->jump = jump;
     return s;

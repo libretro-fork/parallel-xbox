@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- DSP JIT: initialize deferred-stub fields only where they are consumed, avoiding redundant full-record clears in release builds. Test builds poison reused records to catch missing initialization.
+
 - DSP JIT: remove unused decoded-instruction and accumulator-loaded snapshots from deferred stubs, reducing translation scratch memory and redundant initialization/copies without changing emitted instruction behavior.
 
 - Require configured CPU affinity and matching observed start/end process CPU sets in the cold-play evidence gate. Reject missing, malformed, changed or legacy affinity evidence instead of comparing different CPU domains under the same hardware ID. Wire the policy through trusted-hardware CI and add rejection controls. Runtime code and all timing limits are unchanged; the held prewarm experiment and shader-stutter regression remain unresolved.
