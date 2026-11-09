@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Make eliminating draw-path shader/pipeline compilation, creation, linking and compile waits an explicit top renderer priority in AGENTS.md. Require correct ready paths and first-use, fallback, utility, queue-pressure and lifecycle coverage on both renderers, while preserving borrowed owners and zero-copy requirements. Documentation only: runtime is unchanged, and existing cold-play and CI failures remain open.
+
 - Acquire dirty-range update metadata only for selected consumers, replacing six unconditional bitmap lends with exactly the selected count. Keep one scoped RCU owner, the existing atomic updates and their order, zero-mask behavior, and Xen notification after owner release. Extend PVIDEO coherence tests to 28,192 mask/range/clear cases, fresh metadata generations, unused mask bits, zero lengths and Xen calls; require unselected, duplicate, wrong-consumer and owner-order controls to fail. No payload copies, allocations or retained pointers; no game-FPS or cold-play recovery claim.
 
 - Hold one RCU read-side lend across all selected dirty-range consumer scans instead of acquiring a separate owner for each consumer. Preserve scan order, acquire publication and independent dirty bits; masks without recognized consumers still avoid RCU entirely. Add 322,560 mask, bitmap-boundary, clean-hole, empty-range and metadata-generation checks with five required rejection controls to shader/PSO CI. No new allocations, payload copies, retained pointers or invalidation-policy changes; gameplay timing remains advisory and cold-play recovery remains open.
