@@ -15,7 +15,7 @@ typedef struct { VkShaderModule module;uint64_t identity;unsigned refs; } Shader
 typedef struct { VkVertexInputBindingDescription binding_descriptions[16];VkVertexInputAttributeDescription attribute_descriptions[16]; } PipelineKey;
 typedef struct { unsigned tag;bool geometry; } ShaderState;
 typedef struct { unsigned tag; } RenderPassState;
-typedef struct { VkDevice device;VkPipelineCache vk_pipeline_cache; } PGRAPHVkState;
+typedef struct { VkDevice device;VkPipelineCache vk_pipeline_cache;bool dyn_vertex_input; } PGRAPHVkState;
 typedef struct { PGRAPHVkState *vk_renderer_state; } PGRAPHState;
 /* PREWARM */
 /* JOB */
@@ -58,12 +58,13 @@ static void ahead_pre_state(const ShaderState *s,VkPipelineRasterizationStateCre
     *rs=(VkPipelineRasterizationStateCreateInfo){.sType=VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO,.lineWidth=1,.cullMode=s->tag%4};
     *ia=(VkPipelineInputAssemblyStateCreateInfo){.sType=VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,.topology=s->geometry?VK_PRIMITIVE_TOPOLOGY_LINE_LIST:VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST};
 }
-static uint64_t gpl_pre_hash(PGRAPHVkState *r,uint64_t v,uint64_t g,const RenderPassState *rp,const VkPipelineRasterizationStateCreateInfo *rs,const VkPipelineInputAssemblyStateCreateInfo *ia,const VkPipelineVertexInputStateCreateInfo *vi) {
+static uint64_t gpl_pre_hash(PGRAPHVkState *r,uint64_t v,uint64_t g,const RenderPassState *rp,const VkPipelineRasterizationStateCreateInfo *rs,const VkPipelineInputAssemblyStateCreateInfo *ia,const VkPipelineVertexInputStateCreateInfo *vi,GplPreKey *key) {
     assert(r && v==vertex.identity && g==geometry.identity && rp->tag==71 && rs->lineWidth==1 && ia->sType && vi->sType);
+    memset(key,0,sizeof(*key));key->vsh=v;key->geom=g;key->rp=*rp;key->raster=*rs;key->ia=*ia;
     return expected_hash;
 }
-static VkPipeline gpl_lookup(PGRAPHVkState *r,bool frag,uint64_t hash,bool *found) {assert(r && !frag && hash==expected_hash);*found=cached;return cached?(VkPipeline)(uintptr_t)11:VK_NULL_HANDLE;}
-static void gpl_store(PGRAPHVkState *r,bool frag,uint64_t hash,VkPipeline pipeline) {assert(r && !frag && hash==expected_hash && pipeline==(VkPipeline)(uintptr_t)21);stores++;}
+static VkPipeline gpl_lookup(PGRAPHVkState *r,bool frag,uint64_t hash,const void *key,bool *found) {assert(r && !frag && hash==expected_hash && key);*found=cached;return cached?(VkPipeline)(uintptr_t)11:VK_NULL_HANDLE;}
+static void gpl_store(PGRAPHVkState *r,bool frag,uint64_t hash,const void *key,VkPipeline pipeline) {assert(r && !frag && hash==expected_hash && key && pipeline==(VkPipeline)(uintptr_t)21);stores++;}
 static VkPipelineLayout create_pipeline_layout_size(PGRAPHVkState *r,uint32_t size) {assert(r && size==16);layouts++;return (VkPipelineLayout)(uintptr_t)31;}
 static int ahead_dynamic_states(PGRAPHVkState *r,const ShaderState *s,VkDynamicState *out) {assert(r && s);out[0]=VK_DYNAMIC_STATE_VIEWPORT;out[1]=VK_DYNAMIC_STATE_SCISSOR;return 2;}
 static VkRenderPass get_render_pass(PGRAPHVkState *r,RenderPassState *rp) {assert(r && rp->tag==71);return (VkRenderPass)(uintptr_t)41;}
@@ -72,10 +73,11 @@ static void vkDestroyPipelineLayout(VkDevice d,VkPipelineLayout p,const VkAlloca
 /* PRODUCTION */
 int main(void) {
     unsigned cases=0;
-    for(unsigned generation=0;generation<128;generation++)for(unsigned bits=0;bits<64;bits++) {
+    for(unsigned generation=0;generation<128;generation++)for(unsigned bits=0;bits<128;bits++) {
         memset(pump_jobs,0xa5,sizeof(pump_jobs));memset(&vertex,0,sizeof(vertex));memset(&geometry,0,sizeof(geometry));
         acquires=releases=drains=starts=wakes=layouts=destroyed=layout_drops=stores=0;
-        PGRAPHVkState r={(VkDevice)(uintptr_t)1,(VkPipelineCache)(uintptr_t)2};PGRAPHState pg={&r};
+        PGRAPHVkState r={(VkDevice)(uintptr_t)1,(VkPipelineCache)(uintptr_t)2,true};PGRAPHState pg={&r};
+        assert(gpl_key_size(&r,false)<=sizeof(GplPreKey) && gpl_key_size(&r,true)==sizeof(GplFragKey));
         ShaderState state={generation+1,!!(bits&1)};RenderPassState rp={71};cached=bits&2;
         bool full=bits&4,duplicate=bits&8,other=bits&16;
         expected_hash=700+generation;pump_d=generation;pump_r=(int)pump_d;pump_w_local=pump_d+(full?64:duplicate?1:0);
@@ -84,8 +86,14 @@ int main(void) {
         ahead_pre_state(&state,&pipeline.raster,&pipeline.ia);
         pipeline.num_dynamic=ahead_dynamic_states(&r,&state,pipeline.dynamic_states);
         ShaderModuleInfo *vsh,*geom;pgraph_vk_ref_pre_state_modules(&r,&state,&geom,&vsh);
+        if(duplicate && !full) {
+            VkPipelineVertexInputStateCreateInfo vi={.sType=VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO};
+            LibJob *old=&pump_jobs[pump_d%64];
+            gpl_pre_hash(&r,vsh->identity,geom?geom->identity:0,&rp,&pipeline.raster,&pipeline.ia,&vi,&old->pre_key);
+            if(bits&64)old->pre_key.vsh^=1;
+        }
         unsigned before=pump_w_local;bool accepted=pgraph_vk_pre_library_ready(&pg,&pipeline,vsh,geom);
-        bool skip=full || cached || (duplicate && !other);
+        bool skip=full || cached || (duplicate && !other && !(bits&64));
         assert(accepted==!full && drains==1 && acquires==1 && layouts==!skip);
         assert(pump_w_local==before+!skip && starts==!skip && wakes==!skip);
         assert(releases==(full?0u:skip?1u+state.geometry:0u));

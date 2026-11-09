@@ -10,6 +10,7 @@ parts=[]
 for name in ['pipeline_job_reset','lib_job_link','pump_slot','pump_submit']:
     m=re.search(r'^static (?:void|LibJob \*) *'+name+r'\(.*?^\}',s,re.M|re.S);assert m,name
     parts.append(m.group())
+key_types='\n'.join(re.search(r'typedef struct '+n+r' \{.*?\} '+n+r';',s,re.S)[0] for n in ('GplPreKey','GplFragKey'))
 code=r'''
 #include <stdint.h>
 #include <stddef.h>
@@ -24,6 +25,8 @@ code=r'''
 #define NV2A_VERTEXSHADER_ATTRIBUTES 16
 #define PUMP_RING 64
 typedef struct { int unused; } ShaderModuleInfo;
+typedef struct {VkFormat color_format,zeta_format;} RenderPassState;
+/* LIBRARY KEYS */
 typedef struct {
     unsigned tag;
     VkVertexInputBindingDescription binding_descriptions[NV2A_VERTEXSHADER_ATTRIBUTES];
@@ -100,7 +103,7 @@ int main(void) {
     assert(starts==cases && wakes==cases);
     printf("Pipeline job vertex views: %u synchronous/queued/count/slot-reuse/publication cases and both library halves PASS\n",cases);
 }
-'''.replace('/* JOB */',job).replace('/* PRODUCTION */','\n'.join(parts))
+'''.replace('/* LIBRARY KEYS */',key_types).replace('/* JOB */',job).replace('/* PRODUCTION */','\n'.join(parts))
 with tempfile.TemporaryDirectory(prefix='pipeline-job-view-') as tmp:
     d=Path(tmp);c=d/'test.c';c.write_text(code);exe=d/('test.exe' if os.name=='nt' else 'test')
     env=os.environ.copy();env['PATH']=str(Path(cc).resolve().parent)+os.pathsep+env.get('PATH','')

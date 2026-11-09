@@ -28,12 +28,12 @@ static VkShaderModule pgraph_vk_create_shader_module_from_words(PGRAPHVkState *r
 static void pgraph_vk_shader_source_unref(ShaderSource *source) {assert(source->refs==1);source->refs--;source_drops++;}
 static struct {bool frag;uint64_t hash;VkPipeline pipeline;} libraries[16];
 static unsigned library_count,library_calls;
-static VkPipeline gpl_lookup(PGRAPHVkState *r,bool frag,uint64_t hash,bool *found) {
-    assert(r);for(unsigned i=0;i<library_count;i++)if(libraries[i].frag==frag && libraries[i].hash==hash){*found=true;return libraries[i].pipeline;}
+static VkPipeline gpl_lookup(PGRAPHVkState *r,bool frag,uint64_t hash,const void *key,bool *found) {
+    assert(r && key);for(unsigned i=0;i<library_count;i++)if(libraries[i].frag==frag && libraries[i].hash==hash){*found=true;return libraries[i].pipeline;}
     *found=false;return VK_NULL_HANDLE;
 }
-static void gpl_store(PGRAPHVkState *r,bool frag,uint64_t hash,VkPipeline pipeline) {
-    assert(r && library_count<16);libraries[library_count].frag=frag;libraries[library_count].hash=hash;libraries[library_count++].pipeline=pipeline;
+static void gpl_store(PGRAPHVkState *r,bool frag,uint64_t hash,const void *key,VkPipeline pipeline) {
+    assert(r && key && library_count<16);libraries[library_count].frag=frag;libraries[library_count].hash=hash;libraries[library_count++].pipeline=pipeline;
 }
 static uint32_t push_constant_size(PGRAPHVkState *r,const uint32_t *state) {assert(r);return *state;}
 static VkResult vkCreateGraphicsPipelines(VkDevice device,VkPipelineCache cache,uint32_t count,const VkGraphicsPipelineCreateInfo *info,const VkAllocationCallbacks *allocator,VkPipeline *out) {
@@ -44,6 +44,18 @@ static VkResult vkCreateGraphicsPipelines(VkDevice device,VkPipelineCache cache,
 #define VK_CHECK(x) assert((x)==VK_SUCCESS)
 /* FUNCTIONS */
 /* REFERENCE */
+/* Keep the identity matrix's direct-hash calls concise while production
+ * callers retain the canonical output for exact cache comparisons. */
+static uint64_t identity_pre_hash(PGRAPHVkState *r,uint64_t v,uint64_t g,const RenderPassState *rp,const VkPipelineRasterizationStateCreateInfo *rs,const VkPipelineInputAssemblyStateCreateInfo *ia,const VkPipelineVertexInputStateCreateInfo *vi) {
+    GplPreKey key;uint64_t hash=gpl_pre_hash(r,v,g,rp,rs,ia,vi,&key);
+    if(r->dyn_vertex_input)for(size_t i=offsetof(GplPreKey,bind);i<sizeof(key);i++)assert(((const unsigned char *)&key)[i]==0);
+    return hash;
+}
+static uint64_t identity_frag_hash(PGRAPHVkState *r,uint64_t p,const VkPipelineDepthStencilStateCreateInfo *ds,const VkPipelineColorBlendStateCreateInfo *cb,const RenderPassState *rp,uint32_t push) {
+    GplFragKey key;return gpl_frag_hash(r,p,ds,cb,rp,push,&key);
+}
+#define gpl_pre_hash identity_pre_hash
+#define gpl_frag_hash identity_frag_hash
 static ShaderModuleInfo *create(PGRAPHVkState *r,unsigned code) {
     words[0]=code;ShaderSource source={.words=words,.num_words=8,.refs=1};
     unsigned before=allocations;ShaderModuleInfo *m=pgraph_vk_create_shader_module_from_spirv(r,&source);

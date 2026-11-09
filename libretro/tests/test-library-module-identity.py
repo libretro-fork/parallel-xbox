@@ -11,6 +11,7 @@ def fn(source,name):
     return source[m.start():end]
 h=(r/'hw/xbox/nv2a/pgraph/vk/renderer.h').read_text()
 types=re.search(r'typedef struct RenderPassState \{.*?\} RenderPassState;',h,re.S)[0]
+types+='\n'+'\n'.join(re.search(r'typedef struct '+n+r' \{.*?\} '+n+r';',draw,re.S)[0] for n in ('GplPreKey','GplFragKey'))
 constructor=fn(glsl,'pgraph_vk_create_shader_module_from_spirv')
 parts='\n'.join(fn(draw,n) for n in ('topology_class','gpl_pre_hash','gpl_frag_hash','gpl_get_pre','gpl_get_frag'))+'\n'+constructor
 code=Path(__file__).with_suffix('.c').read_text().replace('/* TYPES */',types).replace('/* FUNCTIONS */',parts).replace('/* REFERENCE */',Path(__file__).with_name('library-handle-key-reference.h').read_text())
@@ -22,10 +23,10 @@ with tempfile.TemporaryDirectory(prefix='library-module-identity-') as d:
     src.write_text(code);subprocess.run(cmd,env=env,check=True);subprocess.run([str(exe)],env=env,check=True,timeout=30)
     controls=[
         ('identity reused',code.replace('info->identity = ++r->next_shader_module_identity;','info->identity = 1;',1)),
-        ('vertex identity omitted',code.replace('k.vsh = vsh;','k.vsh = 0; (void)vsh;',1)),
-        ('geometry identity omitted',code.replace('k.geom = geom;','k.geom = 0; (void)geom;',1)),
-        ('fragment identity omitted',code.replace('k.psh = psh;','k.psh = 0; (void)psh;',1)),
-        ('upper identity bits discarded',code.replace('k.vsh = vsh;','k.vsh = (uint32_t)vsh;',1)),
+        ('vertex identity omitted',code.replace('k->vsh = vsh;','k->vsh = 0; (void)vsh;',1)),
+        ('geometry identity omitted',code.replace('k->geom = geom;','k->geom = 0; (void)geom;',1)),
+        ('fragment identity omitted',code.replace('k->psh = psh;','k->psh = 0; (void)psh;',1)),
+        ('upper identity bits discarded',code.replace('k->vsh = vsh;','k->vsh = (uint32_t)vsh;',1)),
         ('draw library lookup uses raw vertex handle',code.replace('r, vsh->identity, geom ? geom->identity : 0,','r, (uint64_t)(uintptr_t)vsh->module, geom ? geom->identity : 0,',1)),
         ('draw library lookup uses raw geometry handle',code.replace('geom ? geom->identity : 0,','geom ? (uint64_t)(uintptr_t)geom->module : 0,',1)),
         ('draw library lookup uses raw fragment handle',code.replace('gpl_frag_hash(r, psh->identity,','gpl_frag_hash(r, (uint64_t)(uintptr_t)psh->module,',1)),
@@ -39,7 +40,7 @@ with tempfile.TemporaryDirectory(prefix='library-module-identity-') as d:
         # Linux's nonnull sanitizer diagnoses the formerly undefined empty
         # NULL span. MinGW's libc annotations do not provide this observer.
         for field,pointer in [('nb','pVertexBindingDescriptions'),('na','pVertexAttributeDescriptions')]:
-            pattern=r'if \(k\.'+field+r'\) \{\s*(memcpy\([^;]+;)\s*\}'
+            pattern=r'if \(k->'+field+r'\) \{\s*(memcpy\([^;]+;)\s*\}'
             match=re.search(pattern,code);assert match
             mutant=code[:match.start()]+match[1]+code[match.end():]
             src.write_text(mutant);subprocess.run(cmd,env=env,check=True)

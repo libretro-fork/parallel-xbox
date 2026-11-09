@@ -995,6 +995,25 @@ static int fill_dynamic_states(PGRAPHVkState *r, VkDynamicState *out,
  * costs far less than compiling a pipeline.
  */
 
+/* Canonical library metadata; no shader or geometry payload. */
+typedef struct GplPreKey {
+        uint64_t vsh, geom;
+        RenderPassState rp;
+        VkPipelineRasterizationStateCreateInfo raster;
+        VkPipelineInputAssemblyStateCreateInfo ia;
+        VkVertexInputBindingDescription bind[NV2A_VERTEXSHADER_ATTRIBUTES];
+        VkVertexInputAttributeDescription attr[NV2A_VERTEXSHADER_ATTRIBUTES];
+        uint32_t nb, na;
+} GplPreKey;
+
+typedef struct GplFragKey {
+        uint64_t psh;
+        VkPipelineDepthStencilStateCreateInfo ds;
+        VkPipelineColorBlendAttachmentState blend;
+        RenderPassState rp;
+        uint32_t has_zeta, attachments, blend_valid, push_size;
+} GplFragKey;
+
 /* Queued pipeline compiles own every structure their create info references.
  * Synchronous creation may borrow its caller's key until the call returns. */
 typedef struct {
@@ -1022,13 +1041,20 @@ typedef struct {
     VkPipelineColorBlendAttachmentState cba;
     VkPipelineDynamicStateCreateInfo dyn;
     VkDynamicState dyn_states[24];
-    PipelineKey key; /* queued full jobs initialize this before publication */
+    union {
+        PipelineKey key; /* complete PSO identity */
+        GplPreKey pre_key;
+        GplFragKey frag_key;
+    }; /* final slot owns the active identity through worker completion */
     bool has_dynamic_line_width;
     VkPipeline result;
 } LibJob;
 
-/* Queued full jobs overwrite every key byte before publication. Library
- * jobs never read it; synchronous full jobs borrow their caller's key. */
+_Static_assert(sizeof(GplPreKey) <= sizeof(PipelineKey), "library key fits native job storage");
+_Static_assert(sizeof(GplFragKey) <= sizeof(PipelineKey), "fragment key fits native job storage");
+
+/* Queued jobs overwrite their active identity before publication.
+ * Synchronous full jobs borrow their caller's key. */
 static void pipeline_job_reset(LibJob *job)
 {
     memset(job, 0, offsetof(LibJob, key));
@@ -1133,26 +1159,40 @@ static void pipe_start(void)
 typedef struct GplLibrary {
     uint64_t hash;
     VkPipeline lib;
+    uint8_t key[]; /* canonical metadata owned for this library's lifetime */
 } GplLibrary;
+
+static size_t gpl_key_size(PGRAPHVkState *r, bool frag)
+{
+    /* Dynamic vertex input leaves all arrays and trailing counts zero.
+     * Retain only the distinguishing prefix on that immutable device path. */
+    return frag ? sizeof(GplFragKey) : r->dyn_vertex_input ?
+           offsetof(GplPreKey, bind) : sizeof(GplPreKey);
+}
+
+static GplLibrary *gpl_entry(GArray *libs, unsigned index)
+{
+    return (GplLibrary *)(libs->data +
+                         (size_t)index * g_array_get_element_size(libs));
+}
 
 static void gpl_init(PGRAPHVkState *r)
 {
     memset(r->gpl_lookup_cache, 0, sizeof(r->gpl_lookup_cache));
-    r->gpl_pre = g_array_new(false, false, sizeof(GplLibrary));
-    r->gpl_frag = g_array_new(false, false, sizeof(GplLibrary));
+    size_t align = _Alignof(GplLibrary);
+    size_t pre_size = (sizeof(GplLibrary) + gpl_key_size(r, false) + align - 1) & ~(align - 1);
+    size_t frag_size = (sizeof(GplLibrary) + gpl_key_size(r, true) + align - 1) & ~(align - 1);
+    r->gpl_pre = g_array_new(false, false, pre_size);
+    r->gpl_frag = g_array_new(false, false, frag_size);
 }
 
-/* After the linked pipelines; the draw path and pump_quiesce leave no
- * library compile in flight. */
+/* Pipeline jobs quiesce before this renderer-owned metadata is released. */
 static void gpl_finalize(PGRAPHVkState *r)
 {
     GArray *tables[] = { r->gpl_pre, r->gpl_frag };
-
     for (int t = 0; t < ARRAY_SIZE(tables); t++) {
         for (guint i = 0; i < tables[t]->len; i++) {
-            vkDestroyPipeline(r->device,
-                              g_array_index(tables[t], GplLibrary, i).lib,
-                              NULL);
+            vkDestroyPipeline(r->device, gpl_entry(tables[t], i)->lib, NULL);
         }
         g_array_free(tables[t], true);
     }
@@ -1160,26 +1200,25 @@ static void gpl_finalize(PGRAPHVkState *r)
 }
 
 static VkPipeline gpl_lookup(PGRAPHVkState *r, bool frag, uint64_t hash,
-                             bool *found)
+                             const void *key, bool *found)
 {
     GArray *libs = frag ? r->gpl_frag : r->gpl_pre;
+    size_t key_size = gpl_key_size(r, frag);
     unsigned slot = (hash ^ (hash >> 32)) % ARRAY_SIZE(r->gpl_lookup_cache[0]);
     PipelineLibraryLookup *cached = &r->gpl_lookup_cache[frag][slot];
-
-    /* Keep indices, not pointers: appending may move the library array.
-     * Misses are never cached because the worker can append a result later. */
+    /* Indices survive array relocation. A digest is only a filter, including
+     * on this direct-index path: every hit verifies its complete identity. */
     if (cached->hash == hash && cached->index_plus_one &&
         cached->index_plus_one <= libs->len) {
-        GplLibrary *e = &g_array_index(libs, GplLibrary,
-                                      cached->index_plus_one - 1);
-        if (e->hash == hash) {
+        GplLibrary *e = gpl_entry(libs, cached->index_plus_one - 1);
+        if (e->hash == hash && !memcmp(e->key, key, key_size)) {
             *found = true;
             return e->lib;
         }
     }
     for (guint i = 0; i < libs->len; i++) {
-        GplLibrary *e = &g_array_index(libs, GplLibrary, i);
-        if (e->hash == hash) {
+        GplLibrary *e = gpl_entry(libs, i);
+        if (e->hash == hash && !memcmp(e->key, key, key_size)) {
             cached->hash = hash;
             cached->index_plus_one = i + 1;
             *found = true;
@@ -1191,11 +1230,18 @@ static VkPipeline gpl_lookup(PGRAPHVkState *r, bool frag, uint64_t hash,
 }
 
 static void gpl_store(PGRAPHVkState *r, bool frag, uint64_t hash,
-                      VkPipeline lib)
+                      const void *key, VkPipeline lib)
 {
-    GplLibrary e = { .hash = hash, .lib = lib };
-
-    g_array_append_val(frag ? r->gpl_frag : r->gpl_pre, e);
+    GArray *libs = frag ? r->gpl_frag : r->gpl_pre;
+    unsigned index = libs->len;
+    /* Callers lend a stack key or final worker-slot key, never an entry
+     * pointer that this growth could recycle. Snapshot metadata once into
+     * its final cache owner; no shader/IR/resource payload is copied. */
+    g_array_set_size(libs, index + 1);
+    GplLibrary *entry = gpl_entry(libs, index);
+    entry->hash = hash;
+    entry->lib = lib;
+    memcpy(entry->key, key, gpl_key_size(r, frag));
 }
 
 /* Identity of a pre-rasterization library: vertex/geometry modules, render
@@ -1207,46 +1253,37 @@ static uint64_t gpl_pre_hash(PGRAPHVkState *r, uint64_t vsh,
                              const RenderPassState *rp,
                              const VkPipelineRasterizationStateCreateInfo *raster,
                              const VkPipelineInputAssemblyStateCreateInfo *ia,
-                             const VkPipelineVertexInputStateCreateInfo *vi)
+                             const VkPipelineVertexInputStateCreateInfo *vi, GplPreKey *k)
 {
-    struct {
-        uint64_t vsh, geom;
-        RenderPassState rp;
-        VkPipelineRasterizationStateCreateInfo raster;
-        VkPipelineInputAssemblyStateCreateInfo ia;
-        VkVertexInputBindingDescription bind[NV2A_VERTEXSHADER_ATTRIBUTES];
-        VkVertexInputAttributeDescription attr[NV2A_VERTEXSHADER_ATTRIBUTES];
-        uint32_t nb, na;
-    } k;
-    memset(&k, 0, sizeof(k));
-    k.vsh = vsh;
-    k.geom = geom;
-    k.rp = *rp;
-    k.raster = *raster;
-    k.raster.pNext = NULL;
+    memset(k, 0, sizeof(*k));
+    k->vsh = vsh;
+    k->geom = geom;
+    k->rp = *rp;
+    k->raster = *raster;
+    k->raster.pNext = NULL;
     if (r->dyn_cull_front) {
         /* Set per draw, so they must not identify a library; the topology
          * class does, a dynamic topology cannot leave it. */
-        k.raster.cullMode = 0;
-        k.raster.frontFace = 0;
-        k.ia.topology = topology_class(ia->topology);
+        k->raster.cullMode = 0;
+        k->raster.frontFace = 0;
+        k->ia.topology = topology_class(ia->topology);
     } else {
-        k.ia = *ia;
-        k.ia.pNext = NULL;
+        k->ia = *ia;
+        k->ia.pNext = NULL;
     }
     if (!r->dyn_vertex_input) {
-        k.nb = vi->vertexBindingDescriptionCount;
-        k.na = vi->vertexAttributeDescriptionCount;
-        if (k.nb) {
-            memcpy(k.bind, vi->pVertexBindingDescriptions,
-                   k.nb * sizeof(k.bind[0]));
+        k->nb = vi->vertexBindingDescriptionCount;
+        k->na = vi->vertexAttributeDescriptionCount;
+        if (k->nb) {
+            memcpy(k->bind, vi->pVertexBindingDescriptions,
+                   k->nb * sizeof(k->bind[0]));
         }
-        if (k.na) {
-            memcpy(k.attr, vi->pVertexAttributeDescriptions,
-                   k.na * sizeof(k.attr[0]));
+        if (k->na) {
+            memcpy(k->attr, vi->pVertexAttributeDescriptions,
+                   k->na * sizeof(k->attr[0]));
         }
     }
-    return fast_hash((const uint8_t *)&k, sizeof(k));
+    return fast_hash((const uint8_t *)k, sizeof(*k));
 }
 
 static VkColorComponentFlags color_write_mask(uint32_t control_0)
@@ -1278,32 +1315,25 @@ static uint32_t push_constant_size(PGRAPHVkState *r, const ShaderState *st)
 static uint64_t gpl_frag_hash(PGRAPHVkState *r, uint64_t psh,
                               const VkPipelineDepthStencilStateCreateInfo *ds,
                               const VkPipelineColorBlendStateCreateInfo *cb,
-                              const RenderPassState *rp, uint32_t push_size)
+                              const RenderPassState *rp, uint32_t push_size, GplFragKey *k)
 {
-    struct {
-        uint64_t psh;
-        VkPipelineDepthStencilStateCreateInfo ds;
-        VkPipelineColorBlendAttachmentState blend;
-        RenderPassState rp;
-        uint32_t has_zeta, attachments, blend_valid, push_size;
-    } k;
-    memset(&k, 0, sizeof(k));
-    k.psh = psh;
-    k.push_size = push_size;
+    memset(k, 0, sizeof(*k));
+    k->psh = psh;
+    k->push_size = push_size;
     if (ds) {
-        k.has_zeta = 1;
+        k->has_zeta = 1;
         if (!r->dyn_cull_front) {
-            k.ds = *ds;
-            k.ds.pNext = NULL;
+            k->ds = *ds;
+            k->ds.pNext = NULL;
         }
     }
-    k.rp = *rp;
-    k.attachments = cb->attachmentCount;
-    if (k.attachments && cb->pAttachments && !r->dyn_blend) {
-        k.blend = cb->pAttachments[0];
-        k.blend_valid = 1;
+    k->rp = *rp;
+    k->attachments = cb->attachmentCount;
+    if (k->attachments && cb->pAttachments && !r->dyn_blend) {
+        k->blend = cb->pAttachments[0];
+        k->blend_valid = 1;
     }
-    return fast_hash((const uint8_t *)&k, sizeof(k));
+    return fast_hash((const uint8_t *)k, sizeof(*k));
 }
 
 /* The pre-rasterization library: the first num_pre_stages stages of full
@@ -1320,12 +1350,13 @@ static VkPipeline gpl_get_pre(PGRAPHState *pg,
     assert(full->pStages[0].module == vsh->module);
     assert((num_pre_stages > 1) == (geom != NULL));
     assert(!geom || full->pStages[1].module == geom->module);
+    GplPreKey library_key;
     uint64_t hash = gpl_pre_hash(
         r, vsh->identity, geom ? geom->identity : 0,
         rp, full->pRasterizationState,
-        full->pInputAssemblyState, full->pVertexInputState);
+        full->pInputAssemblyState, full->pVertexInputState, &library_key);
     bool found;
-    VkPipeline lib = gpl_lookup(r, false, hash, &found);
+    VkPipeline lib = gpl_lookup(r, false, hash, &library_key, &found);
     if (found) {
         return lib;
     }
@@ -1351,7 +1382,7 @@ static VkPipeline gpl_get_pre(PGRAPHState *pg,
     };
     VK_CHECK(vkCreateGraphicsPipelines(r->device, r->vk_pipeline_cache, 1, &ci,
                                        NULL, &lib));
-    gpl_store(r, false, hash, lib);
+    gpl_store(r, false, hash, &library_key, lib);
     return lib;
 }
 
@@ -1365,13 +1396,14 @@ static VkPipeline gpl_get_frag(PGRAPHState *pg,
 {
     PGRAPHVkState *r = pg->vk_renderer_state;
     assert(full->pStages[num_stages - 1].module == psh->module);
+    GplFragKey library_key;
     uint64_t hash = gpl_frag_hash(r, psh->identity,
                                   full->pDepthStencilState,
                                   full->pColorBlendState,
                                   &key->render_pass_state,
-                                  push_constant_size(r, &key->shader_state));
+                                  push_constant_size(r, &key->shader_state), &library_key);
     bool found;
-    VkPipeline lib = gpl_lookup(r, true, hash, &found);
+    VkPipeline lib = gpl_lookup(r, true, hash, &library_key, &found);
     if (found) {
         return lib;
     }
@@ -1396,7 +1428,7 @@ static VkPipeline gpl_get_frag(PGRAPHState *pg,
     };
     VK_CHECK(vkCreateGraphicsPipelines(r->device, r->vk_pipeline_cache, 1, &ci,
                                        NULL, &lib));
-    gpl_store(r, true, hash, lib);
+    gpl_store(r, true, hash, &library_key, lib);
     return lib;
 }
 
@@ -1441,11 +1473,12 @@ static void pipeline_land(PGRAPHState *pg, LibJob *job)
 static void library_land(PGRAPHVkState *r, LibJob *job)
 {
     bool found;
-    gpl_lookup(r, job->frag, job->hash, &found);
+    const void *key = job->frag ? (const void *)&job->frag_key : &job->pre_key;
+    gpl_lookup(r, job->frag, job->hash, key, &found);
     if (found) {
         vkDestroyPipeline(r->device, job->result, NULL);
     } else {
-        gpl_store(r, job->frag, job->hash, job->result);
+        gpl_store(r, job->frag, job->hash, key, job->result);
     }
     vkDestroyPipelineLayout(r->device, job->layout, NULL);
 }
@@ -1729,13 +1762,14 @@ bool pgraph_vk_pre_library_ready(PGRAPHState *pg, const VkPrewarmState *pipeline
     job->vi.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
     job->hash = gpl_pre_hash(r, vsh->identity,
                              geom ? geom->identity : 0,
-                             &pipeline->render_pass, &job->raster, &job->ia, &job->vi);
+                             &pipeline->render_pass, &job->raster, &job->ia, &job->vi, &job->pre_key);
     bool found;
-    gpl_lookup(r, false, job->hash, &found);
+    gpl_lookup(r, false, job->hash, &job->pre_key, &found);
     if (!found) {
         for (unsigned i = pump_d; i < pump_w_local; i++) {
             LibJob *pending = &pump_jobs[i % PUMP_RING];
-            if (!pending->full && !pending->frag && pending->hash == job->hash) {
+            if (!pending->full && !pending->frag && pending->hash == job->hash &&
+                !memcmp(&pending->pre_key, &job->pre_key, gpl_key_size(r, false))) {
                 found = true;
                 break;
             }

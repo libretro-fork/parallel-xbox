@@ -62,3 +62,20 @@ none of those diagnostics. Pair separate image/lifecycle runs with clean
 cold/warm timing runs. Keep fresh-process restore tests distinct. Uncontrolled
 driver caches and the missing accepted cold-play reference remain unqualified;
 none of this inventory establishes recovery or a frame-time improvement.
+
+GPL digest matches now require exact canonical metadata equality in both
+lookup paths, pending-upload deduplication and worker-result adoption. Stack
+keys are borrowed only during synchronous lookup/store; queued keys are built
+directly in the existing final job union and remain owned until publication
+and adoption. Cache growth borrows no entry pointers: indices survive moving
+arrays. Each accepted library retains one indispensable metadata snapshot in
+its final array owner, released after pipeline-worker quiescence. No shader,
+geometry, SPIR-V or file payload is cloned.
+
+On the tested 64-bit ABI, entries occupy 592 bytes for static pre-raster input,
+136 for dynamic input and 184 for fragments (including the 16-byte header).
+The dynamic prefix omits 456 bytes proven zero by canonical construction.
+This increases metadata memory and adds exact comparisons to library lookup;
+it is a collision-correctness tradeoff, not an established latency win. Full
+ready-PSO hits bypass this lookup. The job union reuses existing key storage;
+alignment may change its total size. Persistent cache schemas are unchanged.

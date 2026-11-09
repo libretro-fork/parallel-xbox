@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Verify exact Vulkan GPL metadata on digest matches, including direct-index lookup and queued pre-raster work, so collisions cannot reuse or discard a different library. Construct worker keys directly in existing job storage and retain only distinguishing metadata in each cache entry; dynamic vertex-input entries omit their proven-zero tail. No shader/geometry payload copy or persistent-cache format change. Add forced-collision, poisoned-lend and moving-array checks to CI.
+
 - Identify Vulkan GPL shader modules with renderer-owned 64-bit IDs so driver handle reuse cannot select a library compiled for an older module. Pass the exact stage owners into library lookup and keep upload-time prewarming on the same identity path; guard empty vertex-input spans before copying key metadata. No extra module allocation, shader payload copy or retained module owner is added. Add forced-handle-reuse, high-bit identity, metadata-equivalence and null-span sanitizer controls to shader CI. These library keys are renderer-local; persistent shader/PSO formats and generated code are unchanged.
 
 - Compile Vulkan upload-time vertex/geometry modules on the existing shader worker before preparing their libraries. Eight bounded requests construct keys directly in final storage and pass pointers, retain SPIR-V/module owners through adoption and pipeline backpressure, and release them after native worker quiescence. No fragment compilation or extra shader payload clone is added to the handoff. The ordinary module-cache initializer is unchanged; ready-request adoption uses a scoped initializer with no compiler fallback. Unknown draw misses and render-thread shader-module creation remain open.
