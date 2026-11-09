@@ -456,6 +456,8 @@ typedef struct PGRAPHGLState {
     Lru shader_cache;
     ShaderBinding *shader_cache_entries;
     ShaderBinding *shader_binding;
+    /* Borrowed native cache slot; eviction/flush cancels before reuse. */
+    ShaderBinding *spec_binding;
     /* Disk worker publishes immutable binaries; only render owns the LRU. */
     retro_mpsc_t shader_disk_results;
     retro_atomic_int_t shader_disk_mappings;

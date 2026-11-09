@@ -17,7 +17,7 @@ struct PGRAPHState {
 };
 static uint32_t pgraph_reg_r(PGRAPHState *pg,unsigned reg){assert(reg/4<ARRAY_SIZE(pg->raw));return pg->raw[reg/4];}
 static bool pgraph_is_reg_dirty(PGRAPHState *pg,unsigned reg){assert(reg/4<ARRAY_SIZE(pg->dirty));return pg->dirty[reg/4];}
-typedef struct {struct{bool valid,ff_valid;}vsh_uni_src;bool uni_cache;void *shader_binding;} PGRAPHGLState;
+typedef struct {struct{bool valid,ff_valid;}vsh_uni_src;bool uni_cache;void *shader_binding,*spec_binding;} PGRAPHGLState;
 static void uniform_cache_invalidate(bool *cache){*cache=false;}
 /* PRODUCTION */
 typedef struct {ShaderState state;bool ui;uint32_t alpha_func,alpha_ref;} Projection;
@@ -30,8 +30,8 @@ static Projection project(PGRAPHState *pg){
  return out;
 }
 int main(void){
- PGRAPHGLState gl={.vsh_uni_src={true,true},.uni_cache=true,.shader_binding=(void *)1};
- pgraph_gl_uniform_sources_invalidate(&gl);assert(!gl.vsh_uni_src.valid&&!gl.vsh_uni_src.ff_valid&&!gl.uni_cache&&!gl.shader_binding);
+ PGRAPHGLState gl={.vsh_uni_src={true,true},.uni_cache=true,.shader_binding=(void *)1,.spec_binding=(void *)2};
+ pgraph_gl_uniform_sources_invalidate(&gl);assert(!gl.vsh_uni_src.valid&&!gl.vsh_uni_src.ff_valid&&!gl.uni_cache&&!gl.shader_binding&&!gl.spec_binding);
  unsigned cases=0,ignored=0,affected=0;uint32_t random=713;
  const uint32_t fields[]={NV_PGRAPH_CONTROL_0_ALPHATESTENABLE|NV_PGRAPH_CONTROL_0_ALPHAFUNC|NV_PGRAPH_CONTROL_0_ALPHAREF|NV_PGRAPH_CONTROL_0_ZENABLE|NV_PGRAPH_CONTROL_0_Z_PERSPECTIVE_ENABLE,NV_PGRAPH_CONTROL_3_SHADEMODE|NV_PGRAPH_CONTROL_3_PROVOKING_VERTEX|NV_PGRAPH_CONTROL_3_FOGENABLE|NV_PGRAPH_CONTROL_3_FOG_MODE};
  unsigned registers[]={NV_PGRAPH_CONTROL_0,NV_PGRAPH_CONTROL_3};

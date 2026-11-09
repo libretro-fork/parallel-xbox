@@ -1230,6 +1230,9 @@ static void shader_cache_entry_post_evict(Lru *lru, LruNode *node)
     if (r->shader_binding == binding) {
         r->shader_binding = NULL;
     }
+    if (r->spec_binding == binding) {
+        r->spec_binding = NULL;
+    }
     binding->initialized = false;
 
     glDeleteProgram(binding->gl_program);
@@ -1500,6 +1503,7 @@ void pgraph_gl_uniform_sources_invalidate(PGRAPHGLState *r)
     /* Restored program words/registers need a fresh shader-state selection;
      * do not rely on an incidental whole-register dirty write to wake it. */
     r->shader_binding = NULL;
+    r->spec_binding = NULL;
 }
 
 /* prog 0: the program bound with glUseProgram. */
@@ -1903,6 +1907,42 @@ static bool module_ready(PGRAPHGLState *r, const ShaderModuleCacheKey *key)
         }
     }
     return false;
+}
+
+/* One already-owned exact recipe, serviced between frames. The render
+ * thread alone mutates both caches: ready lookups below cannot evict a
+ * module before generate_shaders consumes it. No missing stage is compiled. */
+static void spec_binding_pump(PGRAPHGLState *r)
+{
+    ShaderBinding *target = r->spec_binding;
+    if (!target) {
+        return;
+    }
+    if (!gl_sso_enabled() || !first_meet_enabled() ||
+        target->dyn_gen != pgraph_glsl_dynamic_gen ||
+        target->state.geom.wide_lines != r->wide_lines) {
+        r->spec_binding = NULL;
+        return;
+    }
+    if (!target->initialized) {
+        ShaderModuleCacheKey keys[3];
+        bool need_gs = state_module_keys(&target->state, keys);
+        if ((need_gs && !module_ready(r, &keys[0])) ||
+            !module_ready(r, &keys[1]) || !module_ready(r, &keys[2])) {
+            return;
+        }
+        generate_shaders(r, target);
+        /* Pipeline setup binds its result; keep the live fallback truthful. */
+        glUseProgram(0);
+        glBindProgramPipeline(r->shader_binding ?
+                              r->shader_binding->gl_pipeline : 0);
+    }
+    r->spec_binding = NULL;
+    if (r->shader_binding) {
+        /* Request one real-state selection through the existing fast-path
+         * guard, without a global generation bump or a new per-draw check. */
+        r->shader_binding->dyn_gen = pgraph_glsl_dynamic_gen - 1;
+    }
 }
 
 static void comb_async_adopted(PGRAPHGLState *r,
@@ -2502,6 +2542,7 @@ void pgraph_gl_shaders_flip_service(NV2AState *d)
     module_save_queue_drain(r, 1);
     module_prewarm_pump(r, 1);
     seed_pipe_pump(r, 4);
+    spec_binding_pump(r);
 }
 
 void pgraph_gl_bind_shaders(PGRAPHState *pg)
@@ -2520,6 +2561,8 @@ void pgraph_gl_bind_shaders(PGRAPHState *pg)
     }
 
     ShaderBinding *old_binding = r->shader_binding;
+    /* A fresh selection supersedes the previous recipe lend. */
+    r->spec_binding = NULL;
     ShaderState state = pgraph_glsl_get_shader_state(pg);
     state.geom.wide_lines = r->wide_lines;
 
@@ -2565,6 +2608,10 @@ void pgraph_gl_bind_shaders(PGRAPHState *pg)
                         spec_queue(r, ph, &state);
                     }
                     nv2a_profile_inc_counter(NV2A_PROF_SHADER_FALLBACK);
+                    if (binding != fbind && !binding->initialized) {
+                        binding->dyn_gen = pgraph_glsl_dynamic_gen;
+                        r->spec_binding = binding;
+                    }
                     binding = fbind;
                 }
             }

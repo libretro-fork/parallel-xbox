@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Prepare OpenGL specializations from fully ready resident stages between frames while a correct dynamic fallback remains active. Borrow the existing exact shader-cache entry, cancel on eviction/load or changed generation/geometry inputs, restore the live pipeline after preparation and wake the next shader selection without requiring another guest register write. No added heap allocation or retained shader payload snapshot; existing GL pipeline-object creation moves off the draw path for covered recipes. Unknown synchronous misses and mid-game host-resource creation remain open optimization work.
+
 - Make allocation-free gameplay an explicit development target, covering background shader/cache work as well as the draw path. Require separate allocation/resource counts, bounded ownership for necessary exceptions and regression coverage alongside shader/PSO and latency checks. This documents the target; it does not claim the current core meets it.
 
 - OpenGL shader preparation now reuses an exact fully ready resident stage when a worker result arrives after demand has already built it, instead of submitting a duplicate driver compile/link. Preserve dynamic-family adoption and seed notifications without waiting on unfinished modules. Borrow completed job keys through their final consumer, copying only once into the asynchronous slot when a new link is necessary. Add collision, incomplete-link, seed/gate and job-lifetime regression controls.

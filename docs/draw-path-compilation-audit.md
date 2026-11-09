@@ -426,3 +426,62 @@ only nonempty source reuse as an avoided link. These are observed reuse
 counts, not a raw parent/candidate total difference or a latency claim.
 No image readbacks were used in timing runs. Driver caches remain
 uncontrolled, and cold-play recovery stays unqualified.
+
+### Flip-time OpenGL specialization readiness and local wakeup
+
+When a correct dynamic sibling draws, lend the existing uninitialized exact
+shader-cache entry to a one-recipe flip-time service. The native cache owns
+the immutable ShaderState; eviction clears the lend before zeroing/recycling
+its slot. Load/uniform-source invalidation and a fresh shader selection also
+cancel it. Record the family generation in existing binding metadata and
+reject changed generations, wide-line inputs or disabled SSO/first-meet mode.
+Renderer teardown uses native cache flushing; no queue retains the pointer.
+
+The service checks exact geometry/vertex/fragment module keys, including
+geometry prefix/UI-clamp inputs. Only non-null programs with completed links
+and resolved locations qualify. It performs no status query, compile, link,
+cache-miss generation, file I/O or compile wait. Both caches belong to the
+render thread, so resident lookups cannot evict stages before the existing
+pipeline setup consumes them. Restore the live pipeline after setup, then
+invalidate only that live binding's existing generation stamp. The next draw
+recaptures actual guest state through the existing guard even if no register
+changed; it never blindly adopts the prepared recipe after a guest change.
+Unknown/uncovered states keep their correct synchronous path and remain
+explicit violations of the no-draw-compilation target.
+
+Cost and ownership: one eight-byte borrowed host pointer, no new heap
+allocation, retained ShaderState/microcode snapshot, payload clone or queue
+reservation. Pending recipes use 7,044 bytes of temporary native query keys
+on the stack; existing pipeline setup constructs its own bounded keys when
+ready. At most one exact binding is prepared per flip. With no recipe, only
+the pointer guard runs; the draw fast path gains no extra readiness branch
+or global generation invalidation. Existing GL pipeline-object creation
+moves between frames for covered recipes. Driver/host allocation behavior
+is not eliminated or claimed allocation-free; an unused speculative object
+can remain under the existing cache owner. This remains open work under the
+no-mid-game-allocation target, not permission to hide costs by moving them.
+
+The regression fixture executes the production pump, module-key construction,
+exact readiness predicate and load/eviction callbacks with the native LRU.
+It checks poisoned recycled slots, load cancellation, generation wrap,
+host-option/geometry changes, incomplete/null/colliding stages, live-pipeline
+restoration, one-time localized wakeup and absence of direct allocation or
+wait calls in the pump. Runtime diagnostics must separately count covered
+flip creations, remaining draw creations, pending-link demands and module
+cache misses during preparation; driver-cold stutter recovery remains open.
+
+Validation completed 44 contract suites, final Windows/Linux readiness and
+load guards, and thirty serial harness runs across DOA3, JSRF, Crazy Taxi 3
+and NGB slot 0 on both renderers. Eight main lifecycle cases passed repeated
+RAM-exact loads/reset; NGB repeated external restores retain their missing
+RAM-sidecar qualification. DOA3 OpenGL and NGB per-renderer parent/candidate
+images were byte-identical. Eight non-image OpenGL candidate runs prepared
+20 pipeline objects between frames, with zero pending-link demands and zero
+module-cache initializations inside that preparation path. Those runs still
+recorded 791 draw-path pipeline-object creations and 277 pending-link demands;
+the target is not met. Counts describe observed API work/placement, not proof
+that every prepared object was subsequently used or that driver first-use
+compilation is eliminated. An external RetroArch process was present during
+the batch, and driver caches were uncontrolled. Timings are retained as
+unqualified; no isolation, latency, allocation-free or stutter-recovery pass
+is claimed.
