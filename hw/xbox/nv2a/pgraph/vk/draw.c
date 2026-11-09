@@ -1065,9 +1065,9 @@ static void lib_job_link(LibJob *job)
 /*
  * The pipeline worker ("vk-pipe"): one thread, one ring the render thread
  * alone writes and it alone reads, no lock, and the render thread never
- * waits for a job. What it builds is for later: the seed library pump's
- * halves, and the whole pipelines of states met for the first time, which
- * draw with their dynamic sibling until theirs lands. The ring is a counter
+ * waits for a job. It prepares upload-time libraries, seeded whole pipelines
+ * and specializations whose draws use a ready dynamic sibling until the
+ * specialized pipeline lands. The ring is a counter
  * pair: the writer publishes its count with a release store after writing
  * the slot, the reader takes it with an acquire load; the worker sleeps on
  * an eventcount when the ring is empty, and notifies another after each
@@ -1304,7 +1304,7 @@ static uint64_t gpl_frag_hash(PGRAPHVkState *r, VkShaderModule psh,
 
 /* The pre-rasterization library: the first num_pre_stages stages of full
  * (vertex, and geometry if any). Hash the same module handles passed to
- * the driver, so prewarming needs no temporary shader binding or draw key. */
+ * the driver, matching the upload-time worker's library identity. */
 static VkPipeline gpl_get_pre(PGRAPHState *pg,
                               const VkGraphicsPipelineCreateInfo *full,
                               const RenderPassState *rp, VkPipelineLayout layout,
@@ -1427,6 +1427,20 @@ static void pipeline_land(PGRAPHState *pg, LibJob *job)
     pgraph_vk_spec_pipeline_landed(job->state_hash);
 }
 
+/* A draw may have needed the library before its optional worker job landed.
+ * Keep the already-published owner and retire the unused worker result. */
+static void library_land(PGRAPHVkState *r, LibJob *job)
+{
+    bool found;
+    gpl_lookup(r, job->frag, job->hash, &found);
+    if (found) {
+        vkDestroyPipeline(r->device, job->result, NULL);
+    } else {
+        gpl_store(r, job->frag, job->hash, job->result);
+    }
+    vkDestroyPipelineLayout(r->device, job->layout, NULL);
+}
+
 /* Land what the worker finished: libraries in the lookup tables, whole
  * pipelines in the pipeline cache. */
 static void pump_drain(PGRAPHState *pg)
@@ -1444,8 +1458,7 @@ static void pump_drain(PGRAPHState *pg)
         } else if (job->full) {
             pipeline_land(pg, job);
         } else {
-            gpl_store(r, job->frag, job->hash, job->result);
-            vkDestroyPipelineLayout(r->device, job->layout, NULL);
+            library_land(r, job);
         }
         for (int i = 0; i < job->nmods; i++) {
             pgraph_vk_unref_shader_module(r, job->mods[i]);
@@ -1683,15 +1696,75 @@ void pgraph_vk_libpump_step(PGRAPHState *pg)
     }
 }
 
-/*
- * Games upload a vertex program well before its first draw (MEASURED):
- * building its pre-rasterization library at upload time takes the driver's
- * compile, the costly half, out of the frame that would stall on it.
- * Only the vertex side is warmed: the fragment side depends on texture
- * state that is not yet meaningful here. The library key omits the cull
- * state, the topology and the vertex input only where the driver takes them
- * dynamically; elsewhere no draw would find the warmed library.
- */
+/* Queue upload-time library work in its final native slot. No ShaderState,
+ * vertex data or shader payload is copied into the queue: referenced modules
+ * cover the worker's last use. A full queue defers optional preparation. */
+static void prewarm_pre_library(PGRAPHState *pg, const ShaderState *state,
+                                const RenderPassState *rp)
+{
+    PGRAPHVkState *r = pg->vk_renderer_state;
+    pump_drain(pg);
+    LibJob *job = pump_slot();
+    if (!job) {
+        return;
+    }
+    ShaderModuleInfo *geom, *vsh;
+    pgraph_vk_ref_pre_state_modules(r, state, &geom, &vsh);
+    job->ci.stageCount = pre_stages(job->stages, vsh, geom);
+    ahead_pre_state(state, &job->raster, &job->ia);
+    job->vi.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
+    job->hash = gpl_pre_hash(r, vsh->module,
+                             geom ? geom->module : VK_NULL_HANDLE,
+                             rp, &job->raster, &job->ia, &job->vi);
+    bool found;
+    gpl_lookup(r, false, job->hash, &found);
+    if (!found) {
+        for (unsigned i = pump_d; i < pump_w_local; i++) {
+            LibJob *pending = &pump_jobs[i % PUMP_RING];
+            if (!pending->full && !pending->frag && pending->hash == job->hash) {
+                found = true;
+                break;
+            }
+        }
+    }
+    if (found) {
+        pgraph_vk_unref_shader_module(r, vsh);
+        if (geom) {
+            pgraph_vk_unref_shader_module(r, geom);
+        }
+        return;
+    }
+    job->device = r->device;
+    job->cache = r->vk_pipeline_cache;
+    job->mods[job->nmods++] = vsh;
+    if (geom) {
+        job->mods[job->nmods++] = geom;
+    }
+    job->layout = create_pipeline_layout(r, state);
+    job->vp = (VkPipelineViewportStateCreateInfo){
+        .sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO,
+        .viewportCount = 1,
+        .scissorCount = 1,
+    };
+    job->dyn = (VkPipelineDynamicStateCreateInfo){
+        .sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO,
+        .dynamicStateCount = ahead_dynamic_states(r, state, job->dyn_states),
+    };
+    job->lib_info = (VkGraphicsPipelineLibraryCreateInfoEXT){
+        .sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_LIBRARY_CREATE_INFO_EXT,
+        .flags = VK_GRAPHICS_PIPELINE_LIBRARY_VERTEX_INPUT_INTERFACE_BIT_EXT |
+                 VK_GRAPHICS_PIPELINE_LIBRARY_PRE_RASTERIZATION_SHADERS_BIT_EXT,
+    };
+    job->ci.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
+    job->ci.flags = VK_PIPELINE_CREATE_LIBRARY_BIT_KHR;
+    job->ci.layout = job->layout;
+    job->ci.renderPass = get_render_pass(r, (RenderPassState *)rp);
+    pump_submit(job);
+}
+
+/* Only the vertex side is known at upload time; fragment and attachment
+ * state may still change before the draw. Module acquisition can still be
+ * synchronous; library creation runs on the existing pipeline worker. */
 void pgraph_vk_prewarm_shaders(NV2AState *d)
 {
     PGRAPHState *pg = &d->pgraph;
@@ -1717,54 +1790,9 @@ void pgraph_vk_prewarm_shaders(NV2AState *d)
         return;
     }
 
-    ShaderModuleInfo *geom_info, *vsh_info;
-    pgraph_vk_ref_pre_state_modules(r, &state, &geom_info, &vsh_info);
-
-    VkPipelineShaderStageCreateInfo stages[2];
-    int num_stages = pre_stages(stages, vsh_info, geom_info);
-
-    VkPipelineVertexInputStateCreateInfo vertex_input = {
-        .sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
-    };
-    VkPipelineRasterizationStateCreateInfo rasterizer;
-    VkPipelineInputAssemblyStateCreateInfo input_assembly;
-    ahead_pre_state(&state, &rasterizer, &input_assembly);
-    VkPipelineViewportStateCreateInfo viewport_state = {
-        .sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO,
-        .viewportCount = 1,
-        .scissorCount = 1,
-    };
-    VkDynamicState dynamic_states[24];
-    int num_dynamic = ahead_dynamic_states(r, &state, dynamic_states);
-    VkPipelineDynamicStateCreateInfo dynamic_state = {
-        .sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO,
-        .dynamicStateCount = num_dynamic,
-        .pDynamicStates = dynamic_states,
-    };
-
-    VkPipelineLayout layout = create_pipeline_layout(r, &state);
-
     RenderPassState rp_state;
     init_render_pass_state(pg, &rp_state);
-    VkGraphicsPipelineCreateInfo info = {
-        .sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
-        .stageCount = num_stages,
-        .pStages = stages,
-        .pVertexInputState = &vertex_input,
-        .pInputAssemblyState = &input_assembly,
-        .pViewportState = &viewport_state,
-        .pRasterizationState = &rasterizer,
-        .pDynamicState = &dynamic_state,
-        .renderPass = get_render_pass(r, &rp_state),
-    };
-    gpl_get_pre(pg, &info, &rp_state, layout, num_stages);
-
-    vkDestroyPipelineLayout(r->device, layout, NULL);
-    /* The library holds no module: give back the references taken above. */
-    pgraph_vk_unref_shader_module(r, vsh_info);
-    if (geom_info) {
-        pgraph_vk_unref_shader_module(r, geom_info);
-    }
+    prewarm_pre_library(pg, &state, &rp_state);
 }
 
 /* A whole pipeline's create info, for the shader state st (its modules
