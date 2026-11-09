@@ -88,6 +88,7 @@ jobs:
           python3 driver/libretro/tests/test-gl-prewarm-traversal.py candidate cc 2>&1 | tee results/gl-prewarm-traversal.log
           python3 driver/libretro/tests/test-gl-spec-preparation.py candidate cc 2>&1 | tee results/gl-spec-preparation.log
           python3 driver/libretro/tests/test-dirty-page-fast.py candidate cc 2>&1 | tee results/dirty-page-fast.log
+          python3 driver/libretro/tests/test-dirty-range-owner.py candidate cc 2>&1 | tee results/dirty-range-owner.log
           python3 driver/libretro/tests/test-throughput-gate.py 2>&1 | tee results/throughput-gate.log
           python3 driver/libretro/tests/test-shader-compile-gate.py 2>&1 | tee results/compiler-gate.log
           python3 driver/libretro/tests/test-cold-play-frame-gate.py candidate 2>&1 | tee results/cold-play-frame-gate.log

@@ -1043,6 +1043,7 @@ bool physical_memory_is_clean(ram_addr_t addr)
     return false;
 }
 
+/* Caller holds the RCU owner through every bitmap scan. */
 static bool physical_memory_all_dirty(ram_addr_t start, ram_addr_t length,
                                       unsigned client)
 {
@@ -1055,8 +1056,6 @@ static bool physical_memory_all_dirty(ram_addr_t start, ram_addr_t length,
 
     end = TARGET_PAGE_ALIGN(start + length) >> TARGET_PAGE_BITS;
     page = start >> TARGET_PAGE_BITS;
-
-    RCU_READ_LOCK_GUARD();
 
     blocks = retro_atomic_load_acquire_ptr(&ram_list.dirty_memory[client]);
 
@@ -1087,6 +1086,14 @@ uint8_t physical_memory_range_includes_clean(ram_addr_t start,
                                                  uint8_t mask)
 {
     uint8_t ret = 0;
+
+    /* No bitmap owner is needed if no recognized consumer is selected.
+     * Otherwise lend one owner through all selected scans, preserving their
+     * order and independent acquire publication. Nothing escapes this call. */
+    if (!(mask & ((1 << DIRTY_MEMORY_NUM) - 1))) {
+        return 0;
+    }
+    RCU_READ_LOCK_GUARD();
 
     if (mask & (1 << DIRTY_MEMORY_NV2A) &&
         !physical_memory_all_dirty(start, length, DIRTY_MEMORY_NV2A)) {
