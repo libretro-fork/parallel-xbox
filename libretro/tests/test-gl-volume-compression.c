@@ -30,6 +30,13 @@ typedef struct {
     size_t tex_scratch_size[2];
 } PGRAPHGLState;
 #include "s3tc-decode.h"
+static bool draw_phase;
+static unsigned utility_creations;
+static GLuint tracked_glCreateShader(GLenum type){assert(!draw_phase);utility_creations++;return glCreateShader(type);}
+static GLuint tracked_glCreateProgram(void){assert(!draw_phase);utility_creations++;return glCreateProgram();}
+static void tracked_glCompileShader(GLuint shader){assert(!draw_phase);utility_creations++;glCompileShader(shader);}
+static void tracked_glLinkProgram(GLuint program){assert(!draw_phase);utility_creations++;glLinkProgram(program);}
+static void tracked_glGetProgramiv(GLuint program,GLenum pname,GLint *value){glGetProgramiv(program,pname,value);if(pname==GL_LINK_STATUS&&getenv("GL_VOLUME_FAIL_LINK"))*value=GL_FALSE;}
 /* PRODUCTION */
 
 static bool has_extension(const char *extension)
@@ -235,6 +242,7 @@ static void benchmark(bool vtc)
         for(size_t j=0;j<bytes;j++) source[j]=(j*31+j/17)&255;
         PGRAPHGLState paths[3]={0}; GLuint tex[3]; glGenTextures(3,tex);
         paths[1].s3tc_decode.enabled=true;
+        draw_phase=false;init_compressed_volume_decoder(&paths[1]);draw_phase=true;
         paths[1].s3tc_decode.max_bytes=1<<27;
         for(unsigned j=0;j<3;j++) paths[1].s3tc_decode.max_groups[j]=65535;
         paths[2].s3tc_3d_native=true;
@@ -311,10 +319,18 @@ int main(void)
             glGetInteger64v(GL_MAX_SHADER_STORAGE_BLOCK_SIZE, &r.s3tc_decode.max_bytes);
             for (unsigned i=0; i<3; i++) glGetIntegeri_v(GL_MAX_COMPUTE_WORK_GROUP_COUNT, i, &r.s3tc_decode.max_groups[i]);
         }
+        draw_phase=false;
+        unsigned before=utility_creations;
+        init_compressed_volume_decoder(&r);
+        assert(utility_creations-before==(gpu?(getenv("GL_VOLUME_BAD_SHADER")?2u:4u):0u));
+        before=utility_creations;
+        init_compressed_volume_decoder(&r);
+        assert(utility_creations==before); /* Ready/disabled init is idempotent. */
+        draw_phase=true;
         GLuint texture;
         glGenTextures(1, &texture);
         glBindTexture(GL_TEXTURE_3D, texture);
-        if (gpu && getenv("GL_VOLUME_BAD_SHADER")) {
+        if (gpu && (getenv("GL_VOLUME_BAD_SHADER") || getenv("GL_VOLUME_FAIL_LINK"))) {
             force_compute_direct=false;
             check_level(&r,0,64,64,8,2,true);
             assert(!r.s3tc_decode.enabled && !r.s3tc_decode.program && !r.s3tc_decode.buffer);
@@ -366,6 +382,13 @@ int main(void)
         free(r.tex_scratch[1]);
     }
     printf("volume cases passed=%u\n", cases);
+    draw_phase=false;
+    PGRAPHGLState native_skip={.s3tc_3d_native=true};
+    native_skip.s3tc_decode.enabled=true;
+    unsigned before=utility_creations;
+    init_compressed_volume_decoder(&native_skip);
+    assert(utility_creations==before && !native_skip.s3tc_decode.program && !native_skip.s3tc_decode.buffer);
+    puts("utility readiness: zero shader/program creations or compile/link calls during uploads; native path skips preparation");
     if (getenv("GL_VOLUME_BENCH")) benchmark(vtc);
 #ifdef _WIN32
     wglMakeCurrent(NULL, NULL);

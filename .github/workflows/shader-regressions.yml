@@ -211,12 +211,13 @@ jobs:
       - name: Install test-only software Vulkan and validation tools
         run: |
           sudo apt-get -qy update
-          sudo apt-get -qy install build-essential libvulkan1 mesa-vulkan-drivers vulkan-validationlayers spirv-tools
+          sudo apt-get -qy install build-essential libvulkan1 mesa-vulkan-drivers vulkan-validationlayers spirv-tools libegl-dev libgl-dev libegl-mesa0 libgl1-mesa-dri
       - name: Create actual test pipelines and execute numerical controls
         run: |
           set -euo pipefail
           mkdir -p results
           python3 driver/libretro/tests/test-gl-texture-shadow.py candidate cc 2>&1 | tee results/gl-texture-shadow.log
+          python3 driver/libretro/tests/test-gl-volume-compression.py candidate cc 2>&1 | tee results/gl-volume-compression.log
           python3 driver/libretro/tests/test-glslc-local-init.py candidate --cc cc 2>&1 | tee results/local-init.log
           python3 driver/libretro/tests/test-vsh-mul-select.py candidate --cc cc --validator spirv-val 2>&1 | tee results/vsh-mul-select.log
           python3 driver/libretro/tests/test-spv-clear.py candidate cc --gpu 2>&1 | tee results/clear.log

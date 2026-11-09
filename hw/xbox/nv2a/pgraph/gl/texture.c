@@ -730,16 +730,13 @@ static uint8_t *tex_scratch(PGRAPHGLState *r, int which, size_t size)
     return r->tex_scratch[which];
 }
 
-/* Upload only packed blocks. No decoded CPU image or GPU readback. */
-static bool decode_compressed_volume_gpu(PGRAPHGLState *r, GLint level,
-    GLenum format, const uint8_t *data, unsigned width, unsigned height,
-    unsigned depth, size_t compressed_size)
+/* Fixed utility program: finish creation before texture uploads can draw.
+ * The static source outlives the driver call; linked objects belong to this
+ * renderer until finalize_textures. Failed initialization keeps CPU decode. */
+static void init_compressed_volume_decoder(PGRAPHGLState *r)
 {
-    if (!r->s3tc_decode.enabled || compressed_size > r->s3tc_decode.max_bytes ||
-        (width+7u)/8u > r->s3tc_decode.max_groups[0] ||
-        (height+7u)/8u > r->s3tc_decode.max_groups[1] ||
-        depth > r->s3tc_decode.max_groups[2]) {
-        return false;
+    if (!r->s3tc_decode.enabled || r->s3tc_3d_native) {
+        return;
     }
     if (!r->s3tc_decode.program) {
         GLuint shader = glCreateShader(GL_COMPUTE_SHADER);
@@ -759,9 +756,23 @@ static bool decode_compressed_volume_gpu(PGRAPHGLState *r, GLint level,
             glDeleteProgram(r->s3tc_decode.program);
             r->s3tc_decode.program = 0;
             r->s3tc_decode.enabled = false;
-            return false;
+            return;
         }
         glGenBuffers(1, &r->s3tc_decode.buffer);
+    }
+}
+
+/* Upload only packed blocks. No decoded CPU image or GPU readback. */
+static bool decode_compressed_volume_gpu(PGRAPHGLState *r, GLint level,
+    GLenum format, const uint8_t *data, unsigned width, unsigned height,
+    unsigned depth, size_t compressed_size)
+{
+    if (!r->s3tc_decode.enabled || !r->s3tc_decode.program ||
+        compressed_size > r->s3tc_decode.max_bytes ||
+        (width+7u)/8u > r->s3tc_decode.max_groups[0] ||
+        (height+7u)/8u > r->s3tc_decode.max_groups[1] ||
+        depth > r->s3tc_decode.max_groups[2]) {
+        return false;
     }
     GLint program, generic, indexed, texture, unpack, base_level, max_level;
     GLint image, image_level, layered, layer, access, image_format;
@@ -1313,7 +1324,7 @@ void pgraph_gl_init_textures(NV2AState *d)
                            &r->s3tc_decode.max_groups[i]);
         }
     }
-
+    init_compressed_volume_decoder(r);
 }
 
 void pgraph_gl_finalize_textures(PGRAPHState *pg)
