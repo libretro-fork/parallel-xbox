@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- OpenGL shader preparation now reuses an exact fully ready resident stage when a worker result arrives after demand has already built it, instead of submitting a duplicate driver compile/link. Preserve dynamic-family adoption and seed notifications without waiting on unfinished modules. Borrow completed job keys through their final consumer, copying only once into the asynchronous slot when a new link is necessary. Add collision, incomplete-link, seed/gate and job-lifetime regression controls.
+
 - Remove OpenGL's duplicate dirty-register reset after selecting a shader. Keep the existing reset and shader-register snapshot before host program binding; avoid clearing the same 256-byte map and reading the same shader registers a second time. Shader keys, cached owners and uniform updates are unchanged. Add Ninja Gaiden Black slot 0 to the OpenGL/Vulkan repeat-run protocol, with separately qualified fresh-process restoration and mapped-state ownership.
 
 - Skip shared OpenGL/Vulkan shader-state reconstruction for specialized bindings when CONTROL_0 or CONTROL_3 writes leave shader-consumed fields unchanged. Preserve legacy dynamic-sibling wakeups and retain upscaled UI depth-enable, perspective, alpha, fog, shading and provoking-vertex dependencies; leave pipeline and uniform state updates intact. Invalidate the GL host shader view on flush/load so restoration does not depend on a later unrelated register write. Reuse the native masked-register snapshot with twelve bytes of additional host metadata, including native/upscaled transition tracking, without changing shader/PSO keys, cache schema, ownership or file I/O. Add bitwise and randomized checks against expressions extracted from all three shader-state consumers.

@@ -382,3 +382,47 @@ external-state RAM equivalence remains unqualified. The initial harness
 audio-phase mismatch is retained separately; the final harness reads the
 serialized `libretro-frame` phase without relaxing cadence checks. These
 loaded-state runs do not replace first-boot qualification.
+
+### Completed OpenGL job versus resident demand stage
+
+Demand can populate a stage while the CPU generation worker still owns its
+job. Previously the completed job unconditionally submitted another driver
+compile/link before discovering the resident module during adoption. Query
+the exact native module-cache key on the render thread before submission.
+Only a non-null separable program with resolved locations is ready; pending
+links, empty entries and hash collisions do not qualify. This query does not
+poll GL status, wait, evict or acquire a new resource owner. A ready stage
+receives the same gate/specialization/vertex adoption notification as a
+completed link; seeds still do not switch live families.
+
+The acquired COMPLETE job slot owns its immutable key and MString until
+notification, or until GL consumes the source and the asynchronous slot
+owns its final key. Only then unref the source and retire the job. The old
+temporary full-key snapshot disappears: a ready reuse copies no key, and a
+new link copies once directly to its final existing async slot. No pointer
+to the recycled job escapes. No new storage, file I/O, reservations or
+queue capacity is added. The extra exact-cache probe is per completed
+preparation job, not per draw. Report source-level copy removal separately
+from actual memory traffic and frame latency.
+
+The regression fixture compiles the production cache predicate, adoption
+and submission helpers with actual module-key/job/async record layouts.
+It exercises all job and destination slots, stage kinds, gates, seeds,
+empty sources, pending/null modules and forced hash collisions. Callbacks
+require the source job to remain owned through the last consumer; retiring
+a job poisons its key to check the destination's independent final owner.
+This removes redundant preparation work, not all unknown first-use draw
+compilation. The cold-play regression remains open.
+
+Validation completed 43 contract suites and 30 serial runtime runs across
+DOA3 first fights, JSRF/Crazy Taxi 3 attract sequences and NGB slot 0, with
+both renderers and separate image checks. Eight main-corpus lifecycle cases
+passed RAM-exact repeated loads/reset; NGB adds twelve fresh-process
+restore/repeat/image cases without a fixture RAM sidecar. DOA3's OpenGL
+parent/candidate images and NGB's per-renderer images were byte-identical.
+Across the eight non-image OpenGL candidate runs, 430 completed jobs reused
+82 exact ready stages and submitted 348 new links. The private probe counts
+only nonempty source reuse as an avoided link. These are observed reuse
+counts, not a raw parent/candidate total difference or a latency claim.
+No image readbacks were used in timing runs. Driver caches remain
+uncontrolled, and cold-play recovery stays unqualified.

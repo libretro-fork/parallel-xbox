@@ -1887,6 +1887,70 @@ static bool state_modules_known(PGRAPHGLState *r, const ShaderState *state)
            module_known(r, &keys[1]) && module_known(r, &keys[2]);
 }
 
+/* Render-thread-only query: a cache hit can still have an unfinished link.
+ * Borrow only for this predicate; no cache entry escapes or changes owner. */
+static bool module_ready(PGRAPHGLState *r, const ShaderModuleCacheKey *key)
+{
+    uint64_t hash = fast_hash((const uint8_t *)key, sizeof(*key));
+    Lru *cache = &r->shader_module_cache;
+    unsigned bin = lru_hash_to_bin(cache, hash);
+    LruNode *node;
+    QTAILQ_FOREACH(node, &cache->bins[bin], next_bin) {
+        ShaderModuleCacheEntry *module =
+            container_of(node, ShaderModuleCacheEntry, node);
+        if (node->hash == hash && !memcmp(&module->key, key, sizeof(*key))) {
+            return module->gl_stage_program && !module->locs_pending;
+        }
+    }
+    return false;
+}
+
+static void comb_async_adopted(PGRAPHGLState *r,
+                               const ShaderModuleCacheKey *key,
+                               bool gate, bool seed)
+{
+    if (seed) {
+        return; /* Seeds fill the cache without switching a live family. */
+    }
+    if (key->kind == GL_FRAGMENT_SHADER) {
+        if (gate) {
+            pgraph_glsl_psh_dynamic_ready(&key->psh.state);
+        } else {
+            spec_track_adopted(r, &key->psh.state);
+        }
+    } else if (key->kind == GL_VERTEX_SHADER) {
+        pgraph_glsl_vsh_dynamic_ready(&key->vsh.state);
+    }
+}
+
+static void comb_async_submit(PGRAPHGLState *r, unsigned i, unsigned slot)
+{
+    /* COMPLETE was acquired by the caller. Keep this immutable job owned
+     * until GL consumes its source and the async slot owns its final key,
+     * or until the ready resident stage receives its adoption notification. */
+    const ShaderModuleCacheKey *key = &gen_jobs[i].key;
+    MString *code = gen_jobs[i].code;
+    if (module_ready(r, key)) {
+        comb_async_adopted(r, key, gen_jobs[i].gate, gen_jobs[i].seed);
+    } else {
+        const char *src = mstring_get_str(code);
+        if (src[0]) {
+            GLuint sh;
+            GLuint prog = pgraph_gl_separable_program(key->kind, src, &sh);
+            comb_async[slot].key = *key;
+            comb_async[slot].gate = gen_jobs[i].gate;
+            comb_async[slot].seed = gen_jobs[i].seed;
+            comb_async[slot].gl_shader = sh;
+            comb_async[slot].gl_program = prog;
+            comb_async[slot].used = true;
+        }
+    }
+    mstring_unref(code);
+    gen_jobs[i].code = NULL;
+    gen_jobs[i].used = false;
+    retro_atomic_store_relaxed_int(&gen_jobs[i].state, GEN_IDLE);
+}
+
 static bool comb_async_take(PGRAPHGLState *r, PshState *out, bool *gate)
 {
     if (pgraph_glsl_psh_dynamic_pending_take(out)) {
@@ -2132,28 +2196,7 @@ static void comb_async_service(PGRAPHGLState *r, unsigned max_items)
         if (slot < 0) {
             break;
         }
-        MString *code = gen_jobs[i].code;
-        ShaderModuleCacheKey key = gen_jobs[i].key;
-        bool gate = gen_jobs[i].gate;
-        bool seed = gen_jobs[i].seed;
-        gen_jobs[i].used = false;
-        gen_jobs[i].code = NULL;
-        retro_atomic_store_relaxed_int(&gen_jobs[i].state, GEN_IDLE);
-
-        const char *src = mstring_get_str(code);
-        if (!src[0]) {
-            mstring_unref(code);
-            continue;
-        }
-        GLuint sh;
-        GLuint prog = pgraph_gl_separable_program(key.kind, src, &sh);
-        mstring_unref(code);
-        comb_async[slot].key = key;
-        comb_async[slot].gate = gate;
-        comb_async[slot].seed = seed;
-        comb_async[slot].gl_shader = sh;
-        comb_async[slot].gl_program = prog;
-        comb_async[slot].used = true;
+        comb_async_submit(r, i, slot);
     }
 
     /* 2) Feed the worker: PSH combiners from the dynamic queue... */
@@ -2255,18 +2298,8 @@ static void comb_async_service(PGRAPHGLState *r, unsigned max_items)
                 delete_program(r, r->comb_adopt_program);
                 r->comb_adopt_program = 0;
             }
-            if (comb_async[i].seed) {
-                /* Seed keys only fill the module cache: no family waits,
-                 * and a dynamic_gen bump would defeat the bind fast path. */
-            } else if (comb_async[i].key.kind == GL_FRAGMENT_SHADER) {
-                if (comb_async[i].gate) {
-                    pgraph_glsl_psh_dynamic_ready(&comb_async[i].key.psh.state);
-                } else {
-                    spec_track_adopted(r, &comb_async[i].key.psh.state);
-                }
-            } else if (comb_async[i].key.kind == GL_VERTEX_SHADER) {
-                pgraph_glsl_vsh_dynamic_ready(&comb_async[i].key.vsh.state);
-            }
+            comb_async_adopted(r, &comb_async[i].key, comb_async[i].gate,
+                               comb_async[i].seed);
         } else {
             GLchar log[1024];
             glGetProgramInfoLog(comb_async[i].gl_program, sizeof(log),
