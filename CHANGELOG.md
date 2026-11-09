@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Coalesce identical pending Vulkan upload-prewarm requests before copying pipeline metadata or publishing another compiler job. Require exact pre-raster keys and complete pipeline snapshots after hash filtering, so collisions and changed render-pass, raster, topology, dynamic or push-range state stay distinct. Keep keys in existing stable slots and borrow incoming pipeline metadata only for the comparison. No added storage, payload copies, retained caller pointers or queue waits. Add queued/adopted, collision, caller-poisoning and rollover controls to the existing CI ownership test.
+
 - Prepare exact Vulkan graphics pipeline layouts once during renderer initialization and lend them to draws, clears and compiler jobs. Stop creating layouts on first use and destroying duplicates on worker adoption or PSO eviction. Retire shared owners after workers, GPU slots and cached pipelines/libraries; descriptor-layout lifetime and shader/PSO keys are unchanged. The bounded owner table is 144 bytes on 64-bit builds and prepares two layouts without attribute push constants or eighteen with them. Add all-mask range, borrowed-owner and teardown checks to CI.
 
 - Verify exact Vulkan GPL metadata on digest matches, including direct-index lookup and queued pre-raster work, so collisions cannot reuse or discard a different library. Construct worker keys directly in existing job storage and retain only distinguishing metadata in each cache entry; dynamic vertex-input entries omit their proven-zero tail. No shader/geometry payload copy or persistent-cache format change. Add forced-collision, poisoned-lend and moving-array checks to CI.

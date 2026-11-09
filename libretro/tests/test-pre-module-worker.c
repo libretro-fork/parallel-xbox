@@ -121,8 +121,51 @@ static void *stress_worker(void *unused) {
     for(unsigned n=0;n<8192;) {if(vk_pre_process_input())n++;else sched_yield();}
     return NULL;
 }
+static void duplicate_matrix(PGRAPHState *pg) {
+    PGRAPHVkState *r=pg->vk_renderer_state;unsigned cases=0;
+    for(unsigned generation=0;generation<128;generation++)for(unsigned mode=0;mode<4;mode++)for(unsigned variant=0;variant<12;variant++) {
+        clean_owners();assert(retro_atomic_load_acquire_int(&vk_spec_inflight)==0);
+        unsigned base=generation&1?UINT_MAX-1:generation*17;
+        vk_pre_write_local=base;retro_atomic_store_relaxed_int(&vk_pre_write,(int)base);retro_atomic_store_relaxed_int(&vk_pre_read,(int)base);
+        retro_atomic_store_relaxed_int(&vk_spec_cancel,0);accept_pipeline=false;cache_hit=false;collide=mode&1;need_geometry=true;
+        ShaderState state={0};state.vsh.programmable.program_data[0][0]=generation;state.vsh.uniform_attrs=5;
+        VkPrewarmState pipeline={0};pipeline.render_pass.color_format=VK_FORMAT_R8G8B8A8_UNORM;pipeline.push_size=32;
+        assert(pgraph_vk_queue_pre_modules(pg,&state,&pipeline));
+        memcpy(expected[0],vk_pre_requests[0].keys,sizeof(expected[0]));expected_pipeline[0]=pipeline;
+        if(mode&2) {in_worker=true;assert(vk_pre_process_input());in_worker=false;vk_pre_service(pg);assert(retro_atomic_load_acquire_int(&vk_pre_requests[0].phase)==VK_PRE_ADOPTED);}
+        unsigned writes=vk_pre_write_local,wakes=work_wakes,live=vk_pre_live;
+        switch(variant) {
+        case 0:break;
+        case 1:state.vsh.programmable.program_data[0][0]^=0x100;break;
+        case 2:state.geom.primitive_mode^=1;break;
+        case 3:pipeline.render_pass.color_format=VK_FORMAT_R5G6B5_UNORM_PACK16;break;
+        case 4:pipeline.raster.cullMode=VK_CULL_MODE_BACK_BIT;break;
+        case 5:pipeline.ia.topology=VK_PRIMITIVE_TOPOLOGY_LINE_LIST;break;
+        case 6:pipeline.dynamic_states[0]=VK_DYNAMIC_STATE_SCISSOR;break;
+        case 7:pipeline.num_dynamic=1;break;
+        case 8:pipeline.push_size=48;break;
+        case 9:((unsigned char *)&state.psh)[0]^=1;break;
+        case 10:need_geometry=false;break;
+        case 11:pipeline.render_pass.zeta_format=VK_FORMAT_D16_UNORM;break;
+        }
+        bool same=variant==0 || variant==9;
+        assert(pgraph_vk_queue_pre_modules(pg,&state,&pipeline));
+        assert(vk_pre_write_local==writes+!same && work_wakes==wakes+!same && vk_pre_live==live+!same);
+        assert(vk_pre_requests[1].count==(same?0u:1u+need_geometry));
+        /* Poison caller storage while the original and any distinct queued
+         * request still own their exact immutable metadata. */
+        memset(&state,0xcd,sizeof(state));memset(&pipeline,0xef,sizeof(pipeline));
+        assert(!memcmp(vk_pre_requests[0].keys,expected[0],sizeof(expected[0])));
+        assert(!memcmp(&vk_pre_requests[0].pipeline,&expected_pipeline[0],sizeof(pipeline)));
+        retro_atomic_store_release_int(&vk_spec_cancel,1);in_worker=true;while(vk_pre_process_input()){}in_worker=false;
+        assert(retro_atomic_load_acquire_int(&vk_spec_inflight)==0);vk_pre_clear(r);clean_owners();cases++;
+    }
+    retro_atomic_store_relaxed_int(&vk_spec_cancel,0);collide=false;accept_pipeline=false;
+    printf("Pre-module duplicates: %u queued/adopted, exact/colliding keys, changed raster/pass/range/dynamic state, poisoned caller, cancellation and rollover cases PASS; one queue publication per unique request\n",cases);
+}
 int main(void) {
     PGRAPHVkState r={.shader_module_cache={.init_node=shader_module_cache_entry_init}};PGRAPHState pg={&r};unsigned cases=0;
+    duplicate_matrix(&pg);
     for(unsigned generation=0;generation<128;generation++)for(unsigned bits=0;bits<64;bits++) {
         clean_owners();assert(retro_atomic_load_acquire_int(&vk_spec_inflight)==0);
         unsigned base=generation&1?UINT_MAX-4:generation*19;
@@ -172,12 +215,21 @@ int main(void) {
         if(slot==VK_PRE_REQUESTS) {sched_yield();continue;}
         state=(ShaderState){0};state.vsh.programmable.program_data[0][0]=n;state.geom.primitive_mode=n;
         need_geometry=n&1;pipeline=(VkPrewarmState){0};pipeline.push_size=n%8*16;expected_pipeline[slot]=pipeline;
-        if(pgraph_vk_queue_pre_modules(&pg,&state,&pipeline))n++;
-        else sched_yield();
+        accept_pipeline=false;
+        if(pgraph_vk_queue_pre_modules(&pg,&state,&pipeline)) {
+            unsigned writes=vk_pre_write_local,live=vk_pre_live;
+            for(unsigned repeat=0;repeat<4;repeat++) {
+                assert(pgraph_vk_queue_pre_modules(&pg,&state,&pipeline)==(live<VK_PRE_REQUESTS));
+                assert(vk_pre_write_local==writes && vk_pre_live==live);
+                sched_yield(); /* Race QUEUED -> READY -> ADOPTED publication. */
+            }
+            n++;
+        } else sched_yield();
+        accept_pipeline=true;
     }
     while(vk_pre_live){vk_pre_service(&pg);sched_yield();}
     assert(!pthread_join(thread,NULL));
     assert(compiles==12288 && adoptions==12288 && transfers==8192 && work_wakes==8192 && idle_wakes==8192);
     assert(retro_atomic_load_acquire_int(&vk_spec_inflight)==0);vk_pre_clear(&r);clean_owners();
-    printf("Pre-module worker: %u eight-slot generations plus8192 threaded jobs, pointer-only handoff, exact keys/collisions, no fragment compile, pressure, cancellation, teardown and rollover PASS; request_bytes=%zu\n",cases,sizeof(VkPreRequest));
+    printf("Pre-module worker: %u eight-slot generations plus8192 threaded jobs and32768 racing duplicate/backpressure submissions, pointer-only handoff, exact keys/collisions, no fragment compile, pressure, cancellation, teardown and rollover PASS; request_bytes=%zu\n",cases,sizeof(VkPreRequest));
 }

@@ -23,6 +23,9 @@ with tempfile.TemporaryDirectory(prefix='pre-module-worker-') as d:
     cmd=[cc,'-O2','-std=gnu11','-Wall','-Wextra','-Werror','-pthread','-fsanitize=undefined','-fsanitize-undefined-trap-on-error','-I'+str(p),'-I'+str(r),'-I'+str(r/'include'),'-I'+str(r/'libretro-common/include'),'-I'+str(r/'deps/vulkan-headers'),str(src),'-o',str(exe)]
     src.write_text(code);subprocess.run(cmd,env=env,check=True);subprocess.run([str(exe)],env=env,check=True,timeout=60)
     controls=[
+        ('duplicate request queued',code.replace('request->count = 0;\n                return true;', 'request->count = 0;\n                break;',1)),
+        ('colliding shader keys dropped',re.sub(r' &&\s*!memcmp\(pending->keys, request->keys,\s*request->count \* sizeof\(request->keys\[0\]\)\)', '',code,count=1)),
+        ('different pipeline snapshot dropped',code.replace('!memcmp(&pending->pipeline, pipeline, sizeof(*pipeline))','pipeline != NULL',1)),
         ('render-thread compiler invocation',code.replace('request->pipeline = *pipeline;','request->pipeline = *pipeline;\n        vk_spec_compile_module(&request->keys[0], request->hashes[0]);',1)),
         ('wrong-key word adoption',code.replace('!memcmp(&request->keys[i], key, sizeof(*key))','key != NULL',1)),
         ('word owner retained after transfer',code.replace('request->words[i] = NULL;\n                return words;','return words;',1)),

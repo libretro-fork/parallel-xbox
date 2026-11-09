@@ -98,3 +98,23 @@ No payload snapshots, additional resource references, queues, look-up
 allocations or new waits are introduced. This removes draw/upload-time
 vkCreatePipelineLayout calls; uncovered vkCreateGraphicsPipelines and final
 GPL linking remain synchronous violations. Cold-play recovery stays open.
+
+Upload-prewarm submission now coalesces identical requests while an existing
+slot owns the same immutable pre-raster keys and pipeline snapshot. Hashes
+filter comparisons; complete key bytes, count and complete pipeline metadata
+must match. The candidate constructs keys directly in a free stable slot,
+then borrows the caller's pipeline only through synchronous comparison.
+Duplicates take no second pipeline snapshot, queue publication, compiler-memo
+lookup or adoption. Different render passes/raster/input/dynamic/push-range
+state stay separate. Byte equality is deliberately conservative: padding or
+unused-field differences can miss a coalescing opportunity, never justify
+reusing distinct work. Pending keys and snapshots are immutable through their
+last worker/adoption consumer; no source, word or module pointer is borrowed
+from another slot. The existing native owner/generation boundary and bounded
+queue capacity are unchanged. A full queue still defers optional work before
+constructing keys, even for a duplicate; no wait or spin is introduced.
+
+This does not move vkCreateShaderModule off the render thread or cover an
+unknown PSO. Blind native-module creation on the compiler worker would also
+create objects for cache hits; eliminating that duplication and preserving
+native module-cache ownership is a prerequisite for a safe future handoff.

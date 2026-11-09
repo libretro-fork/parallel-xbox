@@ -1389,11 +1389,30 @@ bool pgraph_vk_queue_pre_modules(PGRAPHState *pg, const ShaderState *state,
         }
         request->count = vk_pre_state_module_keys(state,
                                     r->use_push_constants_for_uniform_attrs, request->keys);
-        request->pipeline = *pipeline;
         for (unsigned i = 0; i < request->count; i++) {
             request->hashes[i] = fast_hash((const uint8_t *)&request->keys[i],
                                            sizeof(request->keys[i]));
         }
+        /* Other live slots own immutable keys/pipeline metadata until their
+         * final adoption. A digest only filters: preserve different shader
+         * keys and pipeline states even when their hashes collide. The
+         * caller's pipeline is lent only for this synchronous comparison;
+         * duplicate requests need no second metadata snapshot or queue job. */
+        for (unsigned k = 0; k < VK_PRE_REQUESTS; k++) {
+            VkPreRequest *pending = &vk_pre_requests[k];
+            int phase = retro_atomic_load_acquire_int(&pending->phase);
+            if ((phase == VK_PRE_QUEUED || phase == VK_PRE_READY ||
+                 phase == VK_PRE_ADOPTED) && pending->count == request->count &&
+                !memcmp(pending->hashes, request->hashes,
+                        request->count * sizeof(request->hashes[0])) &&
+                !memcmp(pending->keys, request->keys,
+                        request->count * sizeof(request->keys[0])) &&
+                !memcmp(&pending->pipeline, pipeline, sizeof(*pipeline))) {
+                request->count = 0;
+                return true;
+            }
+        }
+        request->pipeline = *pipeline;
         /* Key storage is final before the pointer publication. No key or
          * shader payload clone crosses this queue handoff. */
         retro_atomic_store_relaxed_int(&request->phase, VK_PRE_QUEUED);
