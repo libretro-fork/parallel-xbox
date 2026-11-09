@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Include queued OpenGL dynamic fallback recipes in the existing between-frame readiness service while the correct exact shader continues drawing. Reuse the same native cache-entry lend and one-recipe budget; completed fallback stages can become a usable pipeline before another draw needs them. Preserve synchronous uncovered-state correctness and all eviction/load/generation guards. Add dynamic-recipe tracking and lifetime cases without allocating another queue or retaining a shader-state copy.
+
 - Prepare OpenGL specializations from fully ready resident stages between frames while a correct dynamic fallback remains active. Borrow the existing exact shader-cache entry, cancel on eviction/load or changed generation/geometry inputs, restore the live pipeline after preparation and wake the next shader selection without requiring another guest register write. No added heap allocation or retained shader payload snapshot; existing GL pipeline-object creation moves off the draw path for covered recipes. Unknown synchronous misses and mid-game host-resource creation remain open optimization work.
 
 - Make allocation-free gameplay an explicit development target, covering background shader/cache work as well as the draw path. Require separate allocation/resource counts, bounded ownership for necessary exceptions and regression coverage alongside shader/PSO and latency checks. This documents the target; it does not claim the current core meets it.

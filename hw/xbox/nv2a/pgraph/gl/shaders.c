@@ -1909,7 +1909,13 @@ static bool module_ready(PGRAPHGLState *r, const ShaderModuleCacheKey *key)
     return false;
 }
 
-/* One already-owned exact recipe, serviced between frames. The render
+static void spec_binding_track(PGRAPHGLState *r, ShaderBinding *target)
+{
+    target->dyn_gen = pgraph_glsl_dynamic_gen;
+    r->spec_binding = target;
+}
+
+/* One already-owned shader recipe, serviced between frames. The render
  * thread alone mutates both caches: ready lookups below cannot evict a
  * module before generate_shaders consumes it. No missing stage is compiled. */
 static void spec_binding_pump(PGRAPHGLState *r)
@@ -1938,9 +1944,10 @@ static void spec_binding_pump(PGRAPHGLState *r)
                               r->shader_binding->gl_pipeline : 0);
     }
     r->spec_binding = NULL;
-    if (r->shader_binding) {
+    if (r->shader_binding && !target->state.psh.combiner_dynamic) {
         /* Request one real-state selection through the existing fast-path
-         * guard, without a global generation bump or a new per-draw check. */
+         * guard for a specialization. A prepared cover serves future misses;
+         * it need not recapture the already-correct live exact shader. */
         r->shader_binding->dyn_gen = pgraph_glsl_dynamic_gen - 1;
     }
 }
@@ -2602,6 +2609,11 @@ void pgraph_gl_bind_shaders(PGRAPHState *pg)
                     } else if (ts < 0) {
                         spec_queue(r, sh, &fb);
                     }
+                    if (!fbind->initialized) {
+                        /* Keep the queued cover's native owner available to
+                         * the flip service while the exact path draws. */
+                        spec_binding_track(r, fbind);
+                    }
                 }
                 if (fbind->initialized) {
                     if (t < 0) {
@@ -2609,8 +2621,7 @@ void pgraph_gl_bind_shaders(PGRAPHState *pg)
                     }
                     nv2a_profile_inc_counter(NV2A_PROF_SHADER_FALLBACK);
                     if (binding != fbind && !binding->initialized) {
-                        binding->dyn_gen = pgraph_glsl_dynamic_gen;
-                        r->spec_binding = binding;
+                        spec_binding_track(r, binding);
                     }
                     binding = fbind;
                 }

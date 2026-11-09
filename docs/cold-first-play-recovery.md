@@ -90,6 +90,15 @@ sidecar means RAM equivalence is unqualified, not an automatic pass.
 Record image/build hashes and matching options for parent/candidate repeats;
 no private game image is distributed with CI or tests.
 
+Verify checkpoint contents instead of trusting filenames. A DOA3 fixture
+named "first fight" was found to restore the title screen; retain those
+attempts as unqualified for fight coverage. A replacement checkpoint must
+record the live-fight marker (state 1, scene 10, phase 1), a matching scene
+capture and its source hash before use. Keep mismatched cold-boot images
+separate from matched loaded-state images. Check the actual renderer and
+the existence of the requested capture; a successful restore or harness
+exit does not establish that a scene was captured on the requested backend.
+
 Preserve the current bad binary, startup commit, options, driver/GPU/OS,
 harness hash, cache manifests and failing frame IDs before changing code.
 Identify and replay a last-known-good cold-play build; the November 6 build

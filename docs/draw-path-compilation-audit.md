@@ -485,3 +485,64 @@ compilation is eliminated. An external RetroArch process was present during
 the batch, and driver caches were uncontrolled. Timings are retained as
 unqualified; no isolation, latency, allocation-free or stutter-recovery pass
 is claimed.
+
+### Queued dynamic cover recipes share the existing flip-time lend
+
+Previously only an exact specialization behind an initialized dynamic
+fallback entered the flip-time binding service. A queued, uninitialized
+dynamic cover itself had no recipe lend; its stages could land between
+frames and still require draw-path pipeline setup on its next encounter.
+Track that cover's existing native cache entry while the correct exact
+shader draws. When all exact stage keys are ready, the same service can
+prepare it before a future miss needs it. Keep the existing synchronous
+correctness paths for uncovered states, including the immediate ready-cover
+path; this does not remove the only available correct draw path.
+
+Both recipe types share one pointer and the same at-most-one-per-flip
+budget. No host field, retained state snapshot, compiler job, source clone,
+queue capacity or explicit core allocation is added. Replacing the current
+lend ends that borrow without releasing its native owner. Existing
+eviction/load/mode/generation/geometry cancellation and exact readiness
+checks apply unchanged. More recipes can now consume the existing bounded
+query and GL object-creation budget; this is neither zero CPU work nor
+allocation-free driver behavior, and unused prepared objects can remain
+under the native cache owner.
+
+Only an exact specialization requests a localized real-state reselection.
+A prepared cover does not invalidate an already-correct live exact shader;
+future shader changes discover the cover through normal exact-key lookup.
+This avoids introducing a redundant whole ShaderState capture merely to
+announce cover readiness. The lifetime fixture now exercises both static
+and dynamic recipes through the production tracking helper, including lost
+generation/owner controls and an unnecessary-cover-wakeup negative control.
+Keep placement/reuse counts separate from latency and driver-cache claims.
+
+Validation completed 44 contract suites and the expanded 7,680-case
+Windows/Linux lifetime/readiness fixture. The main matrix completed 31
+runs (including one retained DOA3 image repeat). Eight non-image GL
+candidate runs prepared ten queued covers and twenty exact specializations;
+preparation recorded no pending-link demand or module-cache initialization.
+The same runs still recorded 778 draw-path pipeline-object creations and
+277 pending-link demands. These observed counts do not prove latency or
+that every prepared object was subsequently used.
+
+NGB per-renderer images matched exactly. Both DOA3 cold-boot candidate
+captures differed from the parent by 2,834,883 bytes; visible boat/bird
+positions differ, but no cause is established. Preserve both mismatches
+as unqualified. Supplementary attempts exposed an old, misleadingly named
+"first fight" fixture that actually showed the title screen; exclude it
+from fight qualification. Two supplementary Vulkan-labelled invocations
+used GL due to an incorrectly passed harness switch, and one corrected
+Vulkan parent attempt lacked a capture. All remain retained/unqualified.
+
+A replacement checkpoint was saved from the live-fight marker at live
+frame 30 (state 1, scene 10, phase 1) and visually verified. Its four
+fresh-process parent/candidate restores produced byte-identical fight
+images on both GL and Vulkan. Capture serialized directly into the final
+146,290,728-byte API buffer without a second RAM-sidecar snapshot; restores
+borrowed a read-only file mapping through their last unserialize consumer.
+No external-checkpoint RAM-equivalence claim is made without a sidecar.
+Those matched loaded-state images do not erase the cold-boot mismatches.
+Driver caches remain uncontrolled. Process censuses saw no RetroArch at
+batch boundaries, but do not prove continuous isolation; timing, mid-game
+allocation freedom and cold-play recovery remain unqualified.

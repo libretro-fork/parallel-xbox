@@ -11,7 +11,7 @@ def fn(text,name):
  while depth:depth+=(text[b]=='{')-(text[b]=='}');b+=1
  return text[m.start():b]
 key=re.search(r'typedef struct ShaderModuleCacheKey \{.*?\} ShaderModuleCacheKey;',h,re.S)[0]
-parts='\n'.join(fn(s,n) for n in ('state_module_keys','module_ready','spec_binding_pump','shader_cache_entry_post_evict','pgraph_gl_uniform_sources_invalidate'))
+parts='\n'.join(fn(s,n) for n in ('state_module_keys','module_ready','spec_binding_track','spec_binding_pump','shader_cache_entry_post_evict','pgraph_gl_uniform_sources_invalidate'))
 parts=fn((r/'hw/xbox/nv2a/pgraph/glsl/geom.c').read_text(),'pgraph_glsl_need_geom')+'\n'+parts
 # Check actual call-site ordering: service after module/seed work, and cancel
 # the old lend before lookup can recycle its native cache slot.
@@ -19,6 +19,8 @@ flip=fn(s,'pgraph_gl_shaders_flip_service');assert flip.index('comb_async_servic
 draw=fn(s,'pgraph_gl_bind_shaders');assert draw.index('r->spec_binding = NULL;')<draw.index('lru_lookup(')
 assert 'r->shader_binding->dyn_gen == pgraph_glsl_dynamic_gen' in draw
 assert 'binding != fbind && !binding->initialized' in draw
+assert draw.index('spec_binding_track(r, fbind);')<draw.index('if (fbind->initialized)')
+assert 'spec_binding_track(r, binding);' in draw
 for forbidden in ('malloc(', 'g_new', 'realloc(', 'glGet', 'glFinish', 'glLink', 'glCompile', 'lru_lookup('):
  assert forbidden not in fn(s,'spec_binding_pump'),forbidden
 code=r'''
@@ -68,15 +70,15 @@ static bool compare(Lru *cache,LruNode *node,const void *key){(void)cache;return
 int main(void){
  lru_init(&r.shader_cache);lru_init(&r.shader_module_cache);r.shader_cache.init_node=init_node;r.shader_cache.compare_nodes=compare;r.shader_cache.post_node_evict=shader_cache_entry_post_evict;
  unsigned cases=0;
- for(unsigned gen_case=0;gen_case<3;gen_case++)for(unsigned geometry=0;geometry<2;geometry++)for(unsigned mask=0;mask<64;mask++)for(unsigned scenario=0;scenario<10;scenario++){
+ for(unsigned gen_case=0;gen_case<3;gen_case++)for(unsigned geometry=0;geometry<2;geometry++)for(unsigned cover=0;cover<2;cover++)for(unsigned mask=0;mask<64;mask++)for(unsigned scenario=0;scenario<10;scenario++){
   lru_flush(&r.shader_cache);memset(slots,0,sizeof(slots));r.shader_cache.num_free=0;r.shader_cache.num_used=0;QTAILQ_INIT(&r.shader_cache.global);QTAILQ_INIT(&r.shader_cache.bins[42]);QTAILQ_INIT(&r.shader_module_cache.bins[42]);
   r.shader_binding=r.spec_binding=NULL;for(unsigned i=0;i<2;i++)lru_add_free(&r.shader_cache,&slots[i].node);
   pgraph_glsl_dynamic_gen=gen_case==0?0:gen_case==1?17:UINT32_MAX;
-  ShaderState state={0};state.geom.primitive_mode=geometry?PRIM_TYPE_TRIANGLES:PRIM_TYPE_POINTS;state.geom.polygon_front_mode=state.geom.polygon_back_mode=POLY_MODE_FILL;state.vsh.uniform_attrs=1;state.psh.combiner_control=7;
+  ShaderState state={0};state.geom.primitive_mode=geometry?PRIM_TYPE_TRIANGLES:PRIM_TYPE_POINTS;state.geom.polygon_front_mode=state.geom.polygon_back_mode=POLY_MODE_FILL;state.vsh.uniform_attrs=1;state.psh.combiner_control=7;state.psh.combiner_dynamic=cover;
   ShaderBinding *target=container_of(lru_lookup(&r.shader_cache,41,&state),ShaderBinding,node);
   state.psh.combiner_control++;
   ShaderBinding *live=container_of(lru_lookup(&r.shader_cache,42,&state),ShaderBinding,node);
-  live->initialized=true;live->gl_pipeline=77;live->dyn_gen=target->dyn_gen=pgraph_glsl_dynamic_gen;r.shader_binding=live;r.spec_binding=target;r.wide_lines=false;
+  live->initialized=true;live->gl_pipeline=77;live->dyn_gen=pgraph_glsl_dynamic_gen;r.shader_binding=live;r.wide_lines=false;spec_binding_track(&r,target);CHECK(r.spec_binding==target&&target->dyn_gen==pgraph_glsl_dynamic_gen);
   ShaderModuleCacheKey keys[3];bool gs=state_module_keys(&target->state,keys);bool ready=true;
   memset(modules,0,sizeof(modules));
   for(unsigned i=gs?0:1;i<3;i++){
@@ -103,7 +105,7 @@ int main(void){
   CHECK(!finished||!r.spec_binding);
   CHECK(finished||!allowed||r.spec_binding==target);
   if(scenario!=2&&scenario!=8)CHECK(r.shader_binding==live);
-  if(finished&&scenario!=8)CHECK(live->dyn_gen!=pgraph_glsl_dynamic_gen);
+  if(finished&&scenario!=8)CHECK((live->dyn_gen!=pgraph_glsl_dynamic_gen)==!cover);
   if(allowed&&!finished)CHECK(live->dyn_gen==pgraph_glsl_dynamic_gen);
   CHECK(bound==(scenario==8?0:77));
   unsigned old_generated=generated;spec_binding_pump(&r);CHECK(generated==old_generated);
@@ -117,7 +119,7 @@ with tempfile.TemporaryDirectory(prefix='gl-binding-pump-') as tmp:
  c=d/'test.c';exe=d/('test.exe' if os.name=='nt' else 'test')
  cmd=[cc,'-O2','-std=gnu11','-Wall','-Wextra','-Werror','-Wno-unused-parameter','-Wno-misleading-indentation','-fsanitize=undefined','-fsanitize-undefined-trap-on-error','-I'+str(d),'-I'+str(r),'-I'+str(r/'include'),'-I'+str(r/'libretro-common/include'),str(c),'-o',str(exe)]
  c.write_text(code);subprocess.run(cmd,check=True);subprocess.run([str(exe)],check=True,timeout=120)
- mutants=[('null stage',code.replace('module->gl_stage_program && !module->locs_pending','!module->locs_pending',1)),('unfinished stage',code.replace('module->gl_stage_program && !module->locs_pending','module->gl_stage_program',1)),('no localized wakeup',code.replace('r->shader_binding->dyn_gen = pgraph_glsl_dynamic_gen - 1;','(void)r;',1)),('lost live pipeline',code.replace('glBindProgramPipeline(r->shader_binding ?\n                              r->shader_binding->gl_pipeline : 0);','glBindProgramPipeline(123);',1)),('lend survives eviction',code.replace('if (r->spec_binding == binding) {','if (false && r->spec_binding == binding) {',1)),('lend survives load',code.replace('    r->shader_binding = NULL;\n    r->spec_binding = NULL;','    r->shader_binding = NULL;',1)),('stale family generation',code.replace('target->dyn_gen != pgraph_glsl_dynamic_gen ||','false ||',1)),('missing vertex readiness',code.replace('!module_ready(r, &keys[1]) ||','false ||',1))]
+ mutants=[('cover forces unnecessary wakeup',code.replace('r->shader_binding && !target->state.psh.combiner_dynamic','r->shader_binding',1)),('tracking loses generation',code.replace('target->dyn_gen = pgraph_glsl_dynamic_gen;', '(void)target;',1)),('tracking loses owner',code.replace('r->spec_binding = target;', '(void)r;',1)),('null stage',code.replace('module->gl_stage_program && !module->locs_pending','!module->locs_pending',1)),('unfinished stage',code.replace('module->gl_stage_program && !module->locs_pending','module->gl_stage_program',1)),('no localized wakeup',code.replace('r->shader_binding->dyn_gen = pgraph_glsl_dynamic_gen - 1;','(void)r;',1)),('lost live pipeline',code.replace('glBindProgramPipeline(r->shader_binding ?\n                              r->shader_binding->gl_pipeline : 0);','glBindProgramPipeline(123);',1)),('lend survives eviction',code.replace('if (r->spec_binding == binding) {','if (false && r->spec_binding == binding) {',1)),('lend survives load',code.replace('    r->shader_binding = NULL;\n    r->spec_binding = NULL;','    r->shader_binding = NULL;',1)),('stale family generation',code.replace('target->dyn_gen != pgraph_glsl_dynamic_gen ||','false ||',1)),('missing vertex readiness',code.replace('!module_ready(r, &keys[1]) ||','false ||',1))]
  for name,mutant in mutants:
   assert mutant!=code,name
   c.write_text(mutant);subprocess.run(cmd,check=True)
