@@ -343,3 +343,42 @@ native owners; no object is deleted or copied by clearing this view. The next
 draw reselects actual restored state without waiting for an unrelated control
 write. This GL-only refinement receives separate three-game lifecycle checks
 and a final GL image comparison; the Vulkan rendering path is unchanged.
+
+### Redundant OpenGL register-map reset
+
+OpenGL's shader-selection path cleared the dirty-register map twice: once
+after installing the selected cache binding and once after binding its host
+program/pipeline. Keep the first reset, including its consumed-register
+snapshot, and remove the second. The intervening statements only update a
+profile counter and call `glUseProgram`/`glBindProgramPipeline`; none writes
+guest PGRAPH registers. The uniform update remains after the reset and still
+runs on the unchanged-binding fast path. Vulkan is byte-identical.
+
+Each selection now avoids a second 256-byte bitmap clear and twelve scalar
+snapshot stores/associated register reads. This is deterministic work removal,
+not a measured bandwidth or frame-time gain. No shader/pipeline keys, snapshots
+retained by queues, cache ownership, allocations, file I/O or borrowed lifetimes
+change. Unknown draw-path synchronous compilation remains an open violation;
+this cleanup does not establish cold-play recovery.
+
+Validation: 42 contract suites, a clean Windows release rebuild and eighteen
+serial runtime runs completed. DOA3 includes parent/candidate cold/warm first
+fights on both renderers; JSRF and Crazy Taxi 3 include candidate cold/warm
+attract runs on both. Eight lifecycle cases passed repeated RAM-exact loads,
+reset and unload. Timing runs performed no image readbacks. The separate
+OpenGL parent/candidate first-fight images were byte-identical. Driver caches
+remain uncontrolled, fresh-process restoration remains untested and no
+latency or cold-play recovery claim follows from these results.
+
+Ninja Gaiden Black slot 0 adds twelve parent/candidate runs: each renderer
+gets fresh-process restoration with empty and populated core caches plus a
+separate scene capture. Both restores succeeded per run, exact restored-phase
+audio cadence passed, and parent/candidate images were byte-identical on
+each renderer. The fixture's RZIP-v2 data was decoded in bounded 128-KiB
+chunks; a read-only mapping owns the validated MEM block through repeated
+unserialize and is unmapped only after its last consumer. No second full
+state payload buffer is made. No fixture RAM sidecar was available, so
+external-state RAM equivalence remains unqualified. The initial harness
+audio-phase mismatch is retained separately; the final harness reads the
+serialized `libretro-frame` phase without relaxing cadence checks. These
+loaded-state runs do not replace first-boot qualification.

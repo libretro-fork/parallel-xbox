@@ -70,6 +70,23 @@ coverage separately from interactive gameplay. Keep each game's caches and
 capture artifacts separate, and repeat parent/candidate cold and warm runs
 with matching per-game settings.
 
+Include **Ninja Gaiden Black (USA) (En,Ja), savestate slot 0** in the
+repeat corpus on both OpenGL and Vulkan. Slot 0 is RetroArch's unnumbered
+`.state` file, not `.state1`. Record its source hash and originating build
+when available, and keep the private fixture outside the repository. Test
+restoration in a fresh process with empty core caches, repeat with populated
+core caches, and check a separate matched parent/candidate scene capture.
+These are loaded-state/cache-readiness cases, not cold-boot qualification.
+Repeat restoration before continuing the scene and exercise lifecycle
+transitions separately. Keep driver-cache qualification explicit.
+
+Compressed fixtures require bounded decoding. Borrow a validated core-state
+block from a read-only mapping whose owner survives the last unserialize;
+do not clone the whole decoded state into another payload buffer. Match the
+harness's expected audio phase to the serialized `libretro-frame` phase at
+each external restore; retain exact per-run audio checks. A missing RAM
+sidecar means RAM equivalence is unqualified, not an automatic pass.
+
 Record image/build hashes and matching options for parent/candidate repeats;
 no private game image is distributed with CI or tests.
 
