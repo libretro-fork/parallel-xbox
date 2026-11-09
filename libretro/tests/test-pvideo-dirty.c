@@ -20,17 +20,34 @@
 #define PAGES (DIRTY_MEMORY_BLOCK_SIZE*4)
 #define RAM_SIZE (PAGES*4096)
 #define ARRAY_SIZE(x) (sizeof(x)/sizeof(*(x)))
-#define RCU_READ_LOCK_GUARD() ((void)0)
-#define WITH_RCU_READ_LOCK_GUARD() for(int once=1;once;once=0)
+static unsigned rcu_depth,rcu_locks;
+static void rcu_unlock(unsigned *held){assert(*held&&rcu_depth==1);rcu_depth--;}
+static unsigned rcu_lock(void){assert(!rcu_depth);rcu_depth++;rcu_locks++;return 1;}
+#define RCU_READ_LOCK_GUARD() unsigned held __attribute__((cleanup(rcu_unlock)))=rcu_lock()
+#define WITH_RCU_READ_LOCK_GUARD() for(unsigned held __attribute__((cleanup(rcu_unlock)))=rcu_lock(),once=1;once;once=0)
 typedef uint64_t ram_addr_t;typedef uint64_t hwaddr;
 typedef struct {unsigned long *blocks[4];} DirtyMemoryBlocks;
 static unsigned long bits[DIRTY_MEMORY_NUM][4];
 static DirtyMemoryBlocks clients[DIRTY_MEMORY_NUM];
 static struct {void *dirty_memory[DIRTY_MEMORY_NUM];} ram_list;
-static void *retro_atomic_load_acquire_ptr(void **p){return *p;}
-static void bitmap_set_atomic(unsigned long *w,unsigned long offset,unsigned long count){assert(offset+count<=DIRTY_MEMORY_BLOCK_SIZE);for(unsigned long i=0;i<count;i++)*w|=1ul<<(offset+i);}
-static bool xen_enabled(void){return false;}
-static void xen_hvm_modified_memory(ram_addr_t a,ram_addr_t b){(void)a;(void)b;assert(false);}
+static int selected_mask=-1;
+static unsigned selected_loads,selected_seen;
+static bool emulate_xen;
+static unsigned xen_calls;
+static ram_addr_t expected_start,expected_length;
+static void *retro_atomic_load_acquire_ptr(void **p){
+ assert(rcu_depth==1);
+ if(selected_mask>=0){
+  unsigned client=(unsigned)(p-ram_list.dirty_memory);
+  assert(client<DIRTY_MEMORY_NUM && (selected_mask&(1u<<client)));
+  assert(!(selected_seen&(1u<<client)));
+  selected_seen|=1u<<client;selected_loads++;
+ }
+ return *p;
+}
+static void bitmap_set_atomic(unsigned long *w,unsigned long offset,unsigned long count){assert(rcu_depth==1&&offset+count<=DIRTY_MEMORY_BLOCK_SIZE);for(unsigned long i=0;i<count;i++)*w|=1ul<<(offset+i);}
+static bool xen_enabled(void){return emulate_xen;}
+static void xen_hvm_modified_memory(ram_addr_t a,ram_addr_t b){assert(!rcu_depth&&a==expected_start&&b==expected_length);xen_calls++;}
 static unsigned dirty_lookups;
 static bool test_bit(unsigned long offset,const unsigned long *words){dirty_lookups++;return !!(words[offset/(sizeof(unsigned long)*CHAR_BIT)]&(1ul<<(offset%(sizeof(unsigned long)*CHAR_BIT))));}
 static bool physical_memory_get_dirty_flag(ram_addr_t addr,unsigned client){dirty_lookups++;unsigned long p=(unsigned long)(addr>>12);assert(p<PAGES&&client<DIRTY_MEMORY_NUM);return !!(bits[client][p/DIRTY_MEMORY_BLOCK_SIZE]&(1ul<<(p%DIRTY_MEMORY_BLOCK_SIZE)));}
@@ -89,6 +106,23 @@ static void pgraph_vk_end_single_time_commands_async(PGRAPHState *pg,VkCommandBu
 }
 static void memory_region_set_client_dirty(void *mr,hwaddr addr,hwaddr length,unsigned client){assert(mr&&client==DIRTY_MEMORY_NV2A_PVIDEO);physical_memory_set_dirty_range(addr,length,1u<<client);}
 /* PRODUCTION */
+/* The wrapper verifies the production setter against a separate ownership
+ * contract and swaps metadata generations without copying bitmaps. */
+void physical_memory_set_dirty_range(ram_addr_t start,ram_addr_t length,uint8_t mask){
+ assert(selected_mask<0 && !rcu_depth);
+ DirtyMemoryBlocks moved[DIRTY_MEMORY_NUM];
+ for(unsigned c=0;c<DIRTY_MEMORY_NUM;c++){moved[c]=clients[c];ram_list.dirty_memory[c]=&moved[c];}
+ selected_mask=mask;selected_seen=selected_loads=0;
+ unsigned before_locks=rcu_locks,before_xen=xen_calls;
+ expected_start=start;expected_length=length;
+ physical_memory_set_dirty_range_impl(start,length,mask);
+ assert(!rcu_depth && rcu_locks-before_locks==!!(mask||emulate_xen));
+ unsigned count=0;for(unsigned c=0;c<DIRTY_MEMORY_NUM;c++)count+=!!(mask&(1u<<c));
+ assert(selected_loads==count && selected_seen==(mask&((1u<<DIRTY_MEMORY_NUM)-1)));
+ assert(xen_calls-before_xen==emulate_xen);
+ selected_mask=-1;
+ for(unsigned c=0;c<DIRTY_MEMORY_NUM;c++)ram_list.dirty_memory[c]=&clients[c];
+}
 static uint32_t rng=0x948fe231;
 static uint32_t random32(void){rng^=rng<<13;rng^=rng>>17;rng^=rng<<5;return rng;}
 static void reset(void){memset(bits,0,sizeof(bits));for(unsigned c=0;c<DIRTY_MEMORY_NUM;c++){ram_list.dirty_memory[c]=&clients[c];for(unsigned i=0;i<4;i++)clients[c].blocks[i]=&bits[c][i];}}
@@ -114,6 +148,19 @@ int main(int argc,char **argv){
   for(unsigned p=0;p<PAGES;p++)for(unsigned c=0;c<DIRTY_MEMORY_NUM;c++)assert(physical_memory_get_dirty_flag((hwaddr)p*4096,c)==((p>=start/4096&&p<TARGET_PAGE_ALIGN(start+length)/4096)&&!!(mask&(1u<<c))));
   cases++;
  }
+ /* Include unused mask bits, Xen notification and the legacy unaligned
+  * zero-length behavior; these cannot be inferred from nonempty writes. */
+ const hwaddr extra_lengths[]={0,1,4096,4097};
+ for(unsigned mask=0;mask<256;mask++)for(unsigned xen=0;xen<2;xen++)
+ for(unsigned off=0;off<2;off++)for(unsigned l=0;l<ARRAY_SIZE(extra_lengths);l++){
+  reset();emulate_xen=xen;
+  hwaddr start=DIRTY_MEMORY_BLOCK_SIZE*4096-1+off,length=extra_lengths[l];
+  physical_memory_set_dirty_range(start,length,(uint8_t)mask);
+  for(unsigned p=0;p<PAGES;p++)for(unsigned c=0;c<DIRTY_MEMORY_NUM;c++)
+   assert(physical_memory_get_dirty_flag((hwaddr)p*4096,c)==(p>=start/4096&&p<TARGET_PAGE_ALIGN(start+length)/4096&&!!(mask&(1u<<c))));
+  cases++;
+ }
+ emulate_xen=false;
  reset();PGRAPHVkState renderer={0};NV2AState d={.pgraph={&renderer},.vram=&ram,.vram_ptr=ram};renderer.storage_buffers[0].buffer=1;PvideoState s={.base=4080,.in_width=17,.in_height=7,.pitch=48,.format=1};unsigned uploads=0,skips=0;
  /* GPU bypass writes only dirty a live, overlapping cached source. */
  renderer.display.pvideo.upload_addr=4096;

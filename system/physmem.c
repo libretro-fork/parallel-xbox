@@ -1156,8 +1156,12 @@ void physical_memory_set_dirty_range(ram_addr_t start, ram_addr_t length,
     page = start >> TARGET_PAGE_BITS;
 
     WITH_RCU_READ_LOCK_GUARD() {
+        /* Only selected consumers are dereferenced below. Lend their
+         * metadata under this owner; unselected arrays need no acquire. */
         for (i = 0; i < DIRTY_MEMORY_NUM; i++) {
-            blocks[i] = retro_atomic_load_acquire_ptr(&ram_list.dirty_memory[i]);
+            if (mask & (1 << i)) {
+                blocks[i] = retro_atomic_load_acquire_ptr(&ram_list.dirty_memory[i]);
+            }
         }
 
         idx = page / DIRTY_MEMORY_BLOCK_SIZE;
