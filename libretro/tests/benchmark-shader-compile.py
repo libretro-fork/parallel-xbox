@@ -30,6 +30,20 @@ def module_growth(before, after):
             for k, n in before.items() if after[k] > n]
 
 
+def comparison_status(statuses, *, word_growth=False, instruction_growth=False,
+                      shader_regressions=False, noisy_shaders=False):
+    statuses = tuple(statuses)
+    if not statuses or any(s not in ('pass', 'inconclusive', 'regression') for s in statuses):
+        raise ValueError('missing or invalid compiler comparison status')
+    # An established regression remains a regression even if another stage
+    # is unqualified. Noise never hides emitted-code or timing failures.
+    if word_growth or instruction_growth or shader_regressions or 'regression' in statuses:
+        return 'regression'
+    if noisy_shaders or 'inconclusive' in statuses:
+        return 'inconclusive'
+    return 'pass'
+
+
 def main():
     p = argparse.ArgumentParser(description=__doc__)
     for name in ('baseline', 'candidate', 'corpus', 'output'):
@@ -189,13 +203,14 @@ def main():
             entry = dict(module=key[0], target=key[1], slowdown=ratio,
                          comparison=check)
             (outliers if check['status'] == 'regression' else noisy_outliers).append(entry)
-    states = [result['status']]+[x['status'] for x in stages.values()]
+    aggregate_status = result['status']
+    states = [aggregate_status]+[x['status'] for x in stages.values()]
     word_growth = module_growth(module_words['baseline'], module_words['candidate'])
     instruction_growth = module_growth(module_instructions['baseline'], module_instructions['candidate'])
-    result['status'] = ('regression' if word_growth or instruction_growth else
-                       ('inconclusive' if 'inconclusive' in states or noisy_outliers else
-                        ('regression' if 'regression' in states or outliers else 'pass')))
-    result.update(stages=stages, shader_outliers=outliers,
+    result['status'] = comparison_status(
+        states, word_growth=bool(word_growth), instruction_growth=bool(instruction_growth),
+        shader_regressions=bool(outliers), noisy_shaders=bool(noisy_outliers))
+    result.update(aggregate_status=aggregate_status, stages=stages, shader_outliers=outliers,
                   noisy_shader_outliers=noisy_outliers, compiler_hashes=hashes,
                   corpus=[dict(stage=s, file=p.relative_to(a.corpus.resolve()).as_posix(), sha256=h, bytes=n) for s, (p, h, n) in chosen],
                   iterations=a.iterations, blocks=a.blocks, compiler=a.cc,
@@ -212,7 +227,12 @@ def main():
                     for name, values in durations.items()},
                   scope='CPU compilation only; no generator, Vulkan PSO, GPU execution or gameplay qualification')
     (a.output/'report.json').write_text(json.dumps(result, indent=2)+'\n')
-    print(result['status'], 'aggregate compile time', f"{result['slowdown']:+.1%}")
+    print(result['status'], 'shader comparison; aggregate compile time', f"{result['slowdown']:+.1%}")
+    print('Aggregate timing qualification:', aggregate_status)
+    for stage, check in stages.items():
+        print(f"Stage {stage}: {check['status']} ({check['slowdown']:+.1%})")
+    print(f'Per-shader regressions: {len(outliers)}; noisy shader comparisons: {len(noisy_outliers)}; '
+          f'word growth: {len(word_growth)}; instruction growth: {len(instruction_growth)}')
     return {'pass': 0, 'regression': 1, 'inconclusive': 2}[result['status']]
 
 

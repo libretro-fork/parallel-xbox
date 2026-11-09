@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Keep proven shader compilation regressions classified as regressions when another stage or shader comparison is noisy. Report aggregate and per-stage qualification separately so a near-zero aggregate delta does not conceal the reason CI rejected a run. Add 1,296 mixed-status cases; timing budgets and unqualified results are unchanged. Runtime is unchanged.
+
 - Let Vulkan's shader compiler worker borrow contiguous aligned input records until its last compiler read instead of copying each 2,620-byte state to the stack. Keep one bounded snapshot for wrapped or unaligned records, preserve cancellation and quiescence notification, and leave partial records unconsumed. Add real-ring ownership, producer-reuse and copy-count checks to shader CI. No shader semantics or cold-play recovery claim.
 
 - Queue Vulkan upload-time pre-rasterization library creation on the existing bounded pipeline worker. Keep module references and create-info in the final queue slot, skip optional work when full, and retire a worker result if a draw has already published the library. Shader-module acquisition and uncovered draw misses can still be synchronous; cold-play recovery remains open.
