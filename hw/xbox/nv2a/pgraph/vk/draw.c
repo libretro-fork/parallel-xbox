@@ -1554,6 +1554,27 @@ static void pump_submit(LibJob *job)
     retro_eventcount_notify(&pipe_ec_work);
 }
 
+/* Scoped render-thread lend of a published immutable key. The worker only
+ * reads this identity; native draining/reuse ends the lend, so callers must
+ * consume it before invoking any cache initializer or completion service. */
+const ShaderState *pgraph_vk_pending_shader_state(PGRAPHState *pg,
+                                                  uint64_t *hash)
+{
+    PGRAPHVkState *r = pg->vk_renderer_state;
+    unsigned ticket = r->sibling_ticket;
+    if (!r->sibling_retry || !pgraph_gpu_boost_gl() ||
+        r->sibling_generation != pgraph_glsl_dynamic_gen ||
+        ticket - pump_d >= pump_w_local - pump_d) {
+        return NULL;
+    }
+    const LibJob *job = &pump_jobs[ticket % PUMP_RING];
+    if (!job->full) {
+        return NULL;
+    }
+    *hash = job->state_hash;
+    return &job->key.shader_state;
+}
+
 /* A state's pipeline layout: the descriptor set, and the vertex shader's
  * uniform attributes as push constants when they fit. */
 /* All graphics users borrow these immutable device-generation owners.
@@ -2315,15 +2336,18 @@ static bool pipeline_use_ready_sibling(PGRAPHState *pg, PipelineKey *key,
             job->mods[job->nmods++] = psh;
             pump_submit(job);
             pgraph_vk_spec_pipeline_queued(job->state_hash);
+            r->sibling_ticket = pump_w_local - 1;
+            r->sibling_generation = pgraph_glsl_dynamic_gen;
+            r->sibling_retry = true;
         }
     }
     memcpy(&key->shader_state.psh, &projected, sizeof(projected));
     pgraph_vk_use_ready_shader_binding(pg, sibling);
-    /* Re-evaluate the real shader state on the next draw even if the guest
-     * writes no registers. This retries a full queue and adopts the exact
-     * specialization after completion instead of remaining on the sibling.
-     * The existing host dirty flag adds no per-draw retry branch/storage. */
-    pg->program_data_dirty = true;
+    /* A published job owns a key the next draw can borrow before draining.
+     * Otherwise preserve the existing full-queue/in-flight retry capture. */
+    if (!r->sibling_retry) {
+        pg->program_data_dirty = true;
+    }
     /* Proven-hit promotion cannot evict a borrowed ready pipeline. */
     LruNode *node = lru_lookup(&r->pipeline_cache, sibling_hash, key);
     PipelineBinding *binding = container_of(node, PipelineBinding, node);
@@ -2365,6 +2389,7 @@ static void create_pipeline(PGRAPHState *pg)
     PipelineBinding *snode = container_of(node, PipelineBinding, node);
     if (snode->pipeline != VK_NULL_HANDLE) {
         NV2A_VK_DPRINTF("Cache hit");
+        r->sibling_retry = false;
         r->pipeline_binding_changed = r->pipeline_binding != snode;
         r->pipeline_binding = snode;
         NV2A_VK_DGROUP_END();

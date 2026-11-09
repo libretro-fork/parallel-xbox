@@ -260,3 +260,46 @@ Cold first play remains open: a genuinely empty bank still has no known states
 to prepare. The existing retry dirty flag can repeat bounded shader-state
 capture while the one job is pending; that cost is retained, not labelled
 zero-copy. No shader-word, geometry or file payload is copied by this change.
+
+Pending sibling retries can now borrow a full shader identity from their
+published native worker slot instead of reconstructing ShaderState on every
+unchanged draw. The renderer retains only an unsigned ticket, family-generation
+snapshot and retry flag. Before reading the slot, validate optimization enable,
+generation and the unsigned [drained, published) interval, including counter
+wrap; reject non-full jobs. Worker completion does not modify keys, but render
+thread draining/reuse ends this lend. The last CPU consumers are the existing
+guest dirty-state guard and an exact non-initializing shader-binding probe.
+Cache promotion uses that ready binding's own state, never the ring pointer.
+No initializer, drain, wait, ShaderState snapshot or payload handoff occurs in
+the lend selection. Native module references and final-slot job keys continue
+to cover their existing worker/GPU consumers.
+
+Guest writes, a changed family generation, disabled optimization, eviction,
+completion/reuse or missing owners take the ordinary real-state capture path.
+Full-queue and externally queued specialization cases retain the earlier retry
+path. Uniform refresh still runs after shader selection. Flush invalidates both
+the host lend and host shader-binding view, rather than depending on a serialized
+guest dirty bit a subsequent load can restore to false. This requires one real
+shader re-selection after a flush and does not retain guest or cache-node pointers.
+The inactive render path adds a predicted-false retry check; this is not claimed
+as literally zero instruction overhead or as a whole-renderer zero-copy path.
+
+The initial second warm DOA3 candidate repeat reported 675 successful lends,
+676 ready-fallback draws and one queued specialization; the parent also served
+676 fallback draws. Selection thus avoided 675 whole-state captures, accounting
+for 1,768,500 bytes of captured ShaderState metadata on the tested ABI, without
+replacing them with another payload clone. One retry used the conservative
+recapture path; the aggregate probe does not attribute its invalidation cause.
+The ordinary draw-key snapshot and other guest-driven captures still remain.
+These work counts came before the final flush invalidation refinement; that
+refinement does not change the scoped selection and receives separate runtime
+lifecycle checks. Driver caches and guest state sets are uncontrolled, so these
+counts do not establish a frame-time or cold-play recovery claim.
+
+The new fixture runs the production dirty-state guard across 21 guest-input
+classes, ring expiry/reuse/wrap, generation/feature changes, exact collisions,
+poisoning the ring after the final query, and restored-false guest dirty bits.
+Its sanitizer caught two pre-existing signed bit-31 expressions used by the
+guard. Their unsigned literals preserve the 32-bit register values and key
+schema; sanitizer suppression is not used. Remaining synchronous misses and
+fresh-process/image qualification gaps stay open.

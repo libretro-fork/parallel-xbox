@@ -516,7 +516,7 @@
 #   define NV_PGRAPH_SETUPRASTER_FRONTFACE                      (1 << 23)
 #   define NV_PGRAPH_SETUPRASTER_CULLENABLE                     (1 << 28)
 #   define NV_PGRAPH_SETUPRASTER_Z_FORMAT                       (1 << 29)
-#   define NV_PGRAPH_SETUPRASTER_WINDOWCLIPTYPE                 (1 << 31)
+#   define NV_PGRAPH_SETUPRASTER_WINDOWCLIPTYPE                 (1u << 31)
 #define NV_PGRAPH_SHADERCLIPMODE                         0x00001994
 #define NV_PGRAPH_SHADERCTL                              0x00001998
 #define NV_PGRAPH_SHADERPROG                             0x0000199C
@@ -576,7 +576,7 @@
 #   define NV_PGRAPH_TEXFILTER0_ASIGNED                         (1 << 28)
 #   define NV_PGRAPH_TEXFILTER0_RSIGNED                         (1 << 29)
 #   define NV_PGRAPH_TEXFILTER0_GSIGNED                         (1 << 30)
-#   define NV_PGRAPH_TEXFILTER0_BSIGNED                         (1 << 31)
+#   define NV_PGRAPH_TEXFILTER0_BSIGNED                         (1u << 31)
 #define NV_PGRAPH_TEXFILTER1                             0x000019F8
 #define NV_PGRAPH_TEXFILTER2                             0x000019FC
 #define NV_PGRAPH_TEXFILTER3                             0x00001A00

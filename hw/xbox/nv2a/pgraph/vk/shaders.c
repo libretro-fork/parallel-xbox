@@ -1997,6 +1997,29 @@ static __attribute__((noinline)) ShaderBinding *vk_try_sibling_binding(
     return NULL;
 }
 
+static bool vk_try_pending_binding(PGRAPHState *pg)
+{
+    PGRAPHVkState *r = pg->vk_renderer_state;
+    uint64_t hash;
+    const ShaderState *state = pgraph_vk_pending_shader_state(pg, &hash);
+    if (state && !pgraph_glsl_check_shader_state_dirty(pg, state)) {
+        ShaderBinding *binding = pgraph_vk_ready_shader_binding(r, state, hash);
+        if (binding) {
+            /* End the ring lend at this exact cache query. Only the proven
+             * ready binding's own state enters the hit/promotion below. */
+            r->shader_binding = get_shader_binding_for_state(r, &binding->state,
+                                                             binding->node.hash);
+            r->shader_bindings_changed = true;
+            return true;
+        }
+    }
+    /* Guest changes, generation changes, completion/reuse or owner eviction
+     * must recapture real state, including a no-register-write completion. */
+    r->sibling_retry = false;
+    pg->program_data_dirty = true;
+    return false;
+}
+
 void pgraph_vk_bind_shaders(PGRAPHState *pg)
 {
     NV2A_VK_DGROUP_BEGIN("%s", __func__);
@@ -2005,6 +2028,9 @@ void pgraph_vk_bind_shaders(PGRAPHState *pg)
 
     r->shader_bindings_changed = false;
 
+    if (r->sibling_retry && vk_try_pending_binding(pg)) {
+        goto shader_selected;
+    }
     if (!r->shader_binding ||
         pgraph_glsl_check_shader_state_dirty(pg, &r->shader_binding->state)) {
         /* Keep hash stripes aligned without constructing a sibling clone. */
@@ -2040,6 +2066,7 @@ void pgraph_vk_bind_shaders(PGRAPHState *pg)
         nv2a_profile_inc_counter(NV2A_PROF_SHADER_BIND_NOTDIRTY);
     }
 
+shader_selected:
     update_shader_uniforms(pg);
 
     NV2A_VK_DGROUP_END();

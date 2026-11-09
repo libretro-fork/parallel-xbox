@@ -758,7 +758,10 @@ typedef struct PGRAPHVkState {
      * taken by create_pipeline. */
     ShaderState ahead_state;
     uint64_t ahead_hash;
+    /* Retry identity, never a retained ring/cache-node pointer. */
+    unsigned sibling_ticket, sibling_generation;
     bool ahead_valid;
+    bool sibling_retry;
 
     VkDescriptorPool descriptor_pool;
     VkDescriptorSetLayout descriptor_set_layout;
@@ -1206,6 +1209,9 @@ ShaderBinding *pgraph_vk_ready_shader_binding(PGRAPHVkState *r,
 ShaderBinding *pgraph_vk_materialize_ready_shader_binding(PGRAPHVkState *r,
                                   const ShaderState *state, uint64_t hash);
 void pgraph_vk_use_ready_shader_binding(PGRAPHState *pg, ShaderBinding *binding);
+/* Render-thread key lend: consume before draining or cache initialization. */
+const ShaderState *pgraph_vk_pending_shader_state(PGRAPHState *pg,
+                                                  uint64_t *hash);
 void pgraph_vk_bind_shaders(PGRAPHState *pg);
 void pgraph_vk_prewarm_shaders(NV2AState *d);
 void pgraph_vk_ref_pre_state_modules(PGRAPHVkState *r, const ShaderState *st,

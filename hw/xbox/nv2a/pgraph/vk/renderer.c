@@ -121,6 +121,10 @@ static void pgraph_vk_flush(NV2AState *d)
      * copied whole, 64 MB a state load, which Run-Ahead does every frame */
     pgraph_vk_vertex_mark_stale(&d->pgraph, 0, memory_region_size(d->vram));
     pgraph_vk_uniform_sources_invalidate(pg->vk_renderer_state);
+    /* Invalidate host views, not a guest dirty bit a subsequent load can
+     * overwrite. The next draw captures restored shader state unconditionally. */
+    pg->vk_renderer_state->sibling_retry = false;
+    pg->vk_renderer_state->shader_binding = NULL;
     for (int i = 0; i < 4; i++) {
         pg->texture_dirty[i] = true;
     }
