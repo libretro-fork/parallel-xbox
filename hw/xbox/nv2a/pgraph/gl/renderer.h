@@ -492,9 +492,10 @@ typedef struct PGRAPHGLState {
     } seed;
     /* Boot prewarm of the on-disk module cache. */
     struct {
-        char **files;
-        unsigned count, idx;
-        int state; /* -1 unscanned, 1 pumping, 0 done */
+        GDir *root, *bucket;
+        char *base, *bucket_path;
+        unsigned count;
+        int state; /* -1 unopened, 1 traversing, 0 done */
     } prewarm;
     /* Freshly created 2D textures, whose finalization the driver defers to
      * the first draw sampling them: texture.c queues them, the flip service

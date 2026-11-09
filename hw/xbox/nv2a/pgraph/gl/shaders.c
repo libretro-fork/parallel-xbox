@@ -1316,20 +1316,32 @@ void pgraph_gl_init_shaders(PGRAPHState *pg)
     r->prewarm.state = -1;
 }
 
+static void module_prewarm_finish(PGRAPHGLState *r)
+{
+    if (r->prewarm.bucket) {
+        g_dir_close(r->prewarm.bucket);
+    }
+    if (r->prewarm.root) {
+        g_dir_close(r->prewarm.root);
+    }
+    r->prewarm.bucket = r->prewarm.root = NULL;
+    g_free(r->prewarm.bucket_path);
+    g_free(r->prewarm.base);
+    r->prewarm.bucket_path = r->prewarm.base = NULL;
+    r->prewarm.state = 0;
+}
+
 void pgraph_gl_finalize_shaders(PGRAPHState *pg)
 {
     PGRAPHGLState *r = pg->gl_renderer_state;
 
     /* What the flip services hold: the texture touch objects, the seed and
-     * prewarm lists. Links in flight stay for the next GL renderer. */
+     * prewarm traversal. Links in flight stay for the next GL renderer. */
     glDeleteProgram(r->touch_prog);
     glDeleteVertexArrays(1, &r->touch_vao);
     g_free(r->seed.mod_keys);
     g_free(r->seed.pipe_states);
-    for (unsigned i = r->prewarm.idx; i < r->prewarm.count; i++) {
-        g_free(r->prewarm.files[i]);
-    }
-    g_free(r->prewarm.files);
+    module_prewarm_finish(r);
 
     // Clear out shader cache
     pgraph_gl_shader_write_cache_reload_list(pg); // FIXME: also flushes, rename for clarity
@@ -2241,41 +2253,21 @@ static void comb_async_service(PGRAPHGLState *r, unsigned max_items)
 /* Boot prewarm: the on-disk module cache is loaded into GL in idle flips,
  * so no first draw pays a glProgramBinary. Each file holds its full key,
  * so the list is just the directory. */
-static void module_prewarm_scan(PGRAPHGLState *r)
+static void module_prewarm_start(PGRAPHGLState *r)
 {
     r->prewarm.state = 0;
     if (!g_config.perf.cache_shaders || !gl_sso_enabled()) {
         return;
     }
-    char *base = g_strdup_printf("%s/shader_modules",
-                                 xemu_settings_get_base_path());
-    GPtrArray *arr = g_ptr_array_new();
-    GDir *d1 = g_dir_open(base, 0, NULL);
-    if (d1) {
-        const char *sub;
-        while ((sub = g_dir_read_name(d1)) != NULL) {
-            char *subp = g_strdup_printf("%s/%s", base, sub);
-            GDir *d2 = g_dir_open(subp, 0, NULL);
-            if (d2) {
-                const char *fn;
-                while ((fn = g_dir_read_name(d2)) != NULL) {
-                    g_ptr_array_add(arr,
-                                    g_strdup_printf("%s/%s", subp, fn));
-                }
-                g_dir_close(d2);
-            }
-            g_free(subp);
-        }
-        g_dir_close(d1);
+    r->prewarm.base = g_strdup_printf("%s/shader_modules",
+                                     xemu_settings_get_base_path());
+    r->prewarm.root = g_dir_open(r->prewarm.base, 0, NULL);
+    if (!r->prewarm.root) {
+        module_prewarm_finish(r);
+        return;
     }
-    g_free(base);
-    r->prewarm.count = arr->len;
-    r->prewarm.files = (char **)g_ptr_array_free(arr, FALSE);
-    if (r->prewarm.count) {
-        r->prewarm.state = 1;
-        fprintf(stderr, "nv2a: prewarming %u cached shader modules\n",
-                r->prewarm.count);
-    }
+    r->prewarm.count = 0;
+    r->prewarm.state = 1;
 }
 
 /* Read just the header of a cached module file to recover its key.
@@ -2294,18 +2286,46 @@ static bool module_file_read_key(const char *path, ShaderModuleCacheKey *key)
 
 static void module_prewarm_pump(PGRAPHGLState *r, unsigned max_items)
 {
+    if (!max_items) {
+        return;
+    }
     if (r->prewarm.state == -1) {
-        module_prewarm_scan(r);
+        module_prewarm_start(r);
     }
     if (r->prewarm.state != 1) {
         return;
     }
-    unsigned items = 0;
-    while (r->prewarm.idx < r->prewarm.count) {
-        if (items++ >= max_items) {
-            return;
+    /* Every directory advance consumes the existing per-flip quota, even
+     * for empty/unreadable buckets. Never enumerate the whole cache here.
+     * GDir owns each returned name only until its next read/close: build
+     * the owned bucket/file path immediately, before advancing again. */
+    for (unsigned items = 0; items < max_items; items++) {
+        if (!r->prewarm.bucket) {
+            const char *sub = g_dir_read_name(r->prewarm.root);
+            if (!sub) {
+                fprintf(stderr, "nv2a: shader module prewarm complete (%u files)\n",
+                        r->prewarm.count);
+                module_prewarm_finish(r);
+                return;
+            }
+            r->prewarm.bucket_path = g_strdup_printf("%s/%s", r->prewarm.base, sub);
+            r->prewarm.bucket = g_dir_open(r->prewarm.bucket_path, 0, NULL);
+            if (!r->prewarm.bucket) {
+                g_free(r->prewarm.bucket_path);
+                r->prewarm.bucket_path = NULL;
+            }
+            continue;
         }
-        char *path = r->prewarm.files[r->prewarm.idx++];
+        const char *fn = g_dir_read_name(r->prewarm.bucket);
+        if (!fn) {
+            g_dir_close(r->prewarm.bucket);
+            r->prewarm.bucket = NULL;
+            g_free(r->prewarm.bucket_path);
+            r->prewarm.bucket_path = NULL;
+            continue;
+        }
+        char *path = g_strdup_printf("%s/%s", r->prewarm.bucket_path, fn);
+        r->prewarm.count++;
         ShaderModuleCacheKey key;
         if (module_file_read_key(path, &key)) {
             /* Init of a fresh node loads the binary from disk and
@@ -2314,11 +2334,6 @@ static void module_prewarm_pump(PGRAPHGLState *r, unsigned max_items)
         }
         g_free(path);
     }
-    fprintf(stderr, "nv2a: shader module prewarm complete (%u modules)\n",
-            r->prewarm.count);
-    g_free(r->prewarm.files);
-    r->prewarm.files = NULL;
-    r->prewarm.state = 0;
 }
 
 /* One point sampling each fresh texture makes the driver finalize it here,
