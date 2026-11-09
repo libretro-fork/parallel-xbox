@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- DSP JIT: reset translation flags and counters explicitly instead of clearing emitter and pointer fields that are immediately replaced. Poisoned-state tests check reset completeness across normal, interrupt and REP translation.
+
 - DSP JIT: initialize deferred-stub fields only where they are consumed, avoiding redundant full-record clears in release builds. Test builds poison reused records to catch missing initialization.
 
 - DSP JIT: remove unused decoded-instruction and accumulator-loaded snapshots from deferred stubs, reducing translation scratch memory and redundant initialization/copies without changing emitted instruction behavior.

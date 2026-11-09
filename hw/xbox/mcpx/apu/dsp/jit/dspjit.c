@@ -4642,7 +4642,17 @@ static void translate_begin(DspJit *jit, int mode)
     Tr *t = jit->tr;
     Emitter *e = &t->e;
 
-    memset(t, 0, offsetof(Tr, stubs));
+    /* emit_init and the assignments below replace emitter/pointer state.
+     * Only per-translation flags and counters need resetting. */
+#ifdef DSPJIT_TEST
+    memset(t, 0xA5, offsetof(Tr, stubs));
+#endif
+    t->loaded[0] = t->loaded[1] = false;
+    t->dirty[0] = t->dirty[1] = false;
+    t->cyc = 0;
+    t->wrote_memory = false;
+    t->interrupt_retirement = false;
+    t->end = 0;
     t->nstubs = 0;
     t->core = jit->core;
     t->mode = mode & 3;

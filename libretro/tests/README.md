@@ -5217,3 +5217,14 @@ prior storage. Missing initialization cannot silently rely on a fresh zeroed
 workspace. A negative control omitting dirty-flag initialization is rejected
 by the focused undefined-behavior trap test. Poisoning is not release timing
 instrumentation and is excluded from production benchmark builds.
+
+Translation setup now resets its per-block accumulator flags, cycle counter,
+memory-write flag, interrupt-retirement flag and block endpoint explicitly.
+Emitter initialization and existing assignments replace all other consumed
+prefix fields, avoiding their redundant blanket clear. Stub records remain
+outside this prefix, and reset still clears the stub count before reuse.
+DSPJIT_TEST fills the prefix with 0xA5 before initialization, so normal,
+interrupt and REP translations must initialize their own state independently
+of the previous block. The undefined-behavior trap fixture rejects a negative
+control omitting interrupt-retirement reset. Release timing uses builds
+without DSPJIT_TEST and waits for local builds and native sweeps to finish.
