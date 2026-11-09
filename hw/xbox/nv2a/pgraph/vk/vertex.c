@@ -219,6 +219,14 @@ void pgraph_vk_init_vertex_formats(PGRAPHState *pg, Error **errp)
                                 s1_to_count, s32k_to_count };
     memset(r->vertex_format_conversion, 0, sizeof(r->vertex_format_conversion));
     r->vertex_conversion_required = false;
+    /* D3D byte colors can share the unswizzled shader interface when vertex
+     * fetch supplies BGRA. Keep the shader swizzle on devices without it.
+     * This changes no source bytes, buffer owner or upload lifetime. */
+    VkFormatProperties bgra;
+    vkGetPhysicalDeviceFormatProperties(r->physical_device,
+                                       VK_FORMAT_B8G8R8A8_UNORM, &bgra);
+    r->vertex_native_bgra =
+        (bgra.bufferFeatures & VK_FORMAT_FEATURE_VERTEX_BUFFER_BIT) != 0;
     for (unsigned t = 0; t <= ARRAY_SIZE(tables); t++) {
         for (unsigned c = 0; c < (t == ARRAY_SIZE(tables) ? 1 : 4); c++) {
             VkFormat format = t == ARRAY_SIZE(tables) ? VK_FORMAT_R32_SINT : tables[t][c];
@@ -292,6 +300,10 @@ void pgraph_vk_bind_vertex_attributes(NV2AState *d, unsigned int min_element,
         switch (attr->format) {
         case NV097_SET_VERTEX_DATA_ARRAY_FORMAT_TYPE_UB_D3D:
             assert(attr->count == 4);
+            if (r->vertex_native_bgra) {
+                vk_format = VK_FORMAT_B8G8R8A8_UNORM;
+                break;
+            }
             d3d_swizzle = true;
             /* fallthru */
         case NV097_SET_VERTEX_DATA_ARRAY_FORMAT_TYPE_UB_OGL:

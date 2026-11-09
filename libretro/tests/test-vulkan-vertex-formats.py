@@ -11,6 +11,8 @@ with tempfile.TemporaryDirectory(prefix='vulkan-vertex-formats-') as directory:
     exe = Path(directory) / ('test.exe' if os.name == 'nt' else 'test')
     subprocess.run([sys.argv[2] if len(sys.argv)>2 else 'gcc', '-O2', '-std=gnu11',
                     '-Wall', '-Wextra', '-Werror', '-Wno-unused-parameter',
-                    '-I' + str(repo), str(Path(__file__).with_suffix('.c')),
-                    '-lvulkan', '-lm', '-o', str(exe)], check=True)
+                    '-I' + str(repo), '-I' + str(repo / 'deps/vulkan-headers'),
+                    str(Path(__file__).with_suffix('.c')),
+                    *([str(Path(os.environ.get('WINDIR', 'C:/Windows')) / 'System32/vulkan-1.dll')]
+                      if os.name == 'nt' else ['-lvulkan']), '-lm', '-o', str(exe)], check=True)
     subprocess.run([str(exe)], check=True, timeout=30)

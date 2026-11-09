@@ -808,6 +808,7 @@ typedef struct PGRAPHVkState {
     hwaddr vertex_attribute_offsets[NV2A_VERTEXSHADER_ATTRIBUTES];
     /* Immutable for this device, populated before rendering begins. */
     bool vertex_conversion_required;
+    bool vertex_native_bgra;
     uint8_t vertex_format_conversion[VK_FORMAT_R32G32B32A32_SFLOAT + 1];
 
     QTAILQ_HEAD(, SurfaceBinding) surfaces;

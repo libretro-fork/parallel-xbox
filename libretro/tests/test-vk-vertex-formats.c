@@ -33,6 +33,7 @@ typedef struct {
     VkPhysicalDevice physical_device;
     uint8_t vertex_format_conversion[VK_FORMAT_R32G32B32A32_SFLOAT+1];
     bool vertex_conversion_required;
+    bool vertex_native_bgra;
     VkVertexInputAttributeDescription vertex_attribute_descriptions[16];
     VkVertexInputBindingDescription vertex_binding_descriptions[16];
     int vertex_attribute_to_description_location[16];
@@ -115,7 +116,7 @@ int main(void) {
     for(unsigned base=1;base<=8;base++) for(unsigned start=0;start<5;start++) for(unsigned count=0;count<9;count++) {
         PGRAPHVkState r;NV2AState d;reset(&r,&d);memset(supported,1,sizeof(supported));
         supported[formats[f]]=false;queries=0;Error *err=NULL;pgraph_vk_init_vertex_formats(&d.pgraph,&err);
-        assert(!err && r.vertex_conversion_required && queries==18);unsigned before=queries;
+        assert(!err && r.vertex_conversion_required && queries==19);unsigned before=queries;
         size_t unit,n;get_size_and_count_for_format(formats[f],&unit,&n);
         unsigned width=unit*n,stride=width+stride_pad,end=start+count;
         r.vertex_attribute_to_description_location[0]=0;
@@ -180,12 +181,48 @@ int main(void) {
         }
         cases++;
     }
+    /* BGRA is a fetch capability, never a byte conversion. Exercise it next
+     * to an independently converted attribute, with owned/borrowed input and
+     * upload-slot rotation. A new device must forget the previous capability. */
+    for(unsigned native=0;native<2;native++) for(unsigned borrowed=0;borrowed<2;borrowed++)
+    for(unsigned converted=0;converted<2;converted++) for(unsigned rotated=0;rotated<2;rotated++)
+    for(unsigned count=1;count<=32;count++) {
+        PGRAPHVkState r;NV2AState d;reset(&r,&d);PGRAPHState *pg=&d.pgraph;
+        memset(supported,1,sizeof(supported));supported[VK_FORMAT_B8G8R8A8_UNORM]=native;
+        supported[VK_FORMAT_R16G16_SSCALED]=!converted;
+        r.vertex_native_bgra=!native;Error *err=NULL;pgraph_vk_init_vertex_formats(pg,&err);
+        assert(!err && r.vertex_native_bgra==native);
+        pg->vertex_attributes[0]=(VertexAttribute){.format=NV097_SET_VERTEX_DATA_ARRAY_FORMAT_TYPE_UB_D3D,.count=4,.size=1};
+        pg->vertex_attributes[1]=(VertexAttribute){.format=NV097_SET_VERTEX_DATA_ARRAY_FORMAT_TYPE_S32K,.count=2,.size=2,.inline_array_offset=4};
+        if(borrowed) { memset(pg->inline_array,0xce,sizeof(pg->inline_array));pg->inline_array_external=(uint32_t *)ram; }
+        else memcpy(pg->inline_array,ram,8*count);
+        const uint8_t *input=borrowed?ram:(const uint8_t *)pg->inline_array;
+        unsigned before=queries;pgraph_vk_bind_vertex_attributes(&d,0,count-1,true,8,count-1);
+        assert(queries==before && pg->swizzle_attrs==(native?0:1));
+        assert(r.vertex_attribute_descriptions[0].format==(native?VK_FORMAT_B8G8R8A8_UNORM:VK_FORMAT_R8G8B8A8_UNORM));
+        float last[4];memcpy(last,pg->vertex_attributes[0].inline_value,sizeof(last));
+        /* The CPU's existing provoking-value representation stays raw; the
+         * BGRA interpretation belongs to vertex fetch for array attributes. */
+        for(unsigned k=0;k<4;k++) assert(last[k]==input[(count-1)*8+k]/255.0f);
+        rotate=rotated;VkDeviceSize offset=upload_converted_inline_array(pg,8*count,8,count);
+        assert(offset==(rotated?48:32) && queries==before);
+        unsigned stride=r.vertex_binding_descriptions[0].stride;
+        for(unsigned v=0;v<count;v++) {
+            memcpy(gold+offset+v*stride+r.vertex_attribute_offsets[0],input+v*8,4);
+            if(converted) oracle(gold+offset+v*stride+r.vertex_attribute_offsets[1],input+v*8+4,VK_FORMAT_R16G16_SSCALED);
+            else memcpy(gold+offset+v*stride+r.vertex_attribute_offsets[1],input+v*8+4,4);
+        }
+        assert(!memcmp(rotated?alternate:stage,gold,sizeof(gold)));
+        assert(!memcmp(last,pg->vertex_attributes[0].inline_value,sizeof(last)));
+        assert(pg->inline_array_external==(borrowed?(uint32_t *)ram:NULL));
+        cases++;
+    }
     PGRAPHVkState r;NV2AState d;reset(&r,&d);memset(supported,1,sizeof(supported));
     supported[VK_FORMAT_R32_SFLOAT]=false;Error *err=NULL;pgraph_vk_init_vertex_formats(&d.pgraph,&err);assert(err);
     memset(supported,1,sizeof(supported));supported[VK_FORMAT_R16_SSCALED]=supported[VK_FORMAT_R32_SFLOAT]=false;
     err=NULL;pgraph_vk_init_vertex_formats(&d.pgraph,&err);assert(err);
     memset(supported,1,sizeof(supported));supported[VK_FORMAT_R16G16B16_SNORM]=supported[VK_FORMAT_R16G16B16A16_SNORM]=false;
-    queries=0;err=NULL;pgraph_vk_init_vertex_formats(&d.pgraph,&err);assert(err && queries==12);
+    queries=0;err=NULL;pgraph_vk_init_vertex_formats(&d.pgraph,&err);assert(err && queries==13);
     int16_t *all=malloc(65536*sizeof(*all));float *converted=malloc(65536*sizeof(*converted));assert(all && converted);
     for(unsigned i=0;i<65536;i++) all[i]=(int16_t)((int)i-32768);
     pgraph_vk_convert_vertex_attribute((uint8_t *)converted,(const uint8_t *)all,65536,2,4,2,VTX_CONVERT_S16_TO_F32);

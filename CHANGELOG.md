@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Use native Vulkan BGRA vertex fetch where the device supports it, sharing the unswizzled shader interface for D3D byte colors without changing vertex bytes or buffer lifetimes. Keep the existing shader swizzle on unsupported devices. Vertex layout/lifetime checks and GPU fetch values pass; no reduction in first-use PSO misses or frame-time improvement is established. Rendered-image equivalence and full lifecycle qualification remain uncompleted; the cold-play regression remains open.
+
 - Prepare complete Vulkan PSOs from available seed recipes on the existing worker, including no-GPL devices with fully dynamic register and vertex-input state, instead of preparing only GPL halves. Publish exact job-owned keys and referenced modules through the native bounded queue; use the supplied shader state for topology and support depth-only attachments. Verify seed keys against real draw keys, backpressure, module ownership and seed-bank reuse. This is recipe-backed coverage: fresh DOA3 installs have no bundled recipes, unknown-state draw misses remain synchronous, and cold-play recovery is not established.
 
 - Stop creating and binding Vulkan graphics pipelines for full-color and depth/stencil attachment clears. Select the compatible render pass directly and preserve framebuffer retirement, query closure, dynamic-state invalidation and the following draw; partial-channel color clears retain their existing shaded path. Add 1,572,864 production setup/transition cases with five rejection controls and GPU color/depth/stencil checks at 1x/2x/4x to shader CI. No new resources, allocations or payload copies. Partial clears and general shader/PSO misses remain unfinished; no whole-core stutter-recovery claim.

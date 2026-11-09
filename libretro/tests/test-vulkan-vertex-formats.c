@@ -35,6 +35,7 @@ static VKAPI_ATTR VkBool32 VKAPI_CALL validation(VkDebugUtilsMessageSeverityFlag
     return VK_FALSE;
 }
 int main(void) {
+    const bool validated=getenv("NO_VALIDATION")==NULL;
     const char *layer="VK_LAYER_KHRONOS_validation";
     const char *extensions[]={VK_EXT_DEBUG_UTILS_EXTENSION_NAME,VK_EXT_VALIDATION_FEATURES_EXTENSION_NAME};
     VkValidationFeatureEnableEXT feature=VK_VALIDATION_FEATURE_ENABLE_SYNCHRONIZATION_VALIDATION_EXT;
@@ -42,12 +43,14 @@ int main(void) {
     VkApplicationInfo app={.sType=VK_STRUCTURE_TYPE_APPLICATION_INFO,.apiVersion=VK_API_VERSION_1_1};
     VkInstanceCreateInfo ici={.sType=VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,.pNext=&vf,.pApplicationInfo=&app,
         .enabledLayerCount=1,.ppEnabledLayerNames=&layer,.enabledExtensionCount=2,.ppEnabledExtensionNames=extensions};
+    if(!validated) { ici.pNext=NULL;ici.enabledLayerCount=ici.enabledExtensionCount=0; }
     VkInstance instance;CHECK(vkCreateInstance(&ici,NULL,&instance));
     PFN_vkCreateDebugUtilsMessengerEXT create=(void *)vkGetInstanceProcAddr(instance,"vkCreateDebugUtilsMessengerEXT");
     PFN_vkDestroyDebugUtilsMessengerEXT destroy=(void *)vkGetInstanceProcAddr(instance,"vkDestroyDebugUtilsMessengerEXT");
     VkDebugUtilsMessengerCreateInfoEXT mi={.sType=VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT,
         .messageSeverity=VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT,.messageType=7,.pfnUserCallback=validation};
-    VkDebugUtilsMessengerEXT messenger;CHECK(create(instance,&mi,NULL,&messenger));
+    VkDebugUtilsMessengerEXT messenger=VK_NULL_HANDLE;
+    if(validated) { assert(create && destroy);CHECK(create(instance,&mi,NULL,&messenger)); }
     uint32_t n=1;VkPhysicalDevice gpu;CHECK(vkEnumeratePhysicalDevices(instance,&n,&gpu));
     vkGetPhysicalDeviceMemoryProperties(gpu,&memory_properties);VkPhysicalDeviceProperties props;
     vkGetPhysicalDeviceProperties(gpu,&props);puts(props.deviceName);
@@ -85,20 +88,25 @@ int main(void) {
     VkWriteDescriptorSet write={.sType=VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,.dstSet=set,.descriptorCount=1,.descriptorType=VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,.pBufferInfo=&info};
     vkUpdateDescriptorSets(device,1,&write,0,NULL);
     const VkFormat formats[]={VK_FORMAT_R8G8B8_UNORM,VK_FORMAT_R16G16B16_SNORM,VK_FORMAT_R16_SSCALED,
-        VK_FORMAT_R16G16_SSCALED,VK_FORMAT_R16G16B16_SSCALED,VK_FORMAT_R16G16B16A16_SSCALED};
+        VK_FORMAT_R16G16_SSCALED,VK_FORMAT_R16G16B16_SSCALED,VK_FORMAT_R16G16B16A16_SSCALED,VK_FORMAT_B8G8R8A8_UNORM};
     const int samples[]={0,1,-1,32767,-32768,12345,-23456,256};unsigned cases=0;
-    for(unsigned f=0;f<6;f++) for(unsigned interleaved=0;interleaved<2;interleaved++) for(unsigned indexed=0;indexed<2;indexed++) {
-        unsigned components=f<2?3:f-1,source_width=f==0?3:components*2;
-        enum VertexConvert convert;VkFormat format=pgraph_vk_vertex_substitute_format(formats[f],&convert);
-        unsigned width=f==0?4:f==1?8:components*4,stride=width+interleaved*16,source_stride=source_width+3;
-        VkFormatProperties fp;vkGetPhysicalDeviceFormatProperties(gpu,format,&fp);assert(fp.bufferFeatures&VK_FORMAT_FEATURE_VERTEX_BUFFER_BIT);
+    for(unsigned f=0;f<7;f++) for(unsigned interleaved=0;interleaved<2;interleaved++) for(unsigned indexed=0;indexed<2;indexed++) {
+        unsigned components=f==6?4:f<2?3:f-1,source_width=f==6?4:f==0?3:components*2;
+        enum VertexConvert convert=VTX_CONVERT_NONE;
+        VkFormat format=f==6?formats[f]:pgraph_vk_vertex_substitute_format(formats[f],&convert);
+        unsigned width=f==6?4:f==0?4:f==1?8:components*4,stride=width+interleaved*16,source_stride=source_width+3;
+        VkFormatProperties fp;vkGetPhysicalDeviceFormatProperties(gpu,format,&fp);
+        if(f==6 && !(fp.bufferFeatures&VK_FORMAT_FEATURE_VERTEX_BUFFER_BIT)) {
+            puts("Native BGRA vertex fetch unsupported: production uses shader-swizzle fallback");continue;
+        }
+        assert(fp.bufferFeatures&VK_FORMAT_FEATURE_VERTEX_BUFFER_BIT);
         uint8_t source[2048];memset(source,0xff,sizeof(source));
         const unsigned first=5,end=37;
         float expected[37][4];memset(expected,0,sizeof(expected));
         for(unsigned v=0;v<end;v++) {
             expected[v][3]=1;
             for(unsigned k=0;k<components;k++) {
-                if(f==0) { uint8_t value=(uint8_t)(v*17+k*31);source[1+v*source_stride+k]=value;expected[v][k]=value/255.0f; }
+                if(f==0 || f==6) { uint8_t value=(uint8_t)(v*17+k*31);source[1+v*source_stride+k]=value;expected[v][f==6 && k<3?2-k:k]=value/255.0f; }
                 else { int value=samples[(v+k)%8];uint16_t raw=(uint16_t)value;
                     source[1+v*source_stride+k*2]=(uint8_t)raw;source[2+v*source_stride+k*2]=(uint8_t)(raw>>8);
                     expected[v][k]=f==1?fmaxf(-1,value/32767.0f):(float)value; }
@@ -142,7 +150,8 @@ int main(void) {
     drop(input);drop(output);drop(indices);vkDestroyFramebuffer(device,framebuffer,NULL);vkDestroyRenderPass(device,pass,NULL);
     vkDestroyDescriptorPool(device,descriptor_pool,NULL);vkDestroyPipelineLayout(device,layout,NULL);vkDestroyDescriptorSetLayout(device,set_layout,NULL);
     vkDestroyShaderModule(device,shader,NULL);vkDestroyCommandPool(device,pool,NULL);vkDestroyDevice(device,NULL);
-    destroy(instance,messenger,NULL);vkDestroyInstance(instance,NULL);
-    printf("Vulkan vertex formats: %u converted vertex/indexed fetch cases, normalized/signed/default components passed; validation_errors=%u\n",cases,errors);
+    if(validated) destroy(instance,messenger,NULL);
+    vkDestroyInstance(instance,NULL);
+    printf("Vulkan vertex formats: %u converted/native vertex/indexed fetch cases, normalized/signed/default components passed; validation=%s validation_errors=%u\n",cases,validated?"enabled":"DISABLED",errors);
     return errors?1:0;
 }

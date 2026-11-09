@@ -51,3 +51,15 @@ with tempfile.TemporaryDirectory(prefix='vk-vertex-formats-') as directory:
     bad=subprocess.run([str(exe)],capture_output=True,timeout=30)
     assert bad.returncode==1 and b'FAIL line' in bad.stderr
     print('Required negative control rejected: borrowed inline data ignored')
+    controls = {
+        'BGRA capability ignored': ('r->vertex_native_bgra =\n        (bgra.bufferFeatures & VK_FORMAT_FEATURE_VERTEX_BUFFER_BIT) != 0;', 'r->vertex_native_bgra = true;'),
+        'native BGRA interpreted as RGBA': ('vk_format = VK_FORMAT_B8G8R8A8_UNORM;', 'vk_format = VK_FORMAT_R8G8B8A8_UNORM;'),
+        'double shader swizzle': ('if (d3d_swizzle) {', 'if (d3d_swizzle || r->vertex_native_bgra) {'),
+    }
+    for name, (old, new) in controls.items():
+        assert old in code, name
+        (folder / 'test.c').write_text(code.replace(old, new, 1))
+        subprocess.run(command, check=True)
+        bad = subprocess.run([str(exe)], capture_output=True, timeout=30)
+        assert bad.returncode == 1 and b'FAIL line' in bad.stderr, name
+        print('Required negative control rejected:', name)

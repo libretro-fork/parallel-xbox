@@ -4362,6 +4362,7 @@ static void get_size_and_count_for_format(VkFormat fmt, size_t *size, size_t *co
         [VK_FORMAT_R8G8_UNORM] =            { 1, 2 },
         [VK_FORMAT_R8G8B8_UNORM] =          { 1, 3 },
         [VK_FORMAT_R8G8B8A8_UNORM] =        { 1, 4 },
+        [VK_FORMAT_B8G8R8A8_UNORM] =        { 1, 4 },
         [VK_FORMAT_R16_SNORM] =             { 2, 1 },
         [VK_FORMAT_R16G16_SNORM] =          { 2, 2 },
         [VK_FORMAT_R16G16B16_SNORM] =       { 2, 3 },
