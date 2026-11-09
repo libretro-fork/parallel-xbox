@@ -546,3 +546,94 @@ Those matched loaded-state images do not erase the cold-boot mismatches.
 Driver caches remain uncontrolled. Process censuses saw no RetroArch at
 batch boundaries, but do not prove continuous isolation; timing, mid-game
 allocation freedom and cold-play recovery remain unqualified.
+
+### Adopted stages prefer an already-ready cover over draw-time setup
+
+An adopted exact stage set previously bypassed the dynamic-cover search and
+built its missing pipeline on the draw path. Probe for an already-initialized
+cover under its complete native key first. Require a non-null pipeline, exact
+hash and full-byte equality, then promote the existing native cache entry.
+The synchronous hit cannot allocate/initialize or evict an entry. Continue
+correct cover draws while the existing flip-time lend finishes the exact
+pipeline; no optional compiler job or owned recipe snapshot is added by
+this route. If no ready cover matches, keep the existing correct miss path.
+
+The probe projects only PSH fields in the unpublished draw-local ShaderState.
+Save 264 bytes of metadata on the stack and restore every byte, including
+padding, before any return. Vertex microcode and geometry stay in the original
+owned capture and are only read for hashing/comparison. This is a bounded
+528-byte metadata save/restore, not a claim of literally zero copies; it
+avoids introducing another 2,620-byte whole-state/vertex-program snapshot.
+Never pass a published cache key, worker key or guest view to this mutable
+local-only projection. Keys, hash algorithm and cache/schema versions remain
+unchanged. The regression test uses native XXH3 and LRU behavior and compares
+against the conventional fully materialized canonical key.
+
+Keep the existing ADOPTED scheduling marker while repeated covered draws
+wait for exact flip-time setup. Clearing it early would allow the old path
+to enqueue another full recipe snapshot. Once an exact pipeline is ready,
+retire its queued/adopted marker; CPU and GL jobs keep their independent
+owned slots through consumption. This also prevents a flip-prepared pipeline
+from leaving an adopted marker permanently occupied because its next draw
+finds an initialized binding and bypasses the adoption branch. No job is
+cancelled or released by clearing this scheduling-only marker. Generation,
+eviction, load, geometry and pipeline-restoration guards remain in force.
+
+No new core heap allocation, GPU API call, cache scan, retained payload,
+queue capacity or host field is added by the draw-time probe. It searches
+one native hash bin only on the existing adopted-stage/missing-pipeline
+path. The older synchronous uncovered and utility paths remain violations;
+ready-cover reuse alone does not prove cold-play or allocation-free recovery.
+
+Progress qualification: an initial experiment allowed later shader selections
+to displace the exact recipe repeatedly. A DOA3 run recorded 79,779 repeated
+ready-cover selections and failed both strict RAM restores by one byte. Keep
+that experiment and its logs unqualified; no cause for the RAM difference
+is established and the zero-byte threshold is unchanged. The corrected
+tracking contract preserves a valid exact reservation through the flip.
+Other recipes cannot displace it; if a ready-cover request cannot reserve
+the slot, it takes the existing correct path. Stale generation/geometry
+reservations can be replaced and queued covers do not block exact work.
+Fresh selections discard cover lends but preserve exact reservations;
+native eviction/load/mode cancellation still applies. Preserve a shared
+fragment marker while its reservation is pending, avoiding another queued
+full-state snapshot. This adds no queue, host field or reservation capacity.
+The native-key tests cover occupied, stale-generation, changed-geometry and
+cover-preemption cases, as well as the original readiness/ownership guards.
+
+Only fully ready exact stages qualify for the persistent reservation. Its
+state is encoded in an existing scheduling marker, with no additional
+storage. Late adoption notifications must not downgrade that marker. Loss
+of stage readiness cancels it instead of waiting indefinitely; eviction,
+load and changed generation/geometry/mode clear it before reuse. Ordinary
+non-reserved recipes keep their previous replacement behavior. The live
+draw still recaptures actual guest state and a conflicting reservation takes
+the existing correctness path. The additional readiness gate constructs
+the same bounded 7,044-byte native module-query keys; those temporary key
+materializations are not labelled zero-copy. The PSH cover projection
+itself adds no vertex/geometry clone or retained payload.
+
+Corrected validation: 45 contract suites, 13,312 native-hash/projection/
+reservation cases and 23,040 native-LRU/lifetime cases passed, with final
+Windows/Linux sanitizer guards. Thirty corrected matrix runs across DOA3,
+JSRF, Crazy Taxi 3 and NGB completed, plus four fresh-process restores of
+the verified live-fight checkpoint. All eight main lifecycle cases passed
+both zero-byte RAM comparisons and reset; no timing run used image readbacks.
+NGB per-renderer and verified DOA3 fight parent/candidate images matched
+exactly. The cold-boot DOA3 comparison differs by 16,068,439 bytes, with
+visible background/boat/bird/shadow positions differing; no cause is
+established and that comparison remains unqualified rather than discarded.
+
+Eight non-image corrected GL candidate runs recorded 633 draw pipeline-object
+creations, 163 flip preparations (154 exact, nine cover), and 277 pending-link
+demands. Preparation recorded zero pending-link demands or module-cache
+initializations. The ready-cover route was selected 21,570 times; this
+includes repeated draws and is not a count of avoided unique pipelines.
+For the paired DOA3 warm run, observed draw creations were 59 parent versus
+27 candidate. Encountered-state/scheduling differences and uncontrolled
+driver caches prevent a causal total or latency claim. Boundary process
+censuses saw no RetroArch, without proving continuous isolation. The earlier
+failed experiment remains retained separately; its one-byte RAM discrepancy
+has no established cause and is not reclassified as a pass. Mid-game host/
+driver allocations, uncovered draw creation and cold-play recovery remain
+open; no baseline or acceptance threshold was raised.

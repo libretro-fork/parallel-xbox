@@ -37,6 +37,7 @@
 #include "disk-writer.h"
 
 static const char *shader_gl_vendor = NULL;
+static void spec_binding_cancel(PGRAPHGLState *r);
 
 /* xemu_version follows upstream, so fork-only generator changes need their
  * own binary-cache revision. Bump this when generated shader semantics change. */
@@ -1231,7 +1232,7 @@ static void shader_cache_entry_post_evict(Lru *lru, LruNode *node)
         r->shader_binding = NULL;
     }
     if (r->spec_binding == binding) {
-        r->spec_binding = NULL;
+        spec_binding_cancel(r);
     }
     binding->initialized = false;
 
@@ -1503,7 +1504,7 @@ void pgraph_gl_uniform_sources_invalidate(PGRAPHGLState *r)
     /* Restored program words/registers need a fresh shader-state selection;
      * do not rely on an incidental whole-register dirty write to wake it. */
     r->shader_binding = NULL;
-    r->spec_binding = NULL;
+    spec_binding_cancel(r);
 }
 
 /* prog 0: the program bound with glUseProgram. */
@@ -1711,6 +1712,7 @@ static bool first_meet_enabled(void)
 
 #define SPEC_QUEUED 1
 #define SPEC_ADOPTED 2
+#define SPEC_PIPE_RESERVED 3
 
 static int spec_track_find(PGRAPHGLState *r, uint64_t h)
 {
@@ -1726,7 +1728,7 @@ static void spec_track_adopted(PGRAPHGLState *r, const PshState *st)
 {
     uint64_t h = fast_hash((const uint8_t *)st, sizeof(*st));
     int i = spec_track_find(r, h);
-    if (i >= 0) {
+    if (i >= 0 && r->spec_track[i].phase != SPEC_PIPE_RESERVED) {
         r->spec_track[i].phase = SPEC_ADOPTED;
     }
 }
@@ -1909,10 +1911,79 @@ static bool module_ready(PGRAPHGLState *r, const ShaderModuleCacheKey *key)
     return false;
 }
 
-static void spec_binding_track(PGRAPHGLState *r, ShaderBinding *target)
+static int spec_binding_reservation(PGRAPHGLState *r)
 {
+    ShaderBinding *pending = r->spec_binding;
+    if (!pending || pending->state.psh.combiner_dynamic) {
+        return -1;
+    }
+    uint64_t ph = fast_hash((const uint8_t *)&pending->state.psh,
+                             sizeof(pending->state.psh));
+    int t = spec_track_find(r, ph);
+    return t >= 0 && r->spec_track[t].phase == SPEC_PIPE_RESERVED ? t : -1;
+}
+
+static void spec_binding_cancel(PGRAPHGLState *r)
+{
+    int t = spec_binding_reservation(r);
+    if (t >= 0) {
+        r->spec_track[t].phase = 0;
+    }
+    r->spec_binding = NULL;
+}
+
+static bool spec_binding_track(PGRAPHGLState *r, ShaderBinding *target)
+{
+    ShaderBinding *pending = r->spec_binding;
+    if (pending && pending != target && spec_binding_reservation(r) >= 0) {
+        if (pending->dyn_gen == pgraph_glsl_dynamic_gen &&
+            pending->state.geom.wide_lines == r->wide_lines) {
+            return false;
+        }
+        spec_binding_cancel(r);
+    }
     target->dyn_gen = pgraph_glsl_dynamic_gen;
     r->spec_binding = target;
+    return true;
+}
+
+static bool state_modules_ready(PGRAPHGLState *r, const ShaderState *state)
+{
+    ShaderModuleCacheKey keys[3];
+    bool need_gs = state_module_keys(state, keys);
+    return (!need_gs || module_ready(r, &keys[0])) &&
+           module_ready(r, &keys[1]) && module_ready(r, &keys[2]);
+}
+
+/* owned_state is the draw's unpublished local capture, never a cache/job or
+ * guest view. Project only PSH metadata in place and restore every byte.
+ * Vertex microcode/geometry stay borrowed; a hit lends its native cache key
+ * through synchronous promotion, with no miss initialization or eviction. */
+static ShaderBinding *ready_cover_binding(PGRAPHGLState *r,
+                                         ShaderState *owned_state)
+{
+    PshState exact;
+    memcpy(&exact, &owned_state->psh, sizeof(exact));
+    ShaderBinding *cover = NULL;
+    if (pgraph_glsl_psh_canonicalize_dynamic(&owned_state->psh)) {
+        uint64_t hash = fast_hash((const uint8_t *)owned_state,
+                                  sizeof(*owned_state));
+        Lru *cache = &r->shader_cache;
+        unsigned bin = lru_hash_to_bin(cache, hash);
+        LruNode *node;
+        QTAILQ_FOREACH(node, &cache->bins[bin], next_bin) {
+            ShaderBinding *entry = container_of(node, ShaderBinding, node);
+            if (node->hash == hash && entry->initialized &&
+                entry->gl_pipeline &&
+                !memcmp(&entry->state, owned_state, sizeof(*owned_state))) {
+                LruNode *hit = lru_lookup(cache, hash, &entry->state);
+                cover = container_of(hit, ShaderBinding, node);
+                break;
+            }
+        }
+    }
+    memcpy(&owned_state->psh, &exact, sizeof(exact));
+    return cover;
 }
 
 /* One already-owned shader recipe, serviced between frames. The render
@@ -1927,7 +1998,7 @@ static void spec_binding_pump(PGRAPHGLState *r)
     if (!gl_sso_enabled() || !first_meet_enabled() ||
         target->dyn_gen != pgraph_glsl_dynamic_gen ||
         target->state.geom.wide_lines != r->wide_lines) {
-        r->spec_binding = NULL;
+        spec_binding_cancel(r);
         return;
     }
     if (!target->initialized) {
@@ -1935,6 +2006,9 @@ static void spec_binding_pump(PGRAPHGLState *r)
         bool need_gs = state_module_keys(&target->state, keys);
         if ((need_gs && !module_ready(r, &keys[0])) ||
             !module_ready(r, &keys[1]) || !module_ready(r, &keys[2])) {
+            if (spec_binding_reservation(r) >= 0) {
+                spec_binding_cancel(r);
+            }
             return;
         }
         generate_shaders(r, target);
@@ -1944,6 +2018,16 @@ static void spec_binding_pump(PGRAPHGLState *r)
                               r->shader_binding->gl_pipeline : 0);
     }
     r->spec_binding = NULL;
+    if (!target->state.psh.combiner_dynamic) {
+        uint64_t ph = fast_hash((const uint8_t *)&target->state.psh,
+                                 sizeof(target->state.psh));
+        int t = spec_track_find(r, ph);
+        /* The ready pipeline no longer needs a scheduling marker. Pending
+         * CPU/GL jobs keep their independent owned slots until consumption. */
+        if (t >= 0) {
+            r->spec_track[t].phase = 0;
+        }
+    }
     if (r->shader_binding && !target->state.psh.combiner_dynamic) {
         /* Request one real-state selection through the existing fast-path
          * guard for a specialization. A prepared cover serves future misses;
@@ -2568,8 +2652,11 @@ void pgraph_gl_bind_shaders(PGRAPHState *pg)
     }
 
     ShaderBinding *old_binding = r->shader_binding;
-    /* A fresh selection supersedes the previous recipe lend. */
-    r->spec_binding = NULL;
+    /* Preserve an exact reservation until flip-time completion; otherwise
+     * later draws could continually displace it and remain on covers. */
+    if (r->spec_binding && spec_binding_reservation(r) < 0) {
+        spec_binding_cancel(r);
+    }
     ShaderState state = pgraph_glsl_get_shader_state(pg);
     state.geom.wide_lines = r->wide_lines;
 
@@ -2586,10 +2673,29 @@ void pgraph_gl_bind_shaders(PGRAPHState *pg)
         uint64_t ph =
             fast_hash((const uint8_t *)&state.psh, sizeof(state.psh));
         int t = spec_track_find(r, ph);
-        if (t >= 0 && r->spec_track[t].phase == SPEC_ADOPTED &&
+        if (t >= 0 &&
+            (r->spec_track[t].phase == SPEC_ADOPTED ||
+             r->spec_track[t].phase == SPEC_PIPE_RESERVED) &&
             state_modules_known(r, &state)) {
-            /* All exact stages are resident: build the real binding below. */
-            r->spec_track[t].phase = 0;
+            /* Prepared stages alone are not a pipeline. Keep an exact-key
+             * ready cover drawing while flip-time setup finishes this one. */
+            ShaderBinding *cover = state_modules_ready(r, &state) ?
+                                    ready_cover_binding(r, &state) : NULL;
+            if (cover && spec_binding_track(r, binding)) {
+                r->spec_track[t].phase = SPEC_PIPE_RESERVED;
+                /* Keep ADOPTED until flip-time setup completes: unchanged
+                 * draws must not enqueue another owned recipe snapshot. */
+                binding = cover;
+                nv2a_profile_inc_counter(NV2A_PROF_SHADER_FALLBACK);
+            } else {
+                /* A different recipe cannot displace the reservation. Keep
+                 * a shared fragment marker until that owner finishes. */
+                ShaderBinding *pending = r->spec_binding;
+                if (!pending || fast_hash((const uint8_t *)&pending->state.psh,
+                                           sizeof(pending->state.psh)) != ph) {
+                    r->spec_track[t].phase = 0;
+                }
+            }
         } else {
             ShaderState fb = state;
             if (pgraph_glsl_psh_canonicalize_dynamic(&fb.psh)) {

@@ -31,7 +31,7 @@ feed = source[a:b]
 # Compile both production draw predicates, not copies of the expected policy.
 draw_conditions=[]
 for variable, local in (('t','state'),('ts','fb')):
-    begin=source.index('if ('+variable+' >= 0 && r->spec_track['+variable+']')+4
+    begin=source.index('if ('+variable+' >= 0 &&')+4
     end=source.index(') {',begin)
     predicate=source[begin:end]
     draw_conditions.append('static bool draw_ready_'+variable+'(PGRAPHGLState *r,int '+variable+',ShaderState '+local+'){return '+predicate+';}')
@@ -62,6 +62,7 @@ typedef struct {LruNode node;ShaderModuleCacheKey key;} ShaderModuleCacheEntry;
 #define container_of(p,t,m) ((t *)((char *)(p)-offsetof(t,m)))
 typedef struct {ShaderState spec_pending[4];unsigned spec_pending_r,spec_pending_w;Lru shader_module_cache;struct {int phase;} spec_track[1];} PGRAPHGLState;
 #define SPEC_ADOPTED 2
+#define SPEC_PIPE_RESERVED 3
 static ShaderModuleCacheEntry cached[6];
 static unsigned cached_n;
 static unsigned lru_hash_to_bin(Lru *cache,uint64_t hash){(void)cache;return hash&3u;}
@@ -124,11 +125,11 @@ static void run(unsigned occupied,unsigned cache_mask,bool geometry,unsigned cou
   unsigned required=geometry?7:6;
   bool complete=(cache_mask&required)==required;
   CHECK(state_modules_known(&r,state)==complete);
-  for(int phase=0;phase<=SPEC_ADOPTED;phase++){
+  for(int phase=0;phase<=SPEC_PIPE_RESERVED;phase++){
    r.spec_track[0].phase=phase;
    CHECK(draw_ready_t(&r,-1,*state)==false);
    CHECK(draw_ready_ts(&r,-1,*state)==false);
-   CHECK(draw_ready_t(&r,0,*state)==(complete&&phase==SPEC_ADOPTED));
+   CHECK(draw_ready_t(&r,0,*state)==(complete&&(phase==SPEC_ADOPTED||phase==SPEC_PIPE_RESERVED)));
    CHECK(draw_ready_ts(&r,0,*state)==(complete&&phase==SPEC_ADOPTED));
   }
  }

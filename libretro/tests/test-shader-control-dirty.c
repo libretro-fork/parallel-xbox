@@ -19,6 +19,7 @@ static uint32_t pgraph_reg_r(PGRAPHState *pg,unsigned reg){assert(reg/4<ARRAY_SI
 static bool pgraph_is_reg_dirty(PGRAPHState *pg,unsigned reg){assert(reg/4<ARRAY_SIZE(pg->dirty));return pg->dirty[reg/4];}
 typedef struct {struct{bool valid,ff_valid;}vsh_uni_src;bool uni_cache;void *shader_binding,*spec_binding;} PGRAPHGLState;
 static void uniform_cache_invalidate(bool *cache){*cache=false;}
+static void spec_binding_cancel(PGRAPHGLState *r){r->spec_binding=NULL;}
 /* PRODUCTION */
 typedef struct {ShaderState state;bool ui;uint32_t alpha_func,alpha_ref;} Projection;
 static Projection project(PGRAPHState *pg){

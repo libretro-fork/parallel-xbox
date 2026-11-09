@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Reuse an already-initialized exact-key OpenGL dynamic cover when specialized stages are adopted but their pipeline has not been built yet. Leave exact pipeline setup to the existing between-frame service without queuing another state snapshot. Probe using a reversible 264-byte PSH-only stack projection; vertex microcode and geometry remain borrowed. Retire completed scheduling markers without releasing independent worker owners. Add native-hash/LRU, projection-restoration, collision, readiness and marker-lifetime regression controls.
+
 - Include queued OpenGL dynamic fallback recipes in the existing between-frame readiness service while the correct exact shader continues drawing. Reuse the same native cache-entry lend and one-recipe budget; completed fallback stages can become a usable pipeline before another draw needs them. Preserve synchronous uncovered-state correctness and all eviction/load/generation guards. Add dynamic-recipe tracking and lifetime cases without allocating another queue or retaining a shader-state copy.
 
 - Prepare OpenGL specializations from fully ready resident stages between frames while a correct dynamic fallback remains active. Borrow the existing exact shader-cache entry, cancel on eviction/load or changed generation/geometry inputs, restore the live pipeline after preparation and wake the next shader selection without requiring another guest register write. No added heap allocation or retained shader payload snapshot; existing GL pipeline-object creation moves off the draw path for covered recipes. Unknown synchronous misses and mid-game host-resource creation remain open optimization work.
