@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Strengthen shader review and evidence rules: image equivalence before key reductions, correlated hitch attribution, separate work/latency claims, fresh-process restores, generation allocations and cold/warm tail comparisons. Documentation only; runtime, CI requirements, cache defaults and existing qualification failures are unchanged.
+
 - Make eliminating draw-path shader/pipeline compilation, creation, linking and compile waits an explicit top renderer priority in AGENTS.md. Require correct ready paths and first-use, fallback, utility, queue-pressure and lifecycle coverage on both renderers, while preserving borrowed owners and zero-copy requirements. Documentation only: runtime is unchanged, and existing cold-play and CI failures remain open.
 
 - Acquire dirty-range update metadata only for selected consumers, replacing six unconditional bitmap lends with exactly the selected count. Keep one scoped RCU owner, the existing atomic updates and their order, zero-mask behavior, and Xen notification after owner release. Extend PVIDEO coherence tests to 28,192 mask/range/clear cases, fresh metadata generations, unused mask bits, zero lengths and Xen calls; require unselected, duplicate, wrong-consumer and owner-order controls to fail. No payload copies, allocations or retained pointers; no game-FPS or cold-play recovery claim.
