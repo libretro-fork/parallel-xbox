@@ -215,6 +215,7 @@ jobs:
           mkdir -p results
           python3 driver/libretro/tests/test-gl-texture-shadow.py candidate cc 2>&1 | tee results/gl-texture-shadow.log
           python3 driver/libretro/tests/test-glslc-local-init.py candidate --cc cc 2>&1 | tee results/local-init.log
+          python3 driver/libretro/tests/test-vsh-mul-select.py candidate --cc cc --validator spirv-val 2>&1 | tee results/vsh-mul-select.log
           python3 driver/libretro/tests/test-spv-clear.py candidate cc --gpu 2>&1 | tee results/clear.log
           python3 driver/libretro/tests/test-spv-geom.py candidate cc --gpu 2>&1 | tee results/geometry.log
       - uses: actions/upload-artifact@v4
