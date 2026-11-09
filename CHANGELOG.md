@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Make allocation-free gameplay an explicit development target, covering background shader/cache work as well as the draw path. Require separate allocation/resource counts, bounded ownership for necessary exceptions and regression coverage alongside shader/PSO and latency checks. This documents the target; it does not claim the current core meets it.
+
 - OpenGL shader preparation now reuses an exact fully ready resident stage when a worker result arrives after demand has already built it, instead of submitting a duplicate driver compile/link. Preserve dynamic-family adoption and seed notifications without waiting on unfinished modules. Borrow completed job keys through their final consumer, copying only once into the asynchronous slot when a new link is necessary. Add collision, incomplete-link, seed/gate and job-lifetime regression controls.
 
 - Remove OpenGL's duplicate dirty-register reset after selecting a shader. Keep the existing reset and shader-register snapshot before host program binding; avoid clearing the same 256-byte map and reading the same shader registers a second time. Shader keys, cached owners and uniform updates are unchanged. Add Ninja Gaiden Black slot 0 to the OpenGL/Vulkan repeat-run protocol, with separately qualified fresh-process restoration and mapped-state ownership.
