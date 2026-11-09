@@ -1202,6 +1202,8 @@ void pgraph_vk_uniform_sources_invalidate(PGRAPHVkState *r);
 ShaderBinding *pgraph_vk_ready_shader_binding(PGRAPHVkState *r,
                                               const ShaderState *state,
                                               uint64_t hash);
+ShaderBinding *pgraph_vk_materialize_ready_shader_binding(PGRAPHVkState *r,
+                                  const ShaderState *state, uint64_t hash);
 void pgraph_vk_use_ready_shader_binding(PGRAPHState *pg, ShaderBinding *binding);
 void pgraph_vk_bind_shaders(PGRAPHState *pg);
 void pgraph_vk_prewarm_shaders(NV2AState *d);

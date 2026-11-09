@@ -194,3 +194,34 @@ owner eviction and completed adoption, but those game runs do not establish a
 reduction in draw-critical PSO work. Ready-PSO coverage without a materialized
 shader binding remains a separate open gap. Driver caches were uncontrolled and
 RetroArch was running during this correctness batch; its timings are unqualified.
+
+A missing binding can now be materialized after the exact complete fallback
+PSO is proven ready. Its current vertex/geometry prefix and geometry UI-clamp
+input must match, and its fragment module must be an exact native-cache hit.
+No module initializer, compiler, queue drain or wait runs here. All module
+references are acquired before a typed native-LRU initializer publishes the
+binding and prepares its uniform locations. An existing incomplete exact entry
+is rejected, avoiding an unconsumed-reference leak on a second cache lookup.
+A full shader cache defers this optional work rather than evicting the active
+binding; ordinary ready binding hits still work with a full cache.
+
+The synchronous input is a 32-byte pointer lend on the tested ABI, consumed
+before return. The final existing cache entry owns one 2620-byte ShaderState
+snapshot. Its one-off 2348-byte fragment lookup key includes canonical zero
+union padding and a 264-byte fragment-state copy; no vertex program, SPIR-V,
+geometry data or file payload is cloned. Vertex/geometry module owners are
+borrowed only during lookup and then referenced through native cache lifetime.
+The complete PSO is probed before materializing any binding. The native-LRU
+fixture checks publication, source poisoning, module-cache eviction, active
+binding eviction, partial entries, queue-independent capacity and collisions.
+
+The next diagnostic separately probes the exact projected PSO before asking
+for a binding. DOA3 first fights, JSRF attract and Crazy Taxi 3 attract all had
+zero exact fallback PSOs ready at their cold/warm full-PSO misses. This refines
+the preceding observation: missing bindings were not the only coverage gap.
+Materialization therefore has native-LRU fixture coverage but no naturally
+selected fallback in these initial six game runs. Compiler/PSO work reduction,
+rendered-image equivalence of a new selection and stutter recovery are not
+established by them. Their timings also overlapped contract tests and a release
+rebuild; driver-cache state remains uncontrolled. Complete fallback scheduling
+for the actual encountered render-pass/static keys remains open.

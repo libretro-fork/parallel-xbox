@@ -1832,6 +1832,104 @@ ShaderBinding *pgraph_vk_ready_shader_binding(PGRAPHVkState *r,
     return NULL;
 }
 
+typedef struct ReadyBindingInput {
+    const ShaderState *state;
+    ShaderModuleInfo *vsh, *geom, *psh;
+} ReadyBindingInput;
+
+static bool ready_binding_compare(Lru *lru, LruNode *node, const void *key)
+{
+    (void)lru;
+    const ReadyBindingInput *input = key;
+    ShaderBinding *binding = container_of(node, ShaderBinding, node);
+    return memcmp(&binding->state, input->state, sizeof(binding->state));
+}
+
+static void ready_binding_init(Lru *lru, LruNode *node, const void *key)
+{
+    (void)lru;
+    const ReadyBindingInput *input = key;
+    ShaderBinding *binding = container_of(node, ShaderBinding, node);
+    /* Final cache identity owns its state; the synchronous input is a lend.
+     * References were acquired together before publishing this owner. */
+    memcpy(&binding->state, input->state, sizeof(binding->state));
+    binding->vsh.module_info = input->vsh;
+    binding->geom.module_info = input->geom;
+    binding->psh.module_info = input->psh;
+    update_shader_uniform_locs(binding);
+}
+
+/* Only called for a proven ready PSO after ordinary shader selection has
+ * completed. Never invoke the module/compiler initializer to fill a miss. */
+ShaderBinding *pgraph_vk_materialize_ready_shader_binding(PGRAPHVkState *r,
+                                  const ShaderState *state, uint64_t hash)
+{
+    ShaderBinding *ready = pgraph_vk_ready_shader_binding(r, state, hash);
+    if (ready) {
+        return ready;
+    }
+    /* An incomplete exact entry is not a miss we may initialize through a
+     * second lookup: it would hit without consuming the new references. */
+    LruNode *node;
+    unsigned bin = lru_hash_to_bin(&r->shader_cache, hash);
+    QTAILQ_FOREACH(node, &r->shader_cache.bins[bin], next_bin) {
+        ShaderBinding *binding = container_of(node, ShaderBinding, node);
+        if (node->hash == hash &&
+            !memcmp(&binding->state, state, sizeof(*state))) {
+            return NULL;
+        }
+    }
+    ShaderBinding *full = r->shader_binding;
+    if (!r->shader_cache.num_free || !full || !full->vsh.module_info ||
+        memcmp(&full->state, state, offsetof(ShaderState, psh)) ||
+        pgraph_glsl_ui_clamp_stage(&full->state.psh) !=
+            pgraph_glsl_ui_clamp_stage(&state->psh) ||
+        (pgraph_glsl_need_geom(&state->geom) && !full->geom.module_info)) {
+        return NULL;
+    }
+    /* Vertex/geometry modules are borrowed from the exact current binding.
+     * Only a fragment lookup key is constructed; no vertex program clone.
+     * The unused union tail is canonical zero metadata, not shader words. */
+    ShaderModuleCacheKey key = {0};
+    key.kind = VK_SHADER_STAGE_FRAGMENT_BIT;
+    key.psh.state = state->psh;
+    key.psh.glsl_opts.vulkan = true;
+    key.psh.glsl_opts.ubo_binding = PSH_UBO_BINDING;
+    key.psh.glsl_opts.tex_binding = PSH_TEX_BINDING;
+    uint64_t module_hash = fast_hash((const uint8_t *)&key, sizeof(key));
+    ShaderModuleInfo *psh = NULL;
+    bin = lru_hash_to_bin(&r->shader_module_cache, module_hash);
+    QTAILQ_FOREACH(node, &r->shader_module_cache.bins[bin], next_bin) {
+        ShaderModuleCacheEntry *entry =
+            container_of(node, ShaderModuleCacheEntry, node);
+        if (node->hash == module_hash && entry->module_info &&
+            !memcmp(&entry->key, &key, sizeof(key))) {
+            psh = entry->module_info;
+            break;
+        }
+    }
+    if (!psh) {
+        return NULL;
+    }
+    ReadyBindingInput input = {
+        .state = state, .vsh = full->vsh.module_info,
+        .geom = full->geom.module_info, .psh = psh,
+    };
+    pgraph_vk_ref_shader_module(input.vsh);
+    if (input.geom) {
+        pgraph_vk_ref_shader_module(input.geom);
+    }
+    pgraph_vk_ref_shader_module(input.psh);
+    static const LruKeyOps ops = {
+        .init_node = ready_binding_init,
+        .compare_nodes = ready_binding_compare,
+    };
+    /* The preceding exact miss and free-node check preclude eviction of
+     * the current binding. No draining/reentrant initializer runs here. */
+    node = lru_lookup_with_ops(&r->shader_cache, hash, &input, &ops);
+    return container_of(node, ShaderBinding, node);
+}
+
 /* Called only after an exact ready pipeline and binding have been proven.
  * No shader-cache mutation occurs between probe and this proven-hit touch. */
 void pgraph_vk_use_ready_shader_binding(PGRAPHState *pg, ShaderBinding *binding)

@@ -2235,7 +2235,7 @@ static void pipeline_ahead(PGRAPHState *pg, const PipelineKey *draw_key)
 
 /* A shader-level LANDED/seen marker does not prove a PSO for this render
  * pass and static draw state. Reuse a fully ready exact sibling when one
- * exists; never initialize a shader or manufacture an approximate draw. */
+ * exists; only resident modules may fill its binding, without compilation. */
 static bool pipeline_use_ready_sibling(PGRAPHState *pg, PipelineKey *key,
                                         uint64_t full_hash)
 {
@@ -2253,10 +2253,13 @@ static bool pipeline_use_ready_sibling(PGRAPHState *pg, PipelineKey *key,
     }
     uint64_t shader_hash = fast_hash((const uint8_t *)&key->shader_state,
                                      sizeof(key->shader_state));
-    ShaderBinding *sibling = pgraph_vk_ready_shader_binding(r,
-                                        &key->shader_state, shader_hash);
     uint64_t sibling_hash = fast_hash((const uint8_t *)key, sizeof(*key));
-    bool ready = sibling && pipeline_ready(r, sibling_hash, key);
+    ShaderBinding *sibling = NULL;
+    if (pipeline_ready(r, sibling_hash, key)) {
+        sibling = pgraph_vk_materialize_ready_shader_binding(r,
+                                        &key->shader_state, shader_hash);
+    }
+    bool ready = sibling != NULL;
     PshState projected;
     if (ready) {
         memcpy(&projected, &key->shader_state.psh, sizeof(projected));
