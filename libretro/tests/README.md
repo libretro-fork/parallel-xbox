@@ -5190,3 +5190,19 @@ Dense cases cover one published pointer in every group and all 4096 pointers,
 including repopulation after clearing. Bootstrap's synthetic full cache now
 sets the complete group summary. Existing code-replacement, VM-import and
 CPU-reset regressions continue to check the publication invariant.
+
+DSP deferred stubs retain only data consumed when their code is emitted.
+The unused full Insn snapshot and loaded-accumulator snapshot have been
+removed; dirty accumulator flags, lazy status state and retirement metadata
+remain owned by each stub. This removes copied data rather than borrowing
+stack instruction pointers: the stack decoder never outlives its iteration.
+On Windows x86-64 GCC, sizeof(Stub) decreases from 128 to 72 bytes and the
+768-slot translation workspace from 98,416 to 55,408 bytes (42 KiB less per
+DSP). These are layout measurements, not game-speed or Rust comparisons.
+Existing native-boundary, stateful-program and focused cache tests exercise
+stub consumers, including loops, REP, interrupts, memory and control exits.
+
+This DSP-only change does not establish shader/PSO cold-play recovery. The
+repository's shader contracts, compilation and software-GPU jobs must retain
+their actual results; absent reference-hardware cold/warm evidence remains
+unqualified, and the existing cold-first-play regression stays open.

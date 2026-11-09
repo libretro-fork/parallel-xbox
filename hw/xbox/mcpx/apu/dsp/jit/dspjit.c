@@ -328,9 +328,8 @@ typedef struct Stub {
     int32_t imm;
     /* the instruction */
     uint32_t at, next, len, cycles, cyc_before;
-    bool loaded[2], dirty[2];
+    bool dirty[2];
     int lazy_acc;
-    Insn in;
 } Stub;
 
 #define MAX_STUBS (DSPJIT_BLOCK_MAX_INSNS * 12)
@@ -3513,13 +3512,11 @@ static void emit_nonparallel(Tr *t, const Insn *in, int kind)
 static void stub_set_insn(Tr *t, Stub *s, const Insn *in, uint32_t cycles, uint32_t cyc_before)
 {
     s->back = t->e.len;
-    s->in = *in;
     s->at = in->at;
     s->next = in->next;
     s->len = in->len;
     s->cycles = cycles;
     s->cyc_before = cyc_before;
-    memcpy(s->loaded, t->loaded, sizeof(s->loaded));
     memcpy(s->dirty, t->dirty, sizeof(s->dirty));
     s->lazy_acc = t->lazy_acc;
 }

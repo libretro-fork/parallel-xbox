@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- DSP JIT: remove unused decoded-instruction and accumulator-loaded snapshots from deferred stubs, reducing translation scratch memory and redundant initialization/copies without changing emitted instruction behavior.
+
 - Require configured CPU affinity and matching observed start/end process CPU sets in the cold-play evidence gate. Reject missing, malformed, changed or legacy affinity evidence instead of comparing different CPU domains under the same hardware ID. Wire the policy through trusted-hardware CI and add rejection controls. Runtime code and all timing limits are unchanged; the held prewarm experiment and shader-stutter regression remain unresolved.
 
 - Build the QCOW2 file-call counting fixture's production backend as C11, matching its aligned retained decode buffers and the core build. Restore the test after C99 rejected `max_align_t`; runtime code and copy/I/O assertions are unchanged.
