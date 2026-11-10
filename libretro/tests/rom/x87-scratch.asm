@@ -169,6 +169,24 @@ org 0xfff00000
     check eax,0x100
 %endif
 %endmacro
+%macro fdp_case 2-3 ds
+    inc ebp
+    fninit
+    mov dword [0x8000],0x3f800000
+    mov ebx,0x7fa0
+    mov esi,0x10
+    %1
+    ; Overwrite both inputs and shared A0 before the deferred environment
+    ; is flushed. FDP must retain the original offset, not the later LEA.
+    xor ebx,ebx
+    xor esi,esi
+    mov eax,[one]
+    mov edx,[two]
+    fnstenv [0x5000]
+    check dword [0x5014],%2
+    mov ax,%3
+    check word [0x5018],ax
+%endmacro
 start:
     rep_test_init
     mov eax,cr0
@@ -196,8 +214,34 @@ start:
     flags_gpr_case 0x7f,1
     flags_gpr_case 0x37f,0
     flags_gpr_case 0x37f,1
+    fdp_case {fld dword [ebx+esi*4+0x20]},0x8000
+    fdp_case {fld dword [0x8000]},0x8000
+    mov ax,ds
+    mov fs,ax
+    fdp_case {fld dword [fs:ebx+esi*4+0x20]},0x8000
+    fdp_case {a16 fld dword [bx+si+0x50]},0x8000
+    ; A nonzero FS base must affect the load, but not the saved FDP offset.
+    sgdt [0x9040]
+    mov dword [0x9000],0
+    mov dword [0x9004],0
+    mov dword [0x9008],0x0000ffff
+    mov dword [0x900c],0x00cf9a00
+    mov dword [0x9010],0x0000ffff
+    mov dword [0x9014],0x00cf9200
+    mov dword [0x9018],0x0000ffff
+    mov dword [0x901c],0x00cf9201 ; data, base 0x10000
+    mov word [0x9030],31
+    mov dword [0x9032],0x9000
+    lgdt [0x9030]
+    mov ax,0x18
+    mov fs,ax
+    mov dword [0x18000],0x40000000
+    fdp_case {fld dword [fs:ebx+esi*4+0x20]},0x8000,fs
+    lgdt [0x9040]
+    mov ax,ds
+    mov fs,ax
     fninit
-    check ebp,101
+    check ebp,106
     mov dword [R],0x4b4f5058 ; XPOK
 .halt:
     cli

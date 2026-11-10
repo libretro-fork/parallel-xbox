@@ -3190,6 +3190,7 @@ static void gen_x87(DisasContext *s, X86DecodedInsn *decode)
 {
     s->mmx_entered = false;
     bool update_fip = true;
+    TCGv a0_shared = s->A0;
     int b = decode->b;
     int modrm = s->modrm;
     int mod, rm, op;
@@ -3205,12 +3206,28 @@ static void gen_x87(DisasContext *s, X86DecodedInsn *decode)
     op = ((b & 7) << 3) | ((modrm >> 3) & 7);
     if (mod != 3) {
         /* memory op */
-        TCGv ea = gen_lea_modrm_1(s, decode->mem, false);
-        TCGv last_addr = tcg_temp_new();
+        TCGv ea, last_addr;
         bool update_fdp = true;
-
-        tcg_gen_mov_tl(last_addr, ea);
-        gen_lea_v_seg(s, ea, decode->mem.def_seg, s->override);
+        /* Flat 32-bit linear addresses are also FDP offsets. Keep an
+         * instruction-owned A0 so later address calculations cannot change
+         * the deferred FDP. Nothing below may write it after the LEA. */
+#ifndef TARGET_X86_64
+        bool own_a0 = s->aflag == MO_32 && s->override < 0 && !ADDSEG(s);
+#else
+        const bool own_a0 = false;
+#endif
+        if (own_a0) {
+            s->A0 = tcg_temp_new();
+        }
+        ea = gen_lea_modrm_1(s, decode->mem, false);
+        if (own_a0) {
+            gen_lea_v_seg(s, ea, decode->mem.def_seg, s->override);
+            last_addr = s->A0;
+        } else {
+            last_addr = tcg_temp_new();
+            tcg_gen_mov_tl(last_addr, ea);
+            gen_lea_v_seg(s, ea, decode->mem.def_seg, s->override);
+        }
 
         switch (op) {
         case 0x00 ... 0x07: /* fxxxs */
@@ -3411,10 +3428,7 @@ static void gen_x87(DisasContext *s, X86DecodedInsn *decode)
             int last_seg = s->override >= 0 ? s->override : decode->mem.def_seg;
 
             if (xemu_cpu_boost) {
-                if (!s->fdp_val) {
-                    s->fdp_val = tcg_temp_new();
-                }
-                tcg_gen_mov_tl(s->fdp_val, last_addr);
+                s->fdp_val = last_addr;
                 s->fdp_pend_seg = last_seg;
             } else {
                 tcg_gen_ld_i32(s->tmp2_i32, tcg_env,
@@ -3426,6 +3440,7 @@ static void gen_x87(DisasContext *s, X86DecodedInsn *decode)
                               offsetof(CPUX86State, fpdp));
             }
         }
+        s->A0 = a0_shared;
     } else {
         /* register float ops */
         int opreg = rm;
@@ -3768,6 +3783,7 @@ static void gen_x87(DisasContext *s, X86DecodedInsn *decode)
     return;
 
  illegal_op:
+    s->A0 = a0_shared;
     gen_illegal_opcode(s);
 }
 
