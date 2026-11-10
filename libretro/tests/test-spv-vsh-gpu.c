@@ -151,8 +151,8 @@ static void unselected_output(uint32_t t[4], unsigned variant, bool invalid)
 
 int main(int argc, char **argv) {
  assert(argc==1 || argc==3);
- unsigned first=argc==3?strtoul(argv[1],NULL,10):0, limit=argc==3?strtoul(argv[2],NULL,10):40464;
- assert(first<limit && limit<=40464);
+ unsigned first=argc==3?strtoul(argv[1],NULL,10):0, limit=argc==3?strtoul(argv[2],NULL,10):42512;
+ assert(first<limit && limit<=42512);
  printf("Fixture range [%u, %u)\n",first,limit);
  const bool validated=getenv("NO_VALIDATION")==NULL;
  const char *layer="VK_LAYER_KHRONOS_validation",*debug=VK_EXT_DEBUG_UTILS_EXTENSION_NAME;
@@ -411,6 +411,30 @@ int main(int argc, char **argv) {
    token(state.programmable.program_data[3],MAC_MOV,0,0,10,false,false);token(state.programmable.program_data[4],MAC_MOV,0,1,5,false,true);
    state.smooth_shading=!!(f&16);state.uniform_attrs=f&32?0x8003:0;opts.push_constants=!!(f&64);
   }
+  if(test>=40464){
+   unsigned f=test-40464,base=32+f%128;
+   memset(&state,0,sizeof(state));state.programmable.program_length=8;
+   token(state.programmable.program_data[0],MAC_MOV,0,0,0,false,false);
+   token(state.programmable.program_data[1],MAC_ARL,0,15,0,false,false);
+   token(state.programmable.program_data[3],MAC_ARL,0,15,0,false,false);
+   state.programmable.program_data[3][1]|=1u<<8; /* new A0: negate V15 */
+   for(unsigned j=0;j<3;j++){
+    unsigned inst=j==0?2:j==1?4:5;
+    uint32_t *t=state.programmable.program_data[inst];
+    token(t,MAC_MAD,(f/256)%8,0,9+j,false,false);
+    t[1]=(t[1]&~((255u<<13)|255u))|(base<<13)|(f&255u);
+    t[2]=PARAM_C<<26|PARAM_C<<11|((f*13u&255u)<<17)|((f*37u&255u)<<2);
+    if(f&512)t[1]|=1u<<8;
+    if(f&1024)t[2]|=1u<<25;
+    if(f&256)t[2]|=1u<<10;
+    t[3]=(t[3]&~(3u<<28))|PARAM_C<<28;
+    if(j<2)t[3]|=2; /* same selector, distinct address SSA definitions */
+   }
+   token(state.programmable.program_data[6],MAC_MOV,0,0,5,false,false);
+   token(state.programmable.program_data[7],MAC_MOV,0,1,3,false,true);
+   state.smooth_shading=!!(f&16);state.uniform_attrs=f&32?0x8000:0;
+   opts.push_constants=!!(f&64);
+  }
   for(unsigned a=0;a<16;a++)attrs[a].format=state.compressed_attrs&(1u<<a)?VK_FORMAT_R32_SINT:VK_FORMAT_R32G32B32A32_SFLOAT;
   opts.preserve_float32=fp.shaderSignedZeroInfNanPreserveFloat32;
   VshState excluded=state;excluded.point_params_enable=true;
@@ -560,12 +584,12 @@ int main(int argc, char **argv) {
   unsigned packed=0;for(unsigned a=0;a<16;a++)if(state.uniform_attrs&(1u<<a)) {
    for(unsigned k=0;k<4;k++)values.inlineValue[packed][k]=a==0?(k==3?1:k==2?100:40):(a==15?2:((int)(a+k)%7-3)*.5f);
    if(state.is_fixed_function && state.fixed_function.skinning!=SKINNING_OFF && a==1)for(unsigned k=0;k<4;k++)values.inlineValue[packed][k]=skin_weights[(test/16)%7][k];
-   if(test>=39440 && a==15)for(unsigned k=0;k<4;k++)values.inlineValue[packed][k]=-96.0f+((test-39440)/192)%32;
+   if(test>=39440 && test<40464 && a==15)for(unsigned k=0;k<4;k++)values.inlineValue[packed][k]=-96.0f+((test-39440)/192)%32;
    packed++;
   }
   const float samples[]={0,-0.0f,1,-1,2,-2,.5f,-.5f,4,8,16,-32,INFINITY,-INFINITY,NAN,0x1p-100f};
   for(unsigned v=0;v<VERTICES;v++)for(unsigned a=0;a<16;a++)for(unsigned k=0;k<4;k++) {
-   float f=samples[(v+a*3+k*5)%16];if(a==0 && !(state.is_fixed_function && (test&512)))f=k==3?1:k==2?100:(float)(v*3+40);if(a==15)f=(float)(v%8);if(test>=39440 && a==15){f=-96.0f+(v%32);int effective=192+(int)((test-39440)%64)+(int)floorf(f+.001f);assert(effective>=0 && effective<192);}
+   float f=samples[(v+a*3+k*5)%16];if(a==0 && !(state.is_fixed_function && (test&512)))f=k==3?1:k==2?100:(float)(v*3+40);if(a==15)f=(float)(v%8);if(test>=39440 && test<40464 && a==15){f=-96.0f+(v%32);int effective=192+(int)((test-39440)%64)+(int)floorf(f+.001f);assert(effective>=0 && effective<192);}
    if(test>=24080 && a==0 && !(state.compressed_attrs&1) && v%8<7)f=k==3?1:k==2?100:k==1?40:40+v*.125f;
    if(state.is_fixed_function && state.fixed_function.skinning!=SKINNING_OFF && a==1 && !(state.compressed_attrs&2) && v%8<7)f=skin_weights[v%8][k];
    memcpy(input.mapped+v*256+a*16+k*4,&f,4);
@@ -587,7 +611,7 @@ int main(int argc, char **argv) {
    bind(cmd,0,1,&output.handle,&zero,NULL);begin(cmd,0,0,NULL,NULL);vkCmdDraw(cmd,VERTICES,1,0,0);end(cmd,0,0,NULL,NULL);vkCmdEndRenderPass(cmd);
    VkBufferMemoryBarrier barrier={.sType=VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,.srcAccessMask=VK_ACCESS_TRANSFORM_FEEDBACK_WRITE_BIT_EXT,.dstAccessMask=VK_ACCESS_HOST_READ_BIT,.srcQueueFamilyIndex=VK_QUEUE_FAMILY_IGNORED,.dstQueueFamilyIndex=VK_QUEUE_FAMILY_IGNORED,.buffer=output.handle,.size=VK_WHOLE_SIZE};
    vkCmdPipelineBarrier(cmd,VK_PIPELINE_STAGE_TRANSFORM_FEEDBACK_BIT_EXT,VK_PIPELINE_STAGE_HOST_BIT,0,0,NULL,1,&barrier,0,NULL);CHECK(vkEndCommandBuffer(cmd));VkFenceCreateInfo fi={.sType=VK_STRUCTURE_TYPE_FENCE_CREATE_INFO};VkFence fence;CHECK(vkCreateFence(device,&fi,NULL,&fence));VkSubmitInfo submit={.sType=VK_STRUCTURE_TYPE_SUBMIT_INFO,.commandBufferCount=1,.pCommandBuffers=&cmd};CHECK(vkQueueSubmit(queue,1,&submit,fence));CHECK(vkWaitForFences(device,1,&fence,VK_TRUE,10000000000ull));
-   if(test>=39440 && ((test-39440)/64)%3!=1)for(unsigned v=0;v<VERTICES;v++){
+   if(test>=39440 && test<40464 && ((test-39440)/64)%3!=1)for(unsigned v=0;v<VERTICES;v++){
     int a0=state.uniform_attrs&(1u<<15)?-96+(int)(((test-39440)/192)%32):-96+(int)(v%32);
     int effective=192+(int)((test-39440)%64)+a0;assert(effective>=0 && effective<192);
     for(unsigned k=0;k<4;k++){uint32_t got,expected;memcpy(&got,output.mapped+v*240+5*16+k*4,4);memcpy(&expected,&values.c[effective][k],4);assert(got==expected);constant_checks++;}
