@@ -769,3 +769,25 @@ each new GPU batch requires nontrivial numeric-color output.
 Totals are 65024 CPU modules and 79360 GPU recipes. No view creation, texel
 copy, retained lend or key mutation is added. Draw-path PSO readiness and
 cold-play recovery remain open; driver caches are uncontrolled.
+
+## Eligibility regression matrix
+
+The public CPU entry point also compares direct eligibility against the actual
+production GLSL generator/compiler for 17 texture families. It checks 3360
+shape/format states: 2880 compile and must remain native; 480 reference errors
+must reject natively too. A further 3168 combinations are classified by known
+reference assertion preconditions before generation. The matrix includes 2D/3D,
+rectangle, border, cube, packed and ordinary/F16 shadow metadata, plus sampled
+and constant depth comparisons. A negative control suppresses the projective
+family's native eligibility and must fail. All 5760 reference/native modules
+validate as Vulkan SPIR-V. Seven excluded-shape witnesses execute the actual
+reference assertions in subprocesses. The existing CI entry point uses the
+current harness when checking either candidate or parent source; fixtures are
+not incorrectly looked up in an older checkout.
+
+This check needs no Vulkan device, game content or driver cache. It proves the
+covered family matrix, not every possible shader, actual draw frequencies,
+reference GPU output or PSO readiness. Existing CPU/GPU ownership and value
+checks remain necessary. Remaining fallbacks include reference-unimplemented
+BRDF/specular-constant modes, reference-invalid shapes/registers, and required
+device FP32 capability restrictions. Cold play remains BAD/OPEN.
