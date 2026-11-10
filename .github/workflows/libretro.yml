@@ -26,6 +26,8 @@ jobs:
       - uses: actions/checkout@v4
       - name: Carry specialization rejects the DOA3 throughput regression
         run: python3 libretro/tests/test-tb-lookup-state.py . cc
+      - name: Code-cache flushes discard stale block chains
+        run: python3 libretro/tests/test-tb-flush-chain.py . cc
       - name: Code-page invalidation batches cache clears
         run: |
           python3 libretro/tests/test-tb-page-cache.py . cc

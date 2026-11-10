@@ -29,6 +29,8 @@
 typedef struct TBContext TBContext;
 
 struct TBContext {
+    /* Serial TCG: invalidate execution-loop pointers when code is reused. */
+    uint64_t flush_generation;
 
     struct qht htable;
     struct qht inv_htable;

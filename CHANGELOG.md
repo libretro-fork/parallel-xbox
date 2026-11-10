@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- CPU translation drops stale block-chain pointers when generating a block flushes the code cache, preventing jump patches into reused code. Regression coverage forces cache resets and block-address reuse.
+
 - CPU translation on x86-64 counts guest memory accesses as they are emitted, avoiding the TLB planner's preliminary counting pass. Preserve memo hints and translation-retry resets, with differential regression coverage. Gameplay performance remains unmeasured.
 
 - Vulkan keeps float bump, dependent and cube texture lookups on the direct SPIR-V path when packed-format metadata is ignored by the reference shader. Reuse the existing views and module owners without extra copies or allocations.
