@@ -25,19 +25,25 @@ flags = ['-O2', '-std=gnu11', '-Wall', '-Wextra', '-Werror', '-Wno-unused-parame
 flags += shlex.split(os.environ.get('WATCHPOINT_OWNER_CFLAGS', '-fsanitize=undefined -fsanitize-undefined-trap-on-error'))
 with tempfile.TemporaryDirectory(prefix='watchpoint-owner-') as temporary:
     path = Path(temporary)
-    exe = path / 'test.exe'
-    for negative in (False, True):
-        test = code
-        if negative:
-            old = 'BQL_LOCK_GUARD();\n        cpu_interrupt(cpu, CPU_INTERRUPT_DEBUG);'
-            assert old in test
-            test = test.replace(old, 'bql_lock();\n        cpu_interrupt(cpu, CPU_INTERRUPT_DEBUG);\n        bql_unlock();', 1)
+    exe = Path(os.environ.get('WATCHPOINT_OWNER_BINARY', str(path / 'test.exe')))
+    old = 'BQL_LOCK_GUARD();\n        cpu_interrupt(cpu, CPU_INTERRUPT_DEBUG);'
+    assert old in code
+    mutations = [('unconditional watchpoint BQL reacquisition',code.replace(old, 'bql_lock();\n        cpu_interrupt(cpu, CPU_INTERRUPT_DEBUG);\n        bql_unlock();', 1)),
+                 ('acknowledged IRQ frame unwound',code.replace('if (!ra && cpu->neg.can_do_io &&', 'if (false && !ra && cpu->neg.can_do_io &&')),
+                 ('translated access skips retry',code.replace('if (!ra && cpu->neg.can_do_io &&', 'if (cpu->neg.can_do_io &&')),
+                 ('stop-before delivery ignored',code.replace('!(wp->flags & BP_STOP_BEFORE_ACCESS)) {','true) {'))]
+    if os.environ.get('WATCHPOINT_OWNER_SKIP_RUN'):
+        mutations=[]
+    for name,test in [('positive',code)]+mutations:
+        negative=name!='positive'
+        if negative:assert test!=code,name
         source = path / 'test.c'
         source.write_text(test)
         subprocess.run(compiler + flags + [str(source), '-o', str(exe)], check=True)
+        if os.environ.get('WATCHPOINT_OWNER_SKIP_RUN'):continue
         result = subprocess.run(runner + [str(exe)], capture_output=negative, timeout=30)
         if negative:
             assert result.returncode and b'watchpoint ownership:' in result.stderr
         else:
             result.check_returncode()
-    print('Negative control rejected unconditional watchpoint BQL reacquisition')
+        if negative:print('Negative control rejected:',name,flush=True)
