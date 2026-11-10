@@ -213,11 +213,10 @@ void qemu_chr_be_update_read_handlers(Chardev *s,
     assert(qemu_chr_has_feature(s, QEMU_CHAR_FEATURE_GCONTEXT)
            || !context);
 
-    if (context != NULL) {
-
-    s->gcontext = context;
-
-    }
+    /* NULL returns the frontend to our main loop, not the old context.
+     * Publish this before replacing its read watch, so a retiring context
+     * cannot retain a newly installed source. */
+    s->gcontext = context ? context : qemu_main_context;
 
     if (cc->chr_update_read_handler) {
         cc->chr_update_read_handler(s);
