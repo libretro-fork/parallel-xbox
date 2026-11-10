@@ -12,7 +12,7 @@ typedef uint64_t dma_addr_t;
 typedef struct {bool pending;unsigned mods,dels;} Timer;
 typedef struct {uint32_t regs[256],phy_regs[32];Timer *rx_poll_timer;void *nic;unsigned irqs;} NvNetState;
 typedef NvNetState PCIDevice;
-typedef struct {NvNetState *opaque;} NetClientState;
+typedef struct {NvNetState *opaque;bool link_down,tx_blocked;} NetClientState;
 #define PCI_DEVICE(s) (s)
 #define MII_BMSR 1
 #define MII_BMSR_LINK_ST 4
@@ -28,6 +28,9 @@ typedef struct {NvNetState *opaque;} NetClientState;
 #define trace_nvnet_rx_dma(...) ((void)0)
 #define trace_nvnet_desc_store(...) ((void)0)
 static uint8_t ram[65536];static unsigned reads,writes;
+static bool running=true;static unsigned flushes;
+static bool runstate_is_running(void){return running;}
+static void qemu_flush_queued_packets(NetClientState *nc){(void)nc;flushes++;}
 static uint32_t get_reg(NvNetState*s,uint32_t reg){assert(reg%4==0&&reg<1024);return s->regs[reg/4];}
 static void set_reg(NvNetState*s,uint32_t reg,uint32_t value){assert(reg%4==0&&reg<1024);s->regs[reg/4]=value;}
 static void or_reg(NvNetState*s,uint32_t reg,uint32_t value){set_reg(s,reg,get_reg(s,reg)|value);}
@@ -48,7 +51,7 @@ int main(void){
  for(unsigned enable=0;enable<8;enable++)for(unsigned available=0;available<2;available++)
  for(unsigned position=0;position<6;position++)for(unsigned sz=0;sz<6;sz++)
  for(unsigned pending=0;pending<2;pending++)for(unsigned overlap=0;overlap<2;overlap++){
-  Timer timer={.pending=pending};NvNetState s={.rx_poll_timer=&timer};NetClientState nc={&s};s.nic=&nc;
+  Timer timer={.pending=pending};NvNetState s={.rx_poll_timer=&timer};NetClientState nc={.opaque=&s};s.nic=&nc;
   const uint32_t base=128,count=5,end=base+count*8;
   uint32_t next=position<4?base+position*8:position==4?base-8:end;
   uint32_t current=next<base||next+8>end?base:next;
@@ -85,4 +88,33 @@ int main(void){
   assert(timer.mods==(ready&&!available&&!pending));assert(timer.dels==!(ready&&!available));cases++;
  }
  printf("PASS: %u RX deliveries/readiness cases; one descriptor read per enabled receive, fresh callback snapshots, payload/descriptor overlap, ring updates, IRQ and timer state\n",cases);
+ unsigned gates=0;
+ for(unsigned enable=0;enable<8;enable++)for(unsigned available=0;available<2;available++)
+ for(unsigned stopped=0;stopped<2;stopped++)for(unsigned down=0;down<2;down++)
+ for(unsigned pending=0;pending<2;pending++)for(unsigned tx=0;tx<2;tx++)
+ for(unsigned poll=0;poll<2;poll++){
+  Timer timer={.pending=pending};NvNetState s={.rx_poll_timer=&timer};
+  NetClientState nc={.opaque=&s,.link_down=down,.tx_blocked=tx};s.nic=&nc;
+  struct RingDesc desc={.buffer_addr=4096,.length=1499,.flags=available?NV_RX_AVAIL:0};
+  memcpy(ram+128,&desc,sizeof(desc));memcpy(expected,ram,sizeof(ram));
+  set_reg(&s,NVNET_RX_RING_PHYS_ADDR,128);
+  set_reg(&s,NVNET_RX_RING_NEXT_DESC_PHYS_ADDR,128);
+  set_reg(&s,NVNET_RX_RING_CURRENT_DESC_PHYS_ADDR,0xabcdef);
+  set_reg(&s,NVNET_RECEIVER_CONTROL,enable&1?NVNET_RECEIVER_CONTROL_START:0);
+  set_reg(&s,NVNET_TX_RX_CONTROL,enable&2?0:NVNET_TX_RX_CONTROL_BIT2);
+  s.phy_regs[MII_BMSR]=enable&4?MII_BMSR_LINK_ST:0;
+  running=!stopped;reads=writes=flushes=0;
+  /* Both the MMIO path and poll callback must enforce the same gate. */
+  if(poll)rx_poll_timer(&s);else nvnet_flush_rx(&s);
+  bool active=!stopped&&!down,ready=enable==7;
+  assert(reads==(active&&ready));assert(!writes&&!s.irqs);
+  assert(flushes==(active&&ready&&available));
+  assert(timer.pending==(active?(ready&&!available):pending));
+  assert(timer.mods==(active&&ready&&!available&&!pending));
+  assert(timer.dels==(active&&!(ready&&!available)));
+  assert(get_reg(&s,NVNET_RX_RING_CURRENT_DESC_PHYS_ADDR)==(active&&ready?128:0xabcdef));
+  assert(!memcmp(ram,expected,sizeof(ram)));
+  gates++;
+ }
+ printf("PASS: %u RX flush/poll gates including stopped VM, link-down, full ring and TX backpressure\n",gates);
 }

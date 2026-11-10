@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Network RX queue recovery avoids descriptor DMA while the VM is stopped or the NIC is disconnected, without letting backend transmit backpressure block incoming packets.
+
 - Hard-FPU FRNDINT, packed-BCD stores and FSCALE helpers publish their existing SoftFloat exceptions to guest x87 status. Preserve rounded values, BCD bytes, scale results and sticky exceptions; complete BCD stores before publishing status.
 
 - Hard-FPU integer-conversion helpers publish invalid and inexact exceptions to the guest x87 status and preserve sticky flags. Keep the existing SoftFloat rounding and integer-indefinite results for 16/32/64-bit rounded and truncating conversions.
