@@ -161,6 +161,9 @@ uint64_t dsp56k_test_opcache_clear_bytes(void);
 #endif
 void dsp56k_execute_instruction(dsp_core_t* dsp);	/* Execute 1 instruction */
 
+/* Ordered reads into count caller-owned words; NULL out is valid for count 0. */
+void dsp56k_read_memory_words(dsp_core_t *dsp, int space, uint32_t address,
+                              uint32_t *out, uint32_t count);
 uint32_t dsp56k_read_memory(dsp_core_t* dsp, int space, uint32_t address);
 void dsp56k_write_memory(dsp_core_t* dsp, int space, uint32_t address, uint32_t value);
 /* The count words from address in place, when they are all in one of

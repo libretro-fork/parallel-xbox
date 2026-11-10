@@ -348,14 +348,23 @@ static void dsp_dma_run(DSPDMAState *s)
             assert(!"Dsp dma space address out of range");
         }
 
-        uint32_t next_block = s->mem_read(s->mem_opaque, block_space, block_addr);
-        uint32_t control = s->mem_read(s->mem_opaque, block_space, block_addr+1);
-        uint32_t count = s->mem_read(s->mem_opaque, block_space, block_addr+2);
-
-        uint32_t dsp_offset = s->mem_read(s->mem_opaque, block_space, block_addr+3);
-        uint32_t scratch_offset = s->mem_read(s->mem_opaque, block_space, block_addr+4);
-        uint32_t scratch_base = s->mem_read(s->mem_opaque, block_space, block_addr+5);
-        uint32_t scratch_size = s->mem_read(s->mem_opaque, block_space, block_addr+6)+1;
+        /* Snapshot every field before payload callbacks or writeback can
+         * alter an overlapping descriptor. No borrowed header survives here. */
+        DSPDMADescriptor node;
+        if (s->mem_descriptor) {
+            s->mem_descriptor(s->mem_opaque, block_space, block_addr, &node);
+        } else {
+            node.words[DSP_DMA_DESC_NEXT] = s->mem_read(s->mem_opaque, block_space, block_addr);
+            node.words[DSP_DMA_DESC_CONTROL] = s->mem_read(s->mem_opaque, block_space, block_addr + 1);
+            node.words[DSP_DMA_DESC_COUNT] = s->mem_read(s->mem_opaque, block_space, block_addr + 2);
+            node.words[DSP_DMA_DESC_DSP_OFFSET] = s->mem_read(s->mem_opaque, block_space, block_addr + 3);
+            node.words[DSP_DMA_DESC_SCRATCH_OFFSET] = s->mem_read(s->mem_opaque, block_space, block_addr + 4);
+            node.words[DSP_DMA_DESC_SCRATCH_BASE] = s->mem_read(s->mem_opaque, block_space, block_addr + 5);
+            node.words[DSP_DMA_DESC_SCRATCH_SIZE] = s->mem_read(s->mem_opaque, block_space, block_addr + 6);
+        }
+        uint32_t next_block = node.words[DSP_DMA_DESC_NEXT], control = node.words[DSP_DMA_DESC_CONTROL], count = node.words[DSP_DMA_DESC_COUNT];
+        uint32_t dsp_offset = node.words[DSP_DMA_DESC_DSP_OFFSET], scratch_offset = node.words[DSP_DMA_DESC_SCRATCH_OFFSET];
+        uint32_t scratch_base = node.words[DSP_DMA_DESC_SCRATCH_BASE], scratch_size = node.words[DSP_DMA_DESC_SCRATCH_SIZE] + 1;
 
         s->next_block = next_block;
         if (s->next_block & NODE_POINTER_EOL) {

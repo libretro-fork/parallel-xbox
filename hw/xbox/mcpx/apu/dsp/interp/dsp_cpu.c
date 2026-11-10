@@ -985,7 +985,7 @@ static uint32_t read_memory_p(dsp_core_t* dsp, uint32_t address)
     return r;
 }
 
-uint32_t dsp56k_read_memory(dsp_core_t* dsp, int space, uint32_t address)
+static inline QEMU_ALWAYS_INLINE uint32_t read_memory(dsp_core_t* dsp, int space, uint32_t address)
 {
     assert((address & 0xFF000000) == 0);
 
@@ -1015,6 +1015,31 @@ uint32_t dsp56k_read_memory(dsp_core_t* dsp, int space, uint32_t address)
         assert(!"Invalid dsp space in read memory");
         return 0;
     }
+}
+
+uint32_t dsp56k_read_memory(dsp_core_t* dsp, int space, uint32_t address)
+{
+    return read_memory(dsp, space, address);
+}
+
+void dsp56k_read_memory_words(dsp_core_t *dsp, int space, uint32_t address,
+                              uint32_t *out, uint32_t count)
+{
+    /* Ordered reads preserve aliases, floating-high reads and strict P checks.
+     * The caller supplies count owned words; no source pointer is retained. */
+    /* Small X-memory metadata reads are common. Keep their known length and
+     * space visible to the optimizer while preserving per-word side effects. */
+    if (space == DSP_SPACE_X && count == 7) {
+        out[0] = read_memory(dsp, DSP_SPACE_X, address);
+        out[1] = read_memory(dsp, DSP_SPACE_X, address + 1);
+        out[2] = read_memory(dsp, DSP_SPACE_X, address + 2);
+        out[3] = read_memory(dsp, DSP_SPACE_X, address + 3);
+        out[4] = read_memory(dsp, DSP_SPACE_X, address + 4);
+        out[5] = read_memory(dsp, DSP_SPACE_X, address + 5);
+        out[6] = read_memory(dsp, DSP_SPACE_X, address + 6);
+        return;
+    }
+    for (uint32_t i = 0; i < count; i++) out[i] = read_memory(dsp, space, address + i);
 }
 
 uint32_t *dsp56k_memory_ptr(dsp_core_t* dsp, int space, uint32_t address, uint32_t count, bool write)

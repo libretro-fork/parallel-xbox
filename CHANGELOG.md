@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- DSP DMA: read each seven-word descriptor through one backend operation, with a stable snapshot before payload writes. Preserve ordered reads across memory aliases and callback-only backends, strict program-memory checks, and program-write invalidation; add boundary, overlap and linked-node regressions.
+
 - Read unsigned integer color textures directly as Vulkan SPIR-V, including projected/rectangle reads and nine-tap convolution. Convert numeric texels to floats before filtering without shadow-depth decoding, reuse existing unsigned views and preserve alpha/key processing. Keep two final allocations without texel copies or retained lends; unsupported shapes retain the compiler.
 
 - Reconstruct signed G8B8 textures directly as Vulkan SPIR-V, including point/gather filtering, mixed min/mag decisions, mip interpolation and per-axis wrap/mirror/edge addressing with lower-LOD fields. Preserve dependent bump/luminance reads before late signed-channel remapping. Reuse existing views, sign helpers and two final allocations without texel copies or retained lends; unsupported shapes retain the compiler.

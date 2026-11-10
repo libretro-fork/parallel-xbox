@@ -74,6 +74,19 @@ static uint32_t *c_dma_mem_ptr(void *opaque, int space, uint32_t addr,
     return mem;
 }
 
+static void c_dma_mem_descriptor(void *opaque, int space, uint32_t addr,
+                                  DSPDMADescriptor *out)
+{
+    dsp_core_t *core = opaque;
+    const uint32_t *words = c_dma_mem_ptr(opaque, space, addr, DSP_DMA_DESC_WORDS, false);
+    if (words) {
+        for (unsigned i = 0; i < DSP_DMA_DESC_WORDS; i++) out->words[i] = words[i];
+    } else {
+        /* Same ordered memory semantics, without per-word DMA indirection. */
+        dsp56k_read_memory_words(core, space, addr, out->words, DSP_DMA_DESC_WORDS);
+    }
+}
+
 static uint32_t c_read_peripheral(dsp_core_t *core, uint32_t address)
 {
     return read_peripheral((DSPState *)core->opaque, address);
@@ -376,6 +389,7 @@ void dsp_c_init(DSPState *dsp)
     dsp->dma.mem_read = c_dma_mem_read;
     dsp->dma.mem_write = c_dma_mem_write;
     dsp->dma.mem_ptr = c_dma_mem_ptr;
+    dsp->dma.mem_descriptor = c_dma_mem_descriptor;
 
     /* Ensure the interpreter's opcode decoder tables are initialized.
      * dsp56k_reset_cpu populates the static nonparallel_matches[] array

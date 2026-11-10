@@ -4817,7 +4817,7 @@ memory must match the scalar oracle, along with exact ordered callback
 addresses, spaces, values, counts, complete host/DSP buffers and cursors.
 
 `make dspdmaspans` checks read-only P-memory borrowing through both actual C
-backend operation tables: 442412 range/direction/raw-word/cache checks.
+backend operation tables: 446971 range/direction/raw-word/cache/descriptor checks.
 The DMA mem_ptr callback now receives write=true for DSP destinations and
 write=false for sources. A validated P read span can use direct transfer;
 P writes always return NULL and retain per-word invalidation callbacks.
@@ -4850,7 +4850,7 @@ valid-span branch/dependency chains. Invalid sources still return NULL for
 strict ordered reads; they are not normalized or exposed directly. The scan
 stays within count, including zero and one-past-end empty spans.
 
-The expanded 442412-check matrix poisons every bit 24-31 at every PRAM word,
+The PRAM range/validity submatrix poisons every bit 24-31 at every PRAM word,
 checking full spans, a single poisoned word, odd/short prefix tails, empty
 spans and valid prefixes ending immediately before the poison. Direction,
 range/overflow and actual DMA code-invalidation checks remain. This is a
@@ -5250,3 +5250,36 @@ with both 20,000- and 200,000-iteration samples. Those lifecycle timings are
 unqualified, not a performance pass or a demonstrated speedup. This change
 establishes a reduced zero-initialization request and correctness with poisoned
 storage; it makes no lifecycle, game-startup, FPS or Rust-comparison claim.
+
+DSP DMA descriptors now use an optional synchronous backend operation to
+return seven owned metadata words. The C backend borrows validated plain RAM
+only inside this call; otherwise it uses ordered CPU memory reads. The engine
+owns the returned value snapshot and captures every field before payload
+callbacks, descriptor writeback or the next node. No descriptor source pointer
+is retained, no per-node heap allocation is added, and payload conversion and
+program-write invalidation remain unchanged. Existing DMA VM fields and
+versions are unchanged; the new callback is derived backend configuration.
+
+Backends without the optional operation retain seven ordered mem_read calls.
+The shared ordered word reader uses the same inline memory policy as scalar
+reads, including X aliases, Y floating-high reads and strict little-endian P
+checks. Its common seven-word X case is unrolled without reordering callbacks.
+The public scalar read operation adds no wrapper call in optimized builds.
+
+The 446,971-check dspdmaspans fixture covers C and JIT backends, X/Y/P and
+mixbuffer descriptor locations, map boundaries, optional-operation absence,
+16/24-bit formats, input and interleaved output, a linked three-bank chain,
+zero-aperture callbacks and self-overwriting ring descriptors. Poisoned output
+snapshots ensure all returned words are initialized. Separate ordered-reader
+checks cover X/Y peripheral side effects, floating-high Y and zero-length
+reads. The independent DSP CI job runs this target under ASan/UBSan and QEMU
+AArch64 alongside its cache, coverage and bootstrap regressions.
+
+Windows x86-64 release microbenchmarks against untouched parent a7fc4ff use
+seven alternating pairs, two million DMA nodes per sample, a 10,000-node
+warmup and verified thread affinity (group 0, mask 1). Tested normal X/Y/P,
+cross-alias X and 64-word-payload kernels have 13-27% lower median elapsed
+time. Longer scalar X/Y/P controls have overlapping samples and medians within
+1% of the parent. These are bounded kernel measurements, not game/FPS/startup
+or Rust comparisons. Earlier direct-borrow variants that regressed the boundary
+case were rejected; their raw samples are retained separately.

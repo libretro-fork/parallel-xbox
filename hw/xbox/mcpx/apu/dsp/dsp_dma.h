@@ -57,12 +57,27 @@ typedef void (*dsp_dma_mem_write_func)(void *opaque, int space, uint32_t addr, u
 typedef uint32_t *(*dsp_dma_mem_ptr_func)(void *opaque, int space, uint32_t addr,
                                        uint32_t count, bool write);
 
+/* A value snapshot of the seven hardware descriptor words. No payload data. */
+enum {
+    DSP_DMA_DESC_NEXT, DSP_DMA_DESC_CONTROL, DSP_DMA_DESC_COUNT,
+    DSP_DMA_DESC_DSP_OFFSET, DSP_DMA_DESC_SCRATCH_OFFSET,
+    DSP_DMA_DESC_SCRATCH_BASE, DSP_DMA_DESC_SCRATCH_SIZE, DSP_DMA_DESC_WORDS
+};
+typedef struct DSPDMADescriptor {
+    uint32_t words[DSP_DMA_DESC_WORDS];
+} DSPDMADescriptor;
+/* Optional synchronous descriptor read. The caller owns out; the backend
+ * must fill every field before returning and must not retain its address. */
+typedef void (*dsp_dma_mem_descriptor_func)(void *opaque, int space, uint32_t addr,
+                                           DSPDMADescriptor *out);
+
 typedef struct DSPDMAState {
     /* DSP memory access (backend-agnostic) */
     void *mem_opaque;
     dsp_dma_mem_read_func mem_read;
     dsp_dma_mem_write_func mem_write;
     dsp_dma_mem_ptr_func mem_ptr;
+    dsp_dma_mem_descriptor_func mem_descriptor;
 
     /* System memory access */
     void *rw_opaque;
