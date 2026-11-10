@@ -1781,27 +1781,24 @@ static GlslcLayout layout(bool push, bool inline_ubo, unsigned count, bool viewe
     size_t total=push?count*16:lighting_offsets(lighting,3120u+inline_ubo*256u+viewer*64u+points*128u+dynamic*16u,lit_offsets);
     n+=__builtin_popcount(lighting);
     size_t bytes = n * sizeof(GlslcUniform);
-    for (unsigned i = 0; i < base_n; i++) { bytes += strlen(names[indices[i]]) + 1; }
-    for(unsigned i=0;i<L_COUNT;i++)if(lighting&(1u<<i))bytes+=strlen(lighting_info[i].name)+1;
     GlslcUniform *members = malloc(bytes);
     if (!members) { abort(); }
-    char *text = (char *)(members + n);
+    /* Names are immutable core-owned literals. Layout records own only their
+     * allocation; the synchronous compiler and retained modules borrow names
+     * until their last consumer, before the core code can be unloaded. */
     for (unsigned i = 0; i < base_n; i++) {
         unsigned index = indices[i];
-        size_t len = strlen(names[index]) + 1;
-        memcpy(text, names[index], len);
         members[i] = (GlslcUniform) {
-            .name = text, .dim_v = dimensions[index],
+            .name = names[index], .dim_v = dimensions[index],
             .dim_a = push ? count : index == 0 ? NV2A_VERTEXSHADER_CONSTANTS : index == 7 ? 16 : index == 8 ? 4 : index == 9 ? 8 : 1,
             .stride = index == 8 || index == 9 ? 16 : dimensions[index] * sizeof(float),
             .offset = push ? 0 : offsets[index],
         };
-        text += len;
     }
     unsigned member=base_n;
     for(unsigned i=0;i<L_COUNT;i++)if(lighting&(1u<<i)){
-        const LightingInfo *info=&lighting_info[i];size_t len=strlen(info->name)+1;memcpy(text,info->name,len);
-        members[member++]=(GlslcUniform){.name=text,.dim_v=info->width,.dim_a=info->count,.stride=info->count>1?16:info->width*4,.offset=lit_offsets[i]};text+=len;
+        const LightingInfo *info=&lighting_info[i];
+        members[member++]=(GlslcUniform){.name=info->name,.dim_v=info->width,.dim_a=info->count,.stride=info->count>1?16:info->width*4,.offset=lit_offsets[i]};
     }
     return (GlslcLayout) { .members = members, .count = n, .size = total };
 }

@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Vulkan vertex layouts borrow immutable core-owned uniform names instead of scanning and copying them into every layout. Keep layout records independently owned, preserve shader bytes and allocation counts, and reduce allocated metadata bytes. Module-held layouts retain valid names through their last consumer; frame-time improvement remains unmeasured.
+
 - Vulkan vertex translation omits unreferenced signed-integer declarations using a stack-owned count/write usage mask. Preserve instruction IDs, arithmetic, layouts and allocation counts while shrinking generated modules; frame-time improvement remains unmeasured.
 
 - Vulkan vertex translation reuses an immutable constant-row SSA value for repeated reads in the same basic block and address-register generation. Emit fewer buffer accesses and words without changing shader arithmetic, uniform layouts, cache compatibility or allocation counts. The cache holds only 16 bytes of compiler IDs; frame-time improvement remains unmeasured.

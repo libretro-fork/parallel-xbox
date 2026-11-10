@@ -585,3 +585,18 @@ mask-bit aliasing and duplicate charges. CPU parent comparisons additionally
 require identical modules after excluding signed-integer declarations, unchanged
 layouts and no word-count increase. Smaller modules do not establish PSO
 readiness, GPU execution speed or cold-play recovery.
+
+Vertex layout records borrow fixed uniform-name literals from the loaded core.
+The names are NUL-terminated static arrays, independent of the source key and
+compiler stack. Records remain independently allocated and freed once. Native
+module/layout owners end their last consumers before core code unload, so
+source-word retirement and another layout freeing its records do not end the
+name lend. No pointer identity enters persistent keys; serialized names and ABI
+are unchanged. The source-cache budget conservatively retains its existing
+logical name-byte accounting.
+
+The layout test checks 131,088 profile/push cases with record-only allocation
+bounds, shared names and independent retirement on native and ARM64. Worker
+source/layout tests exercise inline and borrowed names, including racing last
+consumers. The full vertex CPU corpus emits byte-identical modules to its parent;
+this removes host metadata work, not draw-critical PSO compilation or stutter.

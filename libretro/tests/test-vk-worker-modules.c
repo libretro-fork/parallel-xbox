@@ -94,6 +94,7 @@ static void *release_last_owner(void *arg){
 int main(void)
 {
  retro_atomic_int_init(&live_sources,0);retro_atomic_int_init(&source_allocations,0);
+ static const char borrowed_name[]="value";
  /* Direct and compiler results move the exact owners, including prefix views.
   * Metadata stays alive independently after the last source-word consumer. */
  for(unsigned i=0;i<1024;i++) {
@@ -104,9 +105,10 @@ int main(void)
   GlslcLayout *blocks[]={&result.uniforms,&result.push_constants};
   for(unsigned b=0;b<2;b++)if(i&(2u<<b)) {
    blocks[b]->count=1;blocks[b]->size=16;
-   blocks[b]->members=calloc(1,sizeof(GlslcUniform)+6);assert(blocks[b]->members);
-   char *name=(char *)(blocks[b]->members+1);memcpy(name,"value",6);
-   blocks[b]->members[0]=(GlslcUniform){.name=name,.dim_v=4,.dim_a=1};
+   bool borrow=!!(i&8);
+   blocks[b]->members=calloc(1,sizeof(GlslcUniform)+(borrow?0:6));assert(blocks[b]->members);
+   char *name=(char *)(blocks[b]->members+1);if(!borrow)memcpy(name,"value",6);
+   blocks[b]->members[0]=(GlslcUniform){.name=borrow?borrowed_name:name,.dim_v=4,.dim_a=1};
   }
   GlslcUniform *u=result.uniforms.members,*pc=result.push_constants.members;
   int before=retro_atomic_load_relaxed_int(&source_allocations);
@@ -218,7 +220,7 @@ int main(void)
  for(unsigned i=0;i<512;i++){
   GlslcResult result={.words=malloc(64),.num_words=16,.allocation_words=16};assert(result.words);
   result.uniforms.count=1;result.uniforms.size=16;result.uniforms.members=calloc(1,sizeof(GlslcUniform)+6);assert(result.uniforms.members);
-  char *name=(char *)(result.uniforms.members+1);memcpy(name,"value",6);result.uniforms.members[0]=(GlslcUniform){.name=name,.dim_v=4,.dim_a=1};
+  char *name=(char *)(result.uniforms.members+1);memcpy(name,"value",6);result.uniforms.members[0]=(GlslcUniform){.name=i&2?borrowed_name:name,.dim_v=4,.dim_a=1};
   LastOwners owners={.source=pgraph_vk_shader_source_take(&result)};owners.layouts=owners.source->layouts;retro_atomic_fetch_add_int(&owners.layouts->refs,1);
   assert(!pthread_mutex_init(&owners.lock,NULL));assert(!pthread_cond_init(&owners.cond,NULL));
   LastRelease release[2]={{&owners,!!(i&1)},{&owners,!(i&1)}};pthread_t last[2];
@@ -226,7 +228,7 @@ int main(void)
   for(unsigned j=0;j<2;j++)assert(!pthread_join(last[j],NULL));
   assert(!pthread_cond_destroy(&owners.cond));assert(!pthread_mutex_destroy(&owners.lock));assert(!retro_atomic_load_relaxed_int(&live_sources));
  }
- puts("Source retirement: module-first release and 512 synchronized final source/layout races PASS");
+ puts("Source retirement: module-first release and 512 synchronized final source/layout races, inline and borrowed static names PASS");
  assert(reservations>0);
  puts("PASS: immutable module sharing, exact keys/collisions, SPIR-V versions, byte cap, oversize bypass, eviction, queue drops, state markers, adoption and 800000 concurrent ref/unref pairs; no leaked sources/layouts; shared layouts outlive words and module destruction");
 }

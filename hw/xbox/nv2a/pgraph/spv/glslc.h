@@ -43,7 +43,8 @@ typedef struct ShaderUniform {
 typedef ShaderUniform GlslcUniform;
 
 typedef struct GlslcLayout {
-    /* Members and names share one allocation, released with free(members). */
+    /* Free members once. Names are either inline in that allocation or borrow
+     * immutable core-owned literals, valid through the last layout consumer. */
     GlslcUniform *members;
     size_t count, size;
 } GlslcLayout;
@@ -54,7 +55,8 @@ typedef struct GlslcResult {
     char error[256]; /* why, with the line, on error */
     int error_line;
     /* Present only with emit_layout. Release each members allocation with
-     * free(); names live in that allocation. Independent of words. */
+     * free(); names remain valid through the last layout consumer.
+     * Independent of words. */
     GlslcLayout uniforms, push_constants;
     /* Set only for a module view inside its allocation. */
     void *allocation;
