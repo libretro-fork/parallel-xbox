@@ -68,12 +68,12 @@ may bypass translation; a warm driver cache is a separate compilation milestone.
 
 ## Regression coverage and qualification
 
-- `test-spv-vsh.py`: 11,152 deterministic SPIR-V modules, final-owner allocation
-  counts, poisoned source keys, thirty-one allocation-free unsupported paths, UBSan and
+- `test-spv-vsh.py`: 12,688 deterministic SPIR-V modules, final-owner allocation
+  counts, poisoned source keys, thirty-two allocation-free unsupported paths, UBSan and
   spirv-val. Both SPIR-V 1.5 and 1.6 targets are covered. Extracted native device
   setup is checked across 512 API/property/generation cases, including stale
   target reset and zero queries on older APIs.
-- `test-spv-vsh-gpu.py`: 12,560 programs / 20,497,920 scalar outputs compared with
+- `test-spv-vsh-gpu.py`: 14,096 programs / 23,004,672 scalar outputs compared with
   the production GLSL generator/compiler using Vulkan transform feedback. It
   captures all user outputs, position and point size before clipping; numerical
   differences fail (NaN payload identity is not required). It exercises opcode
@@ -122,12 +122,12 @@ requires forced invalidation. Legacy non-point modules retain their prior words.
 
 ## Unlit fixed-function subset
 
-The direct subset requires lighting off, skinning off, static CSV0_C and texgen,
-coordinate texgen restricted to disabled/eye-linear/object-linear modes, dynamic
-fog off and register-based points. Static fog and distance-based point parameters
-are supported as described below. Enabled static texture matrices are supported. Other states
-retain the GLSL path, including dynamic lighting/texgen/fog and skinned vertices.
-The existing FP32 property gate also applies; no new device query is added.
+The direct subset requires lighting off and static CSV0_C, texgen and fog.
+It supports static texture matrices, valid coordinate-generation modes, all
+skinning modes and register/attenuated points as detailed below. Unsupported
+states, including dynamic lighting/texgen/fog and six known quadratic-fog
+combinations, retain the GLSL path. The existing FP32 property gate applies;
+no new device query is added.
 
 The composite matrix already contains model-view when skinning is off. Emit
 vector-times-matrix directly from the existing constant array, then perform the
@@ -196,7 +196,7 @@ stage and all sixteen texture-matrix masks, plus supported fog combinations,
 input formats and exceptional inputs. Matrix-operation counts verify that the
 model-view result is shared. All 3,712 earlier fixtures retain byte-identical
 modules. Negative/unknown modes, invalid sphere/reflection components, dynamic texgen,
-lighting/skinning and previously recorded fog exceptions retain GLSL fallback.
+lighting and previously recorded fog exceptions retain GLSL fallback.
 No key schema or driver-cache defaults change, and this does not establish
 cold-play recovery.
 
@@ -252,7 +252,7 @@ There are still two or three final-owner allocations per supported translation;
 only final metadata size and shader words change. No intermediate module clone,
 CPU matrix snapshot, retained lend or file I/O is added. Sphere R/Q and
 normal/reflection Q retain allocation-free fallback, along with existing
-lighting/skinning, dynamic-state and quadratic-fog exclusions. This is expanded
+lighting, dynamic-state and quadratic-fog exclusions. This is expanded
 translation coverage, not proof that cold-play PSO stutter has recovered.
 
 ## Fixed-function point attenuation
@@ -279,6 +279,37 @@ fog/texgen, both viewer settings, input formats and normalized/raw normals with
 point attenuation. GPU inputs vary every parameter across zero, signed zero,
 positive/negative finite, Infinity, NaN and tiny values, including unused 4/5;
 point scales/registers are independently varied. Hardware FP32 preservation
-remains required, and lighting/skinning, dynamic-state and recorded quadratic-
+remains required, and lighting, dynamic-state and recorded quadratic-
 fog exclusions retain GLSL fallback. No cache schema or file-I/O path changes.
 These checks establish translation equivalence, not cold-play recovery.
+
+## Fixed-function skinning
+
+All six weighted modes can emit directly while lighting is off: two, three or
+four matrices with individually supplied weights, or a generated final weight
+for two/three/four matrices. The generated value starts at one and subtracts each
+supplied weight in order; weights are neither clamped nor renormalized. Keep the
+reference zero-initialized accumulation and sequential transform * weight adds.
+Position and normal transforms share the same scalar weight IDs, then normalize
+the accumulated normal only if requested. Bone matrices are read directly from
+the existing constant array (eight registers per model-view/inverse pair).
+
+Skinned model-view position feeds fog, eye-linear coordinates and viewer-aware
+texgen, then the composite matrix produces clip position. Object-linear texgen
+still consumes the original input position. Point attenuation deliberately
+continues to use originalPosition * modelViewMat0, not the blended position.
+These distinctions have separate GPU comparisons and matrix-count assertions.
+No geometry/matrix snapshots, new layouts, allocations or retained pointers are
+introduced. Existing immutable key and constant-buffer owners keep their current
+publication and last-consumer lifetimes. All 11,152 prior fixture modules and
+uniform members remain identical; negative and out-of-range modes are allocation-
+free fallback misses.
+
+An additional 1,536 fixtures span all six modes, all sixteen texture-matrix
+masks, static fog/texgen, viewer settings, normalized/raw/compressed inputs and
+point attenuation enabled/disabled. GPU weights include basis vectors, decimal
+fractions, negative/above-one sums and exceptional values, in vertex and inline
+storage. The GPU driver runs the full 14,096-fixture corpus in two bounded
+batches, preserving every case while retaining a separate 300-second watchdog
+per batch. Work counts and CPU-clock totals remain separate from gameplay
+latency evidence; dynamic states, lighting and known fog exclusions remain open.

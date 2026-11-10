@@ -103,7 +103,11 @@ static void pack(uint8_t *dst,const GlslcLayout *layout,const VshUniformValues *
  }
 }
 static void release(GlslcResult *r){glslc_result_free_words(r);free(r->uniforms.members);free(r->push_constants.members);}
-int main(void) {
+int main(int argc, char **argv) {
+ assert(argc==1 || argc==3);
+ unsigned first=argc==3?strtoul(argv[1],NULL,10):0, limit=argc==3?strtoul(argv[2],NULL,10):14096;
+ assert(first<limit && limit<=14096);
+ printf("Fixture range [%u, %u)\n",first,limit);
  const bool validated=getenv("NO_VALIDATION")==NULL;
  const char *layer="VK_LAYER_KHRONOS_validation",*debug=VK_EXT_DEBUG_UTILS_EXTENSION_NAME;
  VkApplicationInfo app={.sType=VK_STRUCTURE_TYPE_APPLICATION_INFO,.apiVersion=VK_API_VERSION_1_2};
@@ -154,7 +158,7 @@ int main(void) {
  VkPipelineMultisampleStateCreateInfo ms={.sType=VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO,.rasterizationSamples=VK_SAMPLE_COUNT_1_BIT};
  uint32_t reference[VERTICES*60];unsigned compared=0,failures=0;
  clock_t reference_ticks=0,direct_ticks=0;size_t reference_words=0,direct_words=0;
- for(unsigned test=0;test<12560;test++) {
+ for(unsigned test=first;test<limit;test++) {
   VshState state={0};state.smooth_shading=test&1;state.fog_dynamic=true;state.specular_enable=test&2;state.ignore_specular_alpha=test&4;
   unsigned variant=(test%1568)/112,m=test%14,l=(test%112)/14;state.programmable.program_length=5;
   token(state.programmable.program_data[0],MAC_MOV,ILU_NOP,0,0,false,false);
@@ -254,6 +258,12 @@ int main(void) {
    }
   }
   if(test>=11536)state.point_params_enable=true;
+  if(test>=12560){
+   unsigned f=test-12560;
+   state.fixed_function.skinning=1+f/256;
+   state.point_params_enable=!!(f&32);
+   if(state.compressed_attrs)state.compressed_attrs|=1u<<1;
+  }
   for(unsigned a=0;a<16;a++)attrs[a].format=state.compressed_attrs&(1u<<a)?VK_FORMAT_R32_SINT:VK_FORMAT_R32G32B32A32_SFLOAT;
   opts.preserve_float32=fp.shaderSignedZeroInfNanPreserveFloat32;
   VshState excluded=state;excluded.point_params_enable=true;
@@ -308,13 +318,19 @@ int main(void) {
    unsigned f=(test-11536)/16;
    values.pointParams[(f/8)%8]=samples[f%8];
   }
+  static const float skin_weights[7][4]={
+   {.1f,.2f,.3f,.4f},{1,0,0,0},{0,1,0,0},{0,0,1,0},{0,0,0,1},
+   {-.25f,1.5f,-2,4},{.5f,.5f,0,0}
+  };
   unsigned packed=0;for(unsigned a=0;a<16;a++)if(state.uniform_attrs&(1u<<a)) {
    for(unsigned k=0;k<4;k++)values.inlineValue[packed][k]=a==0?(k==3?1:k==2?100:40):(a==15?2:((int)(a+k)%7-3)*.5f);
+   if(state.is_fixed_function && state.fixed_function.skinning!=SKINNING_OFF && a==1)for(unsigned k=0;k<4;k++)values.inlineValue[packed][k]=skin_weights[(test/16)%7][k];
    packed++;
   }
   const float samples[]={0,-0.0f,1,-1,2,-2,.5f,-.5f,4,8,16,-32,INFINITY,-INFINITY,NAN,0x1p-100f};
   for(unsigned v=0;v<VERTICES;v++)for(unsigned a=0;a<16;a++)for(unsigned k=0;k<4;k++) {
    float f=samples[(v+a*3+k*5)%16];if(a==0 && !(state.is_fixed_function && (test&512)))f=k==3?1:k==2?100:(float)(v*3+40);if(a==15)f=(float)(v%8);
+   if(state.is_fixed_function && state.fixed_function.skinning!=SKINNING_OFF && a==1 && !(state.compressed_attrs&2) && v%8<7)f=skin_weights[v%8][k];
    memcpy(input.mapped+v*256+a*16+k*4,&f,4);
   }
   for(unsigned path=0;path<2;path++) {

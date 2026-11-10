@@ -103,7 +103,7 @@ bool pgraph_spv_vsh_supported(const VshState *s, SpvVshOptions opts)
         if (!opts.preserve_float32 || s->fog_dynamic ||
             (s->fog_enable && (unsigned)ff->foggen > FOGGEN_FOG_X) ||
             ff->lighting || ff->csv0c_dynamic ||
-            ff->texgen_dynamic || ff->skinning != SKINNING_OFF) {
+            ff->texgen_dynamic || (unsigned)ff->skinning > SKINNING_4WEIGHTS4MATRICES) {
             return false;
         }
         /* Quadratic curves fed by transformed distances still differ by one
@@ -183,7 +183,7 @@ typedef struct Context {
     uint32_t ci[256], cu[8], cf[F_COUNT], zero4, initial4;
     uint32_t inputs[16], outputs[13], position, point_size, ubo, pc;
     uint32_t main, ext, mat4, texgen_array, viewer_mask, point_array, point_limit;
-    uint32_t r[12], o[13], a0, input_values[16];
+    uint32_t r[12], o[13], a0, input_values[16], skin_weights[4];
 } Context;
 
 static uint32_t unary(Context *c, SpvOp code, uint32_t type, uint32_t a)
@@ -285,6 +285,40 @@ static uint32_t transform(Context *c, uint32_t v, unsigned base)
                             column[0], column[1], column[2], column[3]);
     return binary(c, SpvOpVectorTimesMatrix, c->v4, v, matrix);
 }
+static unsigned skin_matrices(enum VshSkinning mode)
+{
+    static const unsigned counts[] = {0, 2, 2, 3, 3, 4, 4};
+    return counts[mode];
+}
+
+static uint32_t skinned(Context *c, uint32_t source, bool normal)
+{
+    enum VshSkinning mode = c->state->fixed_function.skinning;
+    unsigned count = skin_matrices(mode);
+    unsigned base = normal ? NV_IGRAPH_XF_XFCTX_IMMAT0 : NV_IGRAPH_XF_XFCTX_MMAT0;
+    if (!count) { return transform(c, source, base); }
+    if (!c->skin_weights[0]) {
+        uint32_t weights = input(c, 1), remaining = c->cf[F_ONE];
+        for (unsigned i = 0; i < count; i++) {
+            bool generated = (mode & 1) && i == count - 1;
+            uint32_t weight = generated ? remaining : extract(c, weights, i);
+            c->skin_weights[i] = weight;
+            if ((mode & 1) && !generated) { remaining = sub(c, remaining, weight); }
+        }
+    }
+    uint32_t type = normal ? c->v3 : c->v4;
+    uint32_t sum = normal ? value(c->w, SpvOpCompositeConstruct, c->v3, 3,
+                                  c->cf[F_ZERO], c->cf[F_ZERO], c->cf[F_ZERO]) : c->zero4;
+    for (unsigned i = 0; i < count; i++) {
+        uint32_t v = transform(c, source, base + i * 8);
+        if (normal) { v = value(c->w, SpvOpVectorShuffle, c->v3, 5, v, v, 0u, 1u, 2u); }
+        v = binary(c, SpvOpVectorTimesScalar, type, v, c->skin_weights[i]);
+        /* Keep the initial +0 and sequential additions from the reference. */
+        sum = binary(c, SpvOpFAdd, type, sum, v);
+    }
+    return sum;
+}
+
 static void unlit(Context *c)
 {
     static const unsigned tex_matrix[] = {
@@ -296,7 +330,12 @@ static void unlit(Context *c)
         NV_IGRAPH_XF_XFCTX_TG2MAT, NV_IGRAPH_XF_XFCTX_TG3MAT,
     };
     uint32_t eye_position = 0, mapped_normal = 0, reflected = 0, sphere_scale = 0;
-    c->o[0] = transform(c, input(c, 0), NV_IGRAPH_XF_XFCTX_CMAT0);
+    uint32_t position = input(c, 0);
+    if (c->state->fixed_function.skinning != SKINNING_OFF) {
+        eye_position = skinned(c, position, false);
+        position = eye_position;
+    }
+    c->o[0] = transform(c, position, NV_IGRAPH_XF_XFCTX_CMAT0);
     c->o[3] = input(c, 3); c->o[4] = input(c, 4);
     c->o[7] = input(c, 7); c->o[8] = input(c, 8);
     if (c->state->fog_enable) {
@@ -307,8 +346,8 @@ static void unlit(Context *c)
         } else if (gen == FOGGEN_FOG_X) {
             distance = extract(c, input(c, 5), 0);
         } else {
-            uint32_t position = transform(c, input(c, 0), NV_IGRAPH_XF_XFCTX_MMAT0);
-            eye_position = position;
+            if (!eye_position) { eye_position = transform(c, input(c, 0), NV_IGRAPH_XF_XFCTX_MMAT0); }
+            uint32_t position = eye_position;
             uint32_t xyz = value(c->w, SpvOpVectorShuffle, c->v3, 5, position, position, 0u, 1u, 2u);
             if (gen == FOGGEN_RADIAL) {
                 distance = ext1(c, GLSLstd450Length, c->f, xyz);
@@ -340,8 +379,12 @@ static void unlit(Context *c)
                         uint32_t n = input(c, 2);
                         n = make_v4(c, extract(c, n, 0), extract(c, n, 1),
                                     extract(c, n, 2), c->cf[F_ZERO]);
-                        n = transform(c, n, NV_IGRAPH_XF_XFCTX_IMMAT0);
-                        mapped_normal = value(c->w, SpvOpVectorShuffle, c->v3, 5, n, n, 0u, 1u, 2u);
+                        if (c->state->fixed_function.skinning == SKINNING_OFF) {
+                            n = transform(c, n, NV_IGRAPH_XF_XFCTX_IMMAT0);
+                            mapped_normal = value(c->w, SpvOpVectorShuffle, c->v3, 5, n, n, 0u, 1u, 2u);
+                        } else {
+                            mapped_normal = skinned(c, n, true);
+                        }
                         if (c->state->fixed_function.normalization) {
                             mapped_normal = ext1(c, GLSLstd450Normalize, c->v3, mapped_normal);
                         }
@@ -405,11 +448,12 @@ static void unlit(Context *c)
         c->o[9 + t] = v;
     }
     if (c->state->point_params_enable) {
-        if (!eye_position) {
-            eye_position = transform(c, input(c, 0), NV_IGRAPH_XF_XFCTX_MMAT0);
+        uint32_t point_position = eye_position;
+        if (!point_position || c->state->fixed_function.skinning != SKINNING_OFF) {
+            point_position = transform(c, input(c, 0), NV_IGRAPH_XF_XFCTX_MMAT0);
         }
-        /* The reference uses homogeneous vec4 length, not xyz distance. */
-        uint32_t distance = ext1(c, GLSLstd450Length, c->f, eye_position);
+        /* Point distance uses original position * matrix0, even with skinning. */
+        uint32_t distance = ext1(c, GLSLstd450Length, c->f, point_position);
         unsigned member = 7 + (!c->opts.push_constants && c->state->uniform_attrs != 0)
                             + needs_texgen_viewer(c->state);
         uint32_t p0 = point_parameter(c, member, 0), p1 = point_parameter(c, member, 1);
@@ -856,6 +900,10 @@ static void emit(Writer *w, const VshState *state, SpvVshOptions opts)
     used[NV2A_VERTEXSHADER_CONSTANTS] = true;
     if (state->is_fixed_function) {
         used[NV_IGRAPH_XF_XFCTX_VPOFF] = true;
+        unsigned bones = skin_matrices(state->fixed_function.skinning);
+        for (unsigned b = 0; b < bones; b++) {
+            for (unsigned j = 0; j < 4; j++) { used[NV_IGRAPH_XF_XFCTX_MMAT0 + b * 8 + j] = true; }
+        }
         if (state->fog_enable) {
             enum VshFoggen gen = state->fixed_function.foggen;
             if (gen == FOGGEN_PLANAR || gen == FOGGEN_ABS_PLANAR) {
@@ -879,7 +927,9 @@ static void emit(Writer *w, const VshState *state, SpvVshOptions opts)
                 enum VshTexgen mode = state->fixed_function.texgen[t][a];
                 if (mode == TEXGEN_EYE_LINEAR || mode == TEXGEN_OBJECT_LINEAR) { used[planes[t] + a] = true; }
                 if (mode == TEXGEN_NORMAL_MAP || mode == TEXGEN_REFLECTION_MAP || mode == TEXGEN_SPHERE_MAP) {
-                    for (unsigned j = 0; j < 4; j++) { used[NV_IGRAPH_XF_XFCTX_IMMAT0 + j] = true; }
+                    for (unsigned b = 0; b < (bones ? bones : 1); b++) {
+                        for (unsigned j = 0; j < 4; j++) { used[NV_IGRAPH_XF_XFCTX_IMMAT0 + b * 8 + j] = true; }
+                    }
                 }
                 if (mode == TEXGEN_EYE_LINEAR || mode == TEXGEN_REFLECTION_MAP || mode == TEXGEN_SPHERE_MAP) {
                     for (unsigned j = 0; j < 4; j++) { used[NV_IGRAPH_XF_XFCTX_MMAT0 + j] = true; }

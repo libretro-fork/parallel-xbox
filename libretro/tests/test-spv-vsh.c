@@ -70,7 +70,7 @@ int main(int argc, char **argv)
 {
     assert(argc == 2);check_caps();
     unsigned total = 0;
-    for (unsigned i = 0; i < 11152; i++) {
+    for (unsigned i = 0; i < 12688; i++) {
         VshState state;
         unsigned base=i%1120;
         make_case(&state, base);
@@ -126,6 +126,11 @@ int main(int argc, char **argv)
    }
   }
   if(i>=10128)state.point_params_enable=true;
+  if(i>=11152){
+   unsigned f=i-11152;
+   state.fixed_function.skinning=1+f/256;
+   state.point_params_enable=!!(f&32);
+  }
         SpvVshOptions opts = { .spirv_1_6 = !!(i & 1),
                               .push_constants = !!(i & 4), .ubo_binding = i % 3,
                               .preserve_float32 = i>=1120 || !!(i&8) };
@@ -193,10 +198,13 @@ int main(int argc, char **argv)
         bool needs_eye=state.is_fixed_function && state.fog_enable && state.fixed_function.foggen>=FOGGEN_RADIAL && state.fixed_function.foggen<=FOGGEN_ABS_PLANAR;
         if(state.is_fixed_function)for(unsigned t=0;t<4;t++)for(unsigned a=0;a<4;a++)needs_eye|=state.fixed_function.texgen[t][a]==TEXGEN_EYE_LINEAR;
         needs_eye|=viewer || (state.is_fixed_function && state.point_params_enable);
-        expected_transforms+=needs_eye;
+        unsigned bones=0;
+        if(state.is_fixed_function){static const unsigned counts[]={0,2,2,3,3,4,4};bones=counts[state.fixed_function.skinning];}
+        expected_transforms+=bones?bones:needs_eye;
+        if(bones && state.point_params_enable)expected_transforms++;
         bool needs_normal=false;
         if(state.is_fixed_function)for(unsigned t=0;t<4;t++)for(unsigned a=0;a<3;a++)needs_normal|=state.fixed_function.texgen[t][a]>=TEXGEN_SPHERE_MAP;
-        expected_transforms+=needs_normal;
+        expected_transforms+=needs_normal*(bones?bones:1);
         /* One existing homogeneous-w guard, plus the lazy viewer choice.
          * Eager Normalize/Select regressed physical-GPU reflection rounding. */
         if(state.is_fixed_function)assert(branches==1u+(unsigned)viewer);
@@ -214,7 +222,7 @@ int main(int argc, char **argv)
         glslc_result_free_words(&b); free(b.uniforms.members); free(b.push_constants.members);
         total++;
     }
-    for (unsigned i = 0; i < 31; i++) {
+    for (unsigned i = 0; i < 32; i++) {
         VshState s; make_case(&s, 0); SpvVshOptions opts = {0};
         if (i == 0) { s.is_fixed_function = true; }
         if (i == 1) { s.fog_enable = true; s.fog_dynamic = false; s.fog_mode = FOG_MODE_ERROR2; }
@@ -233,7 +241,7 @@ int main(int argc, char **argv)
             if(i==12)s.fixed_function.lighting=true;
             if(i==13)s.fixed_function.csv0c_dynamic=true;
             if(i==14)s.fixed_function.texgen_dynamic=true;
-            if(i==15)s.fixed_function.skinning=SKINNING_1WEIGHTS;
+            if(i==15)s.fixed_function.skinning=(enum VshSkinning)-1;
             if(i==16)s.fog_dynamic=true;
             if(i==17){s.fog_enable=true;s.fixed_function.foggen=(enum VshFoggen)5;}
             if(i==18){s.point_params_enable=true;opts.preserve_float32=false;}
@@ -243,10 +251,11 @@ int main(int argc, char **argv)
             if(i>=22 && i<28){s.fog_enable=true;s.fog_mode=i<25?FOG_MODE_EXP2:FOG_MODE_EXP2_ABS;s.fixed_function.foggen=FOGGEN_RADIAL+(i-22)%3;}
         }
         if(i>=28){s.is_fixed_function=true;opts.preserve_float32=true;s.fixed_function.texgen[0][i==28?0:i==29?2:3]=i==28?(enum VshTexgen)-1:i==29?TEXGEN_SPHERE_MAP:TEXGEN_REFLECTION_MAP;}
+        if(i==31){s.fixed_function.texgen[0][3]=TEXGEN_DISABLE;s.fixed_function.skinning=(enum VshSkinning)7;}
         GlslcResult result; memset(&result, 0xa5, sizeof(result)); allocations = 0;
         assert(!pgraph_spv_vsh(&s, opts, &result));
         assert(!allocations && !result.words && !result.uniforms.members && !result.push_constants.members);
     }
-    printf("Direct VSH: %u deterministic native-module/owned-layout/poisoned-key cases; thirty-one allocation-free unsupported paths; 512 device-capability/generation checks PASS\n", total);
+    printf("Direct VSH: %u deterministic native-module/owned-layout/poisoned-key cases; thirty-two allocation-free unsupported paths; 512 device-capability/generation checks PASS\n", total);
     return 0;
 }
