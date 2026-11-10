@@ -67,12 +67,12 @@ may bypass translation; a warm driver cache is a separate compilation milestone.
 
 ## Regression coverage and qualification
 
-- `test-spv-vsh.py`: 2,752 deterministic SPIR-V modules, final-owner allocation
-  counts, poisoned source keys, twenty-one allocation-free unsupported paths, UBSan and
+- `test-spv-vsh.py`: 3,712 deterministic SPIR-V modules, final-owner allocation
+  counts, poisoned source keys, twenty-eight allocation-free unsupported paths, UBSan and
   spirv-val. Both SPIR-V 1.5 and 1.6 targets are covered. Extracted native device
   setup is checked across 512 API/property/generation cases, including stale
   target reset and zero queries on older APIs.
-- `test-spv-vsh-gpu.py`: 4,160 programs / 6,789,120 scalar outputs compared with
+- `test-spv-vsh-gpu.py`: 5,120 programs / 8,355,840 scalar outputs compared with
   the production GLSL generator/compiler using Vulkan transform feedback. It
   captures all user outputs, position and point size before clipping; numerical
   differences fail (NaN payload identity is not required). It exercises opcode
@@ -122,8 +122,8 @@ requires forced invalidation. Legacy non-point modules retain their prior words.
 ## Unlit fixed-function subset
 
 The direct subset requires lighting off, skinning off, static CSV0_C and texgen,
-all coordinate texgen modes disabled, fog/dynamic fog off and distance-based
-point parameters off. Enabled static texture matrices are supported. Other states
+all coordinate texgen modes disabled, dynamic fog off and distance-based point
+parameters off. Static fog is supported as described below. Enabled static texture matrices are supported. Other states
 retain the GLSL path, including dynamic lighting/texgen/fog and skinned vertices.
 The existing FP32 property gate also applies; no new device query is added.
 
@@ -146,3 +146,30 @@ GPU comparisons link the production fixed-function generator, rather than a
 stand-in, and cover asymmetric/perspective matrices, all sixteen texture-matrix
 masks, viewport offsets, input formats and exceptional input/point-scale values.
 This is new direct-translation coverage, not a cold-play recovery claim.
+
+## Static fixed-function fog
+
+Twenty-four combinations are direct: specular-alpha and explicit fog-coordinate
+sources with all six static curves; radial, planar and absolute-planar sources
+with linear/exponential curves and their absolute variants. Distance is computed
+before projection from the original attribute or the existing model-view matrix.
+Planar distance uses dot(fogPlane.xyz, modelViewPosition.xyz) + fogPlane.w,
+not a homogeneous dot product. The shared static fog postlude applies the curve,
+exceptional-value result and bounds. No runtime fogCtl/foggen switch is emitted.
+
+The first 30-combination physical-GPU run exposed eight one-ULP fog differences
+for transformed-distance quadratic curves. Software Vulkan matched that run.
+The cause is unresolved; no tolerance was relaxed and the failed logs remain.
+All six radial/planar/absolute-planar plus quadratic/absolute-quadratic combinations
+therefore stay on GLSL for every device. Invalid positive and negative foggen
+values are allocation-free misses; an unused foggen value remains ignored when
+fog is disabled. Tests cover this exclusion alongside the supported combinations.
+
+Model-view and fog-plane values are loaded from the existing constant array;
+there is no new uniform member, matrix snapshot, buffer or retained lend. The
+fixed-function key is borrowed only through the two emission passes. All 2,752
+prior fixture modules remain byte-identical. The supported CPU/GPU comparisons
+include all distance sources, input formats, texture-matrix masks, asymmetric
+transforms, exceptional parameters and poisoned fogCtl values. This expands
+translation coverage without changing recipe keys, cache schemas or stutter
+qualification.

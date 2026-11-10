@@ -70,7 +70,7 @@ int main(int argc, char **argv)
 {
     assert(argc == 2);check_caps();
     unsigned total = 0;
-    for (unsigned i = 0; i < 2752; i++) {
+    for (unsigned i = 0; i < 3712; i++) {
         VshState state;
         unsigned base=i%1120;
         make_case(&state, base);
@@ -90,6 +90,12 @@ int main(int argc, char **argv)
             for(unsigned t=0;t<4;t++)state.fixed_function.texture_matrix_enable[t]=!!(i&(1u<<t));
             state.fixed_function.normalization=!!(i&16);state.fixed_function.two_sided=!!(i&32);
         }
+        if(i>=2752){
+            static const unsigned modes[]={FOG_MODE_LINEAR,FOG_MODE_EXP,FOG_MODE_EXP2,FOG_MODE_LINEAR_ABS,FOG_MODE_EXP_ABS,FOG_MODE_EXP2_ABS};
+            unsigned f=(i-2752)%24;state.fog_enable=true;
+            if(f<12){state.fog_mode=modes[f%6];state.fixed_function.foggen=f<6?FOGGEN_SPEC_ALPHA:FOGGEN_FOG_X;}
+            else {static const unsigned linear_exp[]={FOG_MODE_LINEAR,FOG_MODE_EXP,FOG_MODE_LINEAR_ABS,FOG_MODE_EXP_ABS};state.fog_mode=linear_exp[(f-12)%4];state.fixed_function.foggen=FOGGEN_RADIAL+(f-12)/4;}
+        }
         SpvVshOptions opts = { .spirv_1_6 = !!(i & 1),
                               .push_constants = !!(i & 4), .ubo_binding = i % 3,
                               .preserve_float32 = i>=1120 || !!(i&8) };
@@ -104,6 +110,7 @@ int main(int argc, char **argv)
             state.fixed_function.normalization=!state.fixed_function.normalization;
             state.fixed_function.light_dynamic=!state.fixed_function.light_dynamic;
             state.fixed_function.two_sided=!state.fixed_function.two_sided;
+            if(!state.fog_enable)state.fixed_function.foggen=(enum VshFoggen)-1;
         }
         assert(pgraph_spv_vsh(&state, opts, &b));
         assert(a.num_words == b.num_words && !memcmp(a.words, b.words, a.num_words * 4));
@@ -134,6 +141,7 @@ int main(int argc, char **argv)
         assert(control_reads==(unsigned)state.fog_dynamic);
         unsigned expected_transforms=state.is_fixed_function;
         if(state.is_fixed_function)for(unsigned t=0;t<4;t++)expected_transforms+=state.fixed_function.texture_matrix_enable[t];
+        if(state.is_fixed_function && state.fog_enable && state.fixed_function.foggen>=FOGGEN_RADIAL && state.fixed_function.foggen<=FOGGEN_ABS_PLANAR)expected_transforms++;
         assert(matrices==(unsigned)state.is_fixed_function && transforms==expected_transforms);
         memset(&state, 0xa5, sizeof(state));
         assert(!strcmp(a.uniforms.members[0].name, "c"));
@@ -146,7 +154,7 @@ int main(int argc, char **argv)
         glslc_result_free_words(&b); free(b.uniforms.members); free(b.push_constants.members);
         total++;
     }
-    for (unsigned i = 0; i < 21; i++) {
+    for (unsigned i = 0; i < 28; i++) {
         VshState s; make_case(&s, 0); SpvVshOptions opts = {0};
         if (i == 0) { s.is_fixed_function = true; }
         if (i == 1) { s.fog_enable = true; s.fog_dynamic = false; s.fog_mode = FOG_MODE_ERROR2; }
@@ -167,15 +175,17 @@ int main(int argc, char **argv)
             if(i==14)s.fixed_function.texgen_dynamic=true;
             if(i==15)s.fixed_function.skinning=SKINNING_1WEIGHTS;
             if(i==16)s.fog_dynamic=true;
-            if(i==17)s.fog_enable=true;
+            if(i==17){s.fog_enable=true;s.fixed_function.foggen=(enum VshFoggen)5;}
             if(i==18)s.point_params_enable=true;
             if(i==19)s.fixed_function.texgen[1][2]=TEXGEN_NORMAL_MAP;
             if(i==20)s.compressed_attrs=s.swizzle_attrs=2;
+            if(i==21){s.fog_enable=true;s.fixed_function.foggen=(enum VshFoggen)-1;}
+            if(i>=22){s.fog_enable=true;s.fog_mode=i<25?FOG_MODE_EXP2:FOG_MODE_EXP2_ABS;s.fixed_function.foggen=FOGGEN_RADIAL+(i-22)%3;}
         }
         GlslcResult result; memset(&result, 0xa5, sizeof(result)); allocations = 0;
         assert(!pgraph_spv_vsh(&s, opts, &result));
         assert(!allocations && !result.words && !result.uniforms.members && !result.push_constants.members);
     }
-    printf("Direct VSH: %u deterministic native-module/owned-layout/poisoned-key cases; twenty-one allocation-free unsupported paths; 512 device-capability/generation checks PASS\n", total);
+    printf("Direct VSH: %u deterministic native-module/owned-layout/poisoned-key cases; twenty-eight allocation-free unsupported paths; 512 device-capability/generation checks PASS\n", total);
     return 0;
 }

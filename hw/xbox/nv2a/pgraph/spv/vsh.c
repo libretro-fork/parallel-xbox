@@ -8,6 +8,7 @@ enum {
     GLSLstd450Trunc = 3, GLSLstd450FAbs = 4, GLSLstd450Floor = 8,
     GLSLstd450Exp2 = 29, GLSLstd450Log2 = 30, GLSLstd450InverseSqrt = 32,
     GLSLstd450FMin = 37, GLSLstd450FMax = 40, GLSLstd450FClamp = 43,
+    GLSLstd450Length = 66,
 };
 #include "vsh.h"
 
@@ -100,8 +101,15 @@ bool pgraph_spv_vsh_supported(const VshState *s, SpvVshOptions opts)
     if (s->is_fixed_function) {
         const FixedFunctionVshState *ff = &s->fixed_function;
         if (!opts.preserve_float32 || s->point_params_enable || s->fog_dynamic ||
-            s->fog_enable || ff->lighting || ff->csv0c_dynamic ||
+            (s->fog_enable && (unsigned)ff->foggen > FOGGEN_FOG_X) ||
+            ff->lighting || ff->csv0c_dynamic ||
             ff->texgen_dynamic || ff->skinning != SKINNING_OFF) {
+            return false;
+        }
+        /* Quadratic curves fed by transformed distances still differ by one
+         * ULP on physical-GPU comparisons. Preserve the reference route. */
+        if (s->fog_enable && (s->fog_mode == FOG_MODE_EXP2 || s->fog_mode == FOG_MODE_EXP2_ABS) &&
+            ff->foggen >= FOGGEN_RADIAL && ff->foggen <= FOGGEN_ABS_PLANAR) {
             return false;
         }
         for (unsigned t = 0; t < 4; t++) {
@@ -264,6 +272,29 @@ static void unlit(Context *c)
     c->o[0] = transform(c, input(c, 0), NV_IGRAPH_XF_XFCTX_CMAT0);
     c->o[3] = input(c, 3); c->o[4] = input(c, 4);
     c->o[7] = input(c, 7); c->o[8] = input(c, 8);
+    if (c->state->fog_enable) {
+        uint32_t distance;
+        enum VshFoggen gen = c->state->fixed_function.foggen;
+        if (gen == FOGGEN_SPEC_ALPHA) {
+            distance = clamp(c, c->f, extract(c, input(c, 4), 3), c->cf[F_ZERO], c->cf[F_ONE]);
+        } else if (gen == FOGGEN_FOG_X) {
+            distance = extract(c, input(c, 5), 0);
+        } else {
+            uint32_t position = transform(c, input(c, 0), NV_IGRAPH_XF_XFCTX_MMAT0);
+            uint32_t xyz = value(c->w, SpvOpVectorShuffle, c->v3, 5, position, position, 0u, 1u, 2u);
+            if (gen == FOGGEN_RADIAL) {
+                distance = ext1(c, GLSLstd450Length, c->f, xyz);
+            } else {
+                uint32_t plane = constant(c, NV_IGRAPH_XF_XFCTX_FOG);
+                uint32_t normal = value(c->w, SpvOpVectorShuffle, c->v3, 5, plane, plane, 0u, 1u, 2u);
+                distance = add(c, binary(c, SpvOpDot, c->f, normal, xyz), extract(c, plane, 3));
+                if (gen == FOGGEN_ABS_PLANAR) {
+                    distance = ext1(c, GLSLstd450FAbs, c->f, distance);
+                }
+            }
+        }
+        c->o[5] = splat(c, distance);
+    }
     for (unsigned t = 0; t < 4; t++) {
         uint32_t v = input(c, 9 + t);
         if (c->state->fixed_function.texture_matrix_enable[t]) {
@@ -688,6 +719,15 @@ static void emit(Writer *w, const VshState *state, SpvVshOptions opts)
     used[NV2A_VERTEXSHADER_CONSTANTS] = true;
     if (state->is_fixed_function) {
         used[NV_IGRAPH_XF_XFCTX_VPOFF] = true;
+        if (state->fog_enable) {
+            enum VshFoggen gen = state->fixed_function.foggen;
+            if (gen == FOGGEN_PLANAR || gen == FOGGEN_ABS_PLANAR) {
+                used[NV_IGRAPH_XF_XFCTX_FOG] = true;
+            }
+            if (gen >= FOGGEN_RADIAL && gen <= FOGGEN_ABS_PLANAR) {
+                for (unsigned j = 0; j < 4; j++) { used[NV_IGRAPH_XF_XFCTX_MMAT0 + j] = true; }
+            }
+        }
         for (unsigned j = 0; j < 4; j++) { used[NV_IGRAPH_XF_XFCTX_CMAT0 + j] = true; }
         static const unsigned bases[] = {
             NV_IGRAPH_XF_XFCTX_T0MAT, NV_IGRAPH_XF_XFCTX_T1MAT,

@@ -154,7 +154,7 @@ int main(void) {
  VkPipelineMultisampleStateCreateInfo ms={.sType=VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO,.rasterizationSamples=VK_SAMPLE_COUNT_1_BIT};
  uint32_t reference[VERTICES*60];unsigned compared=0,failures=0;
  clock_t reference_ticks=0,direct_ticks=0;size_t reference_words=0,direct_words=0;
- for(unsigned test=0;test<4160;test++) {
+ for(unsigned test=0;test<5120;test++) {
   VshState state={0};state.smooth_shading=test&1;state.fog_dynamic=true;state.specular_enable=test&2;state.ignore_specular_alpha=test&4;
   unsigned variant=(test%1568)/112,m=test%14,l=(test%112)/14;state.programmable.program_length=5;
   token(state.programmable.program_data[0],MAC_MOV,ILU_NOP,0,0,false,false);
@@ -216,6 +216,12 @@ int main(void) {
    if(style==2){state.uniform_attrs=props.limits.maxPushConstantsSize>=256?0xffff:0xff;opts.push_constants=true;}
    if(style==3){state.compressed_attrs=(1<<0)|(1<<9)|(1<<11);state.swizzle_attrs=(1<<3)|(1<<10)|(1<<12);}
    if(style==4)state.uniform_attrs=0xffff;
+   if(test>=4160){
+    static const unsigned modes[]={FOG_MODE_LINEAR,FOG_MODE_EXP,FOG_MODE_EXP2,FOG_MODE_LINEAR_ABS,FOG_MODE_EXP_ABS,FOG_MODE_EXP2_ABS};
+    unsigned fog=(test-4160)%24;state.fog_enable=true;
+    if(fog<12){state.fog_mode=modes[fog%6];state.fixed_function.foggen=fog<6?FOGGEN_SPEC_ALPHA:FOGGEN_FOG_X;}
+    else {static const unsigned linear_exp[]={FOG_MODE_LINEAR,FOG_MODE_EXP,FOG_MODE_LINEAR_ABS,FOG_MODE_EXP_ABS};state.fog_mode=linear_exp[(fog-12)%4];state.fixed_function.foggen=FOGGEN_RADIAL+(fog-12)/4;}
+   }
   }
   for(unsigned a=0;a<16;a++)attrs[a].format=state.compressed_attrs&(1u<<a)?VK_FORMAT_R32_SINT:VK_FORMAT_R32G32B32A32_SFLOAT;
   opts.preserve_float32=fp.shaderSignedZeroInfNanPreserveFloat32;
@@ -254,6 +260,15 @@ int main(void) {
    values.c[NV_IGRAPH_XF_XFCTX_VPOFF][1]=1.1875f;
    values.c[NV_IGRAPH_XF_XFCTX_VPOFF][2]=INFINITY;
    values.c[NV_IGRAPH_XF_XFCTX_VPOFF][3]=NAN;
+   if(state.fog_enable){
+    const float params[]={-.01f,0.0f,-0.0f,.5f,INFINITY,-INFINITY,NAN,0x1p-100f};
+    values.fogCtl[0]=(f*13u)&127u; /* Must not select static fog or foggen. */
+    values.fogParam[0][0]=params[(f/5)%8];values.fogParam[0][1]=params[(f/40)%8];
+    values.c[NV_IGRAPH_XF_XFCTX_FOG][0]=.25f;
+    values.c[NV_IGRAPH_XF_XFCTX_FOG][1]=-.5f;
+    values.c[NV_IGRAPH_XF_XFCTX_FOG][2]=.125f;
+    values.c[NV_IGRAPH_XF_XFCTX_FOG][3]=params[(f/80)%8];
+   }
   }
   unsigned packed=0;for(unsigned a=0;a<16;a++)if(state.uniform_attrs&(1u<<a)) {
    for(unsigned k=0;k<4;k++)values.inlineValue[packed][k]=a==0?(k==3?1:k==2?100:40):(a==15?2:((int)(a+k)%7-3)*.5f);
