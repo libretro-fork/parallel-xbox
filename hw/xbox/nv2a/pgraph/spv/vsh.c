@@ -161,7 +161,8 @@ bool pgraph_spv_vsh_supported(const VshState *s, SpvVshOptions opts)
                     return false;
                 }
             }
-            if (field(t[3], 12, 4)) {
+            /* A mux selecting a NOP pipe emits no output reference. */
+            if (output_write && (scalar_output ? l : m)) {
                 if (!field(t[3], 11, 1) || output == 1 || output == 2 ||
                     output > 12 || (m == MAC_ARL && !field(t[3], 2, 1))) {
                     return false;

@@ -135,10 +135,24 @@ static unsigned masked_operand(uint32_t t[4], unsigned variant, bool invalid)
     return arg;
 }
 
+/* The output mux selects the NOP pipe; temporary/ARL writes remain live. */
+static void unselected_output(uint32_t t[4], unsigned variant, bool invalid)
+{
+    unsigned pipe=(variant/21)%2, dest=variant%21;
+    unsigned m=pipe?0:1+(variant/42)%13, l=pipe?1+(variant/42)%7:0;
+    token(t,m,l,m==MAC_ARL?15:1,0,!pipe,false);
+    t[3]|=15u<<12;
+    if(invalid){
+        unsigned output=dest<5?(dest<2?dest+1:dest+11):dest-5;
+        t[3]=(t[3]&~(15u<<3))|(output<<3);
+        if(dest>=5)t[3]&=~(1u<<11);
+    }
+}
+
 int main(int argc, char **argv) {
  assert(argc==1 || argc==3);
- unsigned first=argc==3?strtoul(argv[1],NULL,10):0, limit=argc==3?strtoul(argv[2],NULL,10):38416;
- assert(first<limit && limit<=38416);
+ unsigned first=argc==3?strtoul(argv[1],NULL,10):0, limit=argc==3?strtoul(argv[2],NULL,10):39440;
+ assert(first<limit && limit<=39440);
  printf("Fixture range [%u, %u)\n",first,limit);
  const bool validated=getenv("NO_VALIDATION")==NULL;
  const char *layer="VK_LAYER_KHRONOS_validation",*debug=VK_EXT_DEBUG_UTILS_EXTENSION_NAME;
@@ -374,6 +388,15 @@ int main(int argc, char **argv) {
    masked_operand(state.programmable.program_data[1],f,true);
    token(state.programmable.program_data[2],MAC_MOV,0,0,10,false,false);
    if(f%6==5){uint32_t *next=state.programmable.program_data[2];next[1]=(next[1]&~(255u<<13))|(96u<<13);next[2]=(next[2]&~(3u<<26))|(PARAM_C<<26);next[3]|=2;}
+   token(state.programmable.program_data[3],MAC_MOV,0,0,11,false,false);token(state.programmable.program_data[4],MAC_MOV,0,1,5,false,true);
+   state.smooth_shading=!!(f&16);state.uniform_attrs=f&32?3:0;opts.push_constants=!!(f&64);
+  }
+  if(test>=38416){
+   unsigned f=test-38416;memset(&state,0,sizeof(state));state.programmable.program_length=5;
+   token(state.programmable.program_data[0],MAC_MOV,0,0,0,false,false);
+   unselected_output(state.programmable.program_data[1],f,true);
+   token(state.programmable.program_data[2],MAC_MOV,0,0,10,false,false);
+   if(!((f/21)%2) && 1+(f/42)%13==MAC_ARL){uint32_t *next=state.programmable.program_data[2];next[1]=(next[1]&~(255u<<13))|(96u<<13);next[2]=(next[2]&~(3u<<26))|(PARAM_C<<26);next[3]|=2;}
    token(state.programmable.program_data[3],MAC_MOV,0,0,11,false,false);token(state.programmable.program_data[4],MAC_MOV,0,1,5,false,true);
    state.smooth_shading=!!(f&16);state.uniform_attrs=f&32?3:0;opts.push_constants=!!(f&64);
   }
