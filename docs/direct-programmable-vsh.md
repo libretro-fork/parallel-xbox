@@ -9,9 +9,9 @@ first-use pipeline stutter is fixed or that draws never compile pipelines.
 
 The emitter handles the fourteen MAC and eight ILU encodings, paired writes,
 register/output masks, R12/oPos aliasing, constant addressing, uniform and vertex
-inputs, compressed inputs, BGRA swizzles, dynamic/disabled fog and the Vulkan
-vertex postlude. Unsupported encodings, constant writes, fixed-function shaders,
-static enabled fog and programmed point-size states return to the existing
+inputs, compressed inputs, BGRA swizzles, dynamic/disabled fog, all six valid
+static fog modes and the Vulkan vertex postlude. Unsupported encodings, constant writes, fixed-function shaders,
+invalid static fog modes and programmed point-size states return to the existing
 compiler without allocating an unsuccessful direct result. The selector is
 conservative; it does not replace unknown work with a placeholder.
 
@@ -54,15 +54,16 @@ Shader compiler optimizations and driver pipeline compilation remain separate.
 
 ## Regression coverage and qualification
 
-- `test-spv-vsh.py`: 448 deterministic SPIR-V modules, final-owner allocation
-  counts, poisoned source keys, nine allocation-free unsupported paths, UBSan and
+- `test-spv-vsh.py`: 1,120 deterministic SPIR-V modules, final-owner allocation
+  counts, poisoned source keys, twelve allocation-free unsupported paths, UBSan and
   spirv-val. Both SPIR-V 1.5 and 1.6 targets are covered.
-- `test-spv-vsh-gpu.py`: 896 programs / 1,462,272 scalar outputs compared with
+- `test-spv-vsh-gpu.py`: 1,568 programs / 2,558,976 scalar outputs compared with
   the production GLSL generator/compiler using Vulkan transform feedback. It
   captures all user outputs, position and point size before clipping; numerical
   differences fail (NaN payload identity is not required). It exercises opcode
   pairs, masks, UBO/push inputs, compressed/BGRA inputs, R12 aliasing, relative
-  constants, fog and postlude flags. Excluded point-size states are checked as
+  constants, dynamic/static fog and postlude flags. Static tests poison fogCtl
+  independently and exercise NaN/Infinity/zero/subnormal distances and parameters. Excluded point-size states are checked as
   selector rejections. Software Vulkan requires validation; an explicitly
   requested physical-GPU run without installed validation layers reports that
   limitation. Missing transform feedback is unqualified.
@@ -80,3 +81,11 @@ text plus compilation versus 27 ms direct; this is not a gameplay latency result
 or an accepted performance baseline. Final logs retain per-run work and CPU-clock
 counts. Gameplay/image/lifecycle evidence is recorded separately in validation
 artifacts. Driver caches remain uncontrolled; cold-play smoothness stays BAD/OPEN.
+
+The static-fog extension adds no allocations, retained payload or file I/O.
+Its six modes select arithmetic during emission, without loading fogCtl or
+emitting a runtime mode switch. Existing layouts stay unchanged. A parent
+comparison confirmed all 448 previously accepted fixture modules remain
+byte-identical; 672 static-fog fixtures are newly accepted. Static fog semantics
+were already part of VshState keys, so existing GLSL modules remain valid and
+there is no cache-schema/key change or forced invalidation.

@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <spirv/unified1/spirv.h>
 #include "hw/xbox/nv2a/pgraph/spv/vsh.h"
 
 static unsigned allocations;
@@ -25,6 +26,7 @@ static void make_case(VshState *s, unsigned variant)
     memset(s, 0, sizeof(*s));
     s->smooth_shading = !!(variant & 1);
     s->fog_dynamic = !!(variant & 2);
+    s->fog_mode = (enum VshFogMode)-1; /* Unused while disabled/dynamic. */
     s->specular_enable = !!(variant & 4);
     s->ignore_specular_alpha = !!(variant & 8);
     s->point_params_enable = false;
@@ -43,9 +45,13 @@ int main(int argc, char **argv)
 {
     assert(argc == 2);
     unsigned total = 0;
-    for (unsigned i = 0; i < 448; i++) {
+    for (unsigned i = 0; i < 1120; i++) {
         VshState state;
         make_case(&state, i);
+        if(i>=448){
+            static const unsigned modes[]={FOG_MODE_LINEAR,FOG_MODE_EXP,FOG_MODE_EXP2,FOG_MODE_LINEAR_ABS,FOG_MODE_EXP_ABS,FOG_MODE_EXP2_ABS};
+            state.fog_dynamic=false;state.fog_enable=true;state.fog_mode=modes[(i-448)/112];
+        }
         SpvVshOptions opts = { .spirv_1_6 = !!(i & 1),
                               .push_constants = !!(i & 4), .ubo_binding = i % 3 };
         GlslcResult a, b;
@@ -63,6 +69,18 @@ int main(int argc, char **argv)
         if (a.push_constants.count) {
             assert(a.push_constants.members[0].dim_a == (size_t)__builtin_popcount(state.uniform_attrs));
         }
+        unsigned switches=0, unsigned_type=0, control_pointer=0, control_reads=0;
+        for(size_t w=5;w<a.num_words;w+=a.words[w]>>16){
+            unsigned op=a.words[w]&65535;
+            if(op==SpvOpSwitch)switches++;
+            if(op==SpvOpTypeInt && a.words[w+2]==32 && !a.words[w+3])unsigned_type=a.words[w+1];
+        }
+        for(size_t w=5;w<a.num_words;w+=a.words[w]>>16)
+            if((a.words[w]&65535)==SpvOpTypePointer && a.words[w+2]==SpvStorageClassUniform && a.words[w+3]==unsigned_type)control_pointer=a.words[w+1];
+        for(size_t w=5;w<a.num_words;w+=a.words[w]>>16)
+            if((a.words[w]&65535)==SpvOpAccessChain && a.words[w+1]==control_pointer)control_reads++;
+        assert(switches==(unsigned)state.fog_dynamic);
+        assert(control_reads==(unsigned)state.fog_dynamic);
         memset(&state, 0xa5, sizeof(state));
         assert(!strcmp(a.uniforms.members[0].name, "c"));
         assert(!strcmp(a.uniforms.members[6].name, "surfaceSize"));
@@ -74,10 +92,10 @@ int main(int argc, char **argv)
         glslc_result_free_words(&b); free(b.uniforms.members); free(b.push_constants.members);
         total++;
     }
-    for (unsigned i = 0; i < 9; i++) {
+    for (unsigned i = 0; i < 12; i++) {
         VshState s; make_case(&s, 0); SpvVshOptions opts = {0};
         if (i == 0) { s.is_fixed_function = true; }
-        if (i == 1) { s.fog_enable = true; s.fog_dynamic = false; }
+        if (i == 1) { s.fog_enable = true; s.fog_dynamic = false; s.fog_mode = FOG_MODE_ERROR2; }
         if (i == 2) { s.programmable.program_length = 0; }
         if (i == 3) { s.programmable.program_data[1][3] &= ~1u; }
         if (i == 4) { s.programmable.program_data[1][1] |= 15u << 21; }
@@ -85,10 +103,13 @@ int main(int argc, char **argv)
         if (i == 6) { s.uniform_attrs = s.compressed_attrs = 1; }
         if (i == 7) { s.programmable.program_data[0][3] &= ~(1u << 11); }
         if (i == 8) { s.point_params_enable = true; }
+        if (i == 9) { s.fog_enable = true; s.fog_mode = FOG_MODE_ERROR6; }
+        if (i == 10) { s.fog_enable = true; s.fog_mode = (enum VshFogMode)8; }
+        if (i == 11) { s.fog_enable = true; s.fog_mode = (enum VshFogMode)-1; }
         GlslcResult result; memset(&result, 0xa5, sizeof(result)); allocations = 0;
         assert(!pgraph_spv_vsh(&s, opts, &result));
         assert(!allocations && !result.words && !result.uniforms.members && !result.push_constants.members);
     }
-    printf("Direct VSH: %u deterministic native-module/owned-layout/poisoned-key cases; nine allocation-free unsupported paths PASS\n", total);
+    printf("Direct VSH: %u deterministic native-module/owned-layout/poisoned-key cases; twelve allocation-free unsupported paths PASS\n", total);
     return 0;
 }

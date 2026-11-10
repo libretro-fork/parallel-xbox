@@ -89,7 +89,9 @@ bool pgraph_spv_vsh_supported(const VshState *s, SpvVshOptions opts)
     /* Programmed point sizes retain the reference path until exceptional
      * point-output behavior has physical-GPU differential coverage. */
     if (s->is_fixed_function || s->point_params_enable || opts.ubo_binding >= 32 ||
-        (s->fog_enable && !s->fog_dynamic) ||
+        (s->fog_enable && !s->fog_dynamic &&
+         ((unsigned)s->fog_mode >= 8 || s->fog_mode == FOG_MODE_ERROR2 ||
+          s->fog_mode == FOG_MODE_ERROR6)) ||
         (s->compressed_attrs & s->uniform_attrs) ||
         (s->swizzle_attrs & (s->uniform_attrs | s->compressed_attrs)) ||
         s->programmable.program_length <= 0 ||
@@ -499,6 +501,30 @@ static void finish(Context *c)
         uint32_t enabled = binary(c, SpvOpINotEqual, c->b,
                                   binary(c, SpvOpBitwiseAnd, c->u, ctl, c->cu[1]), c->cu[0]);
         fog = choose(c, c->f, enabled, fog, c->cf[F_ONE]);
+    } else if (c->state->fog_enable) {
+        /* Specialize only the static mode. Parameter values and distance
+         * still come from uniforms/registers, just as in the GLSL path. */
+        uint32_t param = load_uniform(c, 3, c->v2, c->uniform_v2);
+        uint32_t px = value(c->w, SpvOpCompositeExtract, c->f, 2, param, 0u);
+        uint32_t py = value(c->w, SpvOpCompositeExtract, c->f, 2, param, 1u);
+        uint32_t distance = extract(c, c->o[5], 0);
+        unsigned mode = c->state->fog_mode;
+        if ((mode & 3) == 0) {
+            fog = sub(c, add(c, px, mul(c, distance, py)), c->cf[F_ONE]);
+        } else if ((mode & 3) == 1) {
+            fog = sub(c, add(c, px, ext1(c, GLSLstd450Exp2, c->f,
+                mul(c, mul(c, distance, py), c->cf[F_SIXTEEN]))), c->cf[F_ONEHALF]);
+        } else {
+            uint32_t squared = mul(c, unary(c, SpvOpFNegate, c->f, distance), distance);
+            squared = mul(c, mul(c, mul(c, squared, py), py), c->cf[F_THIRTYTWO]);
+            fog = sub(c, add(c, px, ext1(c, GLSLstd450Exp2, c->f, squared)), c->cf[F_ONEHALF]);
+        }
+        if (mode >= 4) { fog = ext1(c, GLSLstd450FAbs, c->f, fog); }
+        uint32_t special = c->cf[mode == FOG_MODE_LINEAR || mode == FOG_MODE_LINEAR_ABS ||
+                                 mode == FOG_MODE_EXP ? F_ONE : F_ZERO];
+        fog = choose(c, c->f, unary(c, SpvOpIsNan, c->b, fog), special, fog);
+        fog = clamp(c, c->f, fog, c->cf[F_NEGMAX], c->cf[F_MAX]);
+        fog = choose(c, c->f, unary(c, SpvOpIsInf, c->b, distance), special, fog);
     }
     op(c->w, SpvOpStore, 2, c->outputs[4], fog);
     for (unsigned i = 0; i < 4; i++) { op(c->w, SpvOpStore, 2, c->outputs[5 + i], c->o[9 + i]); }

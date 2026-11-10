@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Extend direct Vulkan vertex translation to all six valid static fog modes, preserving absolute-mode and exceptional-distance behavior without a runtime mode switch. Reuse existing uniform/layout owners and final-buffer emission; previously supported direct modules remain byte-identical. Invalid fog modes and programmed point sizes keep their existing fallback.
+
 - Translate supported Vulkan programmable vertex shaders directly from NV2A microcode to SPIR-V, bypassing GLSL text and compiler intermediates. Borrow the existing immutable module key through two emission passes and transfer final words/layout owners without cloning. Fixed-function, programmed-point-size and other unsupported states retain the established compiler. Add CPU ownership/unsupported-state tests and software/physical Vulkan output comparisons; this reduces translation work, while first-use driver PSO stalls remain open.
 
 - Reuse Vulkan fragment libraries across vertex uniform-attribute counts by giving graphics pipelines one compatible layout. Devices already supporting the full 256-byte vertex range use it for layout compatibility; other devices keep their UBO path. Actual push uploads and emitted shaders are unchanged. Reduce boot layout creation from up to eighteen objects to two, with existing renderer-owned lifetimes and no new buffers or payload copies.

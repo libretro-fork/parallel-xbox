@@ -19,4 +19,4 @@ with tempfile.TemporaryDirectory(prefix='direct-vsh-') as tmp:
  if not validator:raise SystemExit('UNQUALIFIED: spirv-val unavailable')
  for file in sorted(d.glob('*.spv')):
   subprocess.run([validator,'--target-env','vulkan1.3',str(file)],check=True,env=env)
- print('448 direct vertex modules validated as Vulkan SPIR-V')
+ print('1120 direct vertex modules validated as Vulkan SPIR-V')

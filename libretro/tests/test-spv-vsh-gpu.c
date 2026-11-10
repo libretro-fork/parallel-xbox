@@ -137,7 +137,7 @@ int main(void) {
  VkPipelineMultisampleStateCreateInfo ms={.sType=VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO,.rasterizationSamples=VK_SAMPLE_COUNT_1_BIT};
  uint32_t reference[VERTICES*60];unsigned compared=0,failures=0;
  clock_t reference_ticks=0,direct_ticks=0;size_t reference_words=0,direct_words=0;
- for(unsigned test=0;test<896;test++) {
+ for(unsigned test=0;test<1568;test++) {
   VshState state={0};state.smooth_shading=test&1;state.fog_dynamic=true;state.specular_enable=test&2;state.ignore_specular_alpha=test&4;
   unsigned variant=test/112,m=test%14,l=(test%112)/14;state.programmable.program_length=5;
   token(state.programmable.program_data[0],MAC_MOV,ILU_NOP,0,0,false,false);
@@ -176,6 +176,13 @@ int main(void) {
    if(m!=MAC_ARL)t[1]|=1u<<8;
    t[2]|=(1u<<25)|(1u<<10);
   }
+  if(variant>=8){
+   static const unsigned modes[]={FOG_MODE_LINEAR,FOG_MODE_EXP,FOG_MODE_EXP2,FOG_MODE_LINEAR_ABS,FOG_MODE_EXP_ABS,FOG_MODE_EXP2_ABS};
+   state.fog_dynamic=false;state.fog_enable=true;state.fog_mode=modes[variant-8];
+   unsigned input_style=(test/14)%4;
+   if(input_style==1 || input_style==2){state.uniform_attrs=3;opts.push_constants=input_style==2;}
+   if(input_style==3){state.compressed_attrs=2;state.swizzle_attrs=4;}
+  }
   for(unsigned a=0;a<16;a++)attrs[a].format=state.compressed_attrs&(1u<<a)?VK_FORMAT_R32_SINT:VK_FORMAT_R32G32B32A32_SFLOAT;
   VshState excluded=state;excluded.point_params_enable=true;
   assert(!pgraph_spv_vsh_supported(&excluded,opts));
@@ -183,6 +190,13 @@ int main(void) {
   MString *text=pgraph_glsl_gen_vsh(&state,(GenVshGlslOptions){.vulkan=true,.use_push_constants_for_uniform_attrs=opts.push_constants});
   GlslcOptions glopts={.emit_layout=true};if(!glslc_compile(GLSLC_STAGE_VERTEX,mstring_get_str(text),&glopts,&modules[0])){fprintf(stderr,"%s\n",modules[0].error);abort();}mstring_unref(text);reference_ticks+=clock()-before;reference_words+=modules[0].num_words;
   VshUniformValues values={0};values.clipRange[0][1]=65535;values.surfaceSize[0][0]=720;values.surfaceSize[0][1]=480;values.pointSizeReg[0]=1;values.pointScale[0]=1;values.fogCtl[0]=1|((test%8)<<1);values.fogParam[0][0]=1.5f;values.fogParam[0][1]=-.01f;
+  if(variant>=8){
+   /* Static fog must ignore the live fogCtl, including its disabled bit. */
+   values.fogCtl[0]=(test*13u)&15u;
+   const float params[]={-.01f,0.0f,-0.0f,.5f,INFINITY,-INFINITY,NAN,0x1p-100f};
+   values.fogParam[0][1]=params[(test/4)%8];
+   values.fogParam[0][0]=params[test%8];
+  }
   for(unsigned i=0;i<192;i++)for(unsigned k=0;k<4;k++)values.c[i][k]=((int)((i*7+k*13)%37)-18)*.125f;
   unsigned packed=0;for(unsigned a=0;a<16;a++)if(state.uniform_attrs&(1u<<a)) {
    for(unsigned k=0;k<4;k++)values.inlineValue[packed][k]=a==0?(k==3?1:k==2?100:40):(a==15?2:((int)(a+k)%7-3)*.5f);
