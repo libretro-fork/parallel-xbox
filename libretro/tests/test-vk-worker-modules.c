@@ -33,14 +33,14 @@ static void vkDestroyShaderModule(unsigned device,unsigned module,void *allocato
 typedef struct {unsigned kind,id,len,opts[4];} ShaderModuleCacheKey;
 typedef struct {unsigned id;} ShaderState;
 typedef ShaderModuleCacheKey MString;
-static bool pgraph_vk_spirv_1_6,vk_spec_push_constants,force_collision;
+static bool pgraph_vk_spirv_1_6,pgraph_vk_preserve_float32,vk_spec_push_constants,force_collision;
 static unsigned compiles;
 static unsigned key_hash_calls;
 static uint64_t fast_hash(const uint8_t *p,size_t n){if(n==sizeof(ShaderModuleCacheKey))key_hash_calls++;uint64_t h=17;if(force_collision)return 7;while(n--)h=h*33+*p++;return h;}
 static MString *vk_module_glsl(const ShaderModuleCacheKey *key){MString *m=malloc(sizeof(*m));assert(m);*m=*key;return m;}
 static const char *mstring_get_str(MString *m){return (const char *)m;}
 static void mstring_unref(MString *m){free(m);}
-static unsigned payload_byte(const ShaderModuleCacheKey *key){return (key->id*13+key->kind+(pgraph_vk_spirv_1_6?111:0))&255;}
+static unsigned payload_byte(const ShaderModuleCacheKey *key){return (key->id*13+key->kind+(pgraph_vk_spirv_1_6?111:0)+(pgraph_vk_preserve_float32?53:0))&255;}
 static ShaderSource *pgraph_vk_compile_shader(unsigned kind,const char *str)
 {
  const ShaderModuleCacheKey *key=(const void *)str;assert(kind==key->kind);compiles++;
@@ -133,6 +133,7 @@ int main(void)
  vk_spec_modules_clear();assert(!vk_spec_module_bytes&&a->words==b->words);pgraph_vk_shader_source_unref(a);assert(((unsigned char *)b->words)[0]==payload_byte(&k));pgraph_vk_shader_source_unref(b);assert(!retro_atomic_load_relaxed_int(&live_sources));
  force_collision=true;a=compile_for_test(&k);k.id++;b=compile_for_test(&k);assert(a!=b);assert(((unsigned char *)a->words)[0]!=payload_byte(&k));pgraph_vk_shader_source_unref(a);pgraph_vk_shader_source_unref(b);vk_spec_modules_clear();force_collision=false;
  a=compile_for_test(&k);pgraph_vk_spirv_1_6=true;b=compile_for_test(&k);assert(a!=b&&((unsigned char *)a->words)[0]!=((unsigned char *)b->words)[0]);pgraph_vk_shader_source_unref(a);pgraph_vk_shader_source_unref(b);vk_spec_modules_clear();
+ a=compile_for_test(&k);pgraph_vk_preserve_float32=true;b=compile_for_test(&k);assert(a!=b&&((unsigned char *)a->words)[0]!=((unsigned char *)b->words)[0]);pgraph_vk_shader_source_unref(a);pgraph_vk_shader_source_unref(b);vk_spec_modules_clear();
  k.len=VK_SPEC_MODULE_BYTES+1;a=compile_for_test(&k);b=compile_for_test(&k);assert(a!=b&&!vk_spec_module_bytes);pgraph_vk_shader_source_unref(a);pgraph_vk_shader_source_unref(b);
  /* Metadata alone can take an otherwise fitting payload over the cap. */
  k.len=VK_SPEC_MODULE_BYTES-sizeof(ShaderSource);a=compile_for_test(&k);b=compile_for_test(&k);assert(a!=b&&a->len>VK_SPEC_MODULE_BYTES&&!vk_spec_module_bytes);pgraph_vk_shader_source_unref(a);pgraph_vk_shader_source_unref(b);

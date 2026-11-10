@@ -1009,6 +1009,7 @@ uint32_t pgraph_vk_get_memory_type(PGRAPHState *pg, uint32_t type_bits,
 
 // glsl.c
 extern bool pgraph_vk_spirv_1_6;
+extern bool pgraph_vk_preserve_float32;
 ShaderSource *pgraph_vk_compile_shader(VkShaderStageFlagBits stage,
                                       const char *glsl_source);
 /* Words are borrowed for the synchronous Vulkan call, never retained. */

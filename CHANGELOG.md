@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Extend direct Vulkan vertex translation to programmed point sizes on devices supporting FP32 signed-zero/Infinity/NaN preservation. Query support once during device setup and emit the required float-control mode, preventing exceptional RSQ/LOG results from being lost during point scaling. Reuse final buffers and native owners; unsupported devices keep GLSL fallback. Include the target property in worker memo identity and add capability, exceptional-value and lifecycle coverage.
+
 - Extend direct Vulkan vertex translation to all six valid static fog modes, preserving absolute-mode and exceptional-distance behavior without a runtime mode switch. Reuse existing uniform/layout owners and final-buffer emission; previously supported direct modules remain byte-identical. Invalid fog modes and programmed point sizes keep their existing fallback.
 
 - Translate supported Vulkan programmable vertex shaders directly from NV2A microcode to SPIR-V, bypassing GLSL text and compiler intermediates. Borrow the existing immutable module key through two emission passes and transfer final words/layout owners without cloning. Fixed-function, programmed-point-size and other unsupported states retain the established compiler. Add CPU ownership/unsupported-state tests and software/physical Vulkan output comparisons; this reduces translation work, while first-use driver PSO stalls remain open.

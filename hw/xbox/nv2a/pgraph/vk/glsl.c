@@ -29,6 +29,7 @@
 
 /* Chosen at device creation (instance.c); SPIR-V 1.5 until then. */
 bool pgraph_vk_spirv_1_6;
+bool pgraph_vk_preserve_float32;
 
 /* Fallback for stages not yet emitted directly as SPIR-V. Compiler state
  * is local to this call; it creates no Vulkan objects. Cache misses may run

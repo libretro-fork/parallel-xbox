@@ -4,7 +4,32 @@
 #include <stdlib.h>
 #include <string.h>
 #include <spirv/unified1/spirv.h>
+#define VK_NO_PROTOTYPES
+#include <vulkan/vulkan.h>
 #include "hw/xbox/nv2a/pgraph/spv/vsh.h"
+
+typedef struct { uint32_t vk_api_version; VkPhysicalDevice physical_device; } PGRAPHVkState;
+static bool pgraph_vk_preserve_float32,cap_support;
+static unsigned cap_queries;
+static void vkGetPhysicalDeviceProperties2(VkPhysicalDevice gpu,VkPhysicalDeviceProperties2 *props)
+{
+    assert(gpu==(VkPhysicalDevice)(uintptr_t)0x111);
+    assert(props->sType==VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2 && props->pNext);
+    VkPhysicalDeviceFloatControlsProperties *controls=props->pNext;
+    assert(controls->sType==VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FLOAT_CONTROLS_PROPERTIES && !controls->pNext);
+    controls->shaderSignedZeroInfNanPreserveFloat32=cap_support;cap_queries++;
+}
+/* DEVICE CAPS */
+static void check_caps(void)
+{
+    for(unsigned generation=0;generation<64;generation++)for(unsigned minor=0;minor<4;minor++)for(unsigned supported=0;supported<2;supported++){
+        PGRAPHVkState r={.vk_api_version=VK_MAKE_VERSION(1,minor,0),.physical_device=(VkPhysicalDevice)(uintptr_t)0x111};
+        cap_support=supported;pgraph_vk_preserve_float32=!supported;
+        unsigned before=cap_queries;init_float_controls(&r);
+        assert(pgraph_vk_preserve_float32==(minor>=2 && supported));
+        assert(cap_queries-before==(unsigned)(minor>=2));
+    }
+}
 
 static unsigned allocations;
 void *vsh_test_allocate(size_t n) { allocations++; return malloc(n); }
@@ -43,17 +68,24 @@ static void make_case(VshState *s, unsigned variant)
 
 int main(int argc, char **argv)
 {
-    assert(argc == 2);
+    assert(argc == 2);check_caps();
     unsigned total = 0;
-    for (unsigned i = 0; i < 1120; i++) {
+    for (unsigned i = 0; i < 2240; i++) {
         VshState state;
-        make_case(&state, i);
-        if(i>=448){
+        unsigned base=i%1120;
+        make_case(&state, base);
+        if(base>=448){
             static const unsigned modes[]={FOG_MODE_LINEAR,FOG_MODE_EXP,FOG_MODE_EXP2,FOG_MODE_LINEAR_ABS,FOG_MODE_EXP_ABS,FOG_MODE_EXP2_ABS};
-            state.fog_dynamic=false;state.fog_enable=true;state.fog_mode=modes[(i-448)/112];
+            state.fog_dynamic=false;state.fog_enable=true;state.fog_mode=modes[(base-448)/112];
+        }
+        if(i>=1120){
+            state.point_params_enable=true;
+            uint32_t *t=state.programmable.program_data[1];
+            t[3]=(t[3]&~(15u<<3))|(6u<<3);
         }
         SpvVshOptions opts = { .spirv_1_6 = !!(i & 1),
-                              .push_constants = !!(i & 4), .ubo_binding = i % 3 };
+                              .push_constants = !!(i & 4), .ubo_binding = i % 3,
+                              .preserve_float32 = i>=1120 || !!(i&8) };
         GlslcResult a, b;
         allocations = 0;
         assert(pgraph_spv_vsh_supported(&state, opts));
@@ -69,16 +101,19 @@ int main(int argc, char **argv)
         if (a.push_constants.count) {
             assert(a.push_constants.members[0].dim_a == (size_t)__builtin_popcount(state.uniform_attrs));
         }
-        unsigned switches=0, unsigned_type=0, control_pointer=0, control_reads=0;
+        unsigned switches=0, unsigned_type=0, control_pointer=0, control_reads=0, preserve_modes=0, preserve_caps=0;
         for(size_t w=5;w<a.num_words;w+=a.words[w]>>16){
             unsigned op=a.words[w]&65535;
             if(op==SpvOpSwitch)switches++;
+            if(op==SpvOpExecutionMode && a.words[w+2]==SpvExecutionModeSignedZeroInfNanPreserve){assert(a.words[w+3]==32);preserve_modes++;}
+            if(op==SpvOpCapability && a.words[w+1]==SpvCapabilitySignedZeroInfNanPreserve)preserve_caps++;
             if(op==SpvOpTypeInt && a.words[w+2]==32 && !a.words[w+3])unsigned_type=a.words[w+1];
         }
         for(size_t w=5;w<a.num_words;w+=a.words[w]>>16)
             if((a.words[w]&65535)==SpvOpTypePointer && a.words[w+2]==SpvStorageClassUniform && a.words[w+3]==unsigned_type)control_pointer=a.words[w+1];
         for(size_t w=5;w<a.num_words;w+=a.words[w]>>16)
             if((a.words[w]&65535)==SpvOpAccessChain && a.words[w+1]==control_pointer)control_reads++;
+        assert(preserve_modes==(unsigned)state.point_params_enable && preserve_caps==preserve_modes);
         assert(switches==(unsigned)state.fog_dynamic);
         assert(control_reads==(unsigned)state.fog_dynamic);
         memset(&state, 0xa5, sizeof(state));
@@ -110,6 +145,6 @@ int main(int argc, char **argv)
         assert(!pgraph_spv_vsh(&s, opts, &result));
         assert(!allocations && !result.words && !result.uniforms.members && !result.push_constants.members);
     }
-    printf("Direct VSH: %u deterministic native-module/owned-layout/poisoned-key cases; twelve allocation-free unsupported paths PASS\n", total);
+    printf("Direct VSH: %u deterministic native-module/owned-layout/poisoned-key cases; twelve allocation-free unsupported paths; 512 device-capability/generation checks PASS\n", total);
     return 0;
 }

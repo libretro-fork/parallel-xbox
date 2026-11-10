@@ -29,6 +29,26 @@
 
 static bool enable_validation = false;
 
+/* Core 1.2 properties need no device feature enable. Conservative fallback on
+ * older APIs, even if a driver exposes an optional extension. Published once
+ * per device before shader workers start; queried with stack-only storage. */
+static void init_float_controls(PGRAPHVkState *r)
+{
+    pgraph_vk_preserve_float32 = false;
+    if (r->vk_api_version < VK_API_VERSION_1_2) {
+        return;
+    }
+    VkPhysicalDeviceFloatControlsProperties controls = {
+        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FLOAT_CONTROLS_PROPERTIES,
+    };
+    VkPhysicalDeviceProperties2 properties = {
+        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2,
+        .pNext = &controls,
+    };
+    vkGetPhysicalDeviceProperties2(r->physical_device, &properties);
+    pgraph_vk_preserve_float32 = controls.shaderSignedZeroInfNanPreserveFloat32;
+}
+
 static char const *const validation_layers[] = {
     "VK_LAYER_KHRONOS_validation",
 };
@@ -592,6 +612,7 @@ static bool create_logical_device(PGRAPHState *pg, Error **errp)
     vkGetPhysicalDeviceFeatures2(r->physical_device, &features2_query);
     r->shader_demote = query_v13 && v13_query.shaderDemoteToHelperInvocation;
     pgraph_vk_spirv_1_6 = r->shader_demote;
+    init_float_controls(r);
     /* Host query reset (core 1.2): a reset recorded in a command buffer acts
      * only when the GPU runs it; a read before then gets the old result. */
     r->host_query_reset = r->vk_api_version >= VK_API_VERSION_1_2 &&
@@ -791,6 +812,7 @@ static bool adopt_frontend_device(PGRAPHState *pg, Error **errp)
     r->host_query_reset = s->host_query_reset;
     r->shader_demote = s->shader_demote;
     pgraph_vk_spirv_1_6 = r->shader_demote;
+    init_float_controls(r);
 
     fprintf(stderr,
             "Vulkan device shared with the frontend: %s, queue family %u (%s)\n",

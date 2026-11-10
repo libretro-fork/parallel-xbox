@@ -925,6 +925,7 @@ static ShaderSource *vk_module_spirv(const ShaderModuleCacheKey *key)
     if (key->kind == VK_SHADER_STAGE_VERTEX_BIT && key->vsh.glsl_opts.vulkan) {
         SpvVshOptions vertex = {
             .spirv_1_6 = pgraph_vk_spirv_1_6,
+            .preserve_float32 = pgraph_vk_preserve_float32,
             .push_constants = key->vsh.glsl_opts.use_push_constants_for_uniform_attrs,
             .ubo_binding = key->vsh.glsl_opts.ubo_binding,
         };
@@ -975,7 +976,7 @@ static ShaderSource *vk_module_spirv(const ShaderModuleCacheKey *key)
 static struct {
     uint64_t hash;
     ShaderModuleCacheKey key;
-    bool spirv_1_6;
+    bool spirv_1_6, preserve_float32;
     ShaderSource *spirv;
 } vk_spec_modules[VK_SPEC_MODULE_SLOTS];
 static size_t vk_spec_module_bytes;
@@ -1009,6 +1010,7 @@ static ShaderSource *vk_spec_compile_module(const ShaderModuleCacheKey *key,
     if (vk_spec_modules[slot].spirv &&
         vk_spec_modules[slot].hash == hash &&
         vk_spec_modules[slot].spirv_1_6 == pgraph_vk_spirv_1_6 &&
+        vk_spec_modules[slot].preserve_float32 == pgraph_vk_preserve_float32 &&
         !memcmp(&vk_spec_modules[slot].key, key, sizeof(*key))) {
         return pgraph_vk_shader_source_ref(vk_spec_modules[slot].spirv);
     }
@@ -1025,6 +1027,7 @@ static ShaderSource *vk_spec_compile_module(const ShaderModuleCacheKey *key,
     vk_spec_modules[slot].hash = hash;
     vk_spec_modules[slot].key = *key;
     vk_spec_modules[slot].spirv_1_6 = pgraph_vk_spirv_1_6;
+    vk_spec_modules[slot].preserve_float32 = pgraph_vk_preserve_float32;
     vk_spec_modules[slot].spirv = pgraph_vk_shader_source_ref(spirv);
     vk_spec_module_bytes += spirv->len;
     return spirv;

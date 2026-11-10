@@ -86,9 +86,10 @@ static unsigned reg(const uint32_t *t, unsigned arg)
 
 bool pgraph_spv_vsh_supported(const VshState *s, SpvVshOptions opts)
 {
-    /* Programmed point sizes retain the reference path until exceptional
-     * point-output behavior has physical-GPU differential coverage. */
-    if (s->is_fixed_function || s->point_params_enable || opts.ubo_binding >= 32 ||
+    /* Point scaling must preserve exceptional RSQ/LOG results. The device
+     * property is queried before worker startup, never on the draw path. */
+    if (s->is_fixed_function || (s->point_params_enable && !opts.preserve_float32) ||
+        opts.ubo_binding >= 32 ||
         (s->fog_enable && !s->fog_dynamic &&
          ((unsigned)s->fog_mode >= 8 || s->fog_mode == FOG_MODE_ERROR2 ||
           s->fog_mode == FOG_MODE_ERROR6)) ||
@@ -559,6 +560,9 @@ static void emit(Writer *w, const VshState *state, SpvVshOptions opts)
     word(w, SpvMagicNumber); word(w, opts.spirv_1_6 ? 0x00010600u : 0x00010500u);
     word(w, 0); word(w, 0); word(w, 0);
     op(w, SpvOpCapability, 1, (uint32_t)SpvCapabilityShader);
+    if (state->point_params_enable) {
+        op(w, SpvOpCapability, 1, (uint32_t)SpvCapabilitySignedZeroInfNanPreserve);
+    }
     op(w, SpvOpExtInstImport, 5, c.ext, 0x4c534c47u, 0x6474732eu, 0x3035342eu, 0u);
     op(w, SpvOpMemoryModel, 2, (uint32_t)SpvAddressingModelLogical, (uint32_t)SpvMemoryModelGLSL450);
     unsigned interfaces = 16 + 13 + 2 + 1 + pc;
@@ -568,6 +572,10 @@ static void emit(Writer *w, const VshState *state, SpvVshOptions opts)
     for (unsigned i = 0; i < 13; i++) { word(w, c.outputs[i]); }
     word(w, c.position); word(w, c.point_size); word(w, c.ubo);
     if (pc) { word(w, c.pc); }
+    if (state->point_params_enable) {
+        op(w, SpvOpExecutionMode, 3, c.main,
+           (uint32_t)SpvExecutionModeSignedZeroInfNanPreserve, 32u);
+    }
     for (unsigned i = 0; i < 16; i++) { op(w, SpvOpDecorate, 3, c.inputs[i], (uint32_t)SpvDecorationLocation, i); }
     for (unsigned i = 0; i < 13; i++) {
         op(w, SpvOpDecorate, 3, c.outputs[i], (uint32_t)SpvDecorationLocation, i);

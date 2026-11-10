@@ -11,16 +11,28 @@ The emitter handles the fourteen MAC and eight ILU encodings, paired writes,
 register/output masks, R12/oPos aliasing, constant addressing, uniform and vertex
 inputs, compressed inputs, BGRA swizzles, dynamic/disabled fog, all six valid
 static fog modes and the Vulkan vertex postlude. Unsupported encodings, constant writes, fixed-function shaders,
-invalid static fog modes and programmed point-size states return to the existing
+invalid static fog modes and point-size states without the required FP32 device
+support return to the existing
 compiler without allocating an unsuccessful direct result. The selector is
 conservative; it does not replace unknown work with a placeholder.
 
-An initial expanded RTX 5090 transform-feedback comparison found sixteen
-exceptional RSQ/LOG point-size differences. Explicit special-case control flow
-reduced that to eight, with unstable reference point-size values. Software
-Vulkan matched both versions. The cause is unresolved: do not call this a driver
-bug or accept those mismatches. All programmed point-size states remain excluded.
-The failed logs are retained with the local validation artifacts.
+Initial RTX 5090 comparisons exposed exceptional RSQ/LOG point-size differences.
+Explicit arithmetic control flow reduced sixteen differences to eight, but did
+not resolve them. Mirroring point stores to a regular output also failed. A
+controlled experiment requesting SignedZeroInfNanPreserve(32) for both modules
+removed every difference, with no arithmetic rewrite. The failed logs remain
+retained; this is not evidence of a driver defect.
+
+Vulkan permits NotInf/NotNaN assumptions when the entry point does not request
+preservation: [floating-point environment](https://docs.vulkan.org/spec/latest/appendices/spirvenv.html).
+Direct point shaders now request that environment only when the physical device
+reports shaderSignedZeroInfNanPreserveFloat32 under core Vulkan 1.2 or later.
+Both owned and frontend-shared device setup query the property once, before
+workers start, using stack storage. Older APIs or unsupported properties retain
+the existing compiler fallback. Other direct modules do not acquire this mode.
+The mode constrains driver optimization for exceptional values; it is a
+correctness requirement, not a promise of cheaper GPU arithmetic or lower frame
+latency. Existing first-use PSO stalls remain open.
 
 ## Ownership and work
 
@@ -45,27 +57,34 @@ GLSL compiler offsets. Compact inline attributes retain their existing packing.
 
 ## Compatibility decision
 
-Module/pipeline identity and consumed semantics are unchanged. Existing cached
-GLSL-generated modules remain valid, including their own reflected layouts.
-There is no cache-key/schema bump or forced invalidation to make the new path
-appear faster. Warm caches may bypass emission entirely. Newly emitted modules
-carry their own layouts through the existing owner and disk-cache machinery.
-Shader compiler optimizations and driver pipeline compilation remain separate.
+State-recipe keys and serialized cache schemas are unchanged. Non-point modules
+retain their prior words. Point modules now explicitly define their floating-
+point environment; the worker memo includes the new target property. Module and
+pipeline owners remain per-device and retain their generation retirement rules.
+Disk seeds contain state recipes, and driver caches identify the resulting shader
+words themselves. There is no forced cache invalidation. Warm in-process caches
+may bypass translation; a warm driver cache is a separate compilation milestone.
 
 ## Regression coverage and qualification
 
-- `test-spv-vsh.py`: 1,120 deterministic SPIR-V modules, final-owner allocation
+- `test-spv-vsh.py`: 2,240 deterministic SPIR-V modules, final-owner allocation
   counts, poisoned source keys, twelve allocation-free unsupported paths, UBSan and
-  spirv-val. Both SPIR-V 1.5 and 1.6 targets are covered.
-- `test-spv-vsh-gpu.py`: 1,568 programs / 2,558,976 scalar outputs compared with
+  spirv-val. Both SPIR-V 1.5 and 1.6 targets are covered. Extracted native device
+  setup is checked across 512 API/property/generation cases, including stale
+  target reset and zero queries on older APIs.
+- `test-spv-vsh-gpu.py`: 3,136 programs / 5,117,952 scalar outputs compared with
   the production GLSL generator/compiler using Vulkan transform feedback. It
   captures all user outputs, position and point size before clipping; numerical
   differences fail (NaN payload identity is not required). It exercises opcode
   pairs, masks, UBO/push inputs, compressed/BGRA inputs, R12 aliasing, relative
   constants, dynamic/static fog and postlude flags. Static tests poison fogCtl
-  independently and exercise NaN/Infinity/zero/subnormal distances and parameters. Excluded point-size states are checked as
-  selector rejections. Software Vulkan requires validation; an explicitly
-  requested physical-GPU run without installed validation layers reports that
+  independently and exercise NaN/Infinity/zero/subnormal distances and parameters.
+  Point shaders are compared against production GLSL under the same defined
+  FP32 preservation mode, with masked writes and zero/negative/finite/Inf/NaN
+  scale values. The reference test adds only capability/execution-mode
+  declarations; its arithmetic and stores are unchanged. Unsupported devices
+  are checked as selector rejections. Software Vulkan requires validation; an
+  explicitly requested physical-GPU run without installed validation layers reports that
   limitation. Missing transform feedback is unqualified.
 - Existing worker/module tests additionally exercise 1,024 source-owner moves,
   optional layout owners, prefix views, exact retained pointers/bytes and layout
@@ -89,3 +108,13 @@ comparison confirmed all 448 previously accepted fixture modules remain
 byte-identical; 672 static-fog fixtures are newly accepted. Static fog semantics
 were already part of VshState keys, so existing GLSL modules remain valid and
 there is no cache-schema/key change or forced invalidation.
+
+The point-size extension uses the same count/write key lend and final word and
+layout allocations. Its float-control declarations add six words, not another
+buffer. All 1,120 prior fixture modules remain byte-identical even when the new
+host property is true. Worker memo identity includes this target property,
+preventing reuse across changed compilation environments; target changes occur
+only at quiescent device setup. Native module/pipeline owners remain per-device.
+There is no serialized recipe key/schema change. Existing disk seeds store state
+recipes, while driver caches identify the new shader words themselves; neither
+requires forced invalidation. Legacy non-point modules retain their prior words.

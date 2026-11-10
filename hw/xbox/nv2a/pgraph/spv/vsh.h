@@ -7,6 +7,7 @@
 
 typedef struct SpvVshOptions {
     bool spirv_1_6, push_constants;
+    bool preserve_float32; /* Device supports SignedZeroInfNanPreserve(32). */
     unsigned ubo_binding;
 } SpvVshOptions;
 

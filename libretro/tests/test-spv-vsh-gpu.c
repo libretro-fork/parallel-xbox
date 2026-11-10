@@ -29,6 +29,19 @@ static VKAPI_ATTR VkBool32 VKAPI_CALL validation(VkDebugUtilsMessageSeverityFlag
 }
 /* Test-only TF decorations capture stage outputs before clipping/rasterization.
  * No semantic instruction, result ID or arithmetic is changed. */
+/* Test reference only: request the same defined FP32 environment as the
+ * direct point shader. Arithmetic, stores and metadata remain unchanged. */
+static uint32_t *preserve_float(const GlslcResult *r,size_t *length) {
+ *length=r->num_words+6;uint32_t *out=malloc(*length*4);assert(out);size_t n=0;bool cap=false;
+ for(size_t p=0;p<5;p++)out[n++]=r->words[p];
+ for(size_t p=5;p<r->num_words;){const uint32_t *a=r->words+p;unsigned op=a[0]&65535,wc=a[0]>>16;
+  if(!cap && op!=SpvOpCapability){out[n++]=(2u<<16)|SpvOpCapability;out[n++]=SpvCapabilitySignedZeroInfNanPreserve;cap=true;}
+  for(unsigned i=0;i<wc;i++)out[n++]=a[i];
+  if(op==SpvOpEntryPoint){out[n++]=(4u<<16)|SpvOpExecutionMode;out[n++]=a[2];out[n++]=SpvExecutionModeSignedZeroInfNanPreserve;out[n++]=32;}
+  p+=wc;
+ }
+ assert(n==*length);return out;
+}
 static uint32_t *xfb(const GlslcResult *r,size_t *length) {
  uint32_t vars[15]={0},entry=0,block=0,members[2]={0};size_t annotation=0,execution=0,capability=5;
  for(size_t p=5;p<r->num_words;p+=r->words[p]>>16) {
@@ -103,6 +116,10 @@ int main(void) {
  VkDebugUtilsMessengerEXT messenger=VK_NULL_HANDLE;if(validated){assert(create&&destroy);CHECK(create(instance,&mi,NULL,&messenger));}
  uint32_t n=1;VkPhysicalDevice gpu;CHECK(vkEnumeratePhysicalDevices(instance,&n,&gpu));vkGetPhysicalDeviceMemoryProperties(gpu,&memory_properties);
  VkPhysicalDeviceProperties props;vkGetPhysicalDeviceProperties(gpu,&props);puts(props.deviceName);
+ VkPhysicalDeviceFloatControlsProperties fp={.sType=VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FLOAT_CONTROLS_PROPERTIES};
+ VkPhysicalDeviceProperties2 pp={.sType=VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2,.pNext=&fp};vkGetPhysicalDeviceProperties2(gpu,&pp);
+ if(!fp.shaderSignedZeroInfNanPreserveFloat32){fputs("UNQUALIFIED: FP32 exceptional-value preservation unavailable\n",stderr);return 2;}
+
  VkPhysicalDeviceTransformFeedbackFeaturesEXT tf={.sType=VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_TRANSFORM_FEEDBACK_FEATURES_EXT};
  VkPhysicalDeviceFeatures2 features={.sType=VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2,.pNext=&tf};vkGetPhysicalDeviceFeatures2(gpu,&features);
  if(!tf.transformFeedback){fputs("UNQUALIFIED: transform feedback unavailable\n",stderr);return 2;}
@@ -137,9 +154,9 @@ int main(void) {
  VkPipelineMultisampleStateCreateInfo ms={.sType=VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO,.rasterizationSamples=VK_SAMPLE_COUNT_1_BIT};
  uint32_t reference[VERTICES*60];unsigned compared=0,failures=0;
  clock_t reference_ticks=0,direct_ticks=0;size_t reference_words=0,direct_words=0;
- for(unsigned test=0;test<1568;test++) {
+ for(unsigned test=0;test<3136;test++) {
   VshState state={0};state.smooth_shading=test&1;state.fog_dynamic=true;state.specular_enable=test&2;state.ignore_specular_alpha=test&4;
-  unsigned variant=test/112,m=test%14,l=(test%112)/14;state.programmable.program_length=5;
+  unsigned variant=(test%1568)/112,m=test%14,l=(test%112)/14;state.programmable.program_length=5;
   token(state.programmable.program_data[0],MAC_MOV,ILU_NOP,0,0,false,false);
   token(state.programmable.program_data[1],m,l,m==MAC_ARL?15:1,9,!!(test&1),false);
   token(state.programmable.program_data[2],MAC_MOV,ILU_NOP,0,10,false,false);
@@ -184,12 +201,22 @@ int main(void) {
    if(input_style==3){state.compressed_attrs=2;state.swizzle_attrs=4;}
   }
   for(unsigned a=0;a<16;a++)attrs[a].format=state.compressed_attrs&(1u<<a)?VK_FORMAT_R32_SINT:VK_FORMAT_R32G32B32A32_SFLOAT;
+  state.point_params_enable=test>=1568;
+  if(state.point_params_enable && variant==1 && m!=MAC_ARL){
+   uint32_t *t=state.programmable.program_data[1];t[3]=(t[3]&~(15u<<3))|(6u<<3);
+  }
+  opts.preserve_float32=fp.shaderSignedZeroInfNanPreserveFloat32;
   VshState excluded=state;excluded.point_params_enable=true;
-  assert(!pgraph_spv_vsh_supported(&excluded,opts));
+  SpvVshOptions unavailable=opts;unavailable.preserve_float32=false;
+  assert(!pgraph_spv_vsh_supported(&excluded,unavailable));
   GlslcResult modules[2];clock_t before=clock();assert(pgraph_spv_vsh(&state,opts,&modules[1]));direct_ticks+=clock()-before;direct_words+=modules[1].num_words;before=clock();
   MString *text=pgraph_glsl_gen_vsh(&state,(GenVshGlslOptions){.vulkan=true,.use_push_constants_for_uniform_attrs=opts.push_constants});
   GlslcOptions glopts={.emit_layout=true};if(!glslc_compile(GLSLC_STAGE_VERTEX,mstring_get_str(text),&glopts,&modules[0])){fprintf(stderr,"%s\n",modules[0].error);abort();}mstring_unref(text);reference_ticks+=clock()-before;reference_words+=modules[0].num_words;
   VshUniformValues values={0};values.clipRange[0][1]=65535;values.surfaceSize[0][0]=720;values.surfaceSize[0][1]=480;values.pointSizeReg[0]=1;values.pointScale[0]=1;values.fogCtl[0]=1|((test%8)<<1);values.fogParam[0][0]=1.5f;values.fogParam[0][1]=-.01f;
+  if(state.point_params_enable){
+   const float scales[]={0.0f,-0.0f,1.0f,2.0f,-1.0f,.5f,INFINITY,NAN};
+   values.pointScale[0]=scales[(test/14)%8];
+  }
   if(variant>=8){
    /* Static fog must ignore the live fogCtl, including its disabled bit. */
    values.fogCtl[0]=(test*13u)&15u;
@@ -209,7 +236,10 @@ int main(void) {
   }
   for(unsigned path=0;path<2;path++) {
    pack(uniform.mapped,&modules[path].uniforms,&values);memset(output.mapped,0xa5,VERTICES*240);
-   size_t words;uint32_t *code=xfb(&modules[path],&words);
+   size_t words;GlslcResult reference_module=modules[path];
+   if(!path && state.point_params_enable)reference_module.words=preserve_float(&modules[path],&reference_module.num_words);
+   uint32_t *code=xfb(&reference_module,&words);
+   if(reference_module.words!=modules[path].words)free(reference_module.words);
    VkShaderModuleCreateInfo smi={.sType=VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,.codeSize=words*4,.pCode=code};VkShaderModule shader;CHECK(vkCreateShaderModule(device,&smi,NULL,&shader));free(code);
    VkPipelineShaderStageCreateInfo stage={.sType=VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,.stage=VK_SHADER_STAGE_VERTEX_BIT,.module=shader,.pName="main"};
    VkGraphicsPipelineCreateInfo gp={.sType=VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,.stageCount=1,.pStages=&stage,.pVertexInputState=&vi,.pInputAssemblyState=&ia,.pRasterizationState=&rs,.pMultisampleState=&ms,.layout=layout,.renderPass=pass};VkPipeline pipeline;CHECK(vkCreateGraphicsPipelines(device,VK_NULL_HANDLE,1,&gp,NULL,&pipeline));
