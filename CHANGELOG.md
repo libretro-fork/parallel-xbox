@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- DSP accesses to unmapped Y memory read zero and ignore writes instead of asserting. Preserve mapped Y RAM and peripheral-bus behavior for both interpreter and JIT execution.
+
 - Vertex-shader constant uploads compare and update complete rows together, preserving partial-word uploads, dirty flags and command consumption. Gameplay performance remains unmeasured.
 - Vulkan directly translates vertex programs whose output mux selects a NOP pipe even when unused output fields describe an invalid register or constant destination. Keep live output validation and temporary/address-register writes unchanged.
 

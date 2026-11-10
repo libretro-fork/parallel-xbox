@@ -63,3 +63,5 @@ libretro/tests/fileiotest.exe
 /libretro/tests/dspcoverage.exe
 /libretro/tests/dspflush
 /libretro/tests/dspflush.exe
+/libretro/tests/dspymemory
+/libretro/tests/dspymemory.exe

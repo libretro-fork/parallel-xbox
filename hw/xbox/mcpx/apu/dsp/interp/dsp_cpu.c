@@ -1007,8 +1007,8 @@ static inline QEMU_ALWAYS_INLINE uint32_t read_memory(dsp_core_t* dsp, int space
         }
     } else if (space == DSP_SPACE_Y) {
         if (address >= DSP_PERIPH_BASE) return dsp->read_y_peripheral ? dsp->read_y_peripheral(dsp, address) : 0xffffff;
-        assert(address < DSP_YRAM_SIZE);
-        return dsp->yram[address];
+        /* Unmapped Y memory reads as zero; peripherals retain their bus path. */
+        return address < DSP_YRAM_SIZE ? dsp->yram[address] : 0;
     } else if (space == DSP_SPACE_P) {
         return read_memory_p(dsp, address);
     } else {
@@ -1101,8 +1101,10 @@ static void write_memory_raw(dsp_core_t* dsp, int space, uint32_t address, uint3
             if (dsp->write_y_peripheral) dsp->write_y_peripheral(dsp, address, value);
             return;
         }
-        assert(address < DSP_YRAM_SIZE);
-        dsp->yram[address] = value;
+        /* Unmapped Y memory drops writes, including JIT slow-path accesses. */
+        if (address < DSP_YRAM_SIZE) {
+            dsp->yram[address] = value;
+        }
     } else if (space == DSP_SPACE_P) {
         assert(address < DSP_PRAM_SIZE);
         if (ldl_le_p(&dsp->pram[address]) == value) {
