@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Loading icount timer subsections tolerates absent local warp/adjust timers without aborting, and preserves a fixed clock shift when an incoming snapshot carries adaptive timing state. Keep existing timer bytes and runtime time publication.
+
 - Savestate saving dispatches plain integer arrays directly to endian writers in frontend-owned storage, with no array staging allocation. Preserve the existing stream and compressed field descriptions; save-time improvement remains unmeasured.
 
 - Savestate loading reads plain integer arrays directly into their final storage and converts byte order in place, avoiding per-element dispatch without changing the save format or custom field handling. Load-time improvement remains unmeasured.
