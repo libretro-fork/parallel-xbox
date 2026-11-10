@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Vulkan packs index uploads as 16-bit values for native points, lines and triangles when every index is below 65535. Keep emulated topologies and larger indices on the 32-bit path, and pad uploads to preserve alignment. Gameplay performance remains unmeasured.
+
 - GPU reset clears interrupt enables and PGRAPH pending interrupts, then lowers the IRQ line. Prevent stale interrupt state from carrying into the next boot, including when a later vblank arrives before the guest configures interrupts.
 
 - DSP accesses to unmapped Y memory read zero and ignore writes instead of asserting. Preserve mapped Y RAM and peripheral-bus behavior for both interpreter and JIT execution.

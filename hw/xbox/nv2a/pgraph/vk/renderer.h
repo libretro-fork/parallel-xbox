@@ -1130,6 +1130,9 @@ void pgraph_vk_vertex_cow_cache_invalidate(PGRAPHVkState *r, hwaddr addr,
                                            VkDeviceSize size);
 VkDeviceSize pgraph_vk_update_index_buffer(PGRAPHState *pg, void *data,
                                            VkDeviceSize size);
+VkDeviceSize pgraph_vk_update_index_buffer_u16(PGRAPHState *pg,
+                                               const uint32_t *indices,
+                                               size_t count);
 uint32_t *pgraph_vk_inline_array_begin(NV2AState *d);
 bool pgraph_vk_commit_inline_array(PGRAPHState *pg, VkDeviceSize size,
                                   VkDeviceSize *offset);
