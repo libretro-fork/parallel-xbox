@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- MMX unpack and signed high-word multiply instructions use inline integer translation operations instead of arithmetic helpers. Preserve register aliases, memory operands and SSE/VEX dispatch. Gameplay performance remains unmeasured.
+
 - ARM64 CPU translation emits fresh block jumps directly in their reset form, avoiding redundant jump patches and per-slot instruction-cache flushes. Recycled blocks retain normal resets. Gameplay performance remains unmeasured.
 
 - Vulkan directly emits projective shadow shaders whose dimension/cube metadata is ignored by the reference sampler. Keep the existing 2D views, allocation counts and borrowed input lifetimes.
