@@ -70,8 +70,19 @@ void ptimer_init(NV2AState *d)
     ptimer_reset(d);
 }
 
+/* Guest-programmed divisors can be zero before clock setup or after a
+ * PLL update. Such a clock cannot advance or schedule an alarm. */
+static inline bool ptimer_clock_configured(NV2AState *d)
+{
+    return d->ptimer.numerator && d->ptimer.denominator &&
+           d->pramdac.core_clock_freq;
+}
+
 static uint64_t ptimer_get_absolute_clock(NV2AState *d)
 {
+    if (!ptimer_clock_configured(d)) {
+        return 0;
+    }
     return muldiv64(muldiv64(qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL),
                              d->pramdac.core_clock_freq,
                              NANOSECONDS_PER_SECOND),
@@ -92,6 +103,9 @@ static inline uint64_t get_reg_time(NV2AState *d)
 
 static uint64_t ptimer_ticks_to_ns(NV2AState *d, uint64_t internal_ticks)
 {
+    if (!ptimer_clock_configured(d)) {
+        return 0;
+    }
     uint64_t gpu_ticks =
         muldiv64_round_up(internal_ticks, d->ptimer.numerator,
                           d->ptimer.denominator);
@@ -127,6 +141,10 @@ static inline uint64_t get_next_alarm_time(uint64_t reg_now, uint64_t alarm_val)
 
 static void schedule_qemu_timer(NV2AState *d)
 {
+    if (!ptimer_clock_configured(d)) {
+        timer_del(&d->ptimer.timer);
+        return;
+    }
     if (!(d->ptimer.enabled_interrupts & NV_PTIMER_INTR_0_ALARM)) {
         timer_del(&d->ptimer.timer);
         return;
