@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Decode and filter F16 depth textures directly in Vulkan SPIR-V. Preserve encoded-RAM versus normalized-surface handling, min/mag LOD selection, gather ordering, rectangle projection and depth comparisons. Reuse existing texture-scale uniforms and image owners with two final allocations and no texel copies or retained lends; unsupported formats retain the compiler.
+
 - Translate UI rectangle sampling clamps directly to Vulkan SPIR-V. Borrow the existing geometry marker and UV bounds, preserve the non-rectangle depth path and first projected stage, and retain two final allocations without geometry copies or new resources. Unsupported recipes still use the compiler.
 
 - Translate sampled fixed-depth comparisons and packed X8Y24 projective reads directly to Vulkan SPIR-V. Reuse existing float/unsigned texture views and descriptors, preserve depth markers, raw-Q projection, normalization/scale rounding and alpha/key order, and keep two final allocations without texel copies or retained lends. F16 decoding and unsupported formats retain the compiler.

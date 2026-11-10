@@ -1,7 +1,18 @@
 /* SPDX-License-Identifier: GPL-2.0-or-later */
 /* Sample existing depth views. All temporaries are SSA IDs, not texel copies. */
+static uint32_t texture_shadow_compare(Context *c,uint32_t depth,uint32_t reference)
+{
+    const SpvOp comparisons[]={SpvOpNop,SpvOpFOrdLessThan,SpvOpFOrdEqual,SpvOpFOrdLessThanEqual,SpvOpFOrdGreaterThan,SpvOpFUnordNotEqual,SpvOpFOrdGreaterThanEqual};
+    uint32_t match=binary(c,comparisons[c->state->shadow_depth_func],c->b,depth,reference);
+    return splat(c,c->v4,choose(c,c->f,match,c->cf[F_ONE],c->cf[F_ZERO]),4);
+}
 static uint32_t texture_shadow(Context *c,uint32_t coord,uint32_t sample,unsigned kind,unsigned unit)
 {
+    if(f16_shadow(c->state,unit)){
+        uint32_t depth=texture_f16_depth(c,coord,sample,unit),reference=c->cf[F_ZERO];
+        if(texture_mode(c->state,unit)==PS_TEXTUREMODES_PROJECT3D)reference=ext3(c,GLSLstd450FClamp,c->f,divf(c,extract(c,coord,2),extract(c,coord,3)),c->cf[F_ZERO],c->shadow_max_float);
+        return texture_shadow_compare(c,depth,reference);
+    }
     uint32_t uv=xy(c,coord);
     if(c->state->rect_tex[unit])uv=texture_rect_uv(c,sample,kind,uv,unit);
     uint32_t lookup=val(c->w,SpvOpCompositeConstruct,c->v3,3,extract(c,uv,0),extract(c,uv,1),extract(c,coord,3));
@@ -25,7 +36,5 @@ static uint32_t texture_shadow(Context *c,uint32_t coord,uint32_t sample,unsigne
         depth=mul(c,depth,max_depth);
         reference=ext3(c,GLSLstd450FClamp,c->f,divf(c,extract(c,coord,2),extract(c,coord,3)),c->cf[F_ZERO],max_depth);
     }
-    const SpvOp comparisons[]={SpvOpNop,SpvOpFOrdLessThan,SpvOpFOrdEqual,SpvOpFOrdLessThanEqual,SpvOpFOrdGreaterThan,SpvOpFUnordNotEqual,SpvOpFOrdGreaterThanEqual};
-    uint32_t match=binary(c,comparisons[c->state->shadow_depth_func],c->b,depth,reference);
-    return splat(c,c->v4,choose(c,c->f,match,c->cf[F_ONE],c->cf[F_ZERO]),4);
+    return texture_shadow_compare(c,depth,reference);
 }

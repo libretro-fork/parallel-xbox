@@ -515,3 +515,37 @@ static and live combiners, alpha/key finishing and all depth formats. The
 full matrix contains 48128 cases. These are correctness/work-count fixtures,
 not pipeline-readiness, GPU execution-time or cold-first-play certification.
 Driver cache state remains uncontrolled; the stutter regression stays BAD/OPEN.
+
+
+## Decode-before-filter F16 depth
+
+F16 PROJECT2D/PROJECT3D shadow stages use the same float views and descriptors.
+The existing negative texScale tag selects encoded guest-RAM texels; positive
+scale selects already-normalized GPU surface depth. Rectangles normalize with
+the absolute scale. Point reads sample explicit level zero at texel centers;
+linear reads gather at quad centers in wzxy order, decode each value before
+bilinear mixing, and preserve zero texels. Differing min/mag flags use the
+reference's textureQueryLod.y threshold. PROJECT3D compares against clamped
+original Z/Q in the F16 range without a second normalization/scale roundtrip.
+PROJECT2D compares against zero. Alpha kill and color keys remain last.
+
+The builder reuses the color-key/packed unsigned-vector type, one Boolean
+vector type and one decode constant only when required. Existing texScale
+storage is included for normalized F16 recipes too; no new uniform group or
+cache schema is introduced. Keys are lent synchronously through count/write;
+all arithmetic temporaries are bounded SSA IDs. Two final allocations remain,
+without intermediate GLSL, host texel conversions, payload buffers, descriptor
+snapshots or retained lends. Signed/mip formats and invalid F16 shapes retain
+the compiler. A single stage tagged as both F16 and packed unsigned remains
+unsupported; mixed stages may use both view kinds.
+
+CPU fixtures add 4096 typed-image/query/filter/decode/ignored-bit/final-owner
+cases and sixteen allocation-free rejections, for 41984 modules and ninety-seven
+rejections overall. Former valid F16 negatives move into positive coverage;
+negative controls now use unsupported flag patterns. GPU fixtures add 4096
+single-unit and 2048 mixed encoded/normalized-F16, packed-depth, cube/volume and
+UI cases. Encoded R16 test texels are filled directly into a bounded 42-byte
+mapped upload, fenced before release; this test-only resource is never added
+to the core. The full matrix contains 54272 cases. Work counts and recorded
+recipe acceptance are not pipeline readiness or stutter-recovery evidence.
+Uncontrolled driver caches keep cold-play qualification BAD/OPEN.

@@ -145,7 +145,8 @@ static void texture_allocate(Context *c)
     }
     if(has_border_samples(c->state)){c->border_array=id(c->w);c->uniform_v3=id(c->w);}
     if(has_color_key(c->state)){c->key_array=id(c->w);c->uvec4_t=id(c->w);}
-    if(has_sampler_kind(c->state,3) && !c->uvec4_t)c->uvec4_t=id(c->w);
+    if((has_sampler_kind(c->state,3) || has_f16_shadow(c->state)) && !c->uvec4_t)c->uvec4_t=id(c->w);
+    if(has_f16_shadow(c->state)){c->f16_bvec4=id(c->w);c->f16_base=id(c->w);}
     if(shadow_constant_needed(c->state,false))c->shadow_max24=id(c->w);
     if(shadow_constant_needed(c->state,true))c->shadow_max_float=id(c->w);
     if(has_convolution(c->state)){
@@ -180,6 +181,8 @@ static void texture_types(Context *c)
     if(c->project_cube_fn)op(w,SpvOpTypeFunction,3,c->project_cube_type,c->v3,c->v3);
     if(c->uniform_v3)op(w,SpvOpTypePointer,3,c->uniform_v3,(uint32_t)SpvStorageClassUniform,c->v3);
     if(c->uvec4_t)op(w,SpvOpTypeVector,3,c->uvec4_t,c->u,4u);
+    if(c->f16_bvec4)op(w,SpvOpTypeVector,3,c->f16_bvec4,c->b,4u);
+    if(c->f16_base)op(w,SpvOpConstant,3,c->u,c->f16_base,0x3c000000u);
     if(!has_convolution(c->state))return;
     op(w,SpvOpTypeArray,3,c->conv_array,c->f,c->ui32[9]);op(w,SpvOpTypeArray,3,c->conv_offsets_array,c->v2,c->ui32[9]);
     op(w,SpvOpTypePointer,3,c->conv_ptr,(uint32_t)SpvStorageClassPrivate,c->conv_array);

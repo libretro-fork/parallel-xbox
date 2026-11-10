@@ -4,7 +4,7 @@
 #include <spirv/unified1/spirv.h>
 /* GLSL.std.450 numbers, as in the other native emitters; no extra SDK header. */
 enum { GLSLstd450Round=1, GLSLstd450FAbs=4, GLSLstd450Floor=8,
-       GLSLstd450UMin=38, GLSLstd450FMax=40, GLSLstd450FClamp=43,
+       GLSLstd450Fract=10, GLSLstd450UMin=38, GLSLstd450FMax=40, GLSLstd450FClamp=43,
        GLSLstd450FMix=46, GLSLstd450Fma=50, GLSLstd450Normalize=69 };
 #include "psh.h"
 
@@ -50,14 +50,22 @@ static bool constant_shadow(const PshState *s,unsigned stage)
     unsigned mode=texture_mode(s,stage);
     return (mode==PS_TEXTUREMODES_PROJECT2D || mode==PS_TEXTUREMODES_PROJECT3D) && s->shadow_map[stage] && (s->shadow_depth_func==SHADOW_DEPTH_FUNC_NEVER || s->shadow_depth_func==SHADOW_DEPTH_FUNC_ALWAYS);
 }
+static bool f16_shadow(const PshState *s,unsigned stage)
+{
+    unsigned mode=texture_mode(s,stage),flags=s->shadow_map[stage];
+    return (mode==PS_TEXTUREMODES_PROJECT2D || mode==PS_TEXTUREMODES_PROJECT3D) && (flags&3)==3 && !(flags&~31u) && s->shadow_depth_func>=SHADOW_DEPTH_FUNC_LESS && s->shadow_depth_func<=SHADOW_DEPTH_FUNC_GEQUAL;
+}
+static bool has_f16_shadow(const PshState *s)
+{ for(unsigned j=0;j<4;j++)if(f16_shadow(s,j))return true;return false; }
 static bool sampled_shadow(const PshState *s,unsigned stage)
 {
     unsigned mode=texture_mode(s,stage);
-    return (mode==PS_TEXTUREMODES_PROJECT2D || mode==PS_TEXTUREMODES_PROJECT3D) && s->shadow_map[stage]==1 && s->shadow_depth_func>=SHADOW_DEPTH_FUNC_LESS && s->shadow_depth_func<=SHADOW_DEPTH_FUNC_GEQUAL;
+    return (mode==PS_TEXTUREMODES_PROJECT2D || mode==PS_TEXTUREMODES_PROJECT3D) && (s->shadow_map[stage]==1 || f16_shadow(s,stage)) && s->shadow_depth_func>=SHADOW_DEPTH_FUNC_LESS && s->shadow_depth_func<=SHADOW_DEPTH_FUNC_GEQUAL;
 }
 static bool shadow_constant_needed(const PshState *s,bool floating)
 {
-    for(unsigned j=0;j<4;j++)if(sampled_shadow(s,j) && (floating?(texture_mode(s,j)==PS_TEXTUREMODES_PROJECT3D && !s->tex_x8y24[j]):(texture_mode(s,j)==PS_TEXTUREMODES_PROJECT3D || s->tex_x8y24[j])))return true;
+    if(floating && has_f16_shadow(s))return true;
+    for(unsigned j=0;j<4;j++)if(sampled_shadow(s,j) && !f16_shadow(s,j) && (floating?(texture_mode(s,j)==PS_TEXTUREMODES_PROJECT3D && !s->tex_x8y24[j]):(texture_mode(s,j)==PS_TEXTUREMODES_PROJECT3D || s->tex_x8y24[j])))return true;
     return false;
 }
 static bool dot_mode(unsigned mode)
@@ -102,6 +110,8 @@ static bool has_texture_results(const PshState *s)
 { for(unsigned j=0;j<4;j++)if(texture_result_stage(s,j))return true;return false; }
 static bool has_rect_samples(const PshState *s)
 { for(unsigned j=0;j<4;j++)if(sample_stage(s,j) && !cube_stage(s,j) && s->rect_tex[j])return true;return false; }
+static bool has_texture_scale(const PshState *s)
+{ return has_rect_samples(s) || has_f16_shadow(s); }
 static bool has_border_samples(const PshState *s)
 { for(unsigned j=0;j<4;j++)if(sample_stage(s,j) && !s->shadow_map[j] && (texture_mode(s,j)==PS_TEXTUREMODES_PROJECT2D || texture_mode(s,j)==PS_TEXTUREMODES_PROJECT3D || dot_mode(texture_mode(s,j))) && s->border_adjust[j])return true;return false; }
 static bool has_color_key(const PshState *s)
@@ -114,20 +124,20 @@ static bool uniform_enabled(const PshState *s,unsigned which)
 {
     if(which>=BUMP_MAT)return which==BUMP_MAT?has_bump(s):has_bump_luma(s);
     if(which>=BORDER_LOGICAL)return which<=BORDER_INV?has_border_samples(s):has_color_key(s);
-    return which<BASE_UNIFORMS || (which>=COMB_CTL?s->combiner_dynamic:which==TEX_SCALE?has_rect_samples(s):s->alpha_dynamic && has_texture_results(s));
+    return which<BASE_UNIFORMS || (which>=COMB_CTL?s->combiner_dynamic:which==TEX_SCALE?has_texture_scale(s):s->alpha_dynamic && has_texture_results(s));
 }
 static unsigned uniform_member(const PshState *s,unsigned which)
 { unsigned n=0;for(unsigned j=0;j<which;j++)n+=uniform_enabled(s,j);return n; }
 static unsigned uniform_count(const PshState *s)
 { return uniform_member(s,UNIFORMS); }
 static unsigned texture_uniform_size(const PshState *s)
-{ return has_rect_samples(s)?(s->alpha_dynamic?576:560):(s->alpha_dynamic && has_texture_results(s)?512:496); }
+{ return has_texture_scale(s)?(s->alpha_dynamic?576:560):(s->alpha_dynamic && has_texture_results(s)?512:496); }
 static unsigned uniform_offset(const PshState *s,unsigned which)
 {
     if(which>=BUMP_MAT){unsigned base=texture_uniform_size(s)+(s->combiner_dynamic?528:0)+(has_border_samples(s)?128:0)+(has_color_key(s)?128:0);return which==BUMP_MAT?base:base+128+(which-BUMP_SCALE)*64;}
     if(which>=BORDER_LOGICAL){unsigned base=texture_uniform_size(s)+(s->combiner_dynamic?528:0);return which<=BORDER_INV?base+(which-BORDER_LOGICAL)*64:base+(has_border_samples(s)?128:0)+(which-COLOR_KEY)*64;}
     if(which>=COMB_CTL){unsigned base=texture_uniform_size(s);return which<COMB_RGB_IN?base+(which-COMB_CTL)*4:base+16+(which-COMB_RGB_IN)*128;}
-    return which==ALPHA_KILL?(has_rect_samples(s)?560:496):uniforms[which].offset;
+    return which==ALPHA_KILL?(has_texture_scale(s)?560:496):uniforms[which].offset;
 }
 static unsigned uniform_size(const PshState *s)
 { return texture_uniform_size(s)+(s->combiner_dynamic?528:0)+(has_border_samples(s)?128:0)+(has_color_key(s)?128:0)+(has_bump(s)?128:0)+(has_bump_luma(s)?128:0); }
@@ -151,7 +161,7 @@ typedef struct Context {
     uint32_t cube_fn,cube_fn_type,project_cube_fn,project_cube_type;
     uint32_t bump_array,bump_m2,uniform_v2,sign_fn,sign_type,sign_constants[3];
     uint32_t dots[4],dot_sign[2],dot_sign_type,dot_constants[4],dot_maps[4],dot_map_type;
-    uint32_t shadow_max24,shadow_max_float;
+    uint32_t shadow_max24,shadow_max_float,f16_bvec4,f16_base;
     bool cube_body,project_cube_body;
     bool fetch_body;
     bool precise;
@@ -291,7 +301,7 @@ bool pgraph_spv_psh_supported(const PshState *s,SpvPshOptions opts)
             if(s->dim_tex[j]!=2 || s->colorkey_mode[j]<COLOR_KEY_NONE || s->colorkey_mode[j]>COLOR_KEY_DISCARD)return false;
         }else if(sample_stage(s,j)){
             if(opts.tex_binding>=29 || (opts.ubo_binding>=opts.tex_binding && opts.ubo_binding<opts.tex_binding+4) || s->colorkey_mode[j]<COLOR_KEY_NONE || s->colorkey_mode[j]>COLOR_KEY_DISCARD)return false;
-            if(sampled_shadow(s,j)){if(s->dim_tex[j]!=2 || s->tex_cubemap[j])return false;}
+            if(sampled_shadow(s,j)){if(s->dim_tex[j]!=2 || s->tex_cubemap[j] || (f16_shadow(s,j) && s->tex_x8y24[j]))return false;}
             else if(cube_stage(s,j)){if(s->dim_tex[j]!=2)return false;}
             else{
                 if(s->dim_tex[j]!=2 && s->dim_tex[j]!=3)return false;
@@ -397,6 +407,7 @@ static uint32_t ui_clamp_coord(Context *c,uint32_t coord,unsigned unit)
 }
 #include "psh-texture.inc"
 #include "psh-dot.inc"
+#include "psh-f16.inc"
 #include "psh-shadow.inc"
 
 static void texture_finish(Context *c,uint32_t color,unsigned j)
@@ -532,7 +543,7 @@ static void allocate(Context *c)
         if(sample_stage(c->state,j))c->samplers[j]=id(c->w);
     }
     if(has_sampler_kind(c->state,0)){c->image_t=id(c->w);c->sampled_t=id(c->w);c->sampler_ptr=id(c->w);c->min_q=id(c->w);}
-    if(has_rect_samples(c->state) || has_bump_luma(c->state))c->scale_array=id(c->w);
+    if(has_texture_scale(c->state) || has_bump_luma(c->state))c->scale_array=id(c->w);
     if(c->state->combiner_dynamic)dynamic_allocate(c);
     texture_allocate(c);dot_allocate(c);
     if(c->state->depth_format&DEPTH_FORMAT_UI_CLAMP)c->ui_marker=id(c->w);
@@ -543,7 +554,7 @@ static void emit(Writer *w,const PshState *state,SpvPshOptions opts)
     unsigned interfaces=0;for(unsigned j=0;j<4;j++)interfaces+=!!c.tex_inputs[j]+!!c.samplers[j];interfaces+=!!c.point_coord;if(state->combiner_dynamic)interfaces+=5;if(has_convolution(state))interfaces+=2;
     word(w,SpvMagicNumber);word(w,opts.spirv_1_6?0x00010600u:0x00010500u);word(w,0);word(w,0);word(w,0);
     op(w,SpvOpCapability,1,(uint32_t)SpvCapabilityShader);
-    if(has_rect_samples(state) || has_convolution(state))op(w,SpvOpCapability,1,(uint32_t)SpvCapabilityImageQuery);
+    if(has_rect_samples(state) || has_convolution(state) || has_f16_shadow(state))op(w,SpvOpCapability,1,(uint32_t)SpvCapabilityImageQuery);
     if(opts.spirv_1_6)op(w,SpvOpCapability,1,(uint32_t)SpvCapabilityDemoteToHelperInvocation);
     op(w,SpvOpExtInstImport,5,c.ext,0x4c534c47u,0x6474732eu,0x3035342eu,0u);
     op(w,SpvOpMemoryModel,2,(uint32_t)SpvAddressingModelLogical,(uint32_t)SpvMemoryModelGLSL450);
