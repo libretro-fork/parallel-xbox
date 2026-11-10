@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Savestate saving dispatches plain integer arrays directly to endian writers in frontend-owned storage, with no array staging allocation. Preserve the existing stream and compressed field descriptions; save-time improvement remains unmeasured.
+
 - Savestate loading reads plain integer arrays directly into their final storage and converts byte order in place, avoiding per-element dispatch without changing the save format or custom field handling. Load-time improvement remains unmeasured.
 
 - Unsupported NV_USER channel, PIO and register accesses no longer abort the emulator. Read zero or ignore writes without kicking PFIFO; retain valid DMA register access and GPU-poll detection.

@@ -1,11 +1,11 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
-"""Production integer-array eligibility and direct-load byte/error oracle."""
+"""Production integer-array eligibility and load/save byte/error oracle."""
 from pathlib import Path
 import os,re,shlex,subprocess,sys,tempfile
 r=Path(sys.argv[1]).resolve();cc=sys.argv[2] if len(sys.argv)>2 else 'cc'
 s=(r/'migration/vmstate.c').read_text();parts=[]
-for name in ['vmstate_scalar_array','vmstate_load_scalar_array']:
- m=re.search(r'^static (?:bool|int) '+name+r'\(',s,re.M);assert m
+for name in ['vmstate_scalar_array','vmstate_load_scalar_array','vmstate_save_scalar_array']:
+ m=re.search(r'^static (?:bool|int|void) '+name+r'\(',s,re.M);assert m
  a=s.index('{',m.start());b=a+1;depth=1
  while depth:depth+=(s[b]=='{')-(s[b]=='}');b+=1
  parts.append(s[m.start():b])
@@ -20,7 +20,7 @@ typedef struct {int unused;} VMStateInfo;
 static const VMStateInfo vmstate_info_uint8={1},vmstate_info_int8={2},vmstate_info_uint16={3},vmstate_info_int16={4},vmstate_info_uint32={5},vmstate_info_int32={6},vmstate_info_uint64={7},vmstate_info_int64={8},custom={9};
 typedef struct {const VMStateInfo *info;unsigned flags;} VMStateField;
 enum {VMS_STRUCT=1,VMS_VSTRUCT=2,VMS_ARRAY_OF_POINTER=4};
-typedef struct {const uint8_t *data;size_t available,pos;int error;unsigned calls;} QEMUFile;
+typedef struct {const uint8_t *data;uint8_t *out;size_t available,pos;int error;unsigned calls;} QEMUFile;
 static size_t qemu_get_buffer(QEMUFile*f,uint8_t *dst,size_t size){
  size_t n=f->available<size?f->available:size;memcpy(dst,f->data,n);f->pos+=n;f->calls++;return n;
 }
@@ -32,11 +32,26 @@ static uint64_t ldq_be_p(const void*p){return read_be(p,8);}
 static void stw_he_p(void*p,uint16_t v){memcpy(p,&v,2);}
 static void stl_he_p(void*p,uint32_t v){memcpy(p,&v,4);}
 static void stq_he_p(void*p,uint64_t v){memcpy(p,&v,8);}
+static uint16_t lduw_he_p(const void*p){uint16_t v;memcpy(&v,p,2);return v;}
+static uint32_t ldl_he_p(const void*p){uint32_t v;memcpy(&v,p,4);return v;}
+static uint64_t ldq_he_p(const void*p){uint64_t v;memcpy(&v,p,8);return v;}
+static void qemu_put_buffer(QEMUFile*f,const uint8_t*p,size_t n){
+ f->calls++;if(f->error)return;
+ if(n>f->available-f->pos){f->error=-ENOSPC;return;}
+ memcpy(f->out+f->pos,p,n);f->pos+=n;
+}
+static void put_be(QEMUFile*f,uint64_t v,unsigned n){
+ uint8_t bytes[8];for(unsigned i=0;i<n;i++)bytes[n-1-i]=v>>(i*8);
+ qemu_put_buffer(f,bytes,n);
+}
+static void qemu_put_be16(QEMUFile*f,unsigned v){put_be(f,v,2);}
+static void qemu_put_be32(QEMUFile*f,unsigned v){put_be(f,v,4);}
+static void qemu_put_be64(QEMUFile*f,uint64_t v){put_be(f,v,8);}
 /* PRODUCTION */
 int main(void){
  const VMStateInfo *infos[]={&vmstate_info_uint8,&vmstate_info_int8,&vmstate_info_uint16,&vmstate_info_int16,&vmstate_info_uint32,&vmstate_info_int32,&vmstate_info_uint64,&vmstate_info_int64,&custom};
  const int sizes[]={0,1,2,3,4,8,16},counts[]={-1,0,1,15,16,17,31,256,4096};
- unsigned eligibility=0,loads=0;
+ unsigned eligibility=0,loads=0,saves=0;
  for(unsigned info=0;info<9;info++)for(unsigned flags=0;flags<32;flags++)
  for(unsigned k=0;k<7;k++)for(unsigned j=0;j<9;j++){
   VMStateField field={infos[info],flags};
@@ -74,7 +89,38 @@ int main(void){
    assert(!memcmp(storage,expected,sizeof(storage)));loads++;
   }
  }
- printf("PASS: %u field eligibility and %u direct-load cases; endian payloads, unaligned owners, truncation/errors, one read and canaries\n",eligibility,loads);
+ for(unsigned size=1;size<=8;size*=2)for(unsigned j=0;j<9;j++){
+  int n=counts[j];if(n<16)continue;
+  size_t bytes=(size_t)n*size;
+  uint8_t input[32776],unchanged[32776],encoded[32768];
+  for(unsigned i=0;i<sizeof(input);i++)input[i]=(uint8_t)(i*37+j*19);
+  memcpy(unchanged,input,sizeof(input));
+  for(unsigned offset=0;offset<8;offset++){
+   for(int i=0;i<n;i++){
+    uint64_t v=0;const uint8_t *p=input+offset+(size_t)i*size;
+    switch(size){
+    case 1:v=*p;break;
+    case 2:{uint16_t x;memcpy(&x,p,2);v=x;break;}
+    case 4:{uint32_t x;memcpy(&x,p,4);v=x;break;}
+    case 8:memcpy(&v,p,8);break;
+    }
+    for(unsigned b=0;b<size;b++)encoded[(size_t)i*size+b]=(uint8_t)(v>>((size-1-b)*8));
+   }
+   for(unsigned cut=0;cut<4;cut++)for(unsigned e=0;e<3;e++){
+    size_t capacity=cut==0?0:cut==1?bytes/2:cut==2?bytes-1:bytes;
+    memset(storage,0xa5,sizeof(storage));memset(expected,0xa5,sizeof(expected));
+    QEMUFile f={.out=storage+offset,.available=capacity,.error=errors[e]};
+    vmstate_save_scalar_array(&f,input+offset,n,size);
+    size_t written=errors[e]?0:size==1?(capacity==bytes?bytes:0):capacity/size*size;
+    memcpy(expected+offset,encoded,written);
+    assert(f.pos==written&&f.calls==(size==1?1u:(unsigned)n));
+    assert(f.error==(errors[e]?errors[e]:capacity<bytes?-ENOSPC:0));
+    assert(!memcmp(storage,expected,sizeof(storage)));
+    assert(!memcmp(input,unchanged,sizeof(input)));saves++;
+   }
+  }
+ }
+ printf("PASS: %u eligibility, %u load and %u save cases; endian bytes, unaligned owners, errors, canaries and immutable input\n",eligibility,loads,saves);
 }
 '''.replace('/* PRODUCTION */','\n'.join(parts))
 if os.name!='nt':
@@ -93,7 +139,8 @@ with tempfile.TemporaryDirectory(prefix='vmstate-array-') as d:
   for label,old,new in [
    ('custom fields bypassed','info == &vmstate_info_uint8 || info == &vmstate_info_int8','true'),
    ('truncated reads accepted','return qemu_file_get_error(f) ?: -EIO;','return 0;'),
-   ('byte order discarded','stw_he_p(elem, lduw_be_p(elem));','stw_he_p(elem, __builtin_bswap16(lduw_be_p(elem)));')]:
+   ('byte order discarded','stw_he_p(elem, lduw_be_p(elem));','stw_he_p(elem, __builtin_bswap16(lduw_be_p(elem)));'),
+   ('save word truncated','qemu_put_be32(f, ldl_he_p(elem));','qemu_put_be32(f, (uint16_t)ldl_he_p(elem));')]:
    assert old in code,label
    build(code.replace(old,new))
    result=subprocess.run(runner+[exe],stdout=subprocess.PIPE,stderr=subprocess.STDOUT,timeout=60)
