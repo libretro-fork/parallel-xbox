@@ -39,6 +39,34 @@ expanded coverage as unqualified. Set
 The larger correctness matrix has a separate watchdog; no runtime performance
 acceptance threshold changes.
 
+## Static combiner register audit
+
+The family-test entry point also checks 17,024 static-combiner states against
+production GLSL compilation. Source cells vary all 256 source-byte encodings at
+each of the eight RGB/alpha general inputs and seven final inputs, excluding
+reserved registers 6/7 and EF references before E/F have been evaluated. Output
+cells cross all 256 operation/mapping/blue-to-alpha flag encodings with nine
+legal destinations and each of the six AB/CD/SUM RGB/alpha destination slots.
+Read-only constants, fog and sum/product registers are not legal destinations;
+`psh_regs.h` records the read/write distinction.
+
+There are 15,232 reference/native pairs and 1,792 matching reference compiler
+failures. The failures are mux outputs without any explicit R0 reference or
+write: the reference then emits a mux read without declaring R0. Preserve the
+native guard rather than counting these failures as missing valid coverage.
+All 30,464 modules validate through synchronous borrowed final-word spans;
+result owners remain live through validation, and no module files or secondary
+word buffers are created. Undefined-behavior checks are enabled for this audit.
+Mutation controls require detection of a supported source forced to fallback
+and a corrupt module sent to the actual validator. CI runs this through the
+existing fragment contract; explicit base-only CLI mode does not qualify it.
+
+These cells exercise one source/destination slot at a time in a single general
+stage. They do not prove numerical GPU equality for arbitrary combiner graphs,
+simultaneous destination aliases, multistage dependencies or mixed texture
+families. Existing value/image evidence remains separate. No runtime changes or
+PSO-readiness/cold-play recovery follow from this test-only expansion.
+
 ## Fallback boundaries inspected
 
 - Vertex binding/capability guards reject unsupported host layouts and preserve
