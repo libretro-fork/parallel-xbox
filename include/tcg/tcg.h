@@ -429,6 +429,8 @@ struct TCGContext {
     TCGType riscv_cur_type;
 #endif
 #ifdef TCG_TARGET_TLB_MEMO
+    /* Emitted guest accesses; bounds those remaining after optimization. */
+    int nb_guest_access;
     /* Translation-time plan and MMU identity of the two softmmu memo slots. */
     uint8_t *tlbm_hint;
     int tlbm_nhint, tlbm_ihint;

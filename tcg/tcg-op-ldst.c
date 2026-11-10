@@ -100,6 +100,9 @@ static MemOp tcg_canonicalize_memop(MemOp op, bool is64, bool st)
 static void gen_ldst1(TCGOpcode opc, TCGType type, TCGTemp *v,
                       TCGTemp *addr, MemOpIdx oi)
 {
+#ifdef TCG_TARGET_TLB_MEMO
+    tcg_ctx->nb_guest_access++;
+#endif
     TCGOp *op = tcg_gen_op3(opc, type, temp_arg(v), temp_arg(addr), oi);
     TCGOP_FLAGS(op) = get_memop(oi) & MO_SIZE;
 }
@@ -107,6 +110,9 @@ static void gen_ldst1(TCGOpcode opc, TCGType type, TCGTemp *v,
 static void gen_ldst2(TCGOpcode opc, TCGType type, TCGTemp *vl, TCGTemp *vh,
                       TCGTemp *addr, MemOpIdx oi)
 {
+#ifdef TCG_TARGET_TLB_MEMO
+    tcg_ctx->nb_guest_access++;
+#endif
     TCGOp *op = tcg_gen_op4(opc, type, temp_arg(vl), temp_arg(vh),
                             temp_arg(addr), oi);
     TCGOP_FLAGS(op) = get_memop(oi) & MO_SIZE;

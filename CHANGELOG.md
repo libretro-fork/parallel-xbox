@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- CPU translation on x86-64 counts guest memory accesses as they are emitted, avoiding the TLB planner's preliminary counting pass. Preserve memo hints and translation-retry resets, with differential regression coverage. Gameplay performance remains unmeasured.
+
 - CPU code-page writes clear the jump cache once per page invalidation instead of once per removed position-independent block. Preserve precise self-modifying-code restarts, immediate single-block invalidation and CPU Boost behavior. Gameplay performance remains unmeasured.
 
 - Vulkan handles three-dot coordinate lookups from integer textures directly as SPIR-V. Preserve numeric unsigned colors, border/rectangle handling and ignored shadow metadata using existing views and final owners, without texel copies or new GPU resources.
