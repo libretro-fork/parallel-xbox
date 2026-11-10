@@ -92,4 +92,10 @@ typedef enum {
 #define TCG_TARGET_LR_ICOUNT_REG TCG_REG_R15
 #endif
 
+/*
+ * Softmmu TLB walks shared within straight-line code (tcg/tcg-tlbm.c.inc);
+ * tcg_target_init reserves its slots on x86_64 hosts only.
+ */
+#define TCG_TARGET_TLB_MEMO 1
+
 #endif

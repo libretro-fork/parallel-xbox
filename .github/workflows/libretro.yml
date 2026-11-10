@@ -167,6 +167,16 @@ jobs:
         run: python3 libretro/tests/test-tcg-optimizer-copy.py . cc
       - name: Native register budgets must preserve helper accounting and request halves
         run: python3 libretro/tests/test-tcg-budget-register.py . cc
+      - name: Execute x86 TLB memo guards, rewalks and helper ABI fault controls
+        env:
+          TCG_TLB_MEMO_NEGATIVE: 1
+          TCG_TLB_MEMO_CFLAGS: -DCONFIG_DEBUG_TCG
+        run: python3 libretro/tests/test-tcg-tlb-memo.py . cc
+      - name: TLB memo compiler and planner under ASan and UBSan
+        env:
+          # Whole-TU fixture: do not retain unrelated core globals as ASan roots.
+          TCG_TLB_MEMO_CFLAGS: -DCONFIG_DEBUG_TCG -fsanitize=address,undefined --param=asan-globals=0
+        run: python3 libretro/tests/test-tcg-tlb-memo.py . cc
       - name: Early wait nominations must preserve prepaid instructions and interrupt requests
         run: python3 libretro/tests/test-early-memory-wait.py . cc
       - name: Idle candidates must preserve proof entries without crossing code pages
@@ -230,6 +240,16 @@ jobs:
 
       # The core's run loop against the test ROMs, in a Windows build of the
       # harness under Wine, on Mesa's software OpenGL
+      - name: Execute Windows TLB memo guards and seven-argument helper ABI
+        env:
+          TCG_TLB_MEMO_BINARY: ${{ runner.temp }}/tlb-memo.exe
+          TCG_TLB_MEMO_SKIP_RUN: 1
+          TCG_TLB_MEMO_CFLAGS: -DCONFIG_DEBUG_TCG
+        run: |
+          python3 libretro/tests/test-tcg-tlb-memo.py . x86_64-w64-mingw32-gcc
+          export WINEDEBUG=-all WINEPREFIX=$PWD/.wine
+          xvfb-run -a sh -c 'wineboot -u && wine "$TCG_TLB_MEMO_BINARY"'
+
       - name: Frame and audio tests
         run: |
           export WINEDEBUG=-all WINEPREFIX=$PWD/.wine
