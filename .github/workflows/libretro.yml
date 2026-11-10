@@ -30,6 +30,8 @@ jobs:
         run: python3 libretro/tests/test-x87-quiet-compare.py . cc
       - name: OHCI publishes completion queues before frame interrupts
         run: python3 libretro/tests/test-ohci-hcca.py . cc
+      - name: GPU reset clears stale interrupt state and lowers IRQ
+        run: python3 libretro/tests/test-nv2a-reset-irq.py . cc
       - name: Batched vertex constants preserve word upload behavior
         run: python3 libretro/tests/test-constant-rows.py . cc
       - name: TLB dirty promotion preserves unrelated physical mappings

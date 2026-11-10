@@ -544,10 +544,19 @@ static void nv2a_reset(NV2AState *d)
     retro_atomic_store_relaxed_int(&d->pgraph.guest_wrote_regs, 0);
 
     d->pmc.pending_interrupts = 0;
+    d->pmc.enabled_interrupts = 0;
     d->pfifo.pending_interrupts = 0;
+    d->pfifo.enabled_interrupts = 0;
+    retro_atomic_store_relaxed_int(&d->pgraph.pending_interrupts, 0);
+    retro_atomic_store_relaxed_int(&d->pgraph.enabled_interrupts, 0);
     d->ptimer.pending_interrupts = 0;
+    d->ptimer.enabled_interrupts = 0;
     ptimer_reset(d);
     d->pcrtc.pending_interrupts = 0;
+    d->pcrtc.enabled_interrupts = 0;
+    /* Reset must lower a previously asserted IRQ before the guest reboots.
+     * A later vblank must not revive enables left by the previous session. */
+    nv2a_update_irq(d);
 
     for (int i = 0; i < 256; i++) {
         d->puserdac.palette[i*3]   = i;
