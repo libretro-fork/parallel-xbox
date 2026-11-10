@@ -18,6 +18,7 @@
 #include "qobject/json-writer.h"
 #include "qemu-file.h"
 #include "qemu/bitops.h"
+#include "qemu/bswap.h"
 #include "qemu/error-report.h"
 #include "trace.h"
 
@@ -131,6 +132,53 @@ static void vmstate_handle_alloc(void *ptr, const VMStateField *field,
     }
 }
 
+/* Plain integer arrays have the same wire representation as their scalar
+ * elements. Read into their final owner and swap in place, without staging
+ * storage or bypassing custom, nested or pointer-element handlers. */
+static bool vmstate_scalar_array(const VMStateField *field, int n, int size)
+{
+    const VMStateInfo *info = field->info;
+    if (n < 16 ||
+        (field->flags & (VMS_STRUCT | VMS_VSTRUCT | VMS_ARRAY_OF_POINTER))) {
+        return false;
+    }
+    switch (size) {
+    case 1:
+        return info == &vmstate_info_uint8 || info == &vmstate_info_int8;
+    case 2:
+        return info == &vmstate_info_uint16 || info == &vmstate_info_int16;
+    case 4:
+        return info == &vmstate_info_uint32 || info == &vmstate_info_int32;
+    case 8:
+        return info == &vmstate_info_uint64 || info == &vmstate_info_int64;
+    default:
+        return false;
+    }
+}
+
+static int vmstate_load_scalar_array(QEMUFile *f, void *base, int n, int size)
+{
+    size_t bytes = (size_t)n * size;
+    if (qemu_get_buffer(f, base, bytes) != bytes) {
+        return qemu_file_get_error(f) ?: -EIO;
+    }
+    for (int i = 0; i < n; i++) {
+        uint8_t *elem = (uint8_t *)base + (size_t)i * size;
+        switch (size) {
+        case 2:
+            stw_he_p(elem, lduw_be_p(elem));
+            break;
+        case 4:
+            stl_he_p(elem, ldl_be_p(elem));
+            break;
+        case 8:
+            stq_he_p(elem, ldq_be_p(elem));
+            break;
+        }
+    }
+    return qemu_file_get_error(f);
+}
+
 int vmstate_load_state(QEMUFile *f, const VMStateDescription *vmsd,
                        void *opaque, int version_id, Error **errp)
 {
@@ -183,6 +231,17 @@ int vmstate_load_state(QEMUFile *f, const VMStateDescription *vmsd,
             if (field->flags & VMS_POINTER) {
                 first_elem = *(void **)first_elem;
                 assert(first_elem || !n_elems || !size);
+            }
+            if (vmstate_scalar_array(field, n_elems, size)) {
+                ret = vmstate_load_scalar_array(f, first_elem, n_elems, size);
+                if (ret < 0) {
+                    error_setg(errp, "Failed to load %s state: stream error: %d",
+                               vmsd->name, ret);
+                    qemu_file_set_error(f, ret);
+                    trace_vmstate_load_field_error(field->name, ret);
+                    return ret;
+                }
+                n_elems = 0;
             }
             for (i = 0; i < n_elems; i++) {
                 void *curr_elem = first_elem + size * i;

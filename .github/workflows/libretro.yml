@@ -38,6 +38,8 @@ jobs:
         run: python3 libretro/tests/test-chardev-context.py . cc
       - name: NV_USER rejects unsupported accesses without changing FIFO state
         run: python3 libretro/tests/test-nv-user.py . cc
+      - name: Savestate integer-array loads preserve bytes and errors
+        run: python3 libretro/tests/test-vmstate-array-load.py . cc
       - name: GPU reset clears stale interrupt state and lowers IRQ
         run: python3 libretro/tests/test-nv2a-reset-irq.py . cc
       - name: Vulkan packed indices preserve values and restart boundaries

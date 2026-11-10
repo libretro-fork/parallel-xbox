@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Savestate loading reads plain integer arrays directly into their final storage and converts byte order in place, avoiding per-element dispatch without changing the save format or custom field handling. Load-time improvement remains unmeasured.
+
 - Unsupported NV_USER channel, PIO and register accesses no longer abort the emulator. Read zero or ignore writes without kicking PFIFO; retain valid DMA register access and GPU-poll detection.
 
 - Flat 32-bit x87 memory operands retain their instruction-owned address for the deferred data pointer, removing intermediate address copies while preserving segmented and 16-bit addressing paths. Gameplay performance remains unmeasured.
