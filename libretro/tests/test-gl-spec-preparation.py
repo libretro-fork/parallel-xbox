@@ -30,7 +30,7 @@ b = source.index('    /* ...and dynamic vertex families', a)
 feed = source[a:b]
 # Compile both production draw predicates, not copies of the expected policy.
 draw_conditions=[]
-for variable, local in (('t','state'),('ts','fb')):
+for variable, local in (('t','state'),('ts','state')):
     begin=source.index('if ('+variable+' >= 0 &&')+4
     end=source.index(') {',begin)
     predicate=source[begin:end]
@@ -203,7 +203,7 @@ with tempfile.TemporaryDirectory(prefix='gl-spec-preparation-') as temporary:
              '-fsanitize=undefined','-fsanitize-undefined-trap-on-error','-I'+str(folder),'-I'+str(root),
              '-I'+str(root/'libretro-common/include'),str(c),'-o',str(binary)]
     c.write_text(code);subprocess.run(command,check=True);subprocess.run([str(binary)],check=True,timeout=120)
-    mutants=[('specialization draw guard removed',code.replace('&&\n            state_modules_known(r, &state)','',1)),('interpreter draw guard removed',code.replace('&&\n                        state_modules_known(r, &fb)','',1)),('fragment-only readiness',code.replace('return (!need_gs || module_known(r, &keys[0])) &&\n           module_known(r, &keys[1]) && module_known(r, &keys[2]);','(void)need_gs; return module_known(r, &keys[2]);',1)),('one-slot dequeue loses stages',code.replace('!gen_jobs_have_free(3)','!gen_jobs_have_free(1)',1)),
+    mutants=[('specialization draw guard removed',code.replace('&&\n            state_modules_known(r, &state)','',1)),('interpreter draw guard removed',code.replace('&&\n                        state_modules_known(r, &state)','',1)),('fragment-only readiness',code.replace('return (!need_gs || module_known(r, &keys[0])) &&\n           module_known(r, &keys[1]) && module_known(r, &keys[2]);','(void)need_gs; return module_known(r, &keys[2]);',1)),('one-slot dequeue loses stages',code.replace('!gen_jobs_have_free(3)','!gen_jobs_have_free(1)',1)),
              ('retire before stage ownership',code.replace('        *gate = false;', '        r->spec_pending_r++;\n        *gate = false;',1)),
              ('omit geometry preparation',code.replace('unsigned stage = need_gs ? 0 : 1','unsigned stage = 1',1).replace('bool need_gs = state_module_keys(queued, keys);','(void)state_module_keys(queued, keys);',1)),
              ('fragment-only preparation',code.replace('unsigned stage = need_gs ? 0 : 1','unsigned stage = 2',1).replace('bool need_gs = state_module_keys(queued, keys);','(void)state_module_keys(queued, keys);',1)),

@@ -2697,23 +2697,27 @@ void pgraph_gl_bind_shaders(PGRAPHState *pg)
                 }
             }
         } else {
-            ShaderState fb = state;
-            if (pgraph_glsl_psh_canonicalize_dynamic(&fb.psh)) {
-                uint64_t fh = fast_hash((const uint8_t *)&fb, sizeof(fb));
-                LruNode *fn = lru_lookup(&r->shader_cache, fh, &fb);
+            /* Project only our unpublished PSH metadata. Restore it before
+             * the exact recipe can be handed to a queue; VSH and geometry
+             * remain in the original capture rather than a full-state clone. */
+            PshState exact_psh;
+            memcpy(&exact_psh, &state.psh, sizeof(exact_psh));
+            if (pgraph_glsl_psh_canonicalize_dynamic(&state.psh)) {
+                uint64_t fh = fast_hash((const uint8_t *)&state, sizeof(state));
+                LruNode *fn = lru_lookup(&r->shader_cache, fh, &state);
                 ShaderBinding *fbind = container_of(fn, ShaderBinding, node);
                 if (!fbind->initialized) {
                     /* The sibling is interpreter code, never worth a sync
                      * stall: queue it, and take the normal path meanwhile. */
-                    uint64_t sh = fast_hash((const uint8_t *)&fb.psh,
-                                            sizeof(fb.psh));
+                    uint64_t sh = fast_hash((const uint8_t *)&state.psh,
+                                            sizeof(state.psh));
                     int ts = spec_track_find(r, sh);
                     if (ts >= 0 && r->spec_track[ts].phase == SPEC_ADOPTED &&
-                        state_modules_known(r, &fb)) {
+                        state_modules_known(r, &state)) {
                         r->spec_track[ts].phase = 0;
                         generate_shaders(r, fbind); /* modules hit: cheap */
                     } else if (ts < 0) {
-                        spec_queue(r, sh, &fb);
+                        spec_queue(r, sh, &state);
                     }
                     if (!fbind->initialized) {
                         /* Keep the queued cover's native owner available to
@@ -2721,6 +2725,7 @@ void pgraph_gl_bind_shaders(PGRAPHState *pg)
                         spec_binding_track(r, fbind);
                     }
                 }
+                memcpy(&state.psh, &exact_psh, sizeof(exact_psh));
                 if (fbind->initialized) {
                     if (t < 0) {
                         spec_queue(r, ph, &state);
@@ -2731,6 +2736,8 @@ void pgraph_gl_bind_shaders(PGRAPHState *pg)
                     }
                     binding = fbind;
                 }
+            } else {
+                memcpy(&state.psh, &exact_psh, sizeof(exact_psh));
             }
         }
     }

@@ -637,3 +637,46 @@ failed experiment remains retained separately; its one-byte RAM discrepancy
 has no established cause and is not reclassified as a pass. Mid-game host/
 driver allocations, uncovered draw creation and cold-play recovery remain
 open; no baseline or acceptance threshold was raised.
+
+## Fallback lookup without a full-state clone (2026-11-10)
+
+The remaining GL fallback-selection branch formerly cloned a complete
+`ShaderState` merely to canonicalize PSH metadata. It now projects the draw's
+unpublished local capture in place and saves/restores only its `PshState`.
+The tested ABI reduces the temporary from 2,620 bytes to 264 bytes, with
+528 explicit save/restore bytes instead of a 2,620-byte full-state clone.
+This bounded metadata snapshot is not described as zero-copy. Vertex
+microcode and geometry stay in the original capture. Existing exact hash,
+full-key comparison, scheduling, shader generation and pipeline decisions
+are unchanged; synchronous uncovered creations remain violations.
+
+The capture is owned by the bind call. Lookup borrows it synchronously;
+canonical queue submission takes its existing indispensable final-owner
+snapshot before returning. Every PSH byte, including padding, is restored
+before an exact queue submission and before leaving the branch, including
+failed canonicalization. No stack pointer or new resource reference escapes.
+No new heap allocation, queue capacity, cache schema, file I/O or persistent
+owner is introduced. Driver allocations and cold-play recovery remain open.
+
+The extracted production branch is exercised against the real canonicalizer
+and native hash across 4,096 combinations of state bytes, mode, readiness,
+queue markers and exact/cover selection. The checks compare full exact and
+canonical keys at each handoff, including padding and unchanged vertex/
+geometry bytes. Missing early restoration and submitting the canonical key
+as an exact recipe are required failing mutations. This test runs in CI;
+removing the full-state clone alone does not establish a latency improvement.
+
+Validation: 46 contract suites passed, plus Windows production-branch and
+specialization-preparation sanitizer/mutation controls. Thirty fresh matrix
+runs across DOA3, JSRF, Crazy Taxi 3 and NGB completed on GL/Vulkan, plus
+four fresh-process verified DOA3 fight restores. All eight fresh lifecycle
+cases passed both exact RAM comparisons and reset; image equality passed
+for NGB slot 0 and the verified DOA3 loaded fight on both renderers.
+
+Retain the initial stopped parent-only experiment: both strict restores
+reported one differing RAM byte, before any candidate run. Its cause is not
+established; the fresh passes do not reclassify that failure. Cold-boot DOA3
+images differ by 12,205,656 bytes and remain unqualified. The matrix began
+with another RetroArch process running; timings are unqualified, even though
+it closed later. Driver caches are uncontrolled, no performance threshold
+was relaxed, and neither latency improvement nor cold-play recovery is claimed.
