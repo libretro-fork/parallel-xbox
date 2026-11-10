@@ -75,6 +75,31 @@ VkDeviceSize pgraph_vk_update_index_buffer(PGRAPHState *pg, void *data,
                                       1);
 }
 
+/* Pack directly into the owned staging ring. Pad odd counts so subsequent
+ * 32-bit index uploads retain their required four-byte alignment. */
+VkDeviceSize pgraph_vk_update_index_buffer_u16(PGRAPHState *pg,
+                                               const uint32_t *indices,
+                                               size_t count)
+{
+    PGRAPHVkState *r = pg->vk_renderer_state;
+    StorageBuffer *b = &r->storage_buffers[BUFFER_INDEX_STAGING];
+    size_t padded = ROUND_UP(count, 2);
+    nv2a_profile_inc_counter(NV2A_PROF_GEOM_BUFFER_UPDATE_2);
+    assert(pgraph_vk_buffer_has_space_for(pg, BUFFER_INDEX_STAGING,
+                                          padded * sizeof(uint16_t), 1));
+    VkDeviceSize offset = b->buffer_offset;
+    assert(offset % 4 == 0);
+    uint16_t *dst = (uint16_t *)(b->mapped + offset);
+    for (size_t i = 0; i < count; i++) {
+        dst[i] = indices[i];
+    }
+    if (padded != count) {
+        dst[count] = 0;
+    }
+    b->buffer_offset = offset + padded * sizeof(uint16_t);
+    return offset;
+}
+
 VkDeviceSize pgraph_vk_update_vertex_inline_buffer(PGRAPHState *pg, void **data,
                                                    VkDeviceSize *sizes,
                                                    size_t count)

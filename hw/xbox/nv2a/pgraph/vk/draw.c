@@ -4939,6 +4939,25 @@ static __attribute__((noinline)) VkDeviceSize upload_converted_inline_array(PGRA
     return offset;
 }
 
+/* Keep emulated topologies on the original index path. Exclude 0xffff:
+ * Metal treats that value as a u16 strip restart even when disabled. */
+static bool inline_indices_use_u16(uint32_t primitive, uint32_t max_index)
+{
+    if (max_index >= 0xffff) {
+        return false;
+    }
+    switch (primitive) {
+    case NV097_SET_BEGIN_END_OP_POINTS:
+    case NV097_SET_BEGIN_END_OP_LINES:
+    case NV097_SET_BEGIN_END_OP_LINE_STRIP:
+    case NV097_SET_BEGIN_END_OP_TRIANGLES:
+    case NV097_SET_BEGIN_END_OP_TRIANGLE_STRIP:
+        return true;
+    default:
+        return false;
+    }
+}
+
 void pgraph_vk_flush_draw(NV2AState *d)
 {
     PGRAPHState *pg = &d->pgraph;
@@ -4999,7 +5018,10 @@ void pgraph_vk_flush_draw(NV2AState *d)
 
         nv2a_profile_inc_counter(NV2A_PROF_INLINE_ELEMENTS);
 
-        size_t index_data_size =
+        bool use_u16 = inline_indices_use_u16(pg->primitive_mode,
+                                               pg->inline_elements_max);
+        size_t index_data_size = use_u16 ?
+            ROUND_UP(pg->inline_elements_length, 2) * sizeof(uint16_t) :
             pg->inline_elements_length * sizeof(pg->inline_elements[0]);
 
         ensure_buffer_space(pg, BUFFER_INDEX_STAGING, index_data_size);
@@ -5015,15 +5037,19 @@ void pgraph_vk_flush_draw(NV2AState *d)
         begin_pre_draw(pg);
         copy_remapped_attributes_to_inline_buffer(pg, &remap, min_element,
                                                   max_element + 1);
-        VkDeviceSize buffer_offset = pgraph_vk_update_index_buffer(
-            pg, pg->inline_elements, index_data_size);
+        VkDeviceSize buffer_offset = use_u16 ?
+            pgraph_vk_update_index_buffer_u16(pg, pg->inline_elements,
+                                             pg->inline_elements_length) :
+            pgraph_vk_update_index_buffer(pg, pg->inline_elements,
+                                          index_data_size);
         pgraph_vk_begin_debug_marker(r, r->command_buffer, RGBA_BLUE,
                                      "Inline Elements");
         begin_draw(pg);
         bind_vertex_buffer(pg, remap.attributes, 0);
         vkCmdBindIndexBuffer(r->command_buffer,
                              r->storage_buffers[BUFFER_INDEX].buffer,
-                             buffer_offset, VK_INDEX_TYPE_UINT32);
+                             buffer_offset, use_u16 ? VK_INDEX_TYPE_UINT16 :
+                                                       VK_INDEX_TYPE_UINT32);
         vkCmdDrawIndexed(r->command_buffer, pg->inline_elements_length, 1, 0, 0,
                          0);
         xemu_cost_add_verts(pg->inline_elements_length, vcost_milli,
