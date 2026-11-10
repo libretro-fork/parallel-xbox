@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- x86-64 TCG separates translated instruction bodies from slow paths, pools and search records within bounded hot/cold chunks. Preserve unwind data, split-WX ownership and buffer retry/reuse; use immediate cache publication and retain the non-split path on other hosts. Gameplay and cache-capacity effects remain unqualified.
+- Experimental x86-64 TCG separates translated instruction bodies from slow paths, pools and search records within bounded hot/cold chunks. Correctness tests pass, but synthetic capacity models expose substantial losses from the fixed split; keep this candidate off libretro pending allocator revision and performance qualification.
 
 - Vulkan vertex translation omits unreferenced signed-integer declarations using a stack-owned count/write usage mask. Preserve instruction IDs, arithmetic, layouts and allocation counts while shrinking generated modules; frame-time improvement remains unmeasured.
 

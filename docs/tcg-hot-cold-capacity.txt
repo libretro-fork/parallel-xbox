@@ -1,0 +1,53 @@
+Hot/cold TCG capacity comparison — 2026-11-11
+
+Candidate allocator: experimental branch at dc82321e68.
+Reference allocator: libretro 8684dae402, before the layout experiment.
+
+Run from a complete checkout containing reference commit 8684dae402:
+  python3 scripts/tcg-cold-capacity.py /path/to/parallel-xbox > capacity.csv
+Requires a C compiler named cc. No emulator, network or game files are used.
+
+Method
+Extract the candidate's production allocator/chunk/retry functions through
+its allocation test harness, and the parent's production tcg_tb_alloc via
+git show. Simulate successful body/cold publication in one 8 MiB region.
+Hold metadata at 256 bytes for BOTH allocators, align metadata to 64 bytes
+and code publication to the target's 16-byte boundary, and retain 1024-byte
+highwater margins. Sweep 49 fixed body/cold payload combinations.
+Cold payload excludes metadata and includes the modeled tail/search bytes.
+No claims are made about actual game distributions or the real TB size.
+
+Selected results (same memory budget and equal metadata size)
+body/cold bytes     parent blocks    split blocks    capacity change
+16 / 16                26211             13080           -50.10%
+128 / 64               18722             13080           -30.14%
+256 / 128              13105             10896           -16.86%
+512 / 256               8191              8176            -0.18%
+4096 / 16               1899              1016           -46.50%
+4096 / 4096              992               960            -3.23%
+
+Finding
+Once either half fills, the candidate abandons the other half's unused
+space and starts another chunk. That substantially lowers capacity for
+unbalanced mixes. Equal metadata deliberately isolates partition loss;
+it does not penalize the candidate's extra extent record on other hosts.
+The comparison therefore does not qualify that additional metadata cost.
+
+Decision
+Do not promote the fixed-split candidate unchanged. The existing 58 ROM
+passes, allocator/unwind checks and split-WX exhaustion checks establish
+correctness for their cases, not acceptable capacity or faster games.
+The earlier noisy process-CPU medians remain unqualified. Physical gameplay
+was waived for synthetic testing; that does not turn this capacity loss
+into a passing result. The cold-first-play regression remains open.
+
+Next work
+Evaluate bounded reuse of the remaining chunk space, or another layout
+that avoids abandoning a large free partition. Re-run this comparison,
+then the allocator/unwind, small-buffer split-WX and actual-core tests.
+Measure runtime capacity across real emitted mixtures before choosing a
+partition policy; a different fixed ratio alone merely moves the loss.
+
+This follow-up changes only analysis tooling/documentation. Runtime bytes
+are unchanged from the already-tested experimental candidate. The branch
+remains experimental and libretro is not modified by this work.
