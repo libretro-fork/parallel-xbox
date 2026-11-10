@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Vulkan directly emits projective shadow shaders whose dimension/cube metadata is ignored by the reference sampler. Keep the existing 2D views, allocation counts and borrowed input lifetimes.
+
 - CPU translation drops stale block-chain pointers when generating a block flushes the code cache, preventing jump patches into reused code. Regression coverage forces cache resets and block-address reuse.
 
 - CPU translation on x86-64 counts guest memory accesses as they are emitted, avoiding the TLB planner's preliminary counting pass. Preserve memo hints and translation-retry resets, with differential regression coverage. Gameplay performance remains unmeasured.

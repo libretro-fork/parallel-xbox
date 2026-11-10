@@ -733,7 +733,22 @@ int main(int argc,char **argv){
    }
    float plane[3][4]={{0,0,100,1},{4,0,200,1},{0,4,300,1}};memcpy(data[4],plane,sizeof(plane));data[7][0]=.5f;data[7][2]=1;data[7][3]=(float)(1+(i/17)%64);
   }
-  GlslcResult modules[2];SpvPshOptions opts={.spirv_1_6=!!(test&256),.ubo_binding=1,.tex_binding=2};assert(pgraph_spv_psh(&state,opts,&modules[1]));MString *source=pgraph_glsl_gen_psh(&state,(GenPshGlslOptions){.vulkan=true,.locations=true,.ubo_binding=1,.tex_binding=2});GlslcOptions go={.spirv_1_6=opts.spirv_1_6,.emit_layout=true};if(!glslc_compile(GLSLC_STAGE_FRAGMENT,mstring_get_str(source),&go,&modules[0])){fprintf(stderr,"fragment %u %d %s\n",test,modules[0].error_line,modules[0].error);abort();}if(test>=74752){PshState canonical=state;for(unsigned j=0;j<4;j++)canonical.tex_x8y24[j]=false;MString *other=pgraph_glsl_gen_psh(&canonical,(GenPshGlslOptions){.vulkan=true,.locations=true,.ubo_binding=1,.tex_binding=2});assert(!strcmp(mstring_get_str(source),mstring_get_str(other)));mstring_unref(other);}reference_source_bytes+=strlen(mstring_get_str(source));mstring_unref(source);
+  if(test>=76288){
+   unsigned f=test-76288,unit=(f/640)%4;const unsigned flags[]={1,3,7,15,31};
+   memset(&state,0,sizeof(state));memset(&values,0,sizeof(values));memset(data,0,sizeof(data));
+   state.depth_format=DEPTH_FORMAT_D24;state.shader_stage_program=PS_TEXTUREMODES_PROJECT3D<<(unit*5);state.dim_tex[unit]=1+(f/40)%4;state.tex_cubemap[unit]=!!((f/160)%2);state.shadow_map[unit]=flags[f%5];state.shadow_depth_func=(f/5)%8;state.rect_tex[unit]=!!((f/320)%2);
+   state.combiner_dynamic=!!(f&128);state.alpha_dynamic=!!(f&256);state.smooth_shading=!!(f&64);
+   unsigned reg=PS_REGISTER_T0+unit;state.final_inputs_0=0x20000000u|(reg<<16);state.final_inputs_1=(reg|16u)<<8;values.combFinal0[0]=state.final_inputs_0;values.combFinal1[0]=state.final_inputs_1;if(state.combiner_dynamic)state.final_inputs_0=state.final_inputs_1=0;
+   values.surfaceScale[0][0]=values.surfaceScale[0][1]=1;values.clipRange[0][1]=values.clipRange[0][3]=16777215;
+   for(unsigned j=0;j<8;j++){values.clipRegion[j][2]=4;values.clipRegion[j][3]=4;}
+   for(unsigned j=0;j<4;j++){
+    values.texScale[j]=(f&64)?-1:1;unsigned sampler=(f/16+j)%16;
+    VkDescriptorImageInfo info={samplers[sampler],state.shadow_map[j]&2?encoded_f16.view:depth_views[(f/80)%3],VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL};VkWriteDescriptorSet w={.sType=VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,.dstSet=set,.dstBinding=2+j,.descriptorCount=1,.descriptorType=VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,.pImageInfo=&info};vkUpdateDescriptorSets(device,1,&w,0,NULL);
+    data[0][j]=(state.shadow_map[j]&2)?511.9375f:(f/80)%3==0?65535:16777215;
+   }
+   const float refs[]={0,.0001f,.125f,.5f,.75f,1,1.5f,-.25f};float plane[3][4]={{0,0,100,1},{4,0,200,1},{0,4,300,1}};memcpy(data[4],plane,sizeof(plane));data[7][0]=.5f;data[7][1]=refs[(f/97)%8];data[7][2]=(f/7)&1?1:-1;data[7][3]=(float)(256+(f/17)%8);
+  }
+  GlslcResult modules[2];SpvPshOptions opts={.spirv_1_6=!!(test&256),.ubo_binding=1,.tex_binding=2};assert(pgraph_spv_psh(&state,opts,&modules[1]));MString *source=pgraph_glsl_gen_psh(&state,(GenPshGlslOptions){.vulkan=true,.locations=true,.ubo_binding=1,.tex_binding=2});GlslcOptions go={.spirv_1_6=opts.spirv_1_6,.emit_layout=true};if(!glslc_compile(GLSLC_STAGE_FRAGMENT,mstring_get_str(source),&go,&modules[0])){fprintf(stderr,"fragment %u %d %s\n",test,modules[0].error_line,modules[0].error);abort();}if(test>=74752 && test<76288){PshState canonical=state;for(unsigned j=0;j<4;j++)canonical.tex_x8y24[j]=false;MString *other=pgraph_glsl_gen_psh(&canonical,(GenPshGlslOptions){.vulkan=true,.locations=true,.ubo_binding=1,.tex_binding=2});assert(!strcmp(mstring_get_str(source),mstring_get_str(other)));mstring_unref(other);}if(test>=76288){PshState canonical=state;for(unsigned j=0;j<4;j++){canonical.dim_tex[j]=2;canonical.tex_cubemap[j]=false;}MString *other=pgraph_glsl_gen_psh(&canonical,(GenPshGlslOptions){.vulkan=true,.locations=true,.ubo_binding=1,.tex_binding=2});assert(!strcmp(mstring_get_str(source),mstring_get_str(other)));mstring_unref(other);}reference_source_bytes+=strlen(mstring_get_str(source));mstring_unref(source);
   words[0]+=modules[0].num_words;words[1]+=modules[1].num_words;
   uint32_t expected[80];uint64_t build_ns[2]={0},draw_ns[2]={0};
   for(unsigned path=0;path<2;path++){
@@ -750,12 +765,12 @@ int main(int argc,char **argv){
   if(test==54272){float red;memcpy(&red,expected,4);assert(isfinite(red) && red>0.0f && red<1.0f);printf("Signed fixture signal: first_red=%.9g; final constant bank active\n",red);}
   if(test==60416){float red;memcpy(&red,expected,4);assert(isfinite(red) && red>0.0f && red<1.0f);printf("Raw integer fixture signal: first_red=%.9g; numeric conversion and final constant bank active\n",red);}
   if(test==70656){unsigned signal=0;for(unsigned p=0;p<16;p++){float red;memcpy(&red,expected+p*4,4);signal+=isfinite(red)&&red>=.125f&&red<=.5f;}assert(signal);printf("Integer dot fixture signal: %u nontrivial scaled integer pixels\n",signal);}
-  if(test>=74752)for(unsigned p=0;p<16;p++){float red;memcpy(&red,expected+p*4,4);metadata_signal+=isfinite(red)&&red>0.0f&&red<1.0f;}
+  if(test>=74752 && test<76288)for(unsigned p=0;p<16;p++){float red;memcpy(&red,expected+p*4,4);metadata_signal+=isfinite(red)&&red>0.0f&&red<1.0f;}
   for(unsigned j=0;j<16;j++){if(expected[j*4]==0xc0000000u)discarded++;else{written++;sample_pixels+=sampled;point_pixels+=state.point_sprite;}}
   release(&modules[0]);release(&modules[1]);
  }
  printf("Fragment GPU: %u scalar color/depth/discard results, %u differences, %u validation errors; validation=%s\n",compared,failures,errors,validated?"enabled":"DISABLED");
- if(first>=74752){assert(metadata_signal);printf("Float metadata fixture: %u nontrivial pixels; production GLSL identical with packed flag off/on\n",metadata_signal);}
+ if(first>=74752 && first<76288){assert(metadata_signal);printf("Float metadata fixture: %u nontrivial pixels; production GLSL identical with packed flag off/on\n",metadata_signal);}
  if(first>=16896)assert(written && sample_pixels);
  if(first>=4096 && (first<10240 || (first>=14336 && first<16384)))assert(written && discarded && sample_pixels);
  if(first>=8192 && (first<10240 || (first>=14336 && first<16384)))assert(point_pixels);

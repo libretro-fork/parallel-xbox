@@ -318,10 +318,12 @@ bool pgraph_spv_psh_supported(const PshState *s,SpvPshOptions opts)
             if(!bump_stage(s,j) && (s->dim_tex[j]!=2 || s->rect_tex[j] || s->border_adjust[j]))return false;
         }
         if(constant_shadow(s,j)){
-            if(s->dim_tex[j]!=2 || s->colorkey_mode[j]<COLOR_KEY_NONE || s->colorkey_mode[j]>COLOR_KEY_DISCARD)return false;
+            if((mode!=PS_TEXTUREMODES_PROJECT3D && s->dim_tex[j]!=2) || s->colorkey_mode[j]<COLOR_KEY_NONE || s->colorkey_mode[j]>COLOR_KEY_DISCARD)return false;
         }else if(sample_stage(s,j)){
             if(opts.tex_binding>=29 || (opts.ubo_binding>=opts.tex_binding && opts.ubo_binding<opts.tex_binding+4) || s->colorkey_mode[j]<COLOR_KEY_NONE || s->colorkey_mode[j]>COLOR_KEY_DISCARD)return false;
-            if(sampled_shadow(s,j)){if(s->dim_tex[j]!=2 || s->tex_cubemap[j] || (f16_shadow(s,j) && s->tex_x8y24[j]))return false;}
+            /* PROJECT3D shadow samplers are always 2D in the reference,
+             * regardless of the dimension and cube metadata. */
+            if(sampled_shadow(s,j)){if((mode!=PS_TEXTUREMODES_PROJECT3D && (s->dim_tex[j]!=2 || s->tex_cubemap[j])) || (f16_shadow(s,j) && s->tex_x8y24[j]))return false;}
             else if(raw_color(s,j)){
                 if(mode==PS_TEXTUREMODES_PROJECT2D){
                     if(s->conv_tex[j]==CONVOLUTION_FILTER_DISABLED){if(s->tex_cubemap[j])return false;}

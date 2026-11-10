@@ -259,7 +259,7 @@ int main(int argc,char **argv)
         glslc_result_free_words(&a);free(a.uniforms.members);glslc_result_free_words(&b);free(b.uniforms.members);
     }
     for(unsigned i=0;i<16;i++){
-        PshState s={.final_inputs_0=0x20080000,.final_inputs_1=0x1800,.shader_stage_program=PS_TEXTUREMODES_PROJECT3D,.shadow_map={1},.dim_tex={2},.shadow_depth_func=SHADOW_DEPTH_FUNC_LESS};SpvPshOptions opts={.ubo_binding=1,.tex_binding=2};
+        PshState s={.final_inputs_0=0x20080000,.final_inputs_1=0x1800,.shader_stage_program=PS_TEXTUREMODES_PROJECT2D,.shadow_map={1},.dim_tex={2},.shadow_depth_func=SHADOW_DEPTH_FUNC_LESS};SpvPshOptions opts={.ubo_binding=1,.tex_binding=2};
         if(i<5){const unsigned flags[]={2,4,8,16,64};s.shadow_map[0]=flags[i];}
         if(i==5)s.shadow_depth_func=-1;
         if(i==6)s.shadow_depth_func=8;
@@ -273,7 +273,7 @@ int main(int argc,char **argv)
         allocations=0;GlslcResult a;assert(!pgraph_spv_psh(&s,opts,&a));assert(!allocations && !a.words && !a.uniforms.members);
     }
     for(unsigned i=0;i<16;i++){
-        PshState s={.final_inputs_0=0x20080000,.final_inputs_1=0x1800,.shader_stage_program=PS_TEXTUREMODES_PROJECT3D,.shadow_map={1},.dim_tex={2}};
+        PshState s={.final_inputs_0=0x20080000,.final_inputs_1=0x1800,.shader_stage_program=PS_TEXTUREMODES_PROJECT2D,.shadow_map={1},.dim_tex={2}};
         SpvPshOptions opts={.ubo_binding=1,.tex_binding=2};
         if(i<6){s.shadow_depth_func=i+1;s.shadow_map[0]=64;}
         if(i>=6 && i<=8)s.dim_tex[0]=i==8?3:i-6;
@@ -369,7 +369,7 @@ int main(int argc,char **argv)
 
 
     for(unsigned i=0;i<16;i++){
-        PshState s={.final_inputs_0=0x20080000,.final_inputs_1=0x1800,.shader_stage_program=PS_TEXTUREMODES_PROJECT3D,.shadow_map={3},.dim_tex={2},.shadow_depth_func=SHADOW_DEPTH_FUNC_LESS};SpvPshOptions opts={.ubo_binding=1,.tex_binding=2};
+        PshState s={.final_inputs_0=0x20080000,.final_inputs_1=0x1800,.shader_stage_program=PS_TEXTUREMODES_PROJECT2D,.shadow_map={3},.dim_tex={2},.shadow_depth_func=SHADOW_DEPTH_FUNC_LESS};SpvPshOptions opts={.ubo_binding=1,.tex_binding=2};
         if(i==0)s.shadow_map[0]=2;
         if(i==1)s.shadow_map[0]=35;
         if(i==2)s.shadow_map[0]=-1;
@@ -575,5 +575,18 @@ int main(int argc,char **argv)
   glslc_result_free_words(&a);free(a.uniforms.members);glslc_result_free_words(&b);free(b.uniforms.members);
  }
 
-    puts("Direct PSH: 60928 deterministic/final-allocation/ignored-key/owned-layout modules and one hundred forty-five allocation-free unsupported cases PASS");return 0;
+ for(unsigned i=0;i<2560;i++){
+  const unsigned flags[]={1,3,7,15,31};unsigned unit=i/640,f=i%640,reg=PS_REGISTER_T0+unit;PshState state={.depth_format=DEPTH_FORMAT_D24};
+  state.shader_stage_program=PS_TEXTUREMODES_PROJECT3D<<(unit*5);state.dim_tex[unit]=2;state.shadow_map[unit]=flags[f%5];state.shadow_depth_func=(f/5)%8;state.rect_tex[unit]=!!((f/320)%2);
+  state.final_inputs_0=0x20000000u|(reg<<16);state.final_inputs_1=(reg|16u)<<8;state.combiner_dynamic=!!(f&128);state.alpha_dynamic=!!(f&256);
+  SpvPshOptions opts={.ubo_binding=1,.tex_binding=2,.spirv_1_6=!!(f&64)};GlslcResult a,b;allocations=0;assert(pgraph_spv_psh(&state,opts,&a)&&allocations==2);
+  state.dim_tex[unit]=1+(f/40)%4;state.tex_cubemap[unit]=!!((f/160)%2);
+  assert(pgraph_spv_psh(&state,opts,&b)&&allocations==4);assert(a.num_words==b.num_words&&!memcmp(a.words,b.words,a.num_words*4));assert(a.uniforms.count==b.uniforms.count&&a.uniforms.size==b.uniforms.size);
+  for(unsigned j=0;j<a.uniforms.count;j++){const GlslcUniform *x=a.uniforms.members+j,*y=b.uniforms.members+j;assert(!strcmp(x->name,y->name)&&x->offset==y->offset&&x->dim_v==y->dim_v&&x->dim_a==y->dim_a&&x->stride==y->stride);}
+  memset(&state,0xa5,sizeof(state));assert(b.uniforms.members[0].name[0]&&!b.allocation&&b.allocation_words==b.num_words);
+  char path[4096];snprintf(path,sizeof(path),"%s/shadow-shape-%u.spv",argv[1],i);FILE *fout=fopen(path,"wb");assert(fout&&fwrite(b.words,4,b.num_words,fout)==b.num_words);fclose(fout);
+  glslc_result_free_words(&a);free(a.uniforms.members);glslc_result_free_words(&b);free(b.uniforms.members);
+ }
+
+    puts("Direct PSH: 63488 deterministic/final-allocation/ignored-key/owned-layout modules and one hundred forty-five allocation-free unsupported cases PASS");return 0;
 }
