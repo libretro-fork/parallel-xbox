@@ -36,11 +36,14 @@ with tempfile.TemporaryDirectory(prefix='tcg-tlb-memo-') as directory:
             backend = (r / 'tcg/i386/tcg-target.c.inc').read_text()
             plan = (r / 'tcg/tcg-tlbm.c.inc').read_text()
             core = (r / 'tcg/tcg.c').read_text()
+            ldst = (r / 'tcg/tcg-op-ldst.c').read_text()
             guard = backend.index('static void tlbm_out_share(')
             before = backend[:guard]
             after = backend[guard:]
             assert 'if (!is_ld) {' in after
             controls = [
+                ('access emission count omitted', 'tcg/tcg-op-ldst.c', ldst.replace('    tcg_ctx->nb_guest_access++;', '')),
+                ('access count reset omitted', 'tcg/tcg.c', core.replace('    s->nb_guest_access = 0;', '')),
                 ('dirty store check omitted', 'tcg-target.c.inc', before + after.replace('if (!is_ld) {', 'if (false) {', 1)),
                 ('zero used as invalid tag', 'tcg-target.c.inc', backend.replace('#define TLBM_NONE     0x80000000u', '#define TLBM_NONE 0')),
                 ('MMU identity ignored', 'tcg-tlbm.c.inc', plan.replace(' || f->mmu != x->mmu', '')),
@@ -53,7 +56,7 @@ with tempfile.TemporaryDirectory(prefix='tcg-tlb-memo-') as directory:
                     '    tgen_arithi(s, ARITH_ADD + P_REXW, TCG_REG_R11, 1, 0);\n    tlbm_out_check(s, addr, oi, is_ld,')))
             for name, filename, content in controls:
                 original = {'tcg-target.c.inc': backend, 'tcg-tlbm.c.inc': plan,
-                            'tcg/tcg.c': core}[filename]
+                            'tcg/tcg.c': core, 'tcg/tcg-op-ldst.c': ldst}[filename]
                 assert content != original, name
                 # tcg.c finds the planner in its own directory; a private copy
                 # lets both backend and planner overrides use the include path.

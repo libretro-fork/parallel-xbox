@@ -123,18 +123,20 @@ static void tcg_tlbm_plan(TCGContext *s)
         || TARGET_PAGE_BITS > 12) {
         return;
     }
+#ifdef CONFIG_DEBUG_TCG
+    /* Check the emission bound even when the fast return would hide an
+     * undercount. Optimizer/liveness removals may make it conservative. */
     QTAILQ_FOREACH(op, &s->ops, link) {
         n += op->opc == INDEX_op_qemu_ld || op->opc == INDEX_op_qemu_st ||
              op->opc == INDEX_op_qemu_ld2 || op->opc == INDEX_op_qemu_st2;
     }
+    tcg_debug_assert(n <= s->nb_guest_access);
+#endif
+    n = s->nb_guest_access;
     if (n < 2) {
         return;
     }
-    s->tlbm_hint = tcg_malloc_context(s, n);
-    s->tlbm_nhint = n;
     acc = tcg_malloc_context(s, sizeof(*acc) * n);
-    used = tcg_malloc_context(s, n);
-    memset(used, 0, n);
     vroot = tcg_malloc_context(s, sizeof(int) * s->nb_temps);
     voff = tcg_malloc_context(s, sizeof(uint32_t) * s->nb_temps);
     memset(vroot, 0, sizeof(int) * s->nb_temps);
@@ -213,6 +215,12 @@ static void tcg_tlbm_plan(TCGContext *s)
             break;
         }
     }
+
+    tcg_debug_assert(k <= n);
+    s->tlbm_nhint = n = k;
+    s->tlbm_hint = tcg_malloc_context(s, n);
+    used = tcg_malloc_context(s, n);
+    memset(used, 0, n);
 
     /* Share, fill or plain walk; a fill replaces the page needed later. */
     for (int i = 0; i < n; i++) {

@@ -1843,6 +1843,9 @@ void tcg_func_start(TCGContext *s)
     }
 
     s->nb_ops = 0;
+#ifdef TCG_TARGET_TLB_MEMO
+    s->nb_guest_access = 0;
+#endif
     s->current_frame_offset = s->frame_start;
 
 
