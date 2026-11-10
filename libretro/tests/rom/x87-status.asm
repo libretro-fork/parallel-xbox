@@ -3,6 +3,20 @@
 bits 32
 org 0xfff00000
 %include "rep-common.inc"
+%macro integer_status_case 4
+    inc ebp
+    fninit
+    mov word [0x6030],%1
+    fldcw [0x6030]
+    mov dword [0x6034],%2
+    fld dword [0x6034]
+    fist word [0x6038]
+    check word [0x6038],%3
+    fnstsw ax
+    and eax,0x21 ; invalid and precision/inexact
+    mov [R+0x20],eax
+    check eax,%4
+%endmacro
 start:
     rep_test_init
     mov eax,cr0
@@ -101,6 +115,17 @@ start:
     inc ebp
     mov [R+0x1c],eax
     check eax,0
+    ; FIST m16 takes the real helper in both hard and soft FPU modes.
+    integer_status_case 0x037f,0x3fc00000,2,0x20
+    integer_status_case 0x077f,0x3fc00000,1,0x20
+    integer_status_case 0x0b7f,0x3fc00000,2,0x20
+    integer_status_case 0x0f7f,0x3fc00000,1,0x20
+    integer_status_case 0x037f,0xbfc00000,-2,0x20
+    integer_status_case 0x077f,0xbfc00000,-2,0x20
+    integer_status_case 0x0b7f,0xbfc00000,-1,0x20
+    integer_status_case 0x0f7f,0xbfc00000,-1,0x20
+    integer_status_case 0x037f,0x47000000,0x8000,1
+    integer_status_case 0x037f,0x7fc00123,0x8000,1
     mov dword [R],0x4b4f5753 ; SWOK
 .halt:
     cli

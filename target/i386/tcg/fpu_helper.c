@@ -449,7 +449,7 @@ static inline int save_exception_flags(CPUX86State *env)
     return old_flags;
 }
 
-/* Comparisons use exact SoftFloat status even in the hard-FPU build. */
+/* Exact SoftFloat operations publish status even in the hard-FPU build. */
 static void merge_softfloat_exception_flags(CPUX86State *env, int old_flags)
 {
     int new_flags = get_float_exception_flags(&env->fp_status);
@@ -626,7 +626,7 @@ int32_t helper_fist_ST0(CPUX86State *env)
         set_float_exception_flags(float_flag_invalid, &env->fp_status);
         val = -32768;
     }
-    merge_exception_flags(env, old_flags);
+    merge_softfloat_exception_flags(env, old_flags);
     return val;
 }
 
@@ -639,7 +639,7 @@ int32_t helper_fistl_ST0(CPUX86State *env)
     if (get_float_exception_flags(&env->fp_status) & float_flag_invalid) {
         val = 0x80000000;
     }
-    merge_exception_flags(env, old_flags);
+    merge_softfloat_exception_flags(env, old_flags);
     return val;
 }
 
@@ -652,7 +652,7 @@ int64_t helper_fistll_ST0(CPUX86State *env)
     if (get_float_exception_flags(&env->fp_status) & float_flag_invalid) {
         val = 0x8000000000000000ULL;
     }
-    merge_exception_flags(env, old_flags);
+    merge_softfloat_exception_flags(env, old_flags);
     return val;
 }
 
@@ -666,7 +666,7 @@ int32_t helper_fistt_ST0(CPUX86State *env)
         set_float_exception_flags(float_flag_invalid, &env->fp_status);
         val = -32768;
     }
-    merge_exception_flags(env, old_flags);
+    merge_softfloat_exception_flags(env, old_flags);
     return val;
 }
 
@@ -679,7 +679,7 @@ int32_t helper_fisttl_ST0(CPUX86State *env)
     if (get_float_exception_flags(&env->fp_status) & float_flag_invalid) {
         val = 0x80000000;
     }
-    merge_exception_flags(env, old_flags);
+    merge_softfloat_exception_flags(env, old_flags);
     return val;
 }
 
@@ -692,7 +692,7 @@ int64_t helper_fisttll_ST0(CPUX86State *env)
     if (get_float_exception_flags(&env->fp_status) & float_flag_invalid) {
         val = 0x8000000000000000ULL;
     }
-    merge_exception_flags(env, old_flags);
+    merge_softfloat_exception_flags(env, old_flags);
     return val;
 }
 
