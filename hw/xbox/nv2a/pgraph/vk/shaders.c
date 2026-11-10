@@ -941,6 +941,7 @@ static ShaderSource *vk_module_spirv(const ShaderModuleCacheKey *key)
         SpvPshOptions fragment = {
             .spirv_1_6 = pgraph_vk_spirv_1_6,
             .ubo_binding = key->psh.glsl_opts.ubo_binding,
+            .tex_binding = key->psh.glsl_opts.tex_binding,
         };
         GlslcResult result;
         /* The cache entry or worker job owns this same immutable key through

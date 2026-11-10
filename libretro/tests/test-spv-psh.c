@@ -32,6 +32,48 @@ int main(int argc,char **argv)
         char path[4096];snprintf(path,sizeof(path),"%s/psh-%u.spv",argv[1],i);FILE *f=fopen(path,"wb");assert(f);assert(fwrite(a.words,4,a.num_words,f)==a.num_words);fclose(f);
         glslc_result_free_words(&a);free(a.uniforms.members);glslc_result_free_words(&b);free(b.uniforms.members);
     }
+    for(unsigned i=0;i<4096;i++){
+        PshState s={.final_inputs_0=0x20080000,.final_inputs_1=0x1800};
+        const unsigned modes[]={PS_TEXTUREMODES_NONE,PS_TEXTUREMODES_PROJECT2D,PS_TEXTUREMODES_PASSTHRU,PS_TEXTUREMODES_CLIPPLANE};
+        s.alpha_dynamic=!!(i&256);s.alpha_test=!!(i&512);s.point_sprite=!!(i&1024);s.smooth_shading=!!(i&2048);
+        unsigned samples=0,rects=0;
+        for(unsigned j=0;j<4;j++){
+            unsigned mode=modes[(i>>(j*2))&3];s.shader_stage_program|=mode<<(j*5);s.dim_tex[j]=2;
+            s.rect_tex[j]=!!(i&(1u<<(j+8))) && !(j==3 && s.point_sprite);s.alphakill[j]=!!(i&32);
+            for(unsigned k=0;k<4;k++)s.compare_mode[j][k]=!!(i&(1u<<(k+4)));
+            samples+=mode==PS_TEXTUREMODES_PROJECT2D;rects+=mode==PS_TEXTUREMODES_PROJECT2D && s.rect_tex[j];
+        }
+        SpvPshOptions opts={.spirv_1_6=!!(i&512),.ubo_binding=1,.tex_binding=i&1?28:2};GlslcResult a,b;allocations=0;
+        assert(pgraph_spv_psh(&s,opts,&a) && allocations==2);
+        unsigned loads=0,queries=0;
+        for(size_t k=5;k<a.num_words;k+=a.words[k]>>16){unsigned op=a.words[k]&65535;loads+=op==87;queries+=op==103;}
+        assert(loads==samples && queries==rects);
+        unsigned mask=s.alpha_dynamic && samples;assert(a.uniforms.count==11+!!rects+mask);
+        assert(a.uniforms.size==(rects?(s.alpha_dynamic?576:560):mask?512:496));
+        for(size_t j=0;j<a.uniforms.count;j++){
+            const GlslcUniform *u=a.uniforms.members+j;
+            assert(u->offset+u->stride*(u->dim_a-1)+u->dim_v*4<=a.uniforms.size);
+            assert((const char *)u->name>=(const char *)(a.uniforms.members+a.uniforms.count));
+        }
+        s.surface_zeta_format=0xa5a5;memset(s.rgb_inputs,0xa5,sizeof(s.rgb_inputs));memset(s.alpha_inputs,0x5a,sizeof(s.alpha_inputs));
+        assert(pgraph_spv_psh(&s,opts,&b) && allocations==4);assert(a.num_words==b.num_words && !memcmp(a.words,b.words,a.num_words*4));
+        memset(&s,0xa5,sizeof(s));char path[4096];snprintf(path,sizeof(path),"%s/tex-%u.spv",argv[1],i);FILE *f=fopen(path,"wb");assert(f);assert(fwrite(a.words,4,a.num_words,f)==a.num_words);fclose(f);
+        glslc_result_free_words(&a);free(a.uniforms.members);glslc_result_free_words(&b);free(b.uniforms.members);
+    }
+    for(unsigned i=0;i<9;i++){
+        PshState s={.final_inputs_0=0x20080000,.final_inputs_1=0x1800,.shader_stage_program=PS_TEXTUREMODES_PROJECT2D};s.dim_tex[0]=2;
+        SpvPshOptions opts={.ubo_binding=1,.tex_binding=2};GlslcResult a;
+        if(i==0)s.border_adjust[0]=true;
+        if(i==1)s.conv_tex[0]=CONVOLUTION_FILTER_QUINCUNX;
+        if(i==2)s.colorkey_mode[0]=COLOR_KEY_DISCARD;
+        if(i==3)s.dim_tex[0]=3;
+        if(i==4)s.tex_cubemap[0]=true;
+        if(i==5)opts.tex_binding=29;
+        if(i==6)opts.ubo_binding=3;
+        if(i==7)s.shader_stage_program=PS_TEXTUREMODES_PROJECT3D;
+        if(i==8){s.shader_stage_program=PS_TEXTUREMODES_PASSTHRU;s.border_adjust[0]=true;}
+        allocations=0;assert(!pgraph_spv_psh(&s,opts,&a));assert(!allocations && !a.words && !a.uniforms.members);
+    }
     for(unsigned i=0;i<16;i++){
         PshState s={.final_inputs_0=0x04200000,.final_inputs_1=0x1400};SpvPshOptions opts={.ubo_binding=1};
         if(i==0)opts.ubo_binding=32;
@@ -52,5 +94,5 @@ int main(int argc,char **argv)
         if(i==15){s.combiner_control=1;s.rgb_inputs[0]=0x0f000000;}
         allocations=0;GlslcResult a;memset(&a,0xa5,sizeof(a));assert(!pgraph_spv_psh(&s,opts,&a));assert(!allocations && !a.words && !a.uniforms.members && !a.push_constants.members);
     }
-    puts("Direct PSH: 4096 deterministic/final-allocation/ignored-key/owned-layout modules and sixteen allocation-free unsupported cases PASS");return 0;
+    puts("Direct PSH: 8192 deterministic/final-allocation/ignored-key/owned-layout modules and twenty-five allocation-free unsupported cases PASS");return 0;
 }

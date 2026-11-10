@@ -43,7 +43,8 @@ module words still identify the generated driver shader/pipeline normally.
 
 ## Coverage and remaining work
 
-Textured and dynamic combiner shaders still use the correct GLSL/compiler path.
+Texture families not listed below and dynamic combiner shaders still use the
+correct GLSL/compiler path.
 Unsupported texture/depth modifiers, invalid registers/destinations/stage counts,
 and reference-undefined disabled-final-combiner recipes reject before allocating.
 No draw is dropped and no placeholder is substituted. Extending those families
@@ -71,3 +72,59 @@ qualification limits. Uncontrolled driver
 caches and overlapping correctness runs do not establish latency gains. CPU
 translation savings do not establish GPU execution savings, ready PSOs, zero
 draw-critical compile waits, or cold-play recovery; those remain BAD/OPEN.
+
+
+## Projected 2D and coordinate stages
+
+All four units can now mix NONE, PROJECT2D, PASSTHRU and CLIPPLANE stages with
+static combiners. PROJECT2D uses the existing combined image/sampler descriptor
+at `tex_binding + unit`; no texture, sampler or descriptor ownership changes.
+Normalized coordinates preserve the reference `xy / max(q, 1e-15)` expression.
+Rectangle coordinates first divide by `textureSize / texScale`, then by the
+same clamped Q. ImageQuery capability and the scalar std140 texScale array are
+emitted only for rectangle sampling. Implicit derivatives, filtering, mip
+selection and address modes remain the existing sampler's responsibility.
+
+Passthrough returns the incoming coordinate unchanged. Clip-plane stages perform
+all four configured sign comparisons/discards and return zero, matching GLSL.
+Stage-three point sprites use PointCoord with Z/Q equal to one; other units
+retain their interpolated coordinates. R0 alpha starts from T0 alpha when stage
+zero is active. Per-unit static alpha kill or the live alphaKillMask applies
+after sampling, before combiners; passthrough and clip-plane do not acquire
+samplers or alpha-kill behavior.
+
+The base eleven fields retain their offsets. Rectangle texScale adds a 64-byte
+scalar array at offset 496. Live alphaKillMask adds one uint at offset 560 with
+that array, or 496 without it. Final UBO extent is 496, 512, 560 or 576 bytes.
+Unused extensions produce no descriptors/names; the same two final allocations
+remain. The stack record holds SSA IDs only. No guest coordinate, texture,
+sampler, uniform or descriptor pointer escapes count/write. Existing native
+references, texture owners and descriptor/command retirement cover all last
+consumers; no new resource creation or file I/O is introduced.
+
+Cubemaps, 3D/dependent/bump/dot/shadow sampling, special signed/integer formats,
+convolution, border adjustment and color key still use the correct compiler
+path. Bindings that would overlap the UBO or exceed the bounded four-unit range
+reject allocation-free. Full practical direct fragment coverage remains open.
+
+CPU coverage expands to 8,192 modules and twenty-five unsupported cases. The
+4,096 previous untextured modules are byte-identical to the parent. GPU coverage
+adds nonconstant three-level texture data, nearest/linear texel/mip filters,
+repeat/mirror/edge/border modes, positive/tiny/zero/negative Q, scaled rectangle
+coordinates, mixed coordinate/clip/sample stages, static combiners and live
+alpha controls. Dedicated point-list draws exercise PointCoord. Separate
+written/discarded/sampled/point pixel counters require visible coverage, rather
+than allowing an all-discarded texture matrix to pass. These are correctness
+and work-count probes, not GPU execution timings or cold-play qualification.
+
+The complete 10,240-case matrix matched 819,200 scalar results per device on
+llvmpipe with validation and RTX 5090 without installed validation layers.
+The physical probe observed 55,355 written pixels, 108,485 discarded pixels,
+13,176 written pixels in sampled recipes and 8,128 written point pixels. The
+software reference and native path both wrote one additional sampled pixel;
+per-device native/reference comparisons remain exact. Cross-device filter/alpha
+results are not the comparison oracle. It emitted
+48,191,438 native words versus 73,546,449 reference words and avoided 83,029,381
+GLSL source bytes across those fixtures. All 49 contract suites, 26 GL/VK game
+runs, four lifecycle cases and five exact image pairs passed. These work counts
+and correctness checks do not qualify cold-play or GPU execution performance.
