@@ -692,3 +692,31 @@ Unused host gamma reflection storage is omitted; actual GPU LUT, descriptors,
 publication and retirement remain unchanged. Driver internal copies/allocations
 are unmeasured. Startup translation removal does not establish draw-path PSO
 readiness, GPU execution speed or cold-play recovery; the regression stays open.
+
+## Integer three-dot lookups
+
+DOT_STR_3D with a two-dimensional X8Y24 view uses an unsigned color lookup in
+the production Vulkan shader. Numeric texels convert to floats after sampling;
+they do not undergo shadow-depth normalization or projective division. The
+packed sampler type takes priority over shadow flags. With a float 2D view,
+shadow flags do not enable a depth comparison either. Shadow bit 1 still
+selects absolute rectangle scale, including for negative scales. Border adjustment runs
+before reducing the three-dot coordinate to XY, then rectangle normalization.
+Both sampler types retain the explicit zero HILO bias workaround. Unsupported
+coordinate/sampler shapes retain fallback.
+
+Native emission reuses the unsigned view and sampler slot with one vector
+unsigned-to-float conversion. Float recipes keep their original words. The key
+remains an immutable synchronous lend; no canonicalization, texel copy, snapshot,
+new resource, retained pointer or ownership change is added. The module and
+layout retain their two final allocations and existing retirement rules.
+
+Public coverage adds 4096 owner/validator cases and 16 allocation-free rejection
+controls (59392 CPU modules, 145 rejected shapes), plus 4096 GPU recipes. They
+exercise all dot mappings, integer/float views, ignored shadow/compare/filter
+metadata, border/rectangle reads, points, keys, alpha kill and static/live
+combiners. Final constant banks are populated explicitly; a signal assertion
+requires a nontrivial scaled integer result. The public GPU matrix contains
+74752 recipes. Work reductions and reference equality do not establish GPU
+execution speed, draw-path PSO readiness or cold-play smoothness. Driver caches
+remain uncontrolled and the cold-play regression remains BAD/OPEN.

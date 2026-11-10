@@ -14,4 +14,4 @@ with tempfile.TemporaryDirectory(prefix='direct-psh-') as tmp:
  validator=shutil.which('spirv-val')
  if not validator:raise SystemExit('UNQUALIFIED: spirv-val unavailable')
  for path in d.glob('*.spv'):subprocess.run([validator,'--target-env','vulkan1.3',str(path)],check=True)
- print('55296 direct fragment modules validated as Vulkan SPIR-V')
+ print('59392 direct fragment modules validated as Vulkan SPIR-V')

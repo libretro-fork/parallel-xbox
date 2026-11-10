@@ -58,14 +58,16 @@ static uint32_t texture_dot_sample(Context *c,uint32_t coord,uint32_t sample,uns
         }
         lookup=dot_border(c,lookup,unit);
         if(cube_stage(c->state,unit)){if(kind==0)lookup=texture_cube_to_2d(c,lookup);}
-        else if(kind==0)lookup=xy(c,lookup);
+        else if(kind==0 || kind==3)lookup=xy(c,lookup);
     }
     if(c->state->rect_tex[unit] && !cube_stage(c->state,unit))lookup=texture_rect_uv(c,sample,kind,lookup,unit);
     /* Keep zero bias explicit for integer-packed HILO lookup chains. The
      * operand-free form selects a different mip on the RTX regression corpus;
      * bias zero preserves implicit derivatives and sampler filtering. */
-    if(dot_mapping_used(c->state,4))return val(c->w,SpvOpImageSampleImplicitLod,c->v4,4,sample,lookup,(uint32_t)SpvImageOperandsBiasMask,c->cf[F_ZERO]);
-    return val(c->w,SpvOpImageSampleImplicitLod,c->v4,2,sample,lookup);
+    uint32_t type=kind==3?c->uvec4_t:c->v4,color;
+    if(dot_mapping_used(c->state,4))color=val(c->w,SpvOpImageSampleImplicitLod,type,4,sample,lookup,(uint32_t)SpvImageOperandsBiasMask,c->cf[F_ZERO]);
+    else color=val(c->w,SpvOpImageSampleImplicitLod,type,2,sample,lookup);
+    return kind==3?unary(c,SpvOpConvertUToF,c->v4,color):color;
 }
 static void dot_allocate(Context *c)
 {

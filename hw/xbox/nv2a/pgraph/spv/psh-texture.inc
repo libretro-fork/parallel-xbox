@@ -49,6 +49,13 @@ static uint32_t texture_rect_uv(Context *c,uint32_t sample,unsigned kind,uint32_
 {
     uint32_t image=unary(c,SpvOpImage,texture_image_type(c,kind),sample);
     uint32_t size=val(c->w,SpvOpImageQuerySizeLod,c->iv2,2,image,c->si[0]);
+    if(c->state->shadow_map[unit]&2){
+        /* The common GLSL norm helper uses absolute scale for this flag,
+         * even on DOT_STR_3D color samples which do not compare depth. */
+        uint32_t scale=ext1(c,GLSLstd450FAbs,c->f,unif(c,TEX_SCALE,unit));
+        uint32_t divisor=binary(c,SpvOpFDiv,c->v2,unary(c,SpvOpConvertSToF,c->v2,size),splat(c,c->v2,scale,2));
+        return binary(c,SpvOpFDiv,c->v2,uv,divisor);
+    }
     uint32_t divisor=binary(c,SpvOpFDiv,c->v2,unary(c,SpvOpConvertSToF,c->v2,size),splat(c,c->v2,unif(c,TEX_SCALE,unit),2));
     return binary(c,SpvOpFDiv,c->v2,uv,divisor);
 }

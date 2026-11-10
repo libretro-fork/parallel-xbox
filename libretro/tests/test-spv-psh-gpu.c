@@ -685,6 +685,27 @@ int main(int argc,char **argv){
    fixture_dead_meta(&state,f);
    float plane[3][4]={{0,0,100,1},{4,0,200,1},{0,4,300,1}};memcpy(data[4],plane,sizeof(plane));data[7][0]=.5f;data[7][1]=0;data[7][2]=1;data[7][3]=(float)(1+(f/17)%64);if(state.point_sprite)data[7][3]=-data[7][3];
   }
+
+  if(test>=70656){
+   unsigned f=test-70656,map=(f/2)%8;bool packed=!(f&1),passthrough=!!(f&64) && map!=4;const unsigned flags[]={0,1,3,7,15,31,64,255};
+   memset(&state,0,sizeof(state));memset(&values,0,sizeof(values));memset(data,0,sizeof(data));
+   state.shader_stage_program=(passthrough?PS_TEXTUREMODES_PASSTHRU:PS_TEXTUREMODES_PROJECT2D)|(PS_TEXTUREMODES_DOTPRODUCT<<5)|(PS_TEXTUREMODES_DOTPRODUCT<<10)|(PS_TEXTUREMODES_DOT_STR_3D<<15);
+   for(unsigned j=0;j<4;j++)state.dim_tex[j]=2;
+   state.other_stage_input=map|(map<<4)|(map<<8);state.tex_x8y24[3]=packed;state.shadow_map[3]=flags[(f/16)%8];state.shadow_depth_func=(f/64)%8;state.conv_tex[3]=(f&64)?99:CONVOLUTION_FILTER_GAUSSIAN;state.tex_cubemap[3]=!!(f&32);
+   state.rect_tex[3]=!!(f&128);state.border_adjust[3]=!!(f&256);state.point_sprite=!!(f&512)&&!state.rect_tex[3];state.smooth_shading=!!(f&16);state.depth_format=(f/512)%4;
+   state.alpha_dynamic=!!(f&512);state.alpha_test=!!(f&1024);state.alphakill[0]=!!(f&256);state.alphakill[3]=!!(f&1024);state.colorkey_mode[3]=(f&2048)?(f/256)%4:COLOR_KEY_NONE;
+   values.surfaceScale[0][0]=values.surfaceScale[0][1]=1;values.clipRange[0][1]=values.clipRange[0][3]=16777215;values.alphaKillMask[0]=(f/16)%16;values.alphaTestEnable[0]=!!(f&32);values.alphaFunc[0]=(f/32)%8;values.alphaRef[0]=128;
+   for(unsigned j=0;j<8;j++){values.clipRegion[j][2]=4;values.clipRegion[j][3]=4;}
+   for(unsigned j=0;j<4;j++){
+    values.texScale[j]=(.5f+(j%3)*.5f)*((f&64)?-1:1);values.consts[0][j]=values.consts[16][j]=packed?0x1p-33f:1;values.colorKey[j]=0xff0000ffu;values.colorKeyMask[j]=(f&64)?0xff000000u:0xffffffffu;
+    values.borderLogicalSize[j][0]=values.borderLogicalSize[j][1]=values.borderLogicalSize[j][2]=2;values.borderInvRealSize[j][0]=values.borderInvRealSize[j][1]=values.borderInvRealSize[j][2]=.125f;
+    unsigned sampler=(f/16+j)%16;if(j==3 && packed)sampler&=~3u;
+    VkDescriptorImageInfo info={samplers[sampler],j==3 && packed?packed_depth.view:texture.view,VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL};VkWriteDescriptorSet w={.sType=VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,.dstSet=set,.dstBinding=2+j,.descriptorCount=1,.descriptorType=VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,.pImageInfo=&info};vkUpdateDescriptorSets(device,1,&w,0,NULL);
+   }
+   unsigned reg=PS_REGISTER_T0+3;state.final_inputs_0=(PS_REGISTER_C0<<24)|((reg|0xc0u)<<16);state.final_inputs_1=(reg|16u)<<8;values.combFinal0[0]=state.final_inputs_0;values.combFinal1[0]=state.final_inputs_1;
+   state.combiner_dynamic=!!(f&1024);if(state.combiner_dynamic)state.final_inputs_0=state.final_inputs_1=0;
+   float plane[3][4]={{0,0,100,1},{4,0,200,1},{0,4,300,1}};memcpy(data[4],plane,sizeof(plane));data[7][0]=.5f;data[7][2]=1;data[7][3]=(float)(1+(f/17)%64);if(state.point_sprite)data[7][3]=-data[7][3];
+  }
   GlslcResult modules[2];SpvPshOptions opts={.spirv_1_6=!!(test&256),.ubo_binding=1,.tex_binding=2};assert(pgraph_spv_psh(&state,opts,&modules[1]));MString *source=pgraph_glsl_gen_psh(&state,(GenPshGlslOptions){.vulkan=true,.locations=true,.ubo_binding=1,.tex_binding=2});GlslcOptions go={.spirv_1_6=opts.spirv_1_6,.emit_layout=true};if(!glslc_compile(GLSLC_STAGE_FRAGMENT,mstring_get_str(source),&go,&modules[0])){fprintf(stderr,"fragment %u %d %s\n",test,modules[0].error_line,modules[0].error);abort();}reference_source_bytes+=strlen(mstring_get_str(source));mstring_unref(source);
   words[0]+=modules[0].num_words;words[1]+=modules[1].num_words;
   uint32_t expected[80];uint64_t build_ns[2]={0},draw_ns[2]={0};
@@ -698,9 +719,10 @@ int main(int argc,char **argv){
    vkDestroyPipeline(device,pipeline,NULL);vkDestroyShaderModule(device,frag,NULL);
   }
   if(timings)fprintf(stderr,"PSH timing case=%u ref_build_ns=%llu native_build_ns=%llu ref_submit_fence_ns=%llu native_submit_fence_ns=%llu UNQUALIFIED\n",test,(unsigned long long)build_ns[0],(unsigned long long)build_ns[1],(unsigned long long)draw_ns[0],(unsigned long long)draw_ns[1]);
-  bool sampled=false;for(unsigned j=0;j<4;j++)sampled|=((state.shader_stage_program>>(j*5))&31)==PS_TEXTUREMODES_PROJECT2D || ((state.shader_stage_program>>(j*5))&31)==PS_TEXTUREMODES_PROJECT3D || ((state.shader_stage_program>>(j*5))&31)==PS_TEXTUREMODES_CUBEMAP || ((state.shader_stage_program>>(j*5))&31)==PS_TEXTUREMODES_BUMPENVMAP || ((state.shader_stage_program>>(j*5))&31)==PS_TEXTUREMODES_BUMPENVMAP_LUM || ((state.shader_stage_program>>(j*5))&31)==PS_TEXTUREMODES_DPNDNT_AR || ((state.shader_stage_program>>(j*5))&31)==PS_TEXTUREMODES_DPNDNT_GB;
+  bool sampled=test>=70656;for(unsigned j=0;j<4;j++)sampled|=((state.shader_stage_program>>(j*5))&31)==PS_TEXTUREMODES_PROJECT2D || ((state.shader_stage_program>>(j*5))&31)==PS_TEXTUREMODES_PROJECT3D || ((state.shader_stage_program>>(j*5))&31)==PS_TEXTUREMODES_CUBEMAP || ((state.shader_stage_program>>(j*5))&31)==PS_TEXTUREMODES_BUMPENVMAP || ((state.shader_stage_program>>(j*5))&31)==PS_TEXTUREMODES_BUMPENVMAP_LUM || ((state.shader_stage_program>>(j*5))&31)==PS_TEXTUREMODES_DPNDNT_AR || ((state.shader_stage_program>>(j*5))&31)==PS_TEXTUREMODES_DPNDNT_GB;
   if(test==54272){float red;memcpy(&red,expected,4);assert(isfinite(red) && red>0.0f && red<1.0f);printf("Signed fixture signal: first_red=%.9g; final constant bank active\n",red);}
   if(test==60416){float red;memcpy(&red,expected,4);assert(isfinite(red) && red>0.0f && red<1.0f);printf("Raw integer fixture signal: first_red=%.9g; numeric conversion and final constant bank active\n",red);}
+  if(test==70656){unsigned signal=0;for(unsigned p=0;p<16;p++){float red;memcpy(&red,expected+p*4,4);signal+=isfinite(red)&&red>=.125f&&red<=.5f;}assert(signal);printf("Integer dot fixture signal: %u nontrivial scaled integer pixels\n",signal);}
   for(unsigned j=0;j<16;j++){if(expected[j*4]==0xc0000000u)discarded++;else{written++;sample_pixels+=sampled;point_pixels+=state.point_sprite;}}
   release(&modules[0]);release(&modules[1]);
  }
