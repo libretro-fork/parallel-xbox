@@ -29,7 +29,8 @@ Direct point shaders now request that environment only when the physical device
 reports shaderSignedZeroInfNanPreserveFloat32 under core Vulkan 1.2 or later.
 Both owned and frontend-shared device setup query the property once, before
 workers start, using stack storage. Older APIs or unsupported properties retain
-the existing compiler fallback. Other direct modules do not acquire this mode.
+the existing compiler fallback. Unlit fixed-function modules also require this
+mode; programmable modules without point sizes do not acquire it.
 The mode constrains driver optimization for exceptional values; it is a
 correctness requirement, not a promise of cheaper GPU arithmetic or lower frame
 latency. Existing first-use PSO stalls remain open.
@@ -67,12 +68,12 @@ may bypass translation; a warm driver cache is a separate compilation milestone.
 
 ## Regression coverage and qualification
 
-- `test-spv-vsh.py`: 10,128 deterministic SPIR-V modules, final-owner allocation
+- `test-spv-vsh.py`: 11,152 deterministic SPIR-V modules, final-owner allocation
   counts, poisoned source keys, thirty-one allocation-free unsupported paths, UBSan and
   spirv-val. Both SPIR-V 1.5 and 1.6 targets are covered. Extracted native device
   setup is checked across 512 API/property/generation cases, including stale
   target reset and zero queries on older APIs.
-- `test-spv-vsh-gpu.py`: 11,536 programs / 18,826,752 scalar outputs compared with
+- `test-spv-vsh-gpu.py`: 12,560 programs / 20,497,920 scalar outputs compared with
   the production GLSL generator/compiler using Vulkan transform feedback. It
   captures all user outputs, position and point size before clipping; numerical
   differences fail (NaN payload identity is not required). It exercises opcode
@@ -123,7 +124,8 @@ requires forced invalidation. Legacy non-point modules retain their prior words.
 
 The direct subset requires lighting off, skinning off, static CSV0_C and texgen,
 coordinate texgen restricted to disabled/eye-linear/object-linear modes, dynamic
-fog off and distance-based point parameters off. Static fog is supported as described below. Enabled static texture matrices are supported. Other states
+fog off and register-based points. Static fog and distance-based point parameters
+are supported as described below. Enabled static texture matrices are supported. Other states
 retain the GLSL path, including dynamic lighting/texgen/fog and skinned vertices.
 The existing FP32 property gate also applies; no new device query is added.
 
@@ -252,3 +254,31 @@ CPU matrix snapshot, retained lend or file I/O is added. Sphere R/Q and
 normal/reflection Q retain allocation-free fallback, along with existing
 lighting/skinning, dynamic-state and quadratic-fog exclusions. This is expanded
 translation coverage, not proof that cold-play PSO stutter has recovered.
+
+## Fixed-function point attenuation
+
+Unlit fixed-function points can use the eight live pointParams values without
+GLSL. Compute length(originalPosition * modelViewMat0) as a homogeneous vec4
+length; xyz distance or distance after the composite transform is not equivalent.
+Reuse a model-view result already required by fog or texgen. Keep the reference
+polynomial evaluation order, explicit 1 / sqrt, offset, scale and clamp, including
+the 63.875 minimum/maximum size cap. The common postlude applies pointScale once.
+No reciprocal-square-root approximation replaces the reference arithmetic.
+
+Only affected layouts append the existing float pointParams[8] array, with
+std140 stride 16 (128 bytes), after inline attributes and any texgenMode array.
+Existing tracked updates populate its final block. Indices 4/5 are not consumed
+by the shader; pointSizeReg is ignored for attenuated points. Names remain inside
+the final layout allocation, with two or three total final-owner allocations.
+No additional heap allocation, matrix snapshot, payload clone or retained lend
+is introduced. Previous module words and every prior layout member retain their
+exact name, dimensions, stride and offset.
+
+An additional 1,024 fixtures combine all texture-matrix masks, supported static
+fog/texgen, both viewer settings, input formats and normalized/raw normals with
+point attenuation. GPU inputs vary every parameter across zero, signed zero,
+positive/negative finite, Infinity, NaN and tiny values, including unused 4/5;
+point scales/registers are independently varied. Hardware FP32 preservation
+remains required, and lighting/skinning, dynamic-state and recorded quadratic-
+fog exclusions retain GLSL fallback. No cache schema or file-I/O path changes.
+These checks establish translation equivalence, not cold-play recovery.

@@ -6,7 +6,7 @@
 /* GLSL.std.450 instruction numbers, matching the native geometry emitter. */
 enum {
     GLSLstd450Trunc = 3, GLSLstd450FAbs = 4, GLSLstd450Floor = 8,
-    GLSLstd450Exp2 = 29, GLSLstd450Log2 = 30, GLSLstd450InverseSqrt = 32,
+    GLSLstd450Exp2 = 29, GLSLstd450Log2 = 30, GLSLstd450Sqrt = 31, GLSLstd450InverseSqrt = 32,
     GLSLstd450FMin = 37, GLSLstd450FMax = 40, GLSLstd450FClamp = 43,
     GLSLstd450Length = 66, GLSLstd450Normalize = 69, GLSLstd450Reflect = 71,
 };
@@ -100,7 +100,7 @@ bool pgraph_spv_vsh_supported(const VshState *s, SpvVshOptions opts)
     }
     if (s->is_fixed_function) {
         const FixedFunctionVshState *ff = &s->fixed_function;
-        if (!opts.preserve_float32 || s->point_params_enable || s->fog_dynamic ||
+        if (!opts.preserve_float32 || s->fog_dynamic ||
             (s->fog_enable && (unsigned)ff->foggen > FOGGEN_FOG_X) ||
             ff->lighting || ff->csv0c_dynamic ||
             ff->texgen_dynamic || ff->skinning != SKINNING_OFF) {
@@ -182,7 +182,7 @@ typedef struct Context {
     uint32_t c_array, inline_array, push_array, ubo_t, pc_t, ubo_p, pc_p;
     uint32_t ci[256], cu[8], cf[F_COUNT], zero4, initial4;
     uint32_t inputs[16], outputs[13], position, point_size, ubo, pc;
-    uint32_t main, ext, mat4, texgen_array, viewer_mask;
+    uint32_t main, ext, mat4, texgen_array, viewer_mask, point_array, point_limit;
     uint32_t r[12], o[13], a0, input_values[16];
 } Context;
 
@@ -215,6 +215,12 @@ static uint32_t load_uniform(Context *c, unsigned member, uint32_t type, uint32_
 {
     uint32_t p = value(c->w, SpvOpAccessChain, ptr, 2, c->ubo, c->ci[member]);
     return unary(c, SpvOpLoad, type, p);
+}
+static uint32_t point_parameter(Context *c, unsigned member, unsigned index)
+{
+    uint32_t p = value(c->w, SpvOpAccessChain, c->uniform_f, 3,
+                       c->ubo, c->ci[member], c->ci[index]);
+    return unary(c, SpvOpLoad, c->f, p);
 }
 static uint32_t read_reg(Context *c, unsigned n) { return n == 12 ? c->o[0] : c->r[n]; }
 static void write_reg(Context *c, unsigned n, uint32_t v)
@@ -397,6 +403,26 @@ static void unlit(Context *c)
             v = transform(c, v, tex_matrix[t]);
         }
         c->o[9 + t] = v;
+    }
+    if (c->state->point_params_enable) {
+        if (!eye_position) {
+            eye_position = transform(c, input(c, 0), NV_IGRAPH_XF_XFCTX_MMAT0);
+        }
+        /* The reference uses homogeneous vec4 length, not xyz distance. */
+        uint32_t distance = ext1(c, GLSLstd450Length, c->f, eye_position);
+        unsigned member = 7 + (!c->opts.push_constants && c->state->uniform_attrs != 0)
+                            + needs_texgen_viewer(c->state);
+        uint32_t p0 = point_parameter(c, member, 0), p1 = point_parameter(c, member, 1);
+        uint32_t p2 = point_parameter(c, member, 2), p3 = point_parameter(c, member, 3);
+        uint32_t p6 = point_parameter(c, member, 6), p7 = point_parameter(c, member, 7);
+        uint32_t lo = ext2(c, GLSLstd450FMin, c->f, p7, c->point_limit);
+        uint32_t hi = ext2(c, GLSLstd450FMin, c->f, add(c, p3, lo), c->point_limit);
+        uint32_t polynomial = add(c, add(c, p0, mul(c, p1, distance)),
+                                  mul(c, mul(c, p2, distance), distance));
+        uint32_t point = add(c, divf(c, c->cf[F_ONE], ext1(c, GLSLstd450Sqrt, c->f, polynomial)), p6);
+        point = clamp(c, c->f, add(c, mul(c, point, p3), p7), lo, hi);
+        /* The common postlude applies pointScale once. */
+        c->o[6] = splat(c, point);
     }
 }
 
@@ -750,6 +776,9 @@ static void allocate_ids(Context *c)
     c->pc = id(w); c->main = id(w); c->ext = id(w);
     if (c->state->is_fixed_function) { c->mat4 = id(w); }
     if (needs_texgen_viewer(c->state)) { c->texgen_array = id(w); c->viewer_mask = id(w); }
+    if (c->state->is_fixed_function && c->state->point_params_enable) {
+        c->point_array = id(w); c->point_limit = id(w);
+    }
 }
 static void emit(Writer *w, const VshState *state, SpvVshOptions opts)
 {
@@ -759,6 +788,7 @@ static void emit(Writer *w, const VshState *state, SpvVshOptions opts)
     bool inline_ubo = !opts.push_constants && state->uniform_attrs;
     unsigned pc_count = __builtin_popcount(state->uniform_attrs);
     bool viewer = needs_texgen_viewer(state);
+    bool points = state->is_fixed_function && state->point_params_enable;
     word(w, SpvMagicNumber); word(w, opts.spirv_1_6 ? 0x00010600u : 0x00010500u);
     word(w, 0); word(w, 0); word(w, 0);
     op(w, SpvOpCapability, 1, (uint32_t)SpvCapabilityShader);
@@ -795,6 +825,11 @@ static void emit(Writer *w, const VshState *state, SpvVshOptions opts)
     if (viewer) {
         op(w, SpvOpMemberDecorate, 4, c.ubo_t, 7u + inline_ubo, (uint32_t)SpvDecorationOffset, 3120u + inline_ubo * 256u);
         op(w, SpvOpDecorate, 3, c.texgen_array, (uint32_t)SpvDecorationArrayStride, 16u);
+    }
+    if (points) {
+        op(w, SpvOpMemberDecorate, 4, c.ubo_t, 7u + inline_ubo + viewer,
+           (uint32_t)SpvDecorationOffset, 3120u + inline_ubo * 256u + viewer * 64u);
+        op(w, SpvOpDecorate, 3, c.point_array, (uint32_t)SpvDecorationArrayStride, 16u);
     }
     op(w, SpvOpDecorate, 3, c.c_array, (uint32_t)SpvDecorationArrayStride, 16u);
     op(w, SpvOpDecorate, 3, c.inline_array, (uint32_t)SpvDecorationArrayStride, 16u);
@@ -875,11 +910,16 @@ static void emit(Writer *w, const VshState *state, SpvVshOptions opts)
         op(w, SpvOpConstant, 3, c.u, c.viewer_mask, 4096u);
         op(w, SpvOpTypeArray, 3, c.texgen_array, c.u, c.ci[4]);
     }
-    word(w, ((9 + inline_ubo + viewer) << 16) | SpvOpTypeStruct);
+    if (points) {
+        op(w, SpvOpConstant, 3, c.f, c.point_limit, 0x427f8000u); /* 63.875 */
+        op(w, SpvOpTypeArray, 3, c.point_array, c.f, c.ci[8]);
+    }
+    word(w, ((9 + inline_ubo + viewer + points) << 16) | SpvOpTypeStruct);
     word(w, c.ubo_t); word(w, c.c_array); word(w, c.v4); word(w, c.u); word(w, c.v2);
     word(w, c.f); word(w, c.f); word(w, c.v2);
     if (inline_ubo) { word(w, c.inline_array); }
     if (viewer) { word(w, c.texgen_array); }
+    if (points) { word(w, c.point_array); }
     if (pc) {
         op(w, SpvOpTypeArray, 3, c.push_array, c.v4, c.ci[pc_count]);
         op(w, SpvOpTypeStruct, 2, c.pc_t, c.push_array);
@@ -918,32 +958,40 @@ static void emit(Writer *w, const VshState *state, SpvVshOptions opts)
     if (w->words) { w->words[3] = w->next; }
 }
 
-static GlslcLayout layout(bool push, bool inline_ubo, unsigned count, bool viewer)
+static GlslcLayout layout(bool push, bool inline_ubo, unsigned count, bool viewer, bool points)
 {
     static const char *const names[] = {
-        "c", "clipRange", "fogCtl", "fogParam", "pointSizeReg", "pointScale", "surfaceSize", "inlineValue", "texgenMode"
+        "c", "clipRange", "fogCtl", "fogParam", "pointSizeReg", "pointScale", "surfaceSize", "inlineValue", "texgenMode", "pointParams"
     };
-    static const size_t offsets[] = {0, 3072, 3088, 3096, 3104, 3108, 3112, 3120};
-    static const unsigned dimensions[] = {4, 4, 1, 2, 1, 1, 2, 4};
-    size_t n = push ? 1 : 7 + inline_ubo + viewer, bytes = n * sizeof(GlslcUniform);
-    for (size_t i = 0; i < n; i++) { bytes += strlen(names[push ? 7 : viewer && i == 7u + inline_ubo ? 8 : i]) + 1; }
+    const size_t offsets[] = {0, 3072, 3088, 3096, 3104, 3108, 3112, 3120,
+                             3120u + inline_ubo * 256u, 3120u + inline_ubo * 256u + viewer * 64u};
+    static const unsigned dimensions[] = {4, 4, 1, 2, 1, 1, 2, 4, 1, 1};
+    unsigned indices[10] = {0, 1, 2, 3, 4, 5, 6}, n = 7;
+    if (push) { indices[0] = 7; n = 1; }
+    else {
+        if (inline_ubo) { indices[n++] = 7; }
+        if (viewer) { indices[n++] = 8; }
+        if (points) { indices[n++] = 9; }
+    }
+    size_t bytes = n * sizeof(GlslcUniform);
+    for (unsigned i = 0; i < n; i++) { bytes += strlen(names[indices[i]]) + 1; }
     GlslcUniform *members = malloc(bytes);
     if (!members) { abort(); }
     char *text = (char *)(members + n);
-    for (size_t i = 0; i < n; i++) {
-        unsigned index = push ? 7 : viewer && i == 7u + inline_ubo ? 8 : i;
+    for (unsigned i = 0; i < n; i++) {
+        unsigned index = indices[i];
         size_t len = strlen(names[index]) + 1;
         memcpy(text, names[index], len);
         members[i] = (GlslcUniform) {
-            .name = text, .dim_v = index == 8 ? 1 : dimensions[index],
-            .dim_a = push ? count : index == 0 ? NV2A_VERTEXSHADER_CONSTANTS : index == 7 ? 16 : index == 8 ? 4 : 1,
-            .stride = index == 8 ? 16 : dimensions[index] * sizeof(float),
-            .offset = push ? 0 : index == 8 ? 3120u + inline_ubo * 256u : offsets[index],
+            .name = text, .dim_v = dimensions[index],
+            .dim_a = push ? count : index == 0 ? NV2A_VERTEXSHADER_CONSTANTS : index == 7 ? 16 : index == 8 ? 4 : index == 9 ? 8 : 1,
+            .stride = index >= 8 ? 16 : dimensions[index] * sizeof(float),
+            .offset = push ? 0 : offsets[index],
         };
         text += len;
     }
     return (GlslcLayout) { .members = members, .count = n,
-                          .size = push ? count * 16 : 3120u + inline_ubo * 256u + viewer * 64u };
+                          .size = push ? count * 16 : 3120u + inline_ubo * 256u + viewer * 64u + points * 128u };
 }
 
 bool pgraph_spv_vsh(const VshState *state, SpvVshOptions opts, GlslcResult *out)
@@ -959,9 +1007,9 @@ bool pgraph_spv_vsh(const VshState *state, SpvVshOptions opts, GlslcResult *out)
     if (output.count != count.count || output.next != count.next) { abort(); }
     out->words = words;
     out->num_words = out->allocation_words = output.count;
-    out->uniforms = layout(false, !opts.push_constants && state->uniform_attrs, 0, needs_texgen_viewer(state));
+    out->uniforms = layout(false, !opts.push_constants && state->uniform_attrs, 0, needs_texgen_viewer(state), state->is_fixed_function && state->point_params_enable);
     if (opts.push_constants && state->uniform_attrs) {
-        out->push_constants = layout(true, false, __builtin_popcount(state->uniform_attrs), false);
+        out->push_constants = layout(true, false, __builtin_popcount(state->uniform_attrs), false, false);
     }
     return true;
 }

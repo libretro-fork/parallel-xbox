@@ -154,7 +154,7 @@ int main(void) {
  VkPipelineMultisampleStateCreateInfo ms={.sType=VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO,.rasterizationSamples=VK_SAMPLE_COUNT_1_BIT};
  uint32_t reference[VERTICES*60];unsigned compared=0,failures=0;
  clock_t reference_ticks=0,direct_ticks=0;size_t reference_words=0,direct_words=0;
- for(unsigned test=0;test<11536;test++) {
+ for(unsigned test=0;test<12560;test++) {
   VshState state={0};state.smooth_shading=test&1;state.fog_dynamic=true;state.specular_enable=test&2;state.ignore_specular_alpha=test&4;
   unsigned variant=(test%1568)/112,m=test%14,l=(test%112)/14;state.programmable.program_length=5;
   token(state.programmable.program_data[0],MAC_MOV,ILU_NOP,0,0,false,false);
@@ -253,6 +253,7 @@ int main(void) {
     state.fixed_function.texgen[t][3]=(n/7+t)%3;
    }
   }
+  if(test>=11536)state.point_params_enable=true;
   for(unsigned a=0;a<16;a++)attrs[a].format=state.compressed_attrs&(1u<<a)?VK_FORMAT_R32_SINT:VK_FORMAT_R32G32B32A32_SFLOAT;
   opts.preserve_float32=fp.shaderSignedZeroInfNanPreserveFloat32;
   VshState excluded=state;excluded.point_params_enable=true;
@@ -299,6 +300,13 @@ int main(void) {
     values.c[NV_IGRAPH_XF_XFCTX_FOG][2]=.125f;
     values.c[NV_IGRAPH_XF_XFCTX_FOG][3]=params[(f/80)%8];
    }
+  }
+  if(state.is_fixed_function && state.point_params_enable){
+   const float defaults[]={1,.125f,.0625f,4,17,-23,.25f,1};
+   const float samples[]={0.0f,-0.0f,1,-1,INFINITY,-INFINITY,NAN,0x1p-100f};
+   for(unsigned k=0;k<8;k++)values.pointParams[k]=defaults[k];
+   unsigned f=(test-11536)/16;
+   values.pointParams[(f/8)%8]=samples[f%8];
   }
   unsigned packed=0;for(unsigned a=0;a<16;a++)if(state.uniform_attrs&(1u<<a)) {
    for(unsigned k=0;k<4;k++)values.inlineValue[packed][k]=a==0?(k==3?1:k==2?100:40):(a==15?2:((int)(a+k)%7-3)*.5f);

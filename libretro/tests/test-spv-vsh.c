@@ -70,7 +70,7 @@ int main(int argc, char **argv)
 {
     assert(argc == 2);check_caps();
     unsigned total = 0;
-    for (unsigned i = 0; i < 10128; i++) {
+    for (unsigned i = 0; i < 11152; i++) {
         VshState state;
         unsigned base=i%1120;
         make_case(&state, base);
@@ -125,6 +125,7 @@ int main(int argc, char **argv)
     state.fixed_function.texgen[t][3]=(n/7+t)%3;
    }
   }
+  if(i>=10128)state.point_params_enable=true;
         SpvVshOptions opts = { .spirv_1_6 = !!(i & 1),
                               .push_constants = !!(i & 4), .ubo_binding = i % 3,
                               .preserve_float32 = i>=1120 || !!(i&8) };
@@ -148,12 +149,18 @@ int main(int argc, char **argv)
         assert(a.allocation == NULL && a.allocation_words == a.num_words);
         bool viewer=false;
         if(state.is_fixed_function)for(unsigned t=0;t<4;t++)for(unsigned k=0;k<3;k++){enum VshTexgen m=state.fixed_function.texgen[t][k];viewer|=m==TEXGEN_SPHERE_MAP || m==TEXGEN_REFLECTION_MAP;}
-        assert(a.uniforms.count == 7u + (!opts.push_constants && state.uniform_attrs != 0) + viewer);
+        assert(a.uniforms.count == 7u + (!opts.push_constants && state.uniform_attrs != 0) + viewer + (state.is_fixed_function && state.point_params_enable));
         if(viewer){
-            const GlslcUniform *u=&a.uniforms.members[a.uniforms.count-1];
+            const GlslcUniform *u=&a.uniforms.members[7u+(!opts.push_constants && state.uniform_attrs!=0)];
             assert(!strcmp(u->name,"texgenMode") && u->dim_v==1 && u->dim_a==4 && u->stride==16);
             assert(u->offset==3120u+(!opts.push_constants && state.uniform_attrs!=0)*256u);
-            assert(a.uniforms.size==u->offset+64);
+            assert(a.uniforms.size==u->offset+64+(state.point_params_enable?128u:0));
+        }
+        if(state.is_fixed_function && state.point_params_enable){
+            const GlslcUniform *u=&a.uniforms.members[a.uniforms.count-1];
+            assert(!strcmp(u->name,"pointParams") && u->dim_v==1 && u->dim_a==8 && u->stride==16);
+            assert(u->offset==3120u+(!opts.push_constants && state.uniform_attrs!=0)*256u+viewer*64u);
+            assert(a.uniforms.size==u->offset+128);
         }
         assert(a.uniforms.members[0].dim_a == 192 && a.uniforms.members[0].stride == 16);
         assert(a.uniforms.members[6].offset == 3112 && a.uniforms.members[6].dim_v == 2);
@@ -185,7 +192,7 @@ int main(int argc, char **argv)
         if(state.is_fixed_function)for(unsigned t=0;t<4;t++)expected_transforms+=state.fixed_function.texture_matrix_enable[t];
         bool needs_eye=state.is_fixed_function && state.fog_enable && state.fixed_function.foggen>=FOGGEN_RADIAL && state.fixed_function.foggen<=FOGGEN_ABS_PLANAR;
         if(state.is_fixed_function)for(unsigned t=0;t<4;t++)for(unsigned a=0;a<4;a++)needs_eye|=state.fixed_function.texgen[t][a]==TEXGEN_EYE_LINEAR;
-        needs_eye|=viewer;
+        needs_eye|=viewer || (state.is_fixed_function && state.point_params_enable);
         expected_transforms+=needs_eye;
         bool needs_normal=false;
         if(state.is_fixed_function)for(unsigned t=0;t<4;t++)for(unsigned a=0;a<3;a++)needs_normal|=state.fixed_function.texgen[t][a]>=TEXGEN_SPHERE_MAP;
@@ -229,7 +236,7 @@ int main(int argc, char **argv)
             if(i==15)s.fixed_function.skinning=SKINNING_1WEIGHTS;
             if(i==16)s.fog_dynamic=true;
             if(i==17){s.fog_enable=true;s.fixed_function.foggen=(enum VshFoggen)5;}
-            if(i==18)s.point_params_enable=true;
+            if(i==18){s.point_params_enable=true;opts.preserve_float32=false;}
             if(i==19)s.fixed_function.texgen[1][3]=TEXGEN_NORMAL_MAP;
             if(i==20)s.compressed_attrs=s.swizzle_attrs=2;
             if(i==21){s.fog_enable=true;s.fixed_function.foggen=(enum VshFoggen)-1;}
