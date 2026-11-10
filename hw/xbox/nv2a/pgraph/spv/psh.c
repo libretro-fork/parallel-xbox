@@ -96,11 +96,18 @@ static bool texture_result_stage(const PshState *s,unsigned stage)
 { unsigned mode=texture_mode(s,stage);return mode==PS_TEXTUREMODES_PROJECT2D || mode==PS_TEXTUREMODES_PROJECT3D || mode==PS_TEXTUREMODES_CUBEMAP || dependent_stage(s,stage) || (dot_mode(mode) && mode!=PS_TEXTUREMODES_DOTPRODUCT && mode!=PS_TEXTUREMODES_DOT_ZW); }
 static bool sample_stage(const PshState *s,unsigned stage)
 { return texture_result_stage(s,stage) && !constant_shadow(s,stage); }
-/* Same descriptor slot; only its SPIR-V sampler dimension varies. */
+static bool raw_color(const PshState *s,unsigned stage)
+{
+    if(!s->tex_x8y24[stage] || s->shadow_map[stage])return false;
+    unsigned mode=texture_mode(s,stage);
+    return (mode==PS_TEXTUREMODES_PROJECT2D && s->dim_tex[stage]==2) || (mode==PS_TEXTUREMODES_PROJECT3D && (s->dim_tex[stage]==2 || s->dim_tex[stage]==3));
+}
+/* Same descriptor slot; only its SPIR-V sampler type/dimension varies. */
 static unsigned sampler_kind(const PshState *s,unsigned stage)
 {
     unsigned mode=texture_mode(s,stage);
     if(sampled_shadow(s,stage))return s->tex_x8y24[stage]?3:0;
+    if(raw_color(s,stage))return 3;
     if(cube_stage(s,stage))return s->tex_cubemap[stage]?2:0;
     if(s->dim_tex[stage]==3)return 1;
     return mode==PS_TEXTUREMODES_PROJECT2D && s->tex_cubemap[stage]?2:0;
@@ -298,8 +305,8 @@ bool pgraph_spv_psh_supported(const PshState *s,SpvPshOptions opts)
             }
             dots[j]=true;
         }
-        if(s->g8b8_signed[j] && (!(s->g8b8_signed[j]&15) || (s->g8b8_signed[j]&~255u) || mode!=PS_TEXTUREMODES_PROJECT2D || s->dim_tex[j]!=2 || s->tex_cubemap[j] || s->shadow_map[j] || s->border_adjust[j]))return false;
-        if((s->tex_x8y24[j] || s->shadow_map[j]) && !constant_shadow(s,j) && !sampled_shadow(s,j))return false;
+        if(s->g8b8_signed[j] && (!(s->g8b8_signed[j]&15) || (s->g8b8_signed[j]&~255u) || mode!=PS_TEXTUREMODES_PROJECT2D || s->dim_tex[j]!=2 || s->tex_cubemap[j] || s->shadow_map[j] || s->tex_x8y24[j] || s->border_adjust[j]))return false;
+        if((s->tex_x8y24[j] || s->shadow_map[j]) && !constant_shadow(s,j) && !sampled_shadow(s,j) && !raw_color(s,j) && !(mode==PS_TEXTUREMODES_PROJECT2D && s->dim_tex[j]==3 && !s->shadow_map[j]))return false;
         if(dependent_stage(s,j)){
             if(!j || texture_input(s,j)>=j)return false;
             if(!bump_stage(s,j) && (s->dim_tex[j]!=2 || s->rect_tex[j] || s->border_adjust[j]))return false;
@@ -309,6 +316,12 @@ bool pgraph_spv_psh_supported(const PshState *s,SpvPshOptions opts)
         }else if(sample_stage(s,j)){
             if(opts.tex_binding>=29 || (opts.ubo_binding>=opts.tex_binding && opts.ubo_binding<opts.tex_binding+4) || s->colorkey_mode[j]<COLOR_KEY_NONE || s->colorkey_mode[j]>COLOR_KEY_DISCARD)return false;
             if(sampled_shadow(s,j)){if(s->dim_tex[j]!=2 || s->tex_cubemap[j] || (f16_shadow(s,j) && s->tex_x8y24[j]))return false;}
+            else if(raw_color(s,j)){
+                if(mode==PS_TEXTUREMODES_PROJECT2D){
+                    if(s->conv_tex[j]==CONVOLUTION_FILTER_DISABLED){if(s->tex_cubemap[j])return false;}
+                    else if(s->conv_tex[j]!=CONVOLUTION_FILTER_GAUSSIAN && s->conv_tex[j]!=CONVOLUTION_FILTER_QUINCUNX)return false;
+                }
+            }
             else if(cube_stage(s,j)){if(s->dim_tex[j]!=2)return false;}
             else{
                 if(s->dim_tex[j]!=2 && s->dim_tex[j]!=3)return false;
@@ -413,6 +426,7 @@ static uint32_t ui_clamp_coord(Context *c,uint32_t coord,unsigned unit)
     return choose(c,c->v4,c->ui_rect,clamped,coord);
 }
 #include "psh-texture.inc"
+#include "psh-raw.inc"
 #include "psh-dot.inc"
 #include "psh-f16.inc"
 #include "psh-shadow.inc"
@@ -461,6 +475,7 @@ static void texture_stages(Context *c)
             }
             uint32_t color;
             if(sampled_shadow(c->state,j))color=texture_shadow(c,coord,sample,kind,j);
+            else if(raw_color(c->state,j))color=texture_raw_color(c,coord,uv,sample,j);
             else if(dot_mode(mode))color=texture_dot_sample(c,coord,sample,kind,j);
             else if(dependent_stage(c->state,j))color=texture_dependent(c,coord,sample,kind,j);
             else if(mode==PS_TEXTUREMODES_CUBEMAP){
@@ -475,7 +490,7 @@ static void texture_stages(Context *c)
                 uint32_t projected=val(c->w,SpvOpCompositeConstruct,c->v3,3,extract(c,uv,0),extract(c,uv,1),extract(c,coord,3));
                 uint32_t direction=texture_2d_to_cube(c,projected);
                 color=val(c->w,SpvOpImageSampleImplicitLod,c->v4,2,sample,direction);
-            }else if(convolution_stage(c->state,j))color=texture_convolution(c,sample,uv,extract(c,coord,3));
+            }else if(convolution_stage(c->state,j))color=texture_convolution(c,sample,uv,extract(c,coord,3),kind);
             else{
                 uint32_t q=ext2(c,GLSLstd450FMax,c->f,extract(c,coord,3),c->min_q);
                 uv=binary(c,SpvOpFDiv,c->v2,uv,splat(c,c->v2,q,2));
@@ -555,6 +570,7 @@ static void allocate(Context *c)
         if(sample_stage(c->state,j))c->samplers[j]=id(c->w);
     }
     if(has_sampler_kind(c->state,0)){c->image_t=id(c->w);c->sampled_t=id(c->w);c->sampler_ptr=id(c->w);c->min_q=id(c->w);}
+    else for(unsigned j=0;j<4;j++)if(raw_color(c->state,j) && texture_mode(c->state,j)==PS_TEXTUREMODES_PROJECT2D && !convolution_stage(c->state,j)){c->min_q=id(c->w);break;}
     if(has_texture_scale(c->state) || has_bump_luma(c->state))c->scale_array=id(c->w);
     if(c->state->combiner_dynamic)dynamic_allocate(c);
     texture_allocate(c);dot_allocate(c);

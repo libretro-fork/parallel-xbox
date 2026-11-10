@@ -5,7 +5,8 @@ recipes directly into final SPIR-V. Vulkan source preparation tries this path
 before generating GLSL. OpenGL continues to use the existing generator.
 
 Current texture coverage includes projected 2D/volume and cube reads, dependent
-and bump/luminance stages, dot/reflection/depth chains, fixed/packed/F16 depth,
+and bump/luminance stages, dot/reflection/depth chains, raw unsigned colors,
+fixed/packed/F16 depth,
 UI clamps, signed G8B8 filtering and mip reconstruction. Unsupported shapes
 retain the compiler. The sections below record each family's implementation
 and validation scope; native translation does not certify pipeline readiness.
@@ -591,3 +592,34 @@ two source bytes without RGBA payload expansion. No such resource is added to
 the core. The full matrix contains60416 cases. Value/work-count evidence does
 not establish pipeline readiness, GPU execution speed or stutter recovery;
 uncontrolled driver caches keep cold-play qualification BAD/OPEN.
+
+
+## Raw unsigned integer color
+
+Raw integer PROJECT2D/PROJECT3D reads reuse the existing unsigned 2D view and
+vector type. Numeric conversion happens directly after each sample; no packed
+shadow extraction or depth normalization is applied. Nine-tap convolution
+converts each integer sample before weighting, using the same ordered loop,
+offsets and weights. Projected Q, rectangle normalization, border adjustment,
+alpha kill and color keys preserve the production reference behavior. The
+reference's PROJECT2D volume path ignores its packed-format flag and retains
+the existing float 3D sampling path. Conflicting signed-byte/F16 formats and
+unsupported coordinate/sampler shapes remain allocation-free fallbacks.
+
+Count/write borrows the same immutable key synchronously and emits directly
+into final owned words/layouts. No new CPU payload, uniform group, descriptor,
+image, geometry copy, file I/O or retained lend is introduced. Existing image
+and shader retirement owners remain unchanged. Integer-only recipes omit the
+unused float image type; the positive-Q constant is added only when consumed.
+Exactly two final allocations remain.
+
+CPU coverage adds4096 raw and1024 ignored-volume-flag cases, plus16 rejected
+shapes:51200 validated modules and129 allocation-free rejections overall.
+GPU fixtures add4096 raw/convolution/ignored-volume cases and2048 mixed raw,
+signed G8B8, bump/luminance, fixed/F16 depth, cube/volume, UI and MSB-mux cases.
+The existing unsigned image is reused without new uploads. Stage and final
+constant banks are explicitly populated; integer values are scaled below
+saturation so equality checks expose conversion/filtering differences. The
+full matrix contains66560 cases. These value/work-count checks do not certify
+pipeline readiness, GPU execution speed or cold-play smoothness. Driver caches
+remain uncontrolled and the stutter regression stays BAD/OPEN.

@@ -105,11 +105,11 @@ static uint32_t texture_color_key(Context *c,uint32_t color,unsigned unit)
         v4(c,extract(c,color,0),extract(c,color,1),extract(c,color,2),c->cf[F_ZERO]):splat(c,c->v4,c->cf[F_ZERO],4);
     return choose(c,c->v4,match,killed,color);
 }
-static uint32_t texture_convolution(Context *c,uint32_t sample,uint32_t uv,uint32_t q)
+static uint32_t texture_convolution(Context *c,uint32_t sample,uint32_t uv,uint32_t q,unsigned kind)
 {
     /* Convolution uses the reference raw Q, not PROJECT2D's positive clamp. */
     uv=binary(c,SpvOpFDiv,c->v2,uv,splat(c,c->v2,q,2));
-    uint32_t image=unary(c,SpvOpImage,c->image_t,sample);
+    uint32_t image=unary(c,SpvOpImage,texture_image_type(c,kind),sample);
     uint32_t size=val(c->w,SpvOpImageQuerySizeLod,c->iv2,2,image,c->si[0]);
     uint32_t step=binary(c,SpvOpFDiv,c->v2,splat(c,c->v2,c->cf[F_ONE],2),unary(c,SpvOpConvertSToF,c->v2,size));
     uint32_t zero=splat(c,c->v4,c->cf[F_ZERO],4);
@@ -124,7 +124,8 @@ static uint32_t texture_convolution(Context *c,uint32_t sample,uint32_t uv,uint3
     uint32_t offset=unary(c,SpvOpLoad,c->v2,val(c->w,SpvOpAccessChain,c->conv_offset_element,2,c->conv_offsets,index));
     uint32_t weight=unary(c,SpvOpLoad,c->f,val(c->w,SpvOpAccessChain,c->conv_element,2,c->conv_weights,index));
     uint32_t coord=binary(c,SpvOpFAdd,c->v2,uv,binary(c,SpvOpFMul,c->v2,offset,step));
-    uint32_t texel=val(c->w,SpvOpImageSampleImplicitLod,c->v4,2,sample,coord);
+    uint32_t texel=val(c->w,SpvOpImageSampleImplicitLod,kind==3?c->uvec4_t:c->v4,2,sample,coord);
+    if(kind==3)texel=unary(c,SpvOpConvertUToF,c->v4,texel);
     uint32_t weighted=binary(c,SpvOpFMul,c->v4,texel,splat(c,c->v4,weight,4));
     op(c->w,SpvOpFAdd,4,c->v4,added,sum,weighted);
     op(c->w,SpvOpBranch,1,cont);op(c->w,SpvOpLabel,1,cont);

@@ -122,7 +122,7 @@ static Image signed_gb_texture(VkCommandBuffer cmd,VkQueue queue,VkFence fence){
  b.srcAccessMask=VK_ACCESS_TRANSFER_WRITE_BIT;b.dstAccessMask=VK_ACCESS_SHADER_READ_BIT;b.oldLayout=VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;b.newLayout=VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;vkCmdPipelineBarrier(cmd,VK_PIPELINE_STAGE_TRANSFER_BIT,VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,0,0,NULL,0,NULL,1,&b);CHECK(vkEndCommandBuffer(cmd));
  VkSubmitInfo submit={.sType=VK_STRUCTURE_TYPE_SUBMIT_INFO,.commandBufferCount=1,.pCommandBuffers=&cmd};CHECK(vkQueueSubmit(queue,1,&submit,fence));CHECK(vkWaitForFences(device,1,&fence,VK_TRUE,10000000000ull));CHECK(vkResetFences(device,1,&fence));CHECK(vkResetCommandBuffer(cmd,0));drop(staging);return a;
 }
-static unsigned fixture_kind(const PshState *s,unsigned j){unsigned mode=(s->shader_stage_program>>(j*5))&31;if(s->shadow_map[j] && s->tex_x8y24[j])return 3;return (mode==PS_TEXTUREMODES_CUBEMAP || mode==PS_TEXTUREMODES_DOT_RFLCT_DIFF || mode==PS_TEXTUREMODES_DOT_RFLCT_SPEC || mode==PS_TEXTUREMODES_DOT_STR_CUBE)?(s->tex_cubemap[j]?2:0):s->dim_tex[j]==3?1:mode==PS_TEXTUREMODES_PROJECT2D && s->tex_cubemap[j]?2:0;}
+static unsigned fixture_kind(const PshState *s,unsigned j){unsigned mode=(s->shader_stage_program>>(j*5))&31;if(s->tex_x8y24[j] && (s->shadow_map[j] || mode==PS_TEXTUREMODES_PROJECT3D || (mode==PS_TEXTUREMODES_PROJECT2D && s->dim_tex[j]==2)))return 3;return (mode==PS_TEXTUREMODES_CUBEMAP || mode==PS_TEXTUREMODES_DOT_RFLCT_DIFF || mode==PS_TEXTUREMODES_DOT_RFLCT_SPEC || mode==PS_TEXTUREMODES_DOT_STR_CUBE)?(s->tex_cubemap[j]?2:0):s->dim_tex[j]==3?1:mode==PS_TEXTUREMODES_PROJECT2D && s->tex_cubemap[j]?2:0;}
 static void fixture_family(PshState *s,unsigned unit,unsigned family){
  unsigned mode=family<1?PS_TEXTUREMODES_PROJECT2D:family<3?PS_TEXTUREMODES_PROJECT3D:family==3?PS_TEXTUREMODES_PROJECT2D:PS_TEXTUREMODES_CUBEMAP;
  s->shader_stage_program=(s->shader_stage_program&~(31u<<(unit*5)))|(mode<<(unit*5));s->dim_tex[unit]=family<2?3:2;s->tex_cubemap[unit]=family==3 || family==4;
@@ -608,6 +608,50 @@ int main(int argc,char **argv){
    float plane[3][4]={{0,0,100,1},{4,0,200,1},{0,4,300,1}};if(ui && marked){plane[1][0]=.125f;plane[1][1]=.25f;plane[2][0]=.625f;plane[2][1]=.75f;}
    memcpy(data[4],plane,sizeof(plane));data[7][0]=.5f;data[7][1]=marked?-0.0f:0.0f;data[7][2]=1;data[7][3]=(float)(1+(f/17)%64);if(state.point_sprite)data[7][3]=-data[7][3];
   }
+
+  if(test>=60416){
+   unsigned f=test-60416,unit=f%4,shape=(f/4)%3,conv=shape==2?0:(f/12)%3;bool volume_ignored=shape==2,project3=shape==1;
+   memset(&state,0,sizeof(state));memset(&values,0,sizeof(values));state.shader_stage_program=(project3?PS_TEXTUREMODES_PROJECT3D:PS_TEXTUREMODES_PROJECT2D)<<(unit*5);state.dim_tex[unit]=volume_ignored || (project3 && (f&32))?3:2;state.tex_x8y24[unit]=true;
+   state.conv_tex[unit]=conv==1?CONVOLUTION_FILTER_GAUSSIAN:conv==2?CONVOLUTION_FILTER_QUINCUNX:CONVOLUTION_FILTER_DISABLED;state.tex_cubemap[unit]=!!(f&64) && (volume_ignored || project3 || conv);
+   state.depth_format=(f/128)%4;state.smooth_shading=!!(f&1024);state.rect_tex[unit]=!volume_ignored && !!(f&128);state.point_sprite=!!(f&512) && !(unit==3 && state.rect_tex[unit]);state.alpha_dynamic=!!(f&256);state.colorkey_mode[unit]=(f&2048)?(f/512)%4:COLOR_KEY_NONE;state.alphakill[unit]=!!(f&1024);state.border_adjust[unit]=!!(f&256);
+   values.surfaceScale[0][0]=values.surfaceScale[0][1]=1;values.clipRange[0][1]=values.clipRange[0][3]=16777215;values.alphaKillMask[0]=(f/32)%16;
+   for(unsigned j=0;j<8;j++){values.clipRegion[j][2]=4;values.clipRegion[j][3]=4;}
+   for(unsigned j=0;j<4;j++){
+    values.texScale[j]=.5f+(j%3)*.5f;values.consts[16][j]=volume_ignored?1.0f:0x1p-33f;values.colorKeyMask[j]=(f&128)?0xff000000u:0;values.colorKey[j]=0x80000000u;
+    values.borderLogicalSize[j][0]=values.borderLogicalSize[j][1]=values.borderLogicalSize[j][2]=2;values.borderInvRealSize[j][0]=values.borderInvRealSize[j][1]=values.borderInvRealSize[j][2]=.125f;
+    unsigned sampler=(f/16+j)%16;if(j==unit && !volume_ignored)sampler&=~3u;
+    VkImageView view=j==unit?(volume_ignored?volume.view:packed_depth.view):texture.view;
+    VkDescriptorImageInfo info={samplers[sampler],view,VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL};VkWriteDescriptorSet w={.sType=VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,.dstSet=set,.dstBinding=2+j,.descriptorCount=1,.descriptorType=VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,.pImageInfo=&info};vkUpdateDescriptorSets(device,1,&w,0,NULL);
+   }
+   unsigned reg=PS_REGISTER_T0+unit;state.final_inputs_0=(PS_REGISTER_C0<<24)|((reg|0xc0u)<<16);state.final_inputs_1=(reg|16u)<<8;values.combFinal0[0]=state.final_inputs_0;values.combFinal1[0]=state.final_inputs_1;
+   state.combiner_dynamic=!!(f&1024);if(state.combiner_dynamic)state.final_inputs_0=state.final_inputs_1=0;
+   float plane[3][4]={{0,0,100,1},{4,0,200,1},{0,4,300,1}};memcpy(data[4],plane,sizeof(plane));data[7][0]=.5f;data[7][1]=0;data[7][2]=1;data[7][3]=(float)(1+(f/17)%64);if(state.point_sprite)data[7][3]=-data[7][3];
+  }
+
+  if(test>=64512){
+   unsigned f=test-64512,raw=f%2,gb=raw^1,other=(f/4)%4,conv=(f/32)%3;bool project3=!!(f&4),ui=!!(f&128),marked=!!(f&256);
+   memset(&state,0,sizeof(state));memset(&values,0,sizeof(values));state.depth_format=((f/32)%4)|(ui?DEPTH_FORMAT_UI_CLAMP:0);state.z_perspective=!!(f&64);state.smooth_shading=!!(f&2);state.point_sprite=!!(f&512);state.shadow_depth_func=1+(f/16)%6;
+   state.shader_stage_program=((project3?PS_TEXTUREMODES_PROJECT3D:PS_TEXTUREMODES_PROJECT2D)<<(raw*5))|(PS_TEXTUREMODES_PROJECT2D<<(gb*5))|(((f&8)?PS_TEXTUREMODES_BUMPENVMAP_LUM:PS_TEXTUREMODES_BUMPENVMAP)<<10)|((other==0?PS_TEXTUREMODES_PROJECT3D:other==1?PS_TEXTUREMODES_CUBEMAP:PS_TEXTUREMODES_PROJECT3D)<<15);
+   state.dim_tex[raw]=project3 && (f&8)?3:2;state.dim_tex[gb]=2;state.dim_tex[2]=(f&16)?3:2;state.dim_tex[3]=other==0?3:2;state.tex_cubemap[3]=other==1;state.tex_x8y24[raw]=true;
+   state.conv_tex[raw]=project3 || !conv?CONVOLUTION_FILTER_DISABLED:conv==1?CONVOLUTION_FILTER_GAUSSIAN:CONVOLUTION_FILTER_QUINCUNX;state.tex_cubemap[raw]=!project3 && conv && !!(f&64);
+   state.g8b8_signed[gb]=(1+(f/2)%15)|(((f/30)%16)<<4);unsigned bit=1u<<gb;state.g8b8_mip_flags=((f&16)?bit:0)|((f&32)?bit<<4:0);state.g8b8_mip_clamp_u=(f&64)?bit:0;state.g8b8_mip_clamp_v=(f&128)?bit:0;state.g8b8_mip_mirror=(f&256)?bit:0;if(f&1024)psh_g8b8_set_extended_lod(&state,gb,4+(f/128)%5,1+(f/16)%3,1+(f/48)%3);
+   unsigned input=(f&8)?gb:(f/4)%2;state.other_stage_input=input<<16;state.rect_tex[raw]=!!(f&16);state.rect_tex[gb]=!!(f&32);state.rect_tex[2]=state.dim_tex[2]==2 && !!(f&128);
+   if(other==2){state.shadow_map[3]=1;state.tex_x8y24[3]=true;}if(other==3)state.shadow_map[3]=3+4*((f/16)%8);
+   values.surfaceScale[0][0]=values.surfaceScale[0][1]=1;values.clipRange[0][1]=values.clipRange[0][3]=16777215;
+   for(unsigned j=0;j<8;j++){values.clipRegion[j][2]=4;values.clipRegion[j][3]=4;}
+   for(unsigned j=0;j<4;j++){
+    values.texScale[j]=j==3 && other==3?-1:.5f+(j%3)*.5f;values.consts[0][j]=0x1p-33f;values.consts[1][j]=.25f;values.consts[16][j]=.5f;values.consts[17][j]=.125f;
+    values.bumpMat[j][0]=.125f;values.bumpMat[j][1]=-.0625f;values.bumpMat[j][2]=.0625f;values.bumpMat[j][3]=.25f;values.bumpScale[j]=.125f;values.bumpOffset[j]=.75f;
+    VkImageView view=j==raw?packed_depth.view:j==gb?signed_gb.view:j==2?(state.dim_tex[2]==3?volume.view:texture.view):other==0?volume.view:other==1?cube.view:other==2?packed_depth.view:encoded_f16.view;
+    unsigned sampler=(f/16+j)%16;if(j==raw || (j==3 && other>=2))sampler&=~3u;
+    VkDescriptorImageInfo info={samplers[sampler],view,VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL};VkWriteDescriptorSet w={.sType=VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,.dstSet=set,.dstBinding=2+j,.descriptorCount=1,.descriptorType=VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,.pImageInfo=&info};vkUpdateDescriptorSets(device,1,&w,0,NULL);
+   }
+   state.combiner_control=1|(PS_COMBINERCOUNT_MUX_MSB<<8);state.rgb_inputs[0]=((PS_REGISTER_T0+raw+0xc0u)<<24)|(PS_REGISTER_C0<<16)|((PS_REGISTER_T0+gb+0xc0u)<<8)|PS_REGISTER_C1;state.rgb_outputs[0]=(PS_REGISTER_R0<<8)|((f&128)?PS_COMBINEROUTPUT_AB_CD_MUX<<12:0);
+   state.final_inputs_0=(PS_REGISTER_C0<<24)|((PS_REGISTER_R0|0xc0u)<<16)|((PS_REGISTER_T0+2)<<8)|PS_REGISTER_C1;state.final_inputs_1=(PS_REGISTER_T0+3+16)<<8;
+   values.combCtl[0]=state.combiner_control;values.combRgbIn[0]=state.rgb_inputs[0];values.combRgbOut[0]=state.rgb_outputs[0];values.combFinal0[0]=state.final_inputs_0;values.combFinal1[0]=state.final_inputs_1;state.combiner_dynamic=!!(f&1024);if(state.combiner_dynamic){state.combiner_control=0;state.final_inputs_0=state.final_inputs_1=0;}
+   float plane[3][4]={{0,0,100,1},{4,0,200,1},{0,4,300,1}};if(ui && marked){plane[1][0]=.125f;plane[1][1]=.25f;plane[2][0]=.625f;plane[2][1]=.75f;}
+   memcpy(data[4],plane,sizeof(plane));data[7][0]=.5f;data[7][1]=marked?-0.0f:0.0f;data[7][2]=1;data[7][3]=(float)(1+(f/17)%64);if(state.point_sprite)data[7][3]=-data[7][3];
+  }
   GlslcResult modules[2];SpvPshOptions opts={.spirv_1_6=!!(test&256),.ubo_binding=1,.tex_binding=2};assert(pgraph_spv_psh(&state,opts,&modules[1]));MString *source=pgraph_glsl_gen_psh(&state,(GenPshGlslOptions){.vulkan=true,.locations=true,.ubo_binding=1,.tex_binding=2});GlslcOptions go={.spirv_1_6=opts.spirv_1_6,.emit_layout=true};if(!glslc_compile(GLSLC_STAGE_FRAGMENT,mstring_get_str(source),&go,&modules[0])){fprintf(stderr,"fragment %u %d %s\n",test,modules[0].error_line,modules[0].error);abort();}reference_source_bytes+=strlen(mstring_get_str(source));mstring_unref(source);
   words[0]+=modules[0].num_words;words[1]+=modules[1].num_words;
   uint32_t expected[80];uint64_t build_ns[2]={0},draw_ns[2]={0};
@@ -623,6 +667,7 @@ int main(int argc,char **argv){
   if(timings)fprintf(stderr,"PSH timing case=%u ref_build_ns=%llu native_build_ns=%llu ref_submit_fence_ns=%llu native_submit_fence_ns=%llu UNQUALIFIED\n",test,(unsigned long long)build_ns[0],(unsigned long long)build_ns[1],(unsigned long long)draw_ns[0],(unsigned long long)draw_ns[1]);
   bool sampled=false;for(unsigned j=0;j<4;j++)sampled|=((state.shader_stage_program>>(j*5))&31)==PS_TEXTUREMODES_PROJECT2D || ((state.shader_stage_program>>(j*5))&31)==PS_TEXTUREMODES_PROJECT3D || ((state.shader_stage_program>>(j*5))&31)==PS_TEXTUREMODES_CUBEMAP || ((state.shader_stage_program>>(j*5))&31)==PS_TEXTUREMODES_BUMPENVMAP || ((state.shader_stage_program>>(j*5))&31)==PS_TEXTUREMODES_BUMPENVMAP_LUM || ((state.shader_stage_program>>(j*5))&31)==PS_TEXTUREMODES_DPNDNT_AR || ((state.shader_stage_program>>(j*5))&31)==PS_TEXTUREMODES_DPNDNT_GB;
   if(test==54272){float red;memcpy(&red,expected,4);assert(isfinite(red) && red>0.0f && red<1.0f);printf("Signed fixture signal: first_red=%.9g; final constant bank active\n",red);}
+  if(test==60416){float red;memcpy(&red,expected,4);assert(isfinite(red) && red>0.0f && red<1.0f);printf("Raw integer fixture signal: first_red=%.9g; numeric conversion and final constant bank active\n",red);}
   for(unsigned j=0;j<16;j++){if(expected[j*4]==0xc0000000u)discarded++;else{written++;sample_pixels+=sampled;point_pixels+=state.point_sprite;}}
   release(&modules[0]);release(&modules[1]);
  }
