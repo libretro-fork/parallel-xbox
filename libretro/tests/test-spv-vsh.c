@@ -46,6 +46,11 @@ static void token(uint32_t t[4], unsigned m, unsigned l, unsigned input,
     if (m == MAC_ARL) { t[3] &= ~(15u << 12); }
 }
 
+static void unused_c(uint32_t t[4], unsigned kind)
+{
+    if(kind<3){unsigned reg=13+kind;t[3]=(t[3]&~(15u<<28))|((reg&3)<<30)|(PARAM_R<<28);t[2]=(t[2]&~3u)|(reg>>2);}
+    else{t[1]=(t[1]&~(255u<<13))|((kind==3?192u:255u)<<13);t[3]=(t[3]&~(3u<<28))|(PARAM_C<<28);}
+}
 static void make_case(VshState *s, unsigned variant)
 {
     memset(s, 0, sizeof(*s));
@@ -323,6 +328,29 @@ int main(int argc, char **argv)
         glslc_result_free_words(&b); free(b.uniforms.members); free(b.push_constants.members);
         total++;
     }
+    for(unsigned i=0;i<1024;i++){
+        const unsigned modes[]={1,2,5,6,7,8,9,10,11,12,13};VshState state={0};state.programmable.program_length=1;
+        uint32_t *t=state.programmable.program_data[0];token(t,modes[i%11],0,0,0,false,true);t[2]=(t[2]&~(3u<<11))|(PARAM_V<<11);
+        /* CONST selector is shared; canonical C uses V with these same bits. */
+        if((i/11)%5>=3)t[1]=(t[1]&~(255u<<13))|(((i/11)%5==3?192u:255u)<<13);
+        state.uniform_attrs=i&32?3:0;SpvVshOptions opts={.preserve_float32=true,.spirv_1_6=!!(i&64),.push_constants=!!(i&128)};
+        GlslcResult a,b;allocations=0;assert(pgraph_spv_vsh(&state,opts,&a));unsigned expected=2u+(unsigned)(opts.push_constants&&state.uniform_attrs);assert(allocations==expected);
+        unused_c(t,(i/11)%5);assert(pgraph_spv_vsh(&state,opts,&b)&&allocations==expected*2);if(a.num_words!=b.num_words||memcmp(a.words,b.words,a.num_words*4))fprintf(stderr,"unused C case=%u mode=%u kind=%u words=%zu/%zu\n",i,modes[i%11],(i/11)%5,a.num_words,b.num_words);assert(a.num_words==b.num_words&&!memcmp(a.words,b.words,a.num_words*4));
+        assert(a.uniforms.size==b.uniforms.size&&a.uniforms.count==b.uniforms.count&&a.push_constants.size==b.push_constants.size&&a.push_constants.count==b.push_constants.count);
+        memset(&state,0xa5,sizeof(state));assert(!strcmp(a.uniforms.members[0].name,"c")&&!strcmp(b.uniforms.members[0].name,"c"));
+        char path[4096];snprintf(path,sizeof(path),"%s/unused-c-%u.spv",argv[1],i);FILE *f=fopen(path,"wb");assert(f&&fwrite(b.words,4,b.num_words,f)==b.num_words);fclose(f);
+        glslc_result_free_words(&a);free(a.uniforms.members);free(a.push_constants.members);glslc_result_free_words(&b);free(b.uniforms.members);free(b.push_constants.members);total++;
+    }
+    for(unsigned i=0;i<16;i++){
+        VshState state={0};state.programmable.program_length=1;uint32_t *t=state.programmable.program_data[0];unsigned m=i==1||i==2||i==15?3:i==3||i==4?4:i==7||i==8||i==14?0:i==10||i==12?2:i==13?13:1;
+        unsigned l=i==5?1:i==6?2:i==7?3:i==8?4:i==14?7:0;token(t,m,l,0,0,!!l,true);t[2]=(t[2]&~(3u<<11))|(PARAM_V<<11);
+        if(i==0||i==13)t[3]&=~(3u<<28);
+        else if(i==9){t[2]=(t[2]&~(0xfcu<<24))|(13u<<28)|(PARAM_R<<26);}
+        else if(i==10){t[2]=(t[2]&~((15u<<13)|(3u<<11)))|(13u<<13)|(PARAM_R<<11);}
+        else if(i==11||i==12){t[1]=(t[1]&~(255u<<13))|(255u<<13);if(i==11)t[2]=(t[2]&~(3u<<26))|(PARAM_C<<26);else t[2]=(t[2]&~(3u<<11))|(PARAM_C<<11);}
+        else unused_c(t,i%2?0:3);
+        GlslcResult result;allocations=0;assert(!pgraph_spv_vsh(&state,(SpvVshOptions){.preserve_float32=true},&result));assert(!allocations&&!result.words&&!result.uniforms.members&&!result.push_constants.members);
+    }
     for (unsigned i = 0; i < 39; i++) {
         VshState s; make_case(&s, 0); SpvVshOptions opts = {0};
         if (i == 0) { s.is_fixed_function = true; }
@@ -367,6 +395,6 @@ int main(int argc, char **argv)
         assert(!pgraph_spv_vsh(&s, opts, &result));
         assert(!allocations && !result.words && !result.uniforms.members && !result.push_constants.members);
     }
-    printf("Direct VSH: %u deterministic native-module/owned-layout/poisoned-key cases; thirty-nine allocation-free unsupported paths; 512 device-capability/generation checks PASS\n", total);
+    printf("Direct VSH: %u deterministic native-module/owned-layout/poisoned-key cases; 55 allocation-free unsupported paths; 512 device-capability/generation checks PASS\n", total);
     return 0;
 }
