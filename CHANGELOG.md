@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Vulkan uses immutable SPIR-V words for its six fixed PVIDEO, GPU-property and S3TC utility programs, removing their GLSL compilation and temporary word allocations. Preserve exact reference words, existing pipeline creation and retirement, and synchronous borrowed word lifetimes. Make reference compiler member-ID allocation order explicit so ARM64 and x86 produce the same words.
+
 - After-access CPU watchpoints during interrupt or exception frame construction let delivery complete before requesting a debugger stop. Preserve acknowledged interrupts instead of retrying them as translated instructions; normal instruction watchpoints and stop-before behavior stay intact.
 
 - Vulkan packs index uploads as 16-bit values for native points, lines and triangles when every index is below 65535. Keep emulated topologies and larger indices on the 32-bit path, and pad uploads to preserve alignment. Gameplay performance remains unmeasured.

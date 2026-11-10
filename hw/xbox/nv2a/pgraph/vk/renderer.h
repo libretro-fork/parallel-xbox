@@ -22,6 +22,7 @@
 #define HW_XBOX_NV2A_PGRAPH_VK_RENDERER_H
 
 #include "qemu/osdep.h"
+#include "hw/xbox/nv2a/pgraph/spv/utility.h"
 #include "qemu/thread.h"
 #include "qemu/queue.h"
 #include "qemu/lru.h"
@@ -1016,8 +1017,8 @@ ShaderSource *pgraph_vk_compile_shader(VkShaderStageFlagBits stage,
 VkShaderModule pgraph_vk_create_shader_module_from_words(
     PGRAPHVkState *r, const uint32_t *words, size_t num_words);
 /* Only for fixed programs whose descriptor/push layout is defined by the host. */
-VkShaderModule pgraph_vk_create_fixed_shader_module_from_glsl(
-    PGRAPHVkState *r, VkShaderStageFlagBits stage, const char *glsl);
+VkShaderModule pgraph_vk_create_utility_shader_module(
+    PGRAPHVkState *r, enum SpvUtilityShader shader);
 ShaderModuleInfo *pgraph_vk_create_shader_module_from_spirv(PGRAPHVkState *r,
                                                              ShaderSource *spirv);
 ShaderModuleInfo *pgraph_vk_create_shader_module_from_glsl(

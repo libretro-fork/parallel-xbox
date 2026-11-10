@@ -3166,8 +3166,11 @@ static LVal member_lv(C *c, const LVal *base, int member)
     lv.t = base->t->members[member];
     lv.sc = base->sc;
     lv.readonly = base->readonly;
-    lv.ptr = ins(c, SpvOpAccessChain, ptr_type(c, lv.t, base->sc), 2, base->ptr,
-                 const_int(c, member));
+    /* These helpers both allocate IDs. Keep their order independent of the
+     * host C argument evaluation order (and preserve existing x86 words). */
+    uint32_t member_index = const_int(c, member);
+    uint32_t member_pointer = ptr_type(c, lv.t, base->sc);
+    lv.ptr = ins(c, SpvOpAccessChain, member_pointer, 2, base->ptr, member_index);
     if (base->t->member_bool && base->t->member_bool[member]) {
         lv.as_bool = true;
         lv.store_t = lv.t;

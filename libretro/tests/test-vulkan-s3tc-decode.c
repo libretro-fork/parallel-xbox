@@ -6,7 +6,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include "hw/xbox/nv2a/pgraph/spv/glslc.h"
+#include "hw/xbox/nv2a/pgraph/spv/utility.h"
 #define VK_CHECK(x) assert((x)==VK_SUCCESS)
 #define CHECK VK_CHECK
 #define DIV_ROUND_UP(x,n) (((x)+(n)-1)/(n))
@@ -111,12 +111,12 @@ static VkDeviceSize pgraph_vk_staging_alloc(PGRAPHState *pg,size_t size,size_t a
 {pg->src=ROUND_UP(pg->src,align);assert(pg->src+size<=pg->vk_renderer_state->storage_buffers[0].buffer_size);size_t off=pg->src;pg->src+=size;pg->written+=size;*out=pg->vk_renderer_state->storage_buffers[0].mapped+off;return off;}
 static void pgraph_vk_staging_flush(PGRAPHState *p,VkDeviceSize off,size_t size){(void)p;(void)off;(void)size;}
 static void pgraph_vk_wait_for_aux(PGRAPHState *p){(void)p;/* The test waits every fence before teardown. */}
-static VkShaderModule pgraph_vk_create_fixed_shader_module_from_glsl(PGRAPHVkState *r,VkShaderStageFlagBits stage,const char *source)
+static bool pgraph_vk_spirv_1_6;
+static VkShaderModule pgraph_vk_create_utility_shader_module(PGRAPHVkState *r,enum SpvUtilityShader shader)
 {
- assert(stage==VK_SHADER_STAGE_COMPUTE_BIT);GlslcResult result;GlslcOptions opts={0};
- if(!glslc_compile(GLSLC_STAGE_COMPUTE,source,&opts,&result)){fprintf(stderr,"line %d: %s\n",result.error_line,result.error);abort();}
- VkShaderModuleCreateInfo ci={.sType=VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,.codeSize=result.num_words*4,.pCode=result.words};
- VkShaderModule module;CHECK(vkCreateShaderModule(r->device,&ci,NULL,&module));free(result.words);return module;
+ SpvStaticModule words=pgraph_spv_utility(shader,pgraph_vk_spirv_1_6);
+ VkShaderModuleCreateInfo ci={.sType=VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,.codeSize=words.num_words*4,.pCode=words.words};
+ VkShaderModule module;CHECK(vkCreateShaderModule(r->device,&ci,NULL,&module));return module;
 }
 
 /* CPU PRODUCTION */
@@ -403,13 +403,15 @@ static void test_format_cache(void){
 }
 int main(void)
 {
+    pgraph_vk_spirv_1_6=getenv("VK_S3TC_SPIRV_16")!=NULL;
+    printf("S3TC SPIR-V target: %s\n",pgraph_vk_spirv_1_6?"1.6":"1.0");
     test_format_cache();
     const char *layers[] = { "VK_LAYER_KHRONOS_validation" };
     const char *extensions[] = { VK_EXT_DEBUG_UTILS_EXTENSION_NAME, VK_EXT_VALIDATION_FEATURES_EXTENSION_NAME };
     VkValidationFeatureEnableEXT enabled = VK_VALIDATION_FEATURE_ENABLE_SYNCHRONIZATION_VALIDATION_EXT;
     VkValidationFeaturesEXT validation_features = { .sType = VK_STRUCTURE_TYPE_VALIDATION_FEATURES_EXT,
         .enabledValidationFeatureCount = 1, .pEnabledValidationFeatures = &enabled };
-    VkApplicationInfo app = { .sType = VK_STRUCTURE_TYPE_APPLICATION_INFO, .apiVersion = VK_API_VERSION_1_2 };
+    VkApplicationInfo app = { .sType = VK_STRUCTURE_TYPE_APPLICATION_INFO, .apiVersion = pgraph_vk_spirv_1_6?VK_API_VERSION_1_3:VK_API_VERSION_1_2 };
     bool validation_enabled = !getenv("VK_S3TC_NO_VALIDATION");
     VkInstanceCreateInfo ci = { .sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
         .pNext = validation_enabled ? &validation_features : NULL, .pApplicationInfo = &app, .enabledLayerCount = validation_enabled ? 1 : 0,

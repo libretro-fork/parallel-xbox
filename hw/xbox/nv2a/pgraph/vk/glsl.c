@@ -174,17 +174,14 @@ VkShaderModule pgraph_vk_create_shader_module_from_words(PGRAPHVkState *r,
     return module;
 }
 
-/* Fixed programs have a host-defined layout. Borrow the compiler's words
- * through vkCreateShaderModule, then release them without reflecting or
- * allocating ShaderModuleInfo and unused uniform metadata. */
-VkShaderModule pgraph_vk_create_fixed_shader_module_from_glsl(
-    PGRAPHVkState *r, VkShaderStageFlagBits stage, const char *glsl)
+/* Fixed words belong to the core image. The driver borrows them only through
+ * vkCreateShaderModule; no compiler/result/layout owner is needed. */
+VkShaderModule pgraph_vk_create_utility_shader_module(
+    PGRAPHVkState *r, enum SpvUtilityShader shader)
 {
-    GlslcResult result = compile_glsl(stage, glsl, false);
-    VkShaderModule module = pgraph_vk_create_shader_module_from_words(
-        r, result.words, result.num_words);
-    glslc_result_free_words(&result);
-    return module;
+    SpvStaticModule module = pgraph_spv_utility(shader, pgraph_vk_spirv_1_6);
+    assert(module.words && module.num_words);
+    return pgraph_vk_create_shader_module_from_words(r, module.words, module.num_words);
 }
 
 /* Compiler metadata is immutable and may be shared with the worker memo.
