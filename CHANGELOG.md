@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- CPU writes retain dirty tracking on TLB entries that share a virtual address but map to different physical pages. Preserve first-write trapping for page-table updates, saved-memory tracking and code invalidation across MMU modes.
+
 - USB OHCI publishes completion queues and frame numbers before raising frame interrupts, and preserves guest-cleared queue heads on frames with no new completions. Prevent a DMA interleaving from exposing an interrupt before its completion data. Game-specific qualification remains unmeasured.
 
 - x86-64 hard-FPU quiet x87 comparisons order normal values and signed zero using integer fields. Keep SoftFloat for exceptional and unsupported encodings, preserving comparison results, sticky flags and host control state. Gameplay performance remains unmeasured.

@@ -17,6 +17,7 @@ typedef uintptr_t retro_atomic_size_t;
 #define retro_atomic_store_relaxed_size(p,v) (*(p)=(v))
 typedef uint32_t MMUIdxMap;
 typedef uintptr_t vaddr;
+typedef uintptr_t hwaddr;
 typedef struct {uintptr_t addr_write,addend;} CPUTLBEntry;
 typedef struct {unsigned slow_flags[3];uint8_t padding[80];uintptr_t xlat_section;} CPUTLBEntryFull;
 typedef struct {CPUTLBEntry table[256];unsigned n;} CPUTLBDescFast;
@@ -69,15 +70,18 @@ int main(void)
    assert(e->addr_write==expected&&e->addend==old.addend);count++;
   }
  }
- /* Promotion must update primary and victim aliases in every populated
-  * mode, and preserve other flags and other virtual pages exactly. */
+ /* Promotion must update only primary and victim aliases of the same RAM
+  * page, preserving other mappings, flags and virtual pages exactly. */
  for(unsigned trial=0;trial<10000;trial++){
   CPUState cpu={0},expected;cpu.neg.tlb.c.dirty=trial&255;
   uintptr_t addr=rnd()&TARGET_PAGE_MASK;
+  hwaddr xlat=rnd()&TARGET_PAGE_MASK;
   for(unsigned m=0;m<8;m++){
    cpu.fast[m].n=1u<<(trial%5);
    for(unsigned k=0;k<20;k++){
     CPUTLBEntry*e=k<16?&cpu.fast[m].table[k]:&cpu.neg.tlb.d[m].vtable[k-16];
+    CPUTLBEntryFull*f=k<16?&cpu.neg.tlb.d[m].fulltlb[k]:&cpu.neg.tlb.d[m].vfulltlb[k-16];
+    f->xlat_section=(k+m+trial)%3 ? xlat : xlat+4096;
     e->addr_write=(k%3?addr:rnd()&TARGET_PAGE_MASK)|TLB_NOTDIRTY;
     if(k%5==0)e->addr_write|=TLB_WATCHPOINT;
     if(!(cpu.neg.tlb.c.dirty&(1u<<m)))e->addr_write=UINTPTR_MAX;
@@ -88,10 +92,10 @@ int main(void)
   /* Exhaustive reference, including all inactive modes. */
   for(unsigned m=0;m<8;m++){
    unsigned index=(addr>>12)%expected.fast[m].n;
-   if(expected.fast[m].table[index].addr_write==(addr|TLB_NOTDIRTY))expected.fast[m].table[index].addr_write=addr;
-   for(unsigned k=0;k<4;k++)if(expected.neg.tlb.d[m].vtable[k].addr_write==(addr|TLB_NOTDIRTY))expected.neg.tlb.d[m].vtable[k].addr_write=addr;
+   if(expected.fast[m].table[index].addr_write==(addr|TLB_NOTDIRTY) && expected.neg.tlb.d[m].fulltlb[index].xlat_section==xlat)expected.fast[m].table[index].addr_write=addr;
+   for(unsigned k=0;k<4;k++)if(expected.neg.tlb.d[m].vtable[k].addr_write==(addr|TLB_NOTDIRTY) && expected.neg.tlb.d[m].vfulltlb[k].xlat_section==xlat)expected.neg.tlb.d[m].vtable[k].addr_write=addr;
   }
-  tlb_set_dirty(&cpu,addr|(trial&4095));
+  tlb_set_dirty(&cpu,addr|(trial&4095),xlat);
   for(unsigned m=0;m<8;m++){
    assert(!memcmp(cpu.fast[m].table,expected.fast[m].table,sizeof(cpu.fast[m].table)));
    assert(!memcmp(cpu.neg.tlb.d[m].vtable,expected.neg.tlb.d[m].vtable,sizeof(cpu.neg.tlb.d[m].vtable)));
