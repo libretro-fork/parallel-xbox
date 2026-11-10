@@ -730,9 +730,23 @@ unsupported for these modes, and all coordinate, dependency and resource-shape
 checks remain in place. No key is rewritten, resource is copied or lend retained.
 The final words and uniform layouts use the same two allocations.
 
-The current totals are 60928 CPU modules, 145 rejected shapes and 76288 GPU
-recipes. 1536 paired CPU cases require exact native words and owned layouts with the
+This stage brought coverage to 60928 CPU modules, 145 rejected shapes and
+76288 GPU recipes. 1536 paired CPU cases require exact native words and owned layouts with the
 flag off/on, then poison the source key. The GPU matrix adds the same families
 against production GLSL, including volume bump, cube/2D views, rectangles and
 borders. Translation coverage does not establish PSO readiness or cold-play
 recovery; driver-cache qualification remains open.
+
+## Projective shadow sampler precedence
+
+PROJECT3D shadow lookups force a 2D sampler in the production generator.
+Dimension and cube metadata do not change the shader, including F16 filtering
+and constant NEVER/ALWAYS results. Native eligibility follows that precedence
+without modifying keys, sampler views, uniform layouts or resource owners.
+PROJECT2D shape restrictions and unsupported packed/F16 combinations remain.
+
+2560 paired CPU cases compare exact words, owned layouts and two final
+allocations across all four units and poisoned caller keys. 1536 GPU recipes
+compare production GLSL values and exact source identity against canonical
+2D metadata. Current totals are 63488 CPU modules and 77824 GPU recipes.
+Ready PSOs and cold-play recovery remain separate open requirements.
