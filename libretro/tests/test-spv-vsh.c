@@ -70,7 +70,7 @@ int main(int argc, char **argv)
 {
     assert(argc == 2);check_caps();
     unsigned total = 0;
-    for (unsigned i = 0; i < 30864; i++) {
+    for (unsigned i = 0; i < 34960; i++) {
         VshState state;
         unsigned base=i%1120;
         make_case(&state, base);
@@ -189,6 +189,11 @@ int main(int argc, char **argv)
    state.specular_enable=!!(f&1024);state.separate_specular=!!(f&2048);
    for(unsigned l=0;l<8;l++)state.fixed_function.light[l]=(enum VshLight)99;
   }
+  if(i>=30864){
+   state.fixed_function.csv0c_dynamic=true;
+   state.fixed_function.lighting=!!(i&1);state.fixed_function.light_dynamic=!!(i&2);
+   state.fixed_function.ambient_src=state.fixed_function.emission_src=state.fixed_function.diffuse_src=state.fixed_function.specular_src=(enum MaterialColorSource)99;
+  }
         SpvVshOptions opts = { .spirv_1_6 = !!(i & 1),
                               .push_constants = !!(i & 4), .ubo_binding = i % 3,
                               .preserve_float32 = i>=1120 || !!(i&8) };
@@ -203,7 +208,11 @@ int main(int argc, char **argv)
             bool consumes_normal=state.fixed_function.texgen_dynamic || (state.fixed_function.lighting && state.fixed_function.light_dynamic);
             if(state.fixed_function.lighting)for(unsigned l=0;l<8;l++)consumes_normal|=state.fixed_function.light[l]!=LIGHT_OFF;
             for(unsigned t=0;t<4;t++)for(unsigned a=0;a<3;a++)consumes_normal|=state.fixed_function.texgen[t][a]>=TEXGEN_SPHERE_MAP;
-            if(!consumes_normal)state.fixed_function.normalization=!state.fixed_function.normalization;
+            if(state.fixed_function.csv0c_dynamic){
+                state.fixed_function.lighting=!state.fixed_function.lighting;state.fixed_function.light_dynamic=!state.fixed_function.light_dynamic;state.fixed_function.two_sided=!state.fixed_function.two_sided;state.fixed_function.local_eye=!state.fixed_function.local_eye;state.fixed_function.normalization=!state.fixed_function.normalization;
+                state.specular_enable=!state.specular_enable;state.separate_specular=!state.separate_specular;state.ignore_specular_alpha=!state.ignore_specular_alpha;
+            }
+            if(!consumes_normal && !state.fixed_function.csv0c_dynamic)state.fixed_function.normalization=!state.fixed_function.normalization;
             if(state.fixed_function.lighting && state.fixed_function.light_dynamic)memset(state.fixed_function.light,0xa5,sizeof(state.fixed_function.light));
             if(!state.fixed_function.lighting)state.fixed_function.light_dynamic=!state.fixed_function.light_dynamic;
             if(!state.fixed_function.lighting)state.fixed_function.two_sided=!state.fixed_function.two_sided;
@@ -220,16 +229,18 @@ int main(int argc, char **argv)
         bool dynamic=state.is_fixed_function && state.fixed_function.texgen_dynamic;
         bool viewer=dynamic;
         if(state.is_fixed_function)for(unsigned t=0;t<4;t++)for(unsigned k=0;k<3;k++){enum VshTexgen m=state.fixed_function.texgen[t][k];viewer|=m==TEXGEN_SPHERE_MAP || m==TEXGEN_REFLECTION_MAP;}
-        bool lit=state.is_fixed_function && state.fixed_function.lighting, active=false;
+        bool csv=state.is_fixed_function && state.fixed_function.csv0c_dynamic;
+        bool lit=state.is_fixed_function && (state.fixed_function.lighting || csv), active=false;
         unsigned infinite_lights=0, local_lights=0, spot_lights=0;
         if(lit)for(unsigned l=0;l<8;l++){
             enum VshLight mode=state.fixed_function.light[l];active|=mode!=LIGHT_OFF;
             infinite_lights+=mode==LIGHT_INFINITE;local_lights+=mode==LIGHT_LOCAL||mode==LIGHT_SPOT;spot_lights+=mode==LIGHT_SPOT;
         }
-        bool live_lights=lit && state.fixed_function.light_dynamic;
+        bool live_lights=csv || (lit && state.fixed_function.light_dynamic);
         if(live_lights){active=true;infinite_lights=local_lights=spot_lights=1;}
         unsigned lighting_members=lit?(1u+(state.fixed_function.diffuse_src==MATERIAL_COLOR_SRC_MATERIAL)+state.fixed_function.two_sided+active+(infinite_lights!=0)+(local_lights!=0)*3u+(active && state.specular_enable)*(1u+state.fixed_function.two_sided+(infinite_lights!=0 && !state.fixed_function.local_eye))):0;
         lighting_members+=live_lights*(1u+state.fixed_function.two_sided);
+        if(csv)lighting_members=13;
         assert(a.uniforms.count == lighting_members + 7u + (!opts.push_constants && state.uniform_attrs != 0) + viewer + (state.is_fixed_function && state.point_params_enable) + dynamic);
         if(viewer){
             const GlslcUniform *u=&a.uniforms.members[7u+(!opts.push_constants && state.uniform_attrs!=0)];
@@ -276,10 +287,10 @@ int main(int argc, char **argv)
             if((a.words[w]&65535)==SpvOpAccessChain && a.words[w+1]==control_pointer)control_reads++;
         bool precise_fog=state.is_fixed_function && (state.fog_dynamic || (state.fog_enable && (state.fog_mode==FOG_MODE_EXP2 || state.fog_mode==FOG_MODE_EXP2_ABS) && state.fixed_function.foggen>=FOGGEN_RADIAL && state.fixed_function.foggen<=FOGGEN_ABS_PLANAR));
         assert(loops==(unsigned)live_lights);
-        assert(contractions==(precise_fog?4u:0u)+(unsigned)(live_lights && state.fixed_function.local_eye));
+        assert(contractions==(precise_fog?4u:0u)+(unsigned)(!csv && live_lights && state.fixed_function.local_eye));
         assert(preserve_modes==(unsigned)(state.point_params_enable || state.is_fixed_function) && preserve_caps==preserve_modes);
         assert(switches==(unsigned)state.fog_dynamic*(state.is_fixed_function?2u:1u)+dynamic*16u);
-        assert(control_reads==(unsigned)state.fog_dynamic + (dynamic?5u:(unsigned)viewer) + live_lights*(1u+state.fixed_function.two_sided));
+        assert(control_reads==(unsigned)state.fog_dynamic + (dynamic?5u:(unsigned)viewer) + (csv?2u:live_lights*(1u+state.fixed_function.two_sided)));
         unsigned expected_transforms=state.is_fixed_function;
         if(dynamic)expected_transforms+=4;
         else if(state.is_fixed_function)for(unsigned t=0;t<4;t++)expected_transforms+=state.fixed_function.texture_matrix_enable[t];
@@ -297,9 +308,9 @@ int main(int argc, char **argv)
          * Eager Normalize/Select regressed physical-GPU reflection rounding. */
         unsigned lights=0;
         if(lit)for(unsigned l=0;l<8;l++)lights+=state.fixed_function.light[l]!=LIGHT_OFF;
-        if(state.is_fixed_function)assert(branches==1u+(unsigned)viewer+dynamic*4u+(live_lights?12u+state.fixed_function.two_sided+3u*state.specular_enable*(1u+state.fixed_function.two_sided):local_lights+spot_lights*6u+lights*3u*state.specular_enable*(1u+state.fixed_function.two_sided)));
+        if(state.is_fixed_function)assert(branches==1u+(unsigned)viewer+dynamic*4u+(csv?29u:(live_lights?12u+state.fixed_function.two_sided+3u*state.specular_enable*(1u+state.fixed_function.two_sided):local_lights+spot_lights*6u+lights*3u*state.specular_enable*(1u+state.fixed_function.two_sided))));
         assert(reflections==(unsigned)viewer);
-        assert(normalizations==(unsigned)(needs_normal && state.fixed_function.normalization)+(unsigned)viewer+(live_lights?2u:lights)+(active && state.specular_enable && state.fixed_function.local_eye)+state.specular_enable*(local_lights+infinite_lights*state.fixed_function.local_eye));
+        assert(normalizations==(csv?6u+(unsigned)viewer:(unsigned)(needs_normal && state.fixed_function.normalization)+(unsigned)viewer+(live_lights?2u:lights)+(active && state.specular_enable && state.fixed_function.local_eye)+state.specular_enable*(local_lights+infinite_lights*state.fixed_function.local_eye)));
         assert(matrices==(unsigned)state.is_fixed_function && transforms==expected_transforms);
         memset(&state, 0xa5, sizeof(state));
         assert(!strcmp(a.uniforms.members[0].name, "c"));
@@ -329,10 +340,10 @@ int main(int argc, char **argv)
         if(i>=12){
             s.is_fixed_function=true;s.fog_mode=FOG_MODE_LINEAR;opts.preserve_float32=true;
             if(i==12){s.fixed_function.lighting=true;s.fixed_function.light[0]=LIGHT_LOCAL;opts.preserve_float32=false;}
-            if(i==13)s.fixed_function.csv0c_dynamic=true;
+            if(i==13){s.fixed_function.csv0c_dynamic=true;opts.ubo_binding=32;}
             if(i==14){s.fixed_function.texgen_dynamic=true;opts.ubo_binding=32;}
             if(i==15)s.fixed_function.skinning=(enum VshSkinning)-1;
-            if(i==16){s.fog_dynamic=true;s.fixed_function.lighting=true;s.fixed_function.light[0]=LIGHT_SPOT;s.fixed_function.csv0c_dynamic=true;}
+            if(i==16){s.fog_dynamic=true;s.fixed_function.lighting=true;s.fixed_function.light[0]=LIGHT_SPOT;s.fixed_function.csv0c_dynamic=true;opts.preserve_float32=false;}
             if(i==17){s.fog_enable=true;s.fixed_function.foggen=(enum VshFoggen)5;}
             if(i==18){s.point_params_enable=true;opts.preserve_float32=false;}
             if(i==19)s.fixed_function.texgen[1][3]=TEXGEN_NORMAL_MAP;
@@ -348,7 +359,7 @@ int main(int argc, char **argv)
             if(i==33)s.fixed_function.emission_src=(enum MaterialColorSource)3;
             if(i==34)s.fixed_function.diffuse_src=(enum MaterialColorSource)3;
             if(i==35)s.fixed_function.specular_src=(enum MaterialColorSource)3;
-            if(i==36){s.fixed_function.light_dynamic=true;s.fixed_function.csv0c_dynamic=true;}
+            if(i==36){s.fixed_function.light_dynamic=true;s.fixed_function.csv0c_dynamic=true;s.fixed_function.skinning=(enum VshSkinning)99;}
             if(i==37)s.fixed_function.light[0]=(enum VshLight)-1;
             if(i==38)s.fixed_function.light[0]=(enum VshLight)4;
         }

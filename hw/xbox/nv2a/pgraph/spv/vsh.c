@@ -110,11 +110,10 @@ bool pgraph_spv_vsh_supported(const VshState *s, SpvVshOptions opts)
         const FixedFunctionVshState *ff = &s->fixed_function;
         if (!opts.preserve_float32 ||
             (s->fog_enable && !s->fog_dynamic && (unsigned)ff->foggen > FOGGEN_FOG_X) ||
-            ff->csv0c_dynamic ||
             (unsigned)ff->skinning > SKINNING_4WEIGHTS4MATRICES) {
             return false;
         }
-        if (ff->lighting) {
+        if (ff->lighting && !ff->csv0c_dynamic) {
             if ((unsigned)ff->ambient_src > 2 || (unsigned)ff->emission_src > 2 ||
                 (unsigned)ff->diffuse_src > 2 || (unsigned)ff->specular_src > 2) { return false; }
             for (unsigned i = 0; !ff->light_dynamic && i < NV2A_MAX_LIGHTS; i++) {
@@ -181,7 +180,9 @@ static const LightingInfo lighting_info[L_COUNT] = {
 /* Select existing uniform groups; unused groups need no final-block upload. */
 static unsigned lighting_profile(const VshState *s)
 {
-    if (!s->is_fixed_function || !s->fixed_function.lighting) { return 0; }
+    if (!s->is_fixed_function) { return 0; }
+    if (s->fixed_function.csv0c_dynamic) { return (1u << L_COUNT) - 1u; }
+    if (!s->fixed_function.lighting) { return 0; }
     const FixedFunctionVshState *f = &s->fixed_function;
     unsigned mask = 1u << L_CONTEXT;
     if (f->diffuse_src == MATERIAL_COLOR_SRC_MATERIAL) { mask |= 1u << L_ALPHA; }
@@ -260,6 +261,16 @@ static uint32_t unary(Context *c, SpvOp code, uint32_t type, uint32_t a)
 { return value(c->w, code, type, 1, a); }
 static uint32_t binary(Context *c, SpvOp code, uint32_t type, uint32_t a, uint32_t b)
 { return value(c->w, code, type, 2, a, b); }
+static bool csv_live(Context *c) { return c->state->is_fixed_function && c->state->fixed_function.csv0c_dynamic; }
+static bool lighting_specular(Context *c) { return csv_live(c) || c->state->specular_enable; }
+static bool lighting_back(Context *c) { return csv_live(c) || c->state->fixed_function.two_sided; }
+static uint32_t csv_field(Context *c, unsigned shift, uint32_t mask)
+{
+    uint32_t bits=binary(c,SpvOpShiftRightLogical,c->u,c->light_control,c->ci[shift]);
+    return binary(c,SpvOpBitwiseAnd,c->u,bits,mask);
+}
+static uint32_t csv_flag(Context *c, unsigned shift)
+{ return binary(c,SpvOpINotEqual,c->b,csv_field(c,shift,c->cu[1]),c->cu[0]); }
 static uint32_t ext1(Context *c, unsigned code, uint32_t type, uint32_t a)
 { return value(c->w, SpvOpExtInst, type, 3, c->ext, code, a); }
 static uint32_t ext2(Context *c, unsigned code, uint32_t type, uint32_t a, uint32_t b)
@@ -420,7 +431,13 @@ static uint32_t transformed_normal(Context *c)
     } else {
         mapped_normal = skinned(c, n, true);
     }
-    if (c->state->fixed_function.normalization) {
+    if(csv_live(c)){
+        uint32_t test=csv_flag(c,2),yes=id(c->w),no=id(c->w),merge=id(c->w);
+        op(c->w,SpvOpSelectionMerge,2,merge,0u);op(c->w,SpvOpBranchConditional,3,test,yes,no);op(c->w,SpvOpLabel,1,yes);
+        uint32_t normalized=ext1(c,GLSLstd450Normalize,c->v3,mapped_normal);
+        op(c->w,SpvOpBranch,1,merge);op(c->w,SpvOpLabel,1,no);op(c->w,SpvOpBranch,1,merge);op(c->w,SpvOpLabel,1,merge);
+        mapped_normal=value(c->w,SpvOpPhi,c->v3,4,normalized,yes,mapped_normal,no);
+    }else if (c->state->fixed_function.normalization) {
         mapped_normal = ext1(c, GLSLstd450Normalize, c->v3, mapped_normal);
     }
     c->normal_value = mapped_normal;
@@ -529,9 +546,14 @@ static void accumulate_light(Context *c, unsigned i, bool dynamic, uint32_t atte
     const FixedFunctionVshState *f=&c->state->fixed_function;
         uint32_t ambient=binary(c,SpvOpVectorTimesScalar,c->v3,light_color_for(c,i,dynamic,NV_IGRAPH_XF_LTCTXB_L0_AMB),attenuation);
         uint32_t lit_diffuse=binary(c,SpvOpVectorTimesScalar,c->v3,binary(c,SpvOpVectorTimesScalar,c->v3,light_color_for(c,i,dynamic,NV_IGRAPH_XF_LTCTXB_L0_DIF),attenuation),dot);
-        if(f->ambient_src!=MATERIAL_COLOR_SRC_MATERIAL)ambient=binary(c,SpvOpFMul,c->v3,ambient,f->ambient_src==MATERIAL_COLOR_SRC_SPECULAR?s:d);
+        if(csv_live(c)){
+            uint32_t source=csv_field(c,6,c->cu[3]);
+            uint32_t one=value(c->w,SpvOpCompositeConstruct,c->v3,3,c->cf[F_ONE],c->cf[F_ONE],c->cf[F_ONE]);
+            uint32_t multiplier=choose(c,c->v3,binary(c,SpvOpIEqual,c->b,source,c->cu[1]),d,choose(c,c->v3,binary(c,SpvOpIEqual,c->b,source,c->cu[2]),s,one));
+            ambient=binary(c,SpvOpFMul,c->v3,ambient,multiplier);
+        }else if(f->ambient_src!=MATERIAL_COLOR_SRC_MATERIAL)ambient=binary(c,SpvOpFMul,c->v3,ambient,f->ambient_src==MATERIAL_COLOR_SRC_SPECULAR?s:d);
         c->o[3]=with_xyz(c,c->o[3],binary(c,SpvOpFAdd,c->v3,xyz(c,c->o[3]),ambient));
-        if(f->two_sided){
+        if(lighting_back(c)){
             uint32_t back_before[2]={c->o[7],c->o[8]}, skip=0, merge=0;
             if(dynamic){
                 uint32_t enabled=binary(c,SpvOpINotEqual,c->b,binary(c,SpvOpBitwiseAnd,c->u,c->light_control,c->back_bit),c->cu[0]);
@@ -544,7 +566,7 @@ static void accumulate_light(Context *c, unsigned i, bool dynamic, uint32_t atte
             c->o[7]=with_xyz(c,c->o[7],binary(c,SpvOpFAdd,c->v3,xyz(c,c->o[7]),a));
             uint32_t dd=binary(c,SpvOpVectorTimesScalar,c->v3,binary(c,SpvOpVectorTimesScalar,c->v3,light_color_for(c,i,dynamic,NV_IGRAPH_XF_LTCTXB_L0_BDIF),attenuation),bd);
             c->o[7]=with_xyz(c,c->o[7],binary(c,SpvOpFAdd,c->v3,xyz(c,c->o[7]),dd));
-            if(c->state->specular_enable){
+            if(lighting_specular(c)){
                 uint32_t bh=ext2(c,GLSLstd450FMax,c->f,c->cf[F_ZERO],unary(c,SpvOpFNegate,c->f,half_raw));
                 uint32_t bpf=specular_factor(c,bd,bh,back_params);
                 uint32_t sp=binary(c,SpvOpVectorTimesScalar,c->v3,binary(c,SpvOpVectorTimesScalar,c->v3,light_color_for(c,i,dynamic,NV_IGRAPH_XF_LTCTXB_L0_BSPC),attenuation),bpf);
@@ -553,14 +575,24 @@ static void accumulate_light(Context *c, unsigned i, bool dynamic, uint32_t atte
             if(dynamic){
                 uint32_t last=c->w->block;op(c->w,SpvOpBranch,1,merge);op(c->w,SpvOpLabel,1,skip);op(c->w,SpvOpBranch,1,merge);op(c->w,SpvOpLabel,1,merge);
                 c->o[7]=value(c->w,SpvOpPhi,c->v4,4,c->o[7],last,back_before[0],skip);
-                if(c->state->specular_enable)c->o[8]=value(c->w,SpvOpPhi,c->v4,4,c->o[8],last,back_before[1],skip);
+                if(lighting_specular(c))c->o[8]=value(c->w,SpvOpPhi,c->v4,4,c->o[8],last,back_before[1],skip);
             }
         }
-        if(f->diffuse_src!=MATERIAL_COLOR_SRC_MATERIAL)lit_diffuse=binary(c,SpvOpFMul,c->v3,f->diffuse_src==MATERIAL_COLOR_SRC_SPECULAR?s:d,lit_diffuse);
+        if(csv_live(c)){
+            uint32_t source=csv_field(c,8,c->cu[3]);
+            uint32_t one=value(c->w,SpvOpCompositeConstruct,c->v3,3,c->cf[F_ONE],c->cf[F_ONE],c->cf[F_ONE]);
+            uint32_t multiplier=choose(c,c->v3,binary(c,SpvOpIEqual,c->b,source,c->cu[1]),d,choose(c,c->v3,binary(c,SpvOpIEqual,c->b,source,c->cu[2]),s,one));
+            lit_diffuse=binary(c,SpvOpFMul,c->v3,multiplier,lit_diffuse);
+        }else if(f->diffuse_src!=MATERIAL_COLOR_SRC_MATERIAL)lit_diffuse=binary(c,SpvOpFMul,c->v3,f->diffuse_src==MATERIAL_COLOR_SRC_SPECULAR?s:d,lit_diffuse);
         c->o[3]=with_xyz(c,c->o[3],binary(c,SpvOpFAdd,c->v3,xyz(c,c->o[3]),lit_diffuse));
-        if(c->state->specular_enable){
+        if(lighting_specular(c)){
             uint32_t sp=binary(c,SpvOpVectorTimesScalar,c->v3,binary(c,SpvOpVectorTimesScalar,c->v3,light_color_for(c,i,dynamic,NV_IGRAPH_XF_LTCTXB_L0_SPC),attenuation),pf);
-            if(f->specular_src!=MATERIAL_COLOR_SRC_MATERIAL)sp=binary(c,SpvOpFMul,c->v3,f->specular_src==MATERIAL_COLOR_SRC_SPECULAR?s:d,sp);
+            if(csv_live(c)){
+                uint32_t source=csv_field(c,10,c->cu[3]);
+                uint32_t one=value(c->w,SpvOpCompositeConstruct,c->v3,3,c->cf[F_ONE],c->cf[F_ONE],c->cf[F_ONE]);
+                uint32_t multiplier=choose(c,c->v3,binary(c,SpvOpIEqual,c->b,source,c->cu[1]),d,choose(c,c->v3,binary(c,SpvOpIEqual,c->b,source,c->cu[2]),s,one));
+                sp=binary(c,SpvOpFMul,c->v3,multiplier,sp);
+            }else if(f->specular_src!=MATERIAL_COLOR_SRC_MATERIAL)sp=binary(c,SpvOpFMul,c->v3,f->specular_src==MATERIAL_COLOR_SRC_SPECULAR?s:d,sp);
             c->o[4]=with_xyz(c,c->o[4],binary(c,SpvOpFAdd,c->v3,xyz(c,c->o[4]),sp));
         }
 }
@@ -569,9 +601,19 @@ static void accumulate_light(Context *c, unsigned i, bool dynamic, uint32_t atte
 typedef struct LightTerms { uint32_t raw, half_raw, attenuation, valid; } LightTerms;
 static uint32_t light_half_dot(Context *c, uint32_t index, bool local, uint32_t direction, uint32_t normal, uint32_t eye)
 {
-    if(!c->state->specular_enable)return c->cf[F_ZERO];
+    if(!lighting_specular(c))return c->cf[F_ZERO];
     uint32_t half;
-    if(local || c->state->fixed_function.local_eye){
+    if(csv_live(c)){
+        if(local){half=ext1(c,GLSLstd450Normalize,c->v3,binary(c,SpvOpFAdd,c->v3,direction,eye));}
+        else{
+            uint32_t test=csv_flag(c,1),yes=id(c->w),no=id(c->w),merge=id(c->w);
+            op(c->w,SpvOpSelectionMerge,2,merge,0u);op(c->w,SpvOpBranchConditional,3,test,yes,no);op(c->w,SpvOpLabel,1,yes);
+            uint32_t h=ext1(c,GLSLstd450Normalize,c->v3,binary(c,SpvOpFAdd,c->v3,direction,eye));
+            op(c->w,SpvOpBranch,1,merge);op(c->w,SpvOpLabel,1,no);
+            uint32_t programmed=lighting_uniform_at(c,L_HALF,index);
+            op(c->w,SpvOpBranch,1,merge);op(c->w,SpvOpLabel,1,merge);half=value(c->w,SpvOpPhi,c->v3,4,h,yes,programmed,no);
+        }
+    }else if(local || c->state->fixed_function.local_eye){
         uint32_t other=eye;
         if(!c->state->fixed_function.local_eye)other=value(c->w,SpvOpCompositeConstruct,c->v3,3,c->cf[F_ZERO],c->cf[F_ZERO],c->cf[F_ZERO]);
         half=ext1(c,GLSLstd450Normalize,c->v3,binary(c,SpvOpFAdd,c->v3,direction,other));
@@ -592,9 +634,10 @@ static LightTerms dynamic_light_terms(Context *c, uint32_t index, uint32_t mode,
     uint32_t w=extract(c,position,3), divisor=value(c->w,SpvOpCompositeConstruct,c->v3,3,w,w,w);
     uint32_t view=binary(c,SpvOpFDiv,c->v3,xyz(c,position),divisor);
     uint32_t delta=binary(c,SpvOpFSub,c->v3,lighting_uniform_at(c,L_POSITION,index),view);
-    /* The local-viewer reference shares the rounded divide with VPeye;
-     * retain that boundary even when disabled specular makes VPeye dead. */
-    if(c->state->fixed_function.local_eye){
+    /* A static local viewer shares the rounded divide with VPeye even when
+     * specular is dead. Live CSV0_C computes VPeye conditionally and does not
+     * impose that boundary on its local-light subtraction. */
+    if(!csv_live(c) && c->state->fixed_function.local_eye){
         if(c->w->words && c->w->precise_distance!=delta){abort();}
         c->w->precise_distance=delta;
     }
@@ -637,7 +680,7 @@ static void dynamic_lights(Context *c, uint32_t normal, uint32_t eye, uint32_t p
 {
     /* Uniform production bounds count to the highest active slot, at most 8. */
     uint32_t modes=lighting_uniform(c,L_MODE,0);
-    if(c->state->fixed_function.two_sided)c->light_control=lighting_uniform(c,L_CONTROL,0);
+    if(lighting_back(c) && !c->light_control)c->light_control=lighting_uniform(c,L_CONTROL,0);
     uint32_t count=binary(c,SpvOpBitwiseAnd,c->u,binary(c,SpvOpShiftRightLogical,c->u,modes,c->light_shift),c->light_mask);
     count=unary(c,SpvOpBitcast,c->i,count);
     if(!*position)*position=transform(c,input(c,0),NV_IGRAPH_XF_XFCTX_MMAT0);
@@ -662,7 +705,7 @@ static void dynamic_lights(Context *c, uint32_t normal, uint32_t eye, uint32_t p
     op(c->w,SpvOpSelectionMerge,2,use_merge,0u);op(c->w,SpvOpBranchConditional,3,terms.valid,use,use_merge);
     op(c->w,SpvOpLabel,1,use);
     uint32_t dot=ext2(c,GLSLstd450FMax,c->f,c->cf[F_ZERO],terms.raw), pf=0;
-    if(c->state->specular_enable)pf=specular_factor(c,dot,ext2(c,GLSLstd450FMax,c->f,c->cf[F_ZERO],terms.half_raw),params);
+    if(lighting_specular(c))pf=specular_factor(c,dot,ext2(c,GLSLstd450FMax,c->f,c->cf[F_ZERO],terms.half_raw),params);
     accumulate_light(c,index,true,terms.attenuation,terms.raw,dot,terms.half_raw,pf,back_params,d,s);
     uint32_t last=c->w->block;op(c->w,SpvOpBranch,1,use_merge);op(c->w,SpvOpLabel,1,use_merge);
     for(unsigned j=0;j<4;j++)c->o[regs[j]]=value(c->w,SpvOpPhi,c->v4,4,c->o[regs[j]],last,carried[j],geometry_last);
@@ -671,6 +714,91 @@ static void dynamic_lights(Context *c, uint32_t normal, uint32_t eye, uint32_t p
     op(c->w,SpvOpBranch,1,cont);op(c->w,SpvOpLabel,1,cont);
     op(c->w,SpvOpIAdd,4,c->i,next,index,c->ci[1]);op(c->w,SpvOpBranch,1,header);op(c->w,SpvOpLabel,1,merge);
     for(unsigned j=0;j<4;j++)c->o[regs[j]]=carried[j];
+}
+
+static uint32_t csv_base_color(Context *c, uint32_t ambient_source, uint32_t emission_source, uint32_t scene, uint32_t multiplier, uint32_t d, uint32_t s)
+{
+    uint32_t ambient=choose(c,c->v3,binary(c,SpvOpIEqual,c->b,ambient_source,c->cu[2]),s,d);
+    uint32_t emission=choose(c,c->v3,binary(c,SpvOpIEqual,c->b,emission_source,c->cu[2]),s,d);
+    uint32_t material=binary(c,SpvOpIEqual,c->b,emission_source,c->cu[0]);
+    uint32_t test=binary(c,SpvOpIEqual,c->b,ambient_source,c->cu[0]),yes=id(c->w),no=id(c->w),merge=id(c->w);
+    op(c->w,SpvOpSelectionMerge,2,merge,0u);op(c->w,SpvOpBranchConditional,3,test,yes,no);op(c->w,SpvOpLabel,1,yes);
+    uint32_t zero=id(c->w),nonzero=id(c->w),term_merge=id(c->w);
+    op(c->w,SpvOpSelectionMerge,2,term_merge,0u);op(c->w,SpvOpBranchConditional,3,material,zero,nonzero);
+    op(c->w,SpvOpLabel,1,zero);uint32_t z=value(c->w,SpvOpCompositeConstruct,c->v3,3,c->cf[F_ZERO],c->cf[F_ZERO],c->cf[F_ZERO]);
+    op(c->w,SpvOpBranch,1,term_merge);op(c->w,SpvOpLabel,1,nonzero);
+    uint32_t product=binary(c,SpvOpFMul,c->v3,emission,multiplier);
+    op(c->w,SpvOpBranch,1,term_merge);op(c->w,SpvOpLabel,1,term_merge);
+    uint32_t term=value(c->w,SpvOpPhi,c->v3,4,z,zero,product,nonzero);
+    uint32_t a=binary(c,SpvOpFAdd,c->v3,scene,term),last=c->w->block;op(c->w,SpvOpBranch,1,merge);
+    op(c->w,SpvOpLabel,1,no);
+    uint32_t b=binary(c,SpvOpFAdd,c->v3,binary(c,SpvOpFMul,c->v3,ambient,multiplier),choose(c,c->v3,material,scene,emission));
+    op(c->w,SpvOpBranch,1,merge);op(c->w,SpvOpLabel,1,merge);
+    return value(c->w,SpvOpPhi,c->v3,4,a,last,b,no);
+}
+static void merge_colors(Context *c, const uint32_t before[4], uint32_t yes, uint32_t no)
+{
+    static const unsigned regs[]={3,4,7,8};
+    for(unsigned j=0;j<4;j++)c->o[regs[j]]=value(c->w,SpvOpPhi,c->v4,4,c->o[regs[j]],yes,before[j],no);
+}
+static void csv_lighting(Context *c, uint32_t *position)
+{
+    static const unsigned regs[]={3,4,7,8};
+    uint32_t before[4];for(unsigned j=0;j<4;j++)before[j]=c->o[regs[j]];
+    uint32_t diffuse=input(c,3),specular=input(c,4),back_specular=input(c,8),d=xyz(c,diffuse),s=xyz(c,specular);
+    /* This SSA position also serves point/fog consumers after the master merge. */
+    if(!*position)*position=transform(c,input(c,0),NV_IGRAPH_XF_XFCTX_MMAT0);
+    uint32_t master=csv_flag(c,0),yes=id(c->w),no=id(c->w),merge=id(c->w);
+    op(c->w,SpvOpSelectionMerge,2,merge,0u);op(c->w,SpvOpBranchConditional,3,master,yes,no);op(c->w,SpvOpLabel,1,yes);
+    uint32_t scene=xyz(c,lighting_uniform(c,L_CONTEXT,NV_IGRAPH_XF_LTCTXA_FR_AMB));
+    uint32_t multiplier=xyz(c,lighting_uniform(c,L_CONTEXT,NV_IGRAPH_XF_LTCTXA_CM_COL));
+    uint32_t base=csv_base_color(c,csv_field(c,6,c->cu[3]),csv_field(c,4,c->cu[3]),scene,multiplier,d,s);
+    uint32_t source=csv_field(c,8,c->cu[3]);
+    uint32_t alpha=choose(c,c->f,binary(c,SpvOpIEqual,c->b,source,c->cu[0]),lighting_uniform(c,L_ALPHA,0),choose(c,c->f,binary(c,SpvOpIEqual,c->b,source,c->cu[2]),extract(c,specular,3),extract(c,diffuse,3)));
+    c->o[3]=make_v4(c,extract(c,base,0),extract(c,base,1),extract(c,base,2),alpha);
+    c->o[4]=make_v4(c,c->cf[F_ZERO],c->cf[F_ZERO],c->cf[F_ZERO],extract(c,specular,3));
+    uint32_t back_before[4];for(unsigned j=0;j<4;j++)back_before[j]=c->o[regs[j]];
+    uint32_t back=csv_flag(c,15),by=id(c->w),bn=id(c->w),bm=id(c->w);
+    op(c->w,SpvOpSelectionMerge,2,bm,0u);op(c->w,SpvOpBranchConditional,3,back,by,bn);op(c->w,SpvOpLabel,1,by);
+    uint32_t back_base=xyz(c,lighting_uniform(c,L_CONTEXT,NV_IGRAPH_XF_LTCTXA_BR_AMB));
+    c->o[7]=make_v4(c,extract(c,back_base,0),extract(c,back_base,1),extract(c,back_base,2),lighting_uniform(c,L_BACK_ALPHA,0));
+    c->o[8]=make_v4(c,c->cf[F_ZERO],c->cf[F_ZERO],c->cf[F_ZERO],extract(c,back_specular,3));
+    op(c->w,SpvOpBranch,1,bm);op(c->w,SpvOpLabel,1,bn);op(c->w,SpvOpBranch,1,bm);op(c->w,SpvOpLabel,1,bm);merge_colors(c,back_before,by,bn);
+    uint32_t eye_test=csv_flag(c,1),ey=id(c->w),en=id(c->w),em=id(c->w);
+    op(c->w,SpvOpSelectionMerge,2,em,0u);op(c->w,SpvOpBranchConditional,3,eye_test,ey,en);op(c->w,SpvOpLabel,1,ey);
+    uint32_t e=constant(c,NV_IGRAPH_XF_XFCTX_EYEP),ew=extract(c,e,3),pw=extract(c,*position,3);
+    uint32_t ev=value(c->w,SpvOpCompositeConstruct,c->v3,3,ew,ew,ew),pv=value(c->w,SpvOpCompositeConstruct,c->v3,3,pw,pw,pw);
+    uint32_t ep=binary(c,SpvOpFDiv,c->v3,xyz(c,e),ev),vp=binary(c,SpvOpFDiv,c->v3,xyz(c,*position),pv);
+    uint32_t eye=ext1(c,GLSLstd450Normalize,c->v3,binary(c,SpvOpFSub,c->v3,ep,vp));
+    op(c->w,SpvOpBranch,1,em);op(c->w,SpvOpLabel,1,en);
+    uint32_t zero=value(c->w,SpvOpCompositeConstruct,c->v3,3,c->cf[F_ZERO],c->cf[F_ZERO],c->cf[F_ZERO]);
+    op(c->w,SpvOpBranch,1,em);op(c->w,SpvOpLabel,1,em);eye=value(c->w,SpvOpPhi,c->v3,4,eye,ey,zero,en);
+    uint32_t normal=transformed_normal(c),params=lighting_uniform(c,L_SPECULAR,0),back_params=lighting_uniform(c,L_BACK_SPECULAR,0);
+    dynamic_lights(c,normal,eye,params,back_params,d,s,position);
+    uint32_t last=c->w->block;op(c->w,SpvOpBranch,1,merge);op(c->w,SpvOpLabel,1,no);op(c->w,SpvOpBranch,1,merge);op(c->w,SpvOpLabel,1,merge);merge_colors(c,before,last,no);
+    /* The live specular postlude also applies when lighting is disabled. */
+    for(unsigned j=0;j<4;j++)before[j]=c->o[regs[j]];
+    uint32_t enabled=csv_flag(c,12),sy=id(c->w),sn=id(c->w),sm=id(c->w);
+    op(c->w,SpvOpSelectionMerge,2,sm,0u);op(c->w,SpvOpBranchConditional,3,enabled,sy,sn);op(c->w,SpvOpLabel,1,sy);
+    uint32_t sep_before[4];for(unsigned j=0;j<4;j++)sep_before[j]=c->o[regs[j]];
+    uint32_t separate=csv_flag(c,13),keep=id(c->w),combine=id(c->w),cm=id(c->w);
+    op(c->w,SpvOpSelectionMerge,2,cm,0u);op(c->w,SpvOpBranchConditional,3,separate,keep,combine);op(c->w,SpvOpLabel,1,combine);
+    uint32_t lit_before[4];for(unsigned j=0;j<4;j++)lit_before[j]=c->o[regs[j]];
+    uint32_t add_yes=id(c->w),add_no=id(c->w),am=id(c->w);
+    op(c->w,SpvOpSelectionMerge,2,am,0u);op(c->w,SpvOpBranchConditional,3,master,add_yes,add_no);op(c->w,SpvOpLabel,1,add_yes);
+    c->o[3]=with_xyz(c,c->o[3],binary(c,SpvOpFAdd,c->v3,xyz(c,c->o[3]),xyz(c,c->o[4])));
+    c->o[7]=with_xyz(c,c->o[7],binary(c,SpvOpFAdd,c->v3,xyz(c,c->o[7]),xyz(c,c->o[8])));
+    op(c->w,SpvOpBranch,1,am);op(c->w,SpvOpLabel,1,add_no);op(c->w,SpvOpBranch,1,am);op(c->w,SpvOpLabel,1,am);merge_colors(c,lit_before,add_yes,add_no);
+    c->o[4]=specular;c->o[8]=back_specular;last=c->w->block;op(c->w,SpvOpBranch,1,cm);
+    op(c->w,SpvOpLabel,1,keep);op(c->w,SpvOpBranch,1,cm);op(c->w,SpvOpLabel,1,cm);merge_colors(c,sep_before,last,keep);
+    uint32_t ignore=csv_flag(c,14);
+    c->o[4]=make_v4(c,extract(c,c->o[4],0),extract(c,c->o[4],1),extract(c,c->o[4],2),choose(c,c->f,ignore,c->cf[F_ONE],extract(c,c->o[4],3)));
+    c->o[8]=make_v4(c,extract(c,c->o[8],0),extract(c,c->o[8],1),extract(c,c->o[8],2),choose(c,c->f,ignore,c->cf[F_ONE],extract(c,c->o[8],3)));
+    uint32_t spec_yes[4];for(unsigned j=0;j<4;j++)spec_yes[j]=c->o[regs[j]];last=c->w->block;op(c->w,SpvOpBranch,1,sm);
+    op(c->w,SpvOpLabel,1,sn);c->o[4]=c->initial4;c->o[8]=c->initial4;
+    uint32_t spec_no[4];for(unsigned j=0;j<4;j++)spec_no[j]=j==1||j==3?c->initial4:before[j];
+    op(c->w,SpvOpBranch,1,sm);op(c->w,SpvOpLabel,1,sm);
+    for(unsigned j=0;j<4;j++)c->o[regs[j]]=value(c->w,SpvOpPhi,c->v4,4,spec_yes[j],last,spec_no[j],sn);
 }
 
 static void static_lighting(Context *c, uint32_t *eye_position)
@@ -919,6 +1047,7 @@ static void fixed_function(Context *c)
         NV_IGRAPH_XF_XFCTX_TG0MAT, NV_IGRAPH_XF_XFCTX_TG1MAT,
         NV_IGRAPH_XF_XFCTX_TG2MAT, NV_IGRAPH_XF_XFCTX_TG3MAT,
     };
+    if(csv_live(c))c->light_control=lighting_uniform(c,L_CONTROL,0);
     uint32_t eye_position = 0, mapped_normal = 0, reflected = 0, sphere_scale = 0;
     uint32_t position = input(c, 0);
     if (c->state->fixed_function.skinning != SKINNING_OFF) {
@@ -1011,7 +1140,8 @@ static void fixed_function(Context *c)
             c->o[9 + t] = v;
         }
     }
-    if (c->state->fixed_function.lighting) { static_lighting(c, &eye_position); }
+    if(csv_live(c)){csv_lighting(c,&eye_position);}
+    else if (c->state->fixed_function.lighting) { static_lighting(c, &eye_position); }
     if (c->state->point_params_enable) {
         uint32_t point_position = eye_position;
         if (!point_position || c->state->fixed_function.skinning != SKINNING_OFF) {
@@ -1287,9 +1417,9 @@ static void finish(Context *c)
     op(c->w, SpvOpStore, 2, c->outputs[0], color(c, c->o[3]));
     op(c->w, SpvOpStore, 2, c->outputs[2], color(c, c->o[7]));
     uint32_t d1 = c->initial4, b1 = c->initial4;
-    if (c->state->specular_enable) {
+    if (csv_live(c) || c->state->specular_enable) {
         d1 = color(c, c->o[4]); b1 = color(c, c->o[8]);
-        if (c->state->ignore_specular_alpha) {
+        if (!csv_live(c) && c->state->ignore_specular_alpha) {
             d1 = make_v4(c, extract(c, d1, 0), extract(c, d1, 1), extract(c, d1, 2), c->cf[F_ONE]);
             b1 = make_v4(c, extract(c, b1, 0), extract(c, b1, 1), extract(c, b1, 2), c->cf[F_ONE]);
         }
@@ -1478,7 +1608,7 @@ static void emit(Writer *w, const VshState *state, SpvVshOptions opts)
             op(w, SpvOpDecorate, 2, w->precise_mul[i], (uint32_t)SpvDecorationNoContraction);
         }
     }
-    if((c.lighting_mask&(1u<<L_MODE)) && state->fixed_function.local_eye)op(w,SpvOpDecorate,2,w->precise_distance,(uint32_t)SpvDecorationNoContraction);
+    if((c.lighting_mask&(1u<<L_MODE)) && !state->fixed_function.csv0c_dynamic && state->fixed_function.local_eye)op(w,SpvOpDecorate,2,w->precise_distance,(uint32_t)SpvDecorationNoContraction);
     op(w, SpvOpTypeVoid, 1, c.void_t);
     op(w, SpvOpTypeFunction, 2, c.fn_t, c.void_t);
     op(w, SpvOpTypeFloat, 2, c.f, 32u);
@@ -1498,7 +1628,7 @@ static void emit(Writer *w, const VshState *state, SpvVshOptions opts)
         if(c.lighting_mask){
             used[NV2A_LTCTXA_COUNT]=true;used[NV2A_LTCTXB_COUNT]=true;
             for(unsigned i=0;i<NV2A_MAX_LIGHTS*6;i++)used[i]=true;
-            if((c.lighting_mask&(1u<<L_COLORS)) && state->specular_enable && state->fixed_function.local_eye)used[NV_IGRAPH_XF_XFCTX_EYEP]=true;
+            if((c.lighting_mask&(1u<<L_COLORS)) && (state->fixed_function.csv0c_dynamic || (state->specular_enable && state->fixed_function.local_eye)))used[NV_IGRAPH_XF_XFCTX_EYEP]=true;
         }
         if (state->fog_dynamic) { used[NV_IGRAPH_XF_XFCTX_FOG] = true; }
         unsigned bones = skin_matrices(state->fixed_function.skinning);
@@ -1686,7 +1816,7 @@ bool pgraph_spv_vsh(const VshState *state, SpvVshOptions opts, GlslcResult *out)
     Writer count = { .next = 1 };
     emit(&count, state, opts);
     if (count.precise_count != (needs_precise_fog(state) ? 4u : 0u)) { abort(); }
-    bool precise_local = state->is_fixed_function && state->fixed_function.lighting && state->fixed_function.light_dynamic && state->fixed_function.local_eye;
+    bool precise_local = state->is_fixed_function && !state->fixed_function.csv0c_dynamic && state->fixed_function.lighting && state->fixed_function.light_dynamic && state->fixed_function.local_eye;
     if (!!count.precise_distance != precise_local) { abort(); }
     uint32_t *words = malloc(count.count * sizeof(*words));
     if (!words) { abort(); }

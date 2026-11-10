@@ -68,12 +68,12 @@ may bypass translation; a warm driver cache is a separate compilation milestone.
 
 ## Regression coverage and qualification
 
-- `test-spv-vsh.py`: 30,864 deterministic SPIR-V modules, final-owner allocation
+- `test-spv-vsh.py`: 34,960 deterministic SPIR-V modules, final-owner allocation
   counts, poisoned source keys, thirty-nine allocation-free unsupported paths, UBSan and
   spirv-val. Both SPIR-V 1.5 and 1.6 targets are covered. Extracted native device
   setup is checked across 512 API/property/generation cases, including stale
   target reset and zero queries on older APIs.
-- `test-spv-vsh-gpu.py`: 32,272 programs / 52,667,904 scalar outputs compared with
+- `test-spv-vsh-gpu.py`: 36,368 programs / 59,352,576 scalar outputs compared with
   the production GLSL generator/compiler using Vulkan transform feedback. It
   captures all user outputs, position and point size before clipping; numerical
   differences fail (NaN payload identity is not required). It exercises opcode
@@ -122,11 +122,11 @@ requires forced invalidation. Legacy non-point modules retain their prior words.
 
 ## Unlit fixed-function subset
 
-The direct subset requires static CSV0_C. It supports material/base shading and
+The direct subset supports static and live CSV0_C, material/base shading and
 static and dynamic directional, local and spot lights, as detailed below.
 It supports static/live texture matrices and coordinate-generation modes, all
 skinning modes and register/attenuated points as detailed below. Unsupported
-states, including dynamic CSV0_C, retain the GLSL path. The existing FP32 property gate applies;
+states outside the supported encodings retain the GLSL path. The existing FP32 property gate applies;
 no new device query is added.
 
 The composite matrix already contains model-view when skinning is off. Emit
@@ -516,3 +516,42 @@ Vulkan with validation and the RTX 5090 without installed validation layers.
 The rebuilt core completed 26 OpenGL/Vulkan game checks, four lifecycle cases
 and five exact image pairs. Driver caches and timings remain unqualified;
 cold-play and draw-path PSO recovery remain open.
+
+## Live CSV0_C
+
+The whole CSV0_C path reads one existing control uniform for lighting enable,
+normal normalization, viewer, all four material sources, two-sided lighting,
+specular enable/combine and alpha control. Static copies of those fields and
+light modes are ignored. Existing live lightMode/count selection retains one
+counted shader loop. Reserved material source values follow the reference's
+per-use defaults, including its distinct base-color and per-light rules.
+
+Normalization is selected lazily before its normal SSA value is shared between
+texgen and lighting. The lighting master branch carries input colors through
+when disabled; the specular postlude remains live outside that branch. Point and
+fog consumers after the master merge use a position ID defined in a dominating
+scope. Temporary color arrays contain four SSA IDs, not vertex/color payload
+snapshots. No guest or mutable uniform pointer is retained across the lend.
+
+All potentially consumed existing lighting groups are appended to the same final
+uniform metadata allocation. The immutable cache-entry/worker key remains the
+owner through synchronous count and write passes. Words and metadata transfer
+through existing native references and retirement; no new allocation count,
+resource binding, geometry/matrix/key copy, file I/O or draw bookkeeping is added.
+
+A static local viewer and the live viewer have different reference expression
+shapes: live VPeye is conditional. Carrying the static viewer's NoContraction
+boundary into the live path caused physical-GPU differences. The live subtraction
+retains reference contraction freedom; the already-qualified static-viewer
+control is unchanged. Failed probes remain retained, with no tolerance changes.
+
+An extra 4,096 CPU fixtures poison ignored static fields and check ownership,
+layout bounds, one shader loop and structured branch/normalization counts. The
+GPU fixtures cover all 256 material-source combinations, all 128 live flag
+patterns across material-dependent pairwise cells, poisoned reserved bits,
+light counts zero through eight and existing exceptional local/spot coefficients.
+The final corpus matched 59,352,576 scalar outputs per device on software Vulkan
+with validation and the RTX 5090 without installed validation layers. All 48
+contract suites passed; the rebuilt core completed 26 OpenGL/Vulkan game checks,
+four lifecycle cases and five exact image pairs. Driver caches and timings remain
+unqualified. Cold-play smoothness and draw-path PSO recovery remain open.

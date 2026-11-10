@@ -105,8 +105,8 @@ static void pack(uint8_t *dst,const GlslcLayout *layout,const VshUniformValues *
 static void release(GlslcResult *r){glslc_result_free_words(r);free(r->uniforms.members);free(r->push_constants.members);}
 int main(int argc, char **argv) {
  assert(argc==1 || argc==3);
- unsigned first=argc==3?strtoul(argv[1],NULL,10):0, limit=argc==3?strtoul(argv[2],NULL,10):32272;
- assert(first<limit && limit<=32272);
+ unsigned first=argc==3?strtoul(argv[1],NULL,10):0, limit=argc==3?strtoul(argv[2],NULL,10):36368;
+ assert(first<limit && limit<=36368);
  printf("Fixture range [%u, %u)\n",first,limit);
  const bool validated=getenv("NO_VALIDATION")==NULL;
  const char *layer="VK_LAYER_KHRONOS_validation",*debug=VK_EXT_DEBUG_UTILS_EXTENSION_NAME;
@@ -322,6 +322,10 @@ int main(int argc, char **argv) {
    state.specular_enable=!!(f&1024);state.separate_specular=!!(f&2048);
    for(unsigned l=0;l<8;l++)state.fixed_function.light[l]=LIGHT_OFF;
   }
+  if(test>=32272){
+   state.fixed_function.csv0c_dynamic=true;
+   state.fixed_function.lighting=!!(test&1);state.fixed_function.light_dynamic=!!(test&2);
+  }
   for(unsigned a=0;a<16;a++)attrs[a].format=state.compressed_attrs&(1u<<a)?VK_FORMAT_R32_SINT:VK_FORMAT_R32G32B32A32_SFLOAT;
   opts.preserve_float32=fp.shaderSignedZeroInfNanPreserveFloat32;
   VshState excluded=state;excluded.point_params_enable=true;
@@ -334,6 +338,13 @@ int main(int argc, char **argv) {
   if(test>=28176){
    unsigned f=test-28176;values.lightMode[0]=((f*40503u)&65535u) | ((f%9)<<16) | 0xa5f00000u;
    values.csv0cCtl[0]=(f&128?32768u:0u) | 0x5a000000u;
+  }
+  if(test>=32272){
+   unsigned f=test-32272,row=f/256,flags=0;
+   const unsigned forms[]={1,2,4,8,3,5,9},bits[]={0,12,13,14,15,1,2};
+   for(unsigned k=0;k<7;k++)flags|=((__builtin_parity(row&forms[k]) ^ ((f>>k)&1u))<<bits[k]);
+   values.csv0cCtl[0]=((f&255)<<4) | flags | 0xa5000008u;
+   values.lightMode[0]=((f*40503u)&65535u) | ((f%9)<<16) | 0xa5f00000u;
   }
   if(state.fixed_function.texgen_dynamic){
    unsigned f=test-14096;
