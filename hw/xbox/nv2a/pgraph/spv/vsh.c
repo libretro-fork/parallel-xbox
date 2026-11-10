@@ -139,14 +139,17 @@ bool pgraph_spv_vsh_supported(const VshState *s, SpvVshOptions opts)
         unsigned m = mac(t), l = ilu(t), output = field(t[3], 3, 4);
         if (m >= 14) { return false; }
         if (m || l) {
-            /* The established decoder forms C even for an unused operand. */
-            unsigned used = (m ? mac_params[m] : 0) | 4;
+            /* The decoder always forms C, so its mux must be valid. Its
+             * register/constant text is discarded when neither pipe uses C. */
+            unsigned used = (m ? mac_params[m] : 0) | (l ? 4 : 0);
+            unsigned decoded = used | 4;
             for (unsigned a = 0; a < 3; a++) {
-                if (!(used & (1u << a))) { continue; }
+                if (!(decoded & (1u << a))) { continue; }
                 unsigned source = mux(t, a);
-                if (!source || (source == PARAM_R && reg(t, a) > 12) ||
-                    (source == PARAM_C && field(t[1], 13, 8) >=
-                                             NV2A_VERTEXSHADER_CONSTANTS)) {
+                if (!source || ((used & (1u << a)) &&
+                    ((source == PARAM_R && reg(t, a) > 12) ||
+                     (source == PARAM_C && field(t[1], 13, 8) >=
+                                              NV2A_VERTEXSHADER_CONSTANTS)))) {
                     return false;
                 }
             }

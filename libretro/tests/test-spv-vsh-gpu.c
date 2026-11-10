@@ -93,6 +93,11 @@ static void token(uint32_t t[4],unsigned m,unsigned l,unsigned input,unsigned ou
  t[3]=(PARAM_V<<28)|(15u<<24)|(2u<<20)|(15u<<16)|(15u<<12)|(OUTPUT_O<<11)|(output<<3)|((unsigned)scalar<<2)|final;
  if(m==MAC_ARL)t[3]&=~(15u<<12);
 }
+static void unused_c(uint32_t t[4], unsigned kind)
+{
+    if(kind<3){unsigned reg=13+kind;t[3]=(t[3]&~(15u<<28))|((reg&3)<<30)|(PARAM_R<<28);t[2]=(t[2]&~3u)|(reg>>2);}
+    else{t[1]=(t[1]&~(255u<<13))|((kind==3?192u:255u)<<13);t[3]=(t[3]&~(3u<<28))|(PARAM_C<<28);}
+}
 static void pack(uint8_t *dst,const GlslcLayout *layout,const VshUniformValues *values) {
  memset(dst,0,layout->size);
  for(size_t i=0;i<layout->count;i++) {
@@ -103,10 +108,18 @@ static void pack(uint8_t *dst,const GlslcLayout *layout,const VshUniformValues *
  }
 }
 static void release(GlslcResult *r){glslc_result_free_words(r);free(r->uniforms.members);free(r->push_constants.members);}
+/* Test-only guard against mutating the recipe/options after module generation.
+ * Hash only borrowed bytes; this is not a persistent or runtime cache key. */
+static uint64_t fixture_key_hash(const VshState *s,const SpvVshOptions *o){
+ const uint8_t *p=(const uint8_t *)s;uint64_t h=1469598103934665603ull;
+ for(size_t i=0;i<sizeof(*s);i++)h=(h^p[i])*1099511628211ull;
+ h=(h^o->spirv_1_6)*1099511628211ull;h=(h^o->preserve_float32)*1099511628211ull;
+ h=(h^o->push_constants)*1099511628211ull;return (h^o->ubo_binding)*1099511628211ull;
+}
 int main(int argc, char **argv) {
  assert(argc==1 || argc==3);
- unsigned first=argc==3?strtoul(argv[1],NULL,10):0, limit=argc==3?strtoul(argv[2],NULL,10):36368;
- assert(first<limit && limit<=36368);
+ unsigned first=argc==3?strtoul(argv[1],NULL,10):0, limit=argc==3?strtoul(argv[2],NULL,10):37392;
+ assert(first<limit && limit<=37392);
  printf("Fixture range [%u, %u)\n",first,limit);
  const bool validated=getenv("NO_VALIDATION")==NULL;
  const char *layer="VK_LAYER_KHRONOS_validation",*debug=VK_EXT_DEBUG_UTILS_EXTENSION_NAME;
@@ -326,11 +339,22 @@ int main(int argc, char **argv) {
    state.fixed_function.csv0c_dynamic=true;
    state.fixed_function.lighting=!!(test&1);state.fixed_function.light_dynamic=!!(test&2);
   }
+  if(test>=36368){
+   unsigned f=test-36368;const unsigned modes[]={1,2,5,6,7,8,9,10,11,12,13};m=modes[f%11];l=0;memset(&state,0,sizeof(state));state.programmable.program_length=5;
+   token(state.programmable.program_data[0],MAC_MOV,0,0,0,false,false);
+   token(state.programmable.program_data[1],m,0,m==MAC_ARL?15:1,9,false,false);
+   uint32_t *t=state.programmable.program_data[1];t[2]=(t[2]&~(3u<<11))|(PARAM_V<<11);unused_c(t,(f/11)%5);
+   token(state.programmable.program_data[2],MAC_MOV,0,0,10,false,false);
+   if(m==MAC_ARL){uint32_t *next=state.programmable.program_data[2];next[1]=(next[1]&~(255u<<13))|(96u<<13);next[2]=(next[2]&~(3u<<26))|(PARAM_C<<26);next[3]|=2;}
+   token(state.programmable.program_data[3],MAC_MOV,0,0,11,false,false);token(state.programmable.program_data[4],MAC_MOV,0,1,5,false,true);
+   state.smooth_shading=!!(f&16);state.uniform_attrs=f&32?3:0;opts.push_constants=!!(f&64);
+  }
   for(unsigned a=0;a<16;a++)attrs[a].format=state.compressed_attrs&(1u<<a)?VK_FORMAT_R32_SINT:VK_FORMAT_R32G32B32A32_SFLOAT;
   opts.preserve_float32=fp.shaderSignedZeroInfNanPreserveFloat32;
   VshState excluded=state;excluded.point_params_enable=true;
   SpvVshOptions unavailable=opts;unavailable.preserve_float32=false;
   assert(!pgraph_spv_vsh_supported(&excluded,unavailable));
+  uint64_t prepared_hash=fixture_key_hash(&state,&opts);
   GlslcResult modules[2];clock_t before=clock();assert(pgraph_spv_vsh(&state,opts,&modules[1]));direct_ticks+=clock()-before;direct_words+=modules[1].num_words;before=clock();
   MString *text=pgraph_glsl_gen_vsh(&state,(GenVshGlslOptions){.vulkan=true,.use_push_constants_for_uniform_attrs=opts.push_constants});
   GlslcOptions glopts={.emit_layout=true};if(!glslc_compile(GLSLC_STAGE_VERTEX,mstring_get_str(text),&glopts,&modules[0])){fprintf(stderr,"%s\n",modules[0].error);abort();}mstring_unref(text);reference_ticks+=clock()-before;reference_words+=modules[0].num_words;
@@ -485,6 +509,7 @@ int main(int argc, char **argv) {
   }
   for(unsigned path=0;path<2;path++) {
    pack(uniform.mapped,&modules[path].uniforms,&values);memset(output.mapped,0xa5,VERTICES*240);
+   assert(prepared_hash==fixture_key_hash(&state,&opts));
    size_t words;GlslcResult reference_module=modules[path];
    if(!path && (state.point_params_enable || state.is_fixed_function))reference_module.words=preserve_float(&modules[path],&reference_module.num_words);
    uint32_t *code=xfb(&reference_module,&words);
