@@ -60,6 +60,33 @@ int main(int argc,char **argv)
         memset(&s,0xa5,sizeof(s));char path[4096];snprintf(path,sizeof(path),"%s/tex-%u.spv",argv[1],i);FILE *f=fopen(path,"wb");assert(f);assert(fwrite(a.words,4,a.num_words,f)==a.num_words);fclose(f);
         glslc_result_free_words(&a);free(a.uniforms.members);glslc_result_free_words(&b);free(b.uniforms.members);
     }
+    for(unsigned i=0;i<4096;i++){
+        PshState s={.combiner_dynamic=true};const unsigned modes[]={0,1,4,5};
+        s.alpha_dynamic=!!(i&256);s.point_sprite=!!(i&512);s.smooth_shading=!!(i&1024);s.depth_format=(i/1024)%4;
+        unsigned samples=0,rects=0;
+        for(unsigned j=0;j<4;j++){
+            unsigned mode=modes[(i>>(j*2))&3];s.shader_stage_program|=mode<<(j*5);s.dim_tex[j]=2;
+            s.rect_tex[j]=!!(i&(1u<<(j+8))) && !(j==3 && s.point_sprite);samples+=mode==1;rects+=mode==1 && s.rect_tex[j];
+            for(unsigned k=0;k<4;k++)s.compare_mode[j][k]=!!(i&(1u<<(k+4)));
+        }
+        SpvPshOptions opts={.spirv_1_6=!!(i&2048),.ubo_binding=1,.tex_binding=2};GlslcResult a,b;allocations=0;
+        assert(pgraph_spv_psh(&s,opts,&a) && allocations==2);unsigned loops=0;
+        for(size_t k=5;k<a.num_words;k+=a.words[k]>>16)loops+=(a.words[k]&65535)==246;
+        assert(loops==2);unsigned mask=s.alpha_dynamic && samples;
+        assert(a.uniforms.count==18+!!rects+mask);assert(a.uniforms.size==(rects?(s.alpha_dynamic?576:560):mask?512:496)+528);
+        unsigned arrays=0;
+        for(size_t j=0;j<a.uniforms.count;j++){
+            const GlslcUniform *u=a.uniforms.members+j;assert(u->offset+u->stride*(u->dim_a-1)+u->dim_v*4<=a.uniforms.size);
+            assert((const char *)u->name>=(const char *)(a.uniforms.members+a.uniforms.count));
+            if(!strncmp(u->name,"comb",4) && u->dim_a==8){assert(u->dim_v==1 && u->stride==16);arrays++;}
+        }
+        assert(arrays==4);
+        s.combiner_control=0xffffffffu;s.final_inputs_0=s.final_inputs_1=0xa5a5a5a5;
+        memset(s.rgb_inputs,0x5a,sizeof(s.rgb_inputs));memset(s.alpha_inputs,0xa5,sizeof(s.alpha_inputs));memset(s.rgb_outputs,0x5a,sizeof(s.rgb_outputs));memset(s.alpha_outputs,0xa5,sizeof(s.alpha_outputs));
+        assert(pgraph_spv_psh(&s,opts,&b) && allocations==4);assert(a.num_words==b.num_words && !memcmp(a.words,b.words,a.num_words*4));
+        memset(&s,0xa5,sizeof(s));char path[4096];snprintf(path,sizeof(path),"%s/dynamic-%u.spv",argv[1],i);FILE *f=fopen(path,"wb");assert(f);assert(fwrite(a.words,4,a.num_words,f)==a.num_words);fclose(f);
+        glslc_result_free_words(&a);free(a.uniforms.members);glslc_result_free_words(&b);free(b.uniforms.members);
+    }
     for(unsigned i=0;i<9;i++){
         PshState s={.final_inputs_0=0x20080000,.final_inputs_1=0x1800,.shader_stage_program=PS_TEXTUREMODES_PROJECT2D};s.dim_tex[0]=2;
         SpvPshOptions opts={.ubo_binding=1,.tex_binding=2};GlslcResult a;
@@ -77,7 +104,7 @@ int main(int argc,char **argv)
     for(unsigned i=0;i<16;i++){
         PshState s={.final_inputs_0=0x04200000,.final_inputs_1=0x1400};SpvPshOptions opts={.ubo_binding=1};
         if(i==0)opts.ubo_binding=32;
-        if(i==1)s.combiner_dynamic=true;
+        if(i==1){s.combiner_dynamic=true;s.shader_stage_program=PS_TEXTUREMODES_BRDF;}
         if(i==2)s.combiner_control=9;
         if(i==3)s.final_inputs_0=s.final_inputs_1=0;
         if(i==4)s.shader_stage_program=1;
@@ -94,5 +121,5 @@ int main(int argc,char **argv)
         if(i==15){s.combiner_control=1;s.rgb_inputs[0]=0x0f000000;}
         allocations=0;GlslcResult a;memset(&a,0xa5,sizeof(a));assert(!pgraph_spv_psh(&s,opts,&a));assert(!allocations && !a.words && !a.uniforms.members && !a.push_constants.members);
     }
-    puts("Direct PSH: 8192 deterministic/final-allocation/ignored-key/owned-layout modules and twenty-five allocation-free unsupported cases PASS");return 0;
+    puts("Direct PSH: 12288 deterministic/final-allocation/ignored-key/owned-layout modules and twenty-five allocation-free unsupported cases PASS");return 0;
 }

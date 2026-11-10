@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Emit live register-combiner shaders directly as Vulkan SPIR-V for the supported texture families. Preserve one counted stage loop, all sixteen register slots, mapping tables, lazy mux conversion, aliased writes and live final-stage controls. Reuse existing uniform uploads and shader-local storage; keep two final allocations and borrow the immutable recipe without GLSL or payload snapshots. Previously supported modules remain byte-identical; other texture families retain the compiler.
+
 - Emit projected 2D, rectangle, passthrough and clip-plane texture stages directly as Vulkan SPIR-V with static register combiners, including point sprites and static/live alpha kill. Reuse the existing per-unit samplers and image views; append only consumed texture uniforms to the same final metadata owner. Preserve untextured modules byte-for-byte, two final allocations and existing resource retirement. Other texture families and dynamic combiners retain GLSL fallback.
 
 - Translate static untextured register-combiner fragment shaders directly to Vulkan SPIR-V, including window clips, perspective/depth reconstruction, two-sided colors and alpha testing. Preserve reference arithmetic and early exits; emit into final words/layout owners with two allocations and no intermediate GLSL, payload clone or retained lend. Textured and dynamic combiners retain the existing compiler. This removes translation work; first-use PSO stalls remain open.

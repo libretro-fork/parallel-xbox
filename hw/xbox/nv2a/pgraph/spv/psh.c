@@ -28,13 +28,16 @@ static uint32_t val(Writer *w,SpvOp code,uint32_t type,unsigned n,...)
     uint32_t result=id(w);word(w,((n+3)<<16)|code);word(w,type);word(w,result);va_list a;va_start(a,n);
     for(unsigned j=0;j<n;j++){word(w,va_arg(a,uint32_t));}va_end(a);return result;
 }
-enum Uniform { CLIP, REGION, CONSTANTS, FACTOR, OFFSET, FOG, SCALE, SIDE, ALPHA_REF, ALPHA_FUNC, ALPHA_ENABLE, BASE_UNIFORMS, TEX_SCALE=BASE_UNIFORMS, ALPHA_KILL, UNIFORMS };
+enum Uniform { CLIP, REGION, CONSTANTS, FACTOR, OFFSET, FOG, SCALE, SIDE, ALPHA_REF, ALPHA_FUNC, ALPHA_ENABLE, BASE_UNIFORMS, TEX_SCALE=BASE_UNIFORMS, ALPHA_KILL, COMB_CTL, COMB_FINAL0, COMB_FINAL1, COMB_RGB_IN, COMB_RGB_OUT, COMB_ALPHA_IN, COMB_ALPHA_OUT, UNIFORMS };
 static const struct {const char *name;unsigned width,count,offset;bool integer;} uniforms[UNIFORMS]={
     {"clipRange",4,1,0,false},{"clipRegion",4,8,16,true},{"consts",4,18,144,false},
     {"depthFactor",1,1,432,false},{"depthOffset",1,1,436,false},{"fogColor",4,1,448,false},
     {"surfaceScale",2,1,464,true},{"twoSideSel",1,1,472,true},{"alphaRef",1,1,476,true},
     {"alphaFunc",1,1,480,true},{"alphaTestEnable",1,1,484,true},
-    {"texScale",1,4,496,false},{"alphaKillMask",1,1,560,true}
+    {"texScale",1,4,496,false},{"alphaKillMask",1,1,560,true},
+    {"combCtl",1,1,0,true},{"combFinal0",1,1,0,true},{"combFinal1",1,1,0,true},
+    {"combRgbIn",1,8,0,true},{"combRgbOut",1,8,0,true},
+    {"combAlphaIn",1,8,0,true},{"combAlphaOut",1,8,0,true}
 };
 static unsigned texture_mode(const PshState *s,unsigned stage)
 { return (s->shader_stage_program>>(stage*5))&31; }
@@ -43,13 +46,20 @@ static bool has_samples(const PshState *s)
 static bool has_rect_samples(const PshState *s)
 { for(unsigned j=0;j<4;j++)if(texture_mode(s,j)==PS_TEXTUREMODES_PROJECT2D && s->rect_tex[j])return true;return false; }
 static bool uniform_enabled(const PshState *s,unsigned which)
-{ return which<BASE_UNIFORMS || (which==TEX_SCALE?has_rect_samples(s):s->alpha_dynamic && has_samples(s)); }
+{ return which<BASE_UNIFORMS || (which>=COMB_CTL?s->combiner_dynamic:which==TEX_SCALE?has_rect_samples(s):s->alpha_dynamic && has_samples(s)); }
+static unsigned uniform_member(const PshState *s,unsigned which)
+{ unsigned n=0;for(unsigned j=0;j<which;j++)n+=uniform_enabled(s,j);return n; }
 static unsigned uniform_count(const PshState *s)
-{ return BASE_UNIFORMS+has_rect_samples(s)+(s->alpha_dynamic && has_samples(s)); }
-static unsigned uniform_offset(const PshState *s,unsigned which)
-{ return which==ALPHA_KILL?(has_rect_samples(s)?560:496):uniforms[which].offset; }
-static unsigned uniform_size(const PshState *s)
+{ return uniform_member(s,UNIFORMS); }
+static unsigned texture_uniform_size(const PshState *s)
 { return has_rect_samples(s)?(s->alpha_dynamic?576:560):(s->alpha_dynamic && has_samples(s)?512:496); }
+static unsigned uniform_offset(const PshState *s,unsigned which)
+{
+    if(which>=COMB_CTL){unsigned base=texture_uniform_size(s);return which<COMB_RGB_IN?base+(which-COMB_CTL)*4:base+16+(which-COMB_RGB_IN)*128;}
+    return which==ALPHA_KILL?(has_rect_samples(s)?560:496):uniforms[which].offset;
+}
+static unsigned uniform_size(const PshState *s)
+{ return texture_uniform_size(s)+(s->combiner_dynamic?528:0); }
 
 enum Floats { F_ZERO, F_HALF, F_ONE, F_TWO, F_FOUR, F_BYTE_MAX, F_D16_MAX, F_D24_SCALE, F_FLOAT_MAX, FLOATS };
 typedef struct Context {
@@ -60,6 +70,10 @@ typedef struct Context {
     uint32_t inputs[9],frag_coord,front,color,depth;
     uint32_t tex_inputs[4],samplers[4],image_t,sampled_t,sampler_ptr,scale_array,min_q,point_coord,in_v2;
     uint32_t r[16],ef,z,positions[3],coord,clip;
+    /* Shader-local bank and immutable mapping-table IDs; never host payloads. */
+    uint32_t comb_array,bank_array,bank_ptr,bank_element,bank;
+    uint32_t map_array,map_ptr,map_element,map_const[4],maps[4],negative[3],flags[6],ctl,fetch_fn,fetch_type;
+    bool fetch_body;
     bool precise;
 } Context;
 static uint32_t unary(Context *c,SpvOp code,uint32_t type,uint32_t a){return val(c->w,code,type,1,a);}
@@ -85,9 +99,9 @@ static uint32_t divf(Context *c,uint32_t a,uint32_t b){return math(c,SpvOpFDiv,c
 static uint32_t unif_at(Context *c,unsigned which,uint32_t index)
 {
     const unsigned width=uniforms[which].width;bool integer=uniforms[which].integer;
-    uint32_t type=integer?((which==SIDE || which==ALPHA_KILL)?c->u:width==4?c->iv4:width==2?c->iv2:c->i):width==4?c->v4:c->f;
-    uint32_t ptr=integer?((which==SIDE || which==ALPHA_KILL)?c->uu:width==4?c->uiv4:width==2?c->uiv2:c->ui):width==4?c->uv4:c->uf;
-    unsigned member=which==ALPHA_KILL?(unsigned)BASE_UNIFORMS+has_rect_samples(c->state):which;
+    uint32_t type=integer?((which==SIDE || which==ALPHA_KILL || which>=COMB_CTL)?c->u:width==4?c->iv4:width==2?c->iv2:c->i):width==4?c->v4:c->f;
+    uint32_t ptr=integer?((which==SIDE || which==ALPHA_KILL || which>=COMB_CTL)?c->uu:width==4?c->uiv4:width==2?c->uiv2:c->ui):width==4?c->uv4:c->uf;
+    unsigned member=uniform_member(c->state,which);
     uint32_t p=uniforms[which].count>1?val(c->w,SpvOpAccessChain,ptr,3,c->ubo,c->si[member],index):val(c->w,SpvOpAccessChain,ptr,2,c->ubo,c->si[member]);
     return unary(c,SpvOpLoad,type,p);
 }
@@ -154,7 +168,7 @@ static bool dest_valid(unsigned r)
 { return r==0 || r==4 || r==5 || (r>=8 && r<=13); }
 bool pgraph_spv_psh_supported(const PshState *s,SpvPshOptions opts)
 {
-    if(opts.ubo_binding>=32 || s->combiner_dynamic || (s->combiner_control&255)>8 || !(s->final_inputs_0 || s->final_inputs_1) || s->g8b8_mip_flags || (s->depth_format&DEPTH_FORMAT_UI_CLAMP))return false;
+    if(opts.ubo_binding>=32 || (!s->combiner_dynamic && ((s->combiner_control&255)>8 || !(s->final_inputs_0 || s->final_inputs_1))) || s->g8b8_mip_flags || (s->depth_format&DEPTH_FORMAT_UI_CLAMP))return false;
     for(unsigned j=0;j<4;j++){
         unsigned mode=texture_mode(s,j);
         if(s->g8b8_signed[j] || s->tex_x8y24[j] || s->shadow_map[j])return false;
@@ -165,6 +179,7 @@ bool pgraph_spv_psh_supported(const PshState *s,SpvPshOptions opts)
     }
     if(s->point_sprite && s->rect_tex[3])return false;
     for(unsigned j=0;j<3;j++)if(((s->other_stage_input>>(j*4))&15)>7)return false;
+    if(s->combiner_dynamic)return true;
     bool r0=false,mux=false;
     for(unsigned j=0;j<(s->combiner_control&255);j++)for(unsigned a=0;a<2;a++){
         uint32_t inputs=a?s->alpha_inputs[j]:s->rgb_inputs[j],out=a?s->alpha_outputs[j]:s->rgb_outputs[j];
@@ -277,6 +292,8 @@ static void texture_stages(Context *c)
     /* GLSL initializes R0 alpha from T0 when the first stage is active. */
     if(texture_mode(c->state,0)!=PS_TEXTUREMODES_NONE)c->r[PS_REGISTER_R0]=v4(c,c->cf[F_ZERO],c->cf[F_ZERO],c->cf[F_ZERO],extract(c,c->r[PS_REGISTER_T0],3));
 }
+#include "psh-combiner.inc"
+
 static uint32_t combiners(Context *c)
 {
     uint32_t zero=splat(c,c->v4,c->cf[F_ZERO],4);for(unsigned j=0;j<16;j++)c->r[j]=zero;
@@ -287,6 +304,7 @@ static uint32_t combiners(Context *c)
     c->r[PS_REGISTER_FOG]=v4(c,extract(c,fog,0),extract(c,fog,1),extract(c,fog,2),alpha);
     for(unsigned j=8;j<=12;j++)c->r[j]=v4(c,c->cf[F_ZERO],c->cf[F_ZERO],c->cf[F_ZERO],c->cf[F_ONE]);
     texture_stages(c);
+    if(c->state->combiner_dynamic)return dynamic_combiner(c);
     for(unsigned j=0;j<(c->state->combiner_control&255);j++){Stage rgb=stage_values(c,j,false),a=stage_values(c,j,true);stage_store(c,rgb);stage_store(c,a);}
     uint32_t in0=c->state->final_inputs_0,in1=c->state->final_inputs_1;
     uint32_t e=input_value(c,in1>>24,false,8),f=input_value(c,(in1>>16)&255,false,8);c->ef=binary(c,SpvOpFMul,c->v3,e,f);
@@ -342,11 +360,12 @@ static void allocate(Context *c)
     }
     if(has_samples(c->state)){c->image_t=id(c->w);c->sampled_t=id(c->w);c->sampler_ptr=id(c->w);c->min_q=id(c->w);}
     if(has_rect_samples(c->state))c->scale_array=id(c->w);
+    if(c->state->combiner_dynamic)dynamic_allocate(c);
 }
 static void emit(Writer *w,const PshState *state,SpvPshOptions opts)
 {
     Context c={.w=w,.state=state,.opts=opts};allocate(&c);
-    unsigned interfaces=0;for(unsigned j=0;j<4;j++)interfaces+=!!c.tex_inputs[j]+!!c.samplers[j];interfaces+=!!c.point_coord;
+    unsigned interfaces=0;for(unsigned j=0;j<4;j++)interfaces+=!!c.tex_inputs[j]+!!c.samplers[j];interfaces+=!!c.point_coord;if(state->combiner_dynamic)interfaces+=5;
     word(w,SpvMagicNumber);word(w,opts.spirv_1_6?0x00010600u:0x00010500u);word(w,0);word(w,0);word(w,0);
     op(w,SpvOpCapability,1,(uint32_t)SpvCapabilityShader);
     if(has_rect_samples(state))op(w,SpvOpCapability,1,(uint32_t)SpvCapabilityImageQuery);
@@ -356,6 +375,7 @@ static void emit(Writer *w,const PshState *state,SpvPshOptions opts)
     word(w,((19u+interfaces)<<16)|SpvOpEntryPoint);word(w,SpvExecutionModelFragment);word(w,c.entry);word(w,0x6e69616du);word(w,0);
     for(unsigned j=0;j<9;j++){word(w,c.inputs[j]);}word(w,c.frag_coord);word(w,c.front);word(w,c.color);word(w,c.depth);word(w,c.ubo);
     for(unsigned j=0;j<4;j++){if(c.tex_inputs[j])word(w,c.tex_inputs[j]);if(c.samplers[j])word(w,c.samplers[j]);}if(c.point_coord)word(w,c.point_coord);
+    if(state->combiner_dynamic){for(unsigned j=0;j<4;j++)word(w,c.maps[j]);word(w,c.bank);}
     op(w,SpvOpExecutionMode,2,c.entry,(uint32_t)SpvExecutionModeOriginUpperLeft);op(w,SpvOpExecutionMode,2,c.entry,(uint32_t)SpvExecutionModeDepthReplacing);
     for(unsigned j=0;j<9;j++){
         unsigned location=j<5?j:j<8?j+4:12;op(w,SpvOpDecorate,3,c.inputs[j],(uint32_t)SpvDecorationLocation,location);
@@ -375,6 +395,7 @@ static void emit(Writer *w,const PshState *state,SpvPshOptions opts)
     if(c.scale_array)op(w,SpvOpDecorate,3,c.scale_array,(uint32_t)SpvDecorationArrayStride,16u);
     op(w,SpvOpDecorate,3,c.region_array,(uint32_t)SpvDecorationArrayStride,16u);op(w,SpvOpDecorate,3,c.const_array,(uint32_t)SpvDecorationArrayStride,16u);
     op(w,SpvOpDecorate,3,c.ubo,(uint32_t)SpvDecorationDescriptorSet,0u);op(w,SpvOpDecorate,3,c.ubo,(uint32_t)SpvDecorationBinding,opts.ubo_binding);
+    if(state->combiner_dynamic)op(w,SpvOpDecorate,3,c.comb_array,(uint32_t)SpvDecorationArrayStride,16u);
     for(unsigned j=0;j<w->annotations;j++)op(w,SpvOpDecorate,2,w->precise[j],(uint32_t)SpvDecorationNoContraction);
     op(w,SpvOpTypeVoid,1,c.void_t);op(w,SpvOpTypeFunction,2,c.fn,c.void_t);op(w,SpvOpTypeFloat,2,c.f,32u);op(w,SpvOpTypeInt,3,c.i,32u,1u);op(w,SpvOpTypeInt,3,c.u,32u,0u);op(w,SpvOpTypeBool,1,c.b);
     op(w,SpvOpTypeVector,3,c.v2,c.f,2u);op(w,SpvOpTypeVector,3,c.v3,c.f,3u);op(w,SpvOpTypeVector,3,c.v4,c.f,4u);op(w,SpvOpTypeVector,3,c.iv2,c.i,2u);op(w,SpvOpTypeVector,3,c.iv4,c.i,4u);
@@ -387,10 +408,12 @@ static void emit(Writer *w,const PshState *state,SpvPshOptions opts)
     if(c.image_t){op(w,SpvOpTypeImage,8,c.image_t,c.f,(uint32_t)SpvDim2D,0u,0u,0u,1u,(uint32_t)SpvImageFormatUnknown);op(w,SpvOpTypeSampledImage,2,c.sampled_t,c.image_t);op(w,SpvOpTypePointer,3,c.sampler_ptr,(uint32_t)SpvStorageClassUniformConstant,c.sampled_t);}
     if(c.in_v2)op(w,SpvOpTypePointer,3,c.in_v2,(uint32_t)SpvStorageClassInput,c.v2);
     op(w,SpvOpTypeArray,3,c.region_array,c.iv4,c.ui32[8]);op(w,SpvOpTypeArray,3,c.const_array,c.v4,c.ui32[18]);
+    if(state->combiner_dynamic)op(w,SpvOpTypeArray,3,c.comb_array,c.u,c.ui32[8]);
     word(w,((2u+uniform_count(state))<<16)|SpvOpTypeStruct);word(w,c.ubo_type);
-    uint32_t fields[]={c.v4,c.region_array,c.const_array,c.f,c.f,c.v4,c.iv2,c.u,c.i,c.i,c.i,c.scale_array,c.u};for(unsigned j=0;j<UNIFORMS;j++)if(uniform_enabled(state,j))word(w,fields[j]);
+    uint32_t fields[]={c.v4,c.region_array,c.const_array,c.f,c.f,c.v4,c.iv2,c.u,c.i,c.i,c.i,c.scale_array,c.u,c.u,c.u,c.u,c.comb_array,c.comb_array,c.comb_array,c.comb_array};for(unsigned j=0;j<UNIFORMS;j++)if(uniform_enabled(state,j))word(w,fields[j]);
     uint32_t pointers[][3]={{c.in_f,SpvStorageClassInput,c.f},{c.in_v4,SpvStorageClassInput,c.v4},{c.in_b,SpvStorageClassInput,c.b},{c.out_f,SpvStorageClassOutput,c.f},{c.out_v4,SpvStorageClassOutput,c.v4},{c.uf,SpvStorageClassUniform,c.f},{c.uv4,SpvStorageClassUniform,c.v4},{c.uiv2,SpvStorageClassUniform,c.iv2},{c.uiv4,SpvStorageClassUniform,c.iv4},{c.ui,SpvStorageClassUniform,c.i},{c.uu,SpvStorageClassUniform,c.u},{c.ubo_ptr,SpvStorageClassUniform,c.ubo_type}};
     for(unsigned j=0;j<sizeof(pointers)/sizeof(pointers[0]);j++)op(w,SpvOpTypePointer,3,pointers[j][0],pointers[j][1],pointers[j][2]);
+    if(state->combiner_dynamic)dynamic_types(&c);
     for(unsigned j=0;j<9;j++)op(w,SpvOpVariable,3,j==4||j==8?c.in_f:c.in_v4,c.inputs[j],(uint32_t)SpvStorageClassInput);
     op(w,SpvOpVariable,3,c.in_v4,c.frag_coord,(uint32_t)SpvStorageClassInput);op(w,SpvOpVariable,3,c.in_b,c.front,(uint32_t)SpvStorageClassInput);
     op(w,SpvOpVariable,3,c.out_v4,c.color,(uint32_t)SpvStorageClassOutput);op(w,SpvOpVariable,3,c.out_f,c.depth,(uint32_t)SpvStorageClassOutput);op(w,SpvOpVariable,3,c.ubo_ptr,c.ubo,(uint32_t)SpvStorageClassUniform);
@@ -399,6 +422,7 @@ static void emit(Writer *w,const PshState *state,SpvPshOptions opts)
         if(c.samplers[j])op(w,SpvOpVariable,3,c.sampler_ptr,c.samplers[j],(uint32_t)SpvStorageClassUniformConstant);
     }
     if(c.point_coord)op(w,SpvOpVariable,3,c.in_v2,c.point_coord,(uint32_t)SpvStorageClassInput);
+    if(state->combiner_dynamic)dynamic_helpers(&c);
     op(w,SpvOpFunction,4,c.void_t,c.entry,0u,c.fn);op(w,SpvOpLabel,1,id(w));
     c.coord=unary(&c,SpvOpLoad,c.v4,c.frag_coord);c.clip=unif(&c,CLIP,0);for(unsigned j=0;j<3;j++)c.positions[j]=unary(&c,SpvOpLoad,c.v4,c.inputs[j+5]);
     window_clip(&c);barycentric(&c);uint32_t color=combiners(&c);alpha_test(&c,color);op(w,SpvOpStore,2,c.color,color);

@@ -4,9 +4,24 @@
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
+#ifdef _WIN32
+#include <windows.h>
+#else
+#include <time.h>
+#endif
 #include <vulkan/vulkan.h>
 #include "hw/xbox/nv2a/pgraph/spv/psh.h"
 #define CHECK(x) do { VkResult result=(x); if(result) { fprintf(stderr,"Vulkan %d at %d\n",result,__LINE__);abort(); } } while(0)
+/* Test-only attribution; never linked into the core. Raw wall times are
+ * not isolated GPU/driver-cold qualification or presentation measurements. */
+static uint64_t wall_ns(void){
+#ifdef _WIN32
+ LARGE_INTEGER t,f;QueryPerformanceCounter(&t);QueryPerformanceFrequency(&f);
+ return (uint64_t)((long double)t.QuadPart*1000000000.0L/f.QuadPart);
+#else
+ struct timespec t;assert(!clock_gettime(CLOCK_MONOTONIC,&t));return (uint64_t)t.tv_sec*1000000000u+t.tv_nsec;
+#endif
+}
 static VkDevice device;
 static VkPhysicalDeviceMemoryProperties memory_properties;
 static unsigned errors;
@@ -49,6 +64,12 @@ static uint32_t encoded_inputs(unsigned seed,bool alpha,bool ef){
  const unsigned regs[]={0,1,2,3,4,5,8,9,10,11,12,13,14,15};uint32_t v=0;
  for(unsigned j=0;j<4;j++){unsigned r=regs[(seed+j*5)%(ef?14:13)],mapping=alpha?((seed+j)&1?0x20:0):((seed+j*3)&7)<<5,channel=alpha?16:((seed>>j)&1?16:0);v=(v<<8)|r|mapping|channel;}return v;
 }
+static uint32_t dynamic_inputs(unsigned seed,bool alpha,bool signed_alpha){
+ uint32_t v=0;for(unsigned j=0;j<4;j++){
+  unsigned reg=(seed+j*5)&15,mapping=alpha && !signed_alpha?((seed+j)&1):((seed+j*3)&7);
+  v=(v<<8)|reg|(mapping<<5)|(alpha || ((seed>>j)&1)?16:0);
+ }return v;
+}
 int main(int argc,char **argv){
  unsigned first=argc==3?strtoul(argv[1],NULL,10):0,limit=argc==3?strtoul(argv[2],NULL,10):64;assert(first<limit);printf("PSH fixtures [%u,%u)\n",first,limit);
  bool validated=getenv("NO_VALIDATION")==NULL;const char *layer="VK_LAYER_KHRONOS_validation",*debug=VK_EXT_DEBUG_UTILS_EXTENSION_NAME;
@@ -85,7 +106,7 @@ int main(int argc,char **argv){
  for(unsigned j=0;j<16;j++){
   VkSamplerCreateInfo sci={.sType=VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,.magFilter=(j&1)?VK_FILTER_LINEAR:VK_FILTER_NEAREST,.minFilter=(j&1)?VK_FILTER_LINEAR:VK_FILTER_NEAREST,.mipmapMode=(j&2)?VK_SAMPLER_MIPMAP_MODE_LINEAR:VK_SAMPLER_MIPMAP_MODE_NEAREST,.addressModeU=(VkSamplerAddressMode)(j>>2),.addressModeV=(VkSamplerAddressMode)(j>>2),.addressModeW=VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,.maxLod=2,.borderColor=VK_BORDER_COLOR_FLOAT_TRANSPARENT_BLACK};CHECK(vkCreateSampler(device,&sci,NULL,&samplers[j]));
  }
- VkShaderModule vertices[]={vertex(false),vertex(true)};unsigned failures=0,compared=0,written=0,discarded=0,sample_pixels=0,point_pixels=0;uint64_t words[2]={0},reference_source_bytes=0;
+ VkShaderModule vertices[]={vertex(false),vertex(true)};unsigned failures=0,compared=0,written=0,discarded=0,sample_pixels=0,point_pixels=0;uint64_t words[2]={0},reference_source_bytes=0;bool timings=getenv("PSH_COMPILER_TIMINGS")!=NULL;
  for(unsigned test=first;test<limit;test++){
   PshState state={.final_inputs_0=0x04200000,.final_inputs_1=0x1400};state.smooth_shading=!!(test&1);state.z_perspective=!!(test&2);state.depth_clipping=!!(test&4);state.window_clip_exclusive=!!(test&8);state.alpha_test=!!(test&16);state.alpha_dynamic=!!(test&32);state.depth_format=(test/64)%4;
   if(test>=512){
@@ -135,25 +156,50 @@ int main(int argc,char **argv){
    for(unsigned j=0;j<8;j++){values.clipRegion[j][0]=0;values.clipRegion[j][1]=0;values.clipRegion[j][2]=4;values.clipRegion[j][3]=4;}
    float plane[3][4]={{0,0,100,1},{4,0,200,1},{0,4,300,1}};memcpy(data[4],plane,sizeof(plane));data[7][1]=0;data[7][3]=(float)(f%32+1);if(test>=8192){state.point_sprite=true;state.rect_tex[3]=false;data[7][3]=-data[7][3];state.shader_stage_program=(state.shader_stage_program&~(31u<<15))|((f&1?PS_TEXTUREMODES_PROJECT2D:PS_TEXTUREMODES_PASSTHRU)<<15);state.final_inputs_0=0x200b0000;state.final_inputs_1=0x1b00;}values.surfaceScale[0][0]=values.surfaceScale[0][1]=1;
   }
+  if(test>=10240){
+   unsigned f=test-10240;state.combiner_dynamic=true;
+   if(test<14336){state.shader_stage_program=0;state.point_sprite=false;data[7][3]=0;}
+   values.combCtl[0]=(f%9)|(((f&1 || f&8)?0x100:0)|(f&2?0x1000:0)|(f&4?0x10000:0));
+   values.combFinal0[0]=dynamic_inputs(f+7,false,true);
+   uint32_t ef=dynamic_inputs(f+11,false,true),g=dynamic_inputs(f+3,true,true);
+   values.combFinal1[0]=(ef&0xffff0000u)|((g>>16)&0xff00u)|((f&7)<<5);
+   if(f%17==0)values.combFinal0[0]=values.combFinal1[0]=0;
+   for(unsigned j=0;j<8;j++){
+    values.combRgbIn[j]=dynamic_inputs(f+j,false,true);values.combAlphaIn[j]=dynamic_inputs(f+j+5,true,!!(f&8));
+    values.combRgbOut[j]=(((f+j)&255)<<12)|(((f+j*3)&15)<<8)|(((f+j)&15)<<4)|((f+j*5)&15);
+    values.combAlphaOut[j]=((f+j)&4)<<12|((f&8?((f+j)&7):0)<<15)|(13<<8)|(12<<4)|((f+j)&15);
+   }
+   /* Keep the LSB float-to-uint conversion defined, including stage zero. */
+   if(test>=14336)values.combCtl[0]|=0x100;
+   if(test>=16384){
+    static const float special[]={0.0f,-0.0f,0x1p-126f,0x1p-149f,1.00000011920928955078125f,-1.00000011920928955078125f,1e20f,-1e20f,INFINITY,-INFINITY,NAN,.1f,-.1f,.33333334f,-.75f,1.75f};
+    state.shader_stage_program=0;state.point_sprite=false;data[7][3]=0;state.alpha_dynamic=true;values.alphaTestEnable[0]=0;values.combCtl[0]|=0x100;
+    for(unsigned j=0;j<18;j++)for(unsigned k=0;k<4;k++)values.consts[j][k]=k==3?.5f:special[(f+j*3+k)%16];
+    for(unsigned j=0;j<4;j++)for(unsigned k=0;k<3;k++)data[j][k]=special[(f+j*5+k+7)%16];
+   }
+   state.combiner_control=0;state.final_inputs_0=state.final_inputs_1=0;
+   memset(state.rgb_inputs,0xa5,sizeof(state.rgb_inputs));memset(state.alpha_inputs,0x5a,sizeof(state.alpha_inputs));
+  }
   GlslcResult modules[2];SpvPshOptions opts={.spirv_1_6=!!(test&256),.ubo_binding=1,.tex_binding=2};assert(pgraph_spv_psh(&state,opts,&modules[1]));MString *source=pgraph_glsl_gen_psh(&state,(GenPshGlslOptions){.vulkan=true,.locations=true,.ubo_binding=1,.tex_binding=2});GlslcOptions go={.spirv_1_6=opts.spirv_1_6,.emit_layout=true};if(!glslc_compile(GLSLC_STAGE_FRAGMENT,mstring_get_str(source),&go,&modules[0])){fprintf(stderr,"fragment %u %d %s\n",test,modules[0].error_line,modules[0].error);abort();}reference_source_bytes+=strlen(mstring_get_str(source));mstring_unref(source);
   words[0]+=modules[0].num_words;words[1]+=modules[1].num_words;
-  uint32_t expected[80];
+  uint32_t expected[80];uint64_t build_ns[2]={0},draw_ns[2]={0};
   for(unsigned path=0;path<2;path++){
    assert(modules[path].uniforms.size<=2048);memset(uniform.mapped,0,2048);pack(uniform.mapped,&modules[path].uniforms,&values);VkShaderModule frag=module(&modules[path]);
    VkPipelineShaderStageCreateInfo stages[2]={{.sType=VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,.stage=VK_SHADER_STAGE_VERTEX_BIT,.module=vertices[state.smooth_shading],.pName="main"},{.sType=VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,.stage=VK_SHADER_STAGE_FRAGMENT_BIT,.module=frag,.pName="main"}};
-   VkPipelineVertexInputStateCreateInfo vi={.sType=VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO};VkPipelineInputAssemblyStateCreateInfo ia={.sType=VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,.topology=test>=8192?VK_PRIMITIVE_TOPOLOGY_POINT_LIST:VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST};VkViewport viewport={0,0,4,4,0,1};VkRect2D scissor={{0,0},{4,4}};VkPipelineViewportStateCreateInfo vp={.sType=VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO,.viewportCount=1,.pViewports=&viewport,.scissorCount=1,.pScissors=&scissor};VkPipelineRasterizationStateCreateInfo rs={.sType=VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO,.polygonMode=VK_POLYGON_MODE_FILL,.cullMode=VK_CULL_MODE_NONE,.frontFace=VK_FRONT_FACE_CLOCKWISE,.lineWidth=1};VkPipelineMultisampleStateCreateInfo ms={.sType=VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO,.rasterizationSamples=VK_SAMPLE_COUNT_1_BIT};VkPipelineDepthStencilStateCreateInfo ds={.sType=VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO,.depthTestEnable=VK_TRUE,.depthWriteEnable=VK_TRUE,.depthCompareOp=VK_COMPARE_OP_ALWAYS};VkPipelineColorBlendAttachmentState blend={.colorWriteMask=15};VkPipelineColorBlendStateCreateInfo cb={.sType=VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO,.attachmentCount=1,.pAttachments=&blend};VkGraphicsPipelineCreateInfo gp={.sType=VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,.stageCount=2,.pStages=stages,.pVertexInputState=&vi,.pInputAssemblyState=&ia,.pViewportState=&vp,.pRasterizationState=&rs,.pMultisampleState=&ms,.pDepthStencilState=&ds,.pColorBlendState=&cb,.layout=layout,.renderPass=pass};VkPipeline pipeline;CHECK(vkCreateGraphicsPipelines(device,VK_NULL_HANDLE,1,&gp,NULL,&pipeline));
-   CHECK(vkResetCommandBuffer(cmd,0));VkCommandBufferBeginInfo begin={.sType=VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};CHECK(vkBeginCommandBuffer(cmd,&begin));VkClearValue clear[2]={{{{-2,3,5,7}}}, {.depthStencil={1,0}}};VkRenderPassBeginInfo rp={.sType=VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,.renderPass=pass,.framebuffer=fb,.renderArea={{0,0},{4,4}},.clearValueCount=2,.pClearValues=clear};vkCmdBeginRenderPass(cmd,&rp,VK_SUBPASS_CONTENTS_INLINE);vkCmdBindPipeline(cmd,VK_PIPELINE_BIND_POINT_GRAPHICS,pipeline);vkCmdBindDescriptorSets(cmd,VK_PIPELINE_BIND_POINT_GRAPHICS,layout,0,1,&set,0,NULL);vkCmdPushConstants(cmd,layout,VK_SHADER_STAGE_VERTEX_BIT,0,128,data);vkCmdDraw(cmd,test>=8192?1:3,1,0,0);vkCmdEndRenderPass(cmd);
-   VkBufferImageCopy copies[2]={{.imageSubresource={VK_IMAGE_ASPECT_COLOR_BIT,0,0,1},.imageExtent={4,4,1}},{.bufferOffset=256,.imageSubresource={VK_IMAGE_ASPECT_DEPTH_BIT,0,0,1},.imageExtent={4,4,1}}};vkCmdCopyImageToBuffer(cmd,color.image,VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,readback.handle,1,copies);vkCmdCopyImageToBuffer(cmd,depth.image,VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,readback.handle,1,copies+1);CHECK(vkEndCommandBuffer(cmd));VkSubmitInfo submit={.sType=VK_STRUCTURE_TYPE_SUBMIT_INFO,.commandBufferCount=1,.pCommandBuffers=&cmd};CHECK(vkQueueSubmit(queue,1,&submit,fence));CHECK(vkWaitForFences(device,1,&fence,VK_TRUE,10000000000ull));CHECK(vkResetFences(device,1,&fence));
+   VkPipelineVertexInputStateCreateInfo vi={.sType=VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO};VkPipelineInputAssemblyStateCreateInfo ia={.sType=VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,.topology=(test>=8192 && (test<10240 || (test>=14336 && test<16384)))?VK_PRIMITIVE_TOPOLOGY_POINT_LIST:VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST};VkViewport viewport={0,0,4,4,0,1};VkRect2D scissor={{0,0},{4,4}};VkPipelineViewportStateCreateInfo vp={.sType=VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO,.viewportCount=1,.pViewports=&viewport,.scissorCount=1,.pScissors=&scissor};VkPipelineRasterizationStateCreateInfo rs={.sType=VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO,.polygonMode=VK_POLYGON_MODE_FILL,.cullMode=VK_CULL_MODE_NONE,.frontFace=VK_FRONT_FACE_CLOCKWISE,.lineWidth=1};VkPipelineMultisampleStateCreateInfo ms={.sType=VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO,.rasterizationSamples=VK_SAMPLE_COUNT_1_BIT};VkPipelineDepthStencilStateCreateInfo ds={.sType=VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO,.depthTestEnable=VK_TRUE,.depthWriteEnable=VK_TRUE,.depthCompareOp=VK_COMPARE_OP_ALWAYS};VkPipelineColorBlendAttachmentState blend={.colorWriteMask=15};VkPipelineColorBlendStateCreateInfo cb={.sType=VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO,.attachmentCount=1,.pAttachments=&blend};VkGraphicsPipelineCreateInfo gp={.sType=VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,.stageCount=2,.pStages=stages,.pVertexInputState=&vi,.pInputAssemblyState=&ia,.pViewportState=&vp,.pRasterizationState=&rs,.pMultisampleState=&ms,.pDepthStencilState=&ds,.pColorBlendState=&cb,.layout=layout,.renderPass=pass};VkPipeline pipeline;uint64_t build_start=timings?wall_ns():0;CHECK(vkCreateGraphicsPipelines(device,VK_NULL_HANDLE,1,&gp,NULL,&pipeline));if(timings)build_ns[path]=wall_ns()-build_start;
+   CHECK(vkResetCommandBuffer(cmd,0));VkCommandBufferBeginInfo begin={.sType=VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};CHECK(vkBeginCommandBuffer(cmd,&begin));VkClearValue clear[2]={{{{-2,3,5,7}}}, {.depthStencil={1,0}}};VkRenderPassBeginInfo rp={.sType=VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,.renderPass=pass,.framebuffer=fb,.renderArea={{0,0},{4,4}},.clearValueCount=2,.pClearValues=clear};vkCmdBeginRenderPass(cmd,&rp,VK_SUBPASS_CONTENTS_INLINE);vkCmdBindPipeline(cmd,VK_PIPELINE_BIND_POINT_GRAPHICS,pipeline);vkCmdBindDescriptorSets(cmd,VK_PIPELINE_BIND_POINT_GRAPHICS,layout,0,1,&set,0,NULL);vkCmdPushConstants(cmd,layout,VK_SHADER_STAGE_VERTEX_BIT,0,128,data);vkCmdDraw(cmd,(test>=8192 && (test<10240 || (test>=14336 && test<16384)))?1:3,1,0,0);vkCmdEndRenderPass(cmd);
+   VkBufferImageCopy copies[2]={{.imageSubresource={VK_IMAGE_ASPECT_COLOR_BIT,0,0,1},.imageExtent={4,4,1}},{.bufferOffset=256,.imageSubresource={VK_IMAGE_ASPECT_DEPTH_BIT,0,0,1},.imageExtent={4,4,1}}};vkCmdCopyImageToBuffer(cmd,color.image,VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,readback.handle,1,copies);vkCmdCopyImageToBuffer(cmd,depth.image,VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,readback.handle,1,copies+1);CHECK(vkEndCommandBuffer(cmd));VkSubmitInfo submit={.sType=VK_STRUCTURE_TYPE_SUBMIT_INFO,.commandBufferCount=1,.pCommandBuffers=&cmd};uint64_t draw_start=timings?wall_ns():0;CHECK(vkQueueSubmit(queue,1,&submit,fence));CHECK(vkWaitForFences(device,1,&fence,VK_TRUE,10000000000ull));CHECK(vkResetFences(device,1,&fence));if(timings)draw_ns[path]=wall_ns()-draw_start;
    if(!path)memcpy(expected,readback.mapped,320);else for(unsigned j=0;j<80;j++){uint32_t got;float x,y;memcpy(&got,readback.mapped+j*4,4);memcpy(&x,&expected[j],4);memcpy(&y,&got,4);compared++;if(got!=expected[j] && !(isnan(x)&&isnan(y))){if(failures++<25)fprintf(stderr,"case %u output %u: %08x (%g) != %08x (%g)\n",test,j,expected[j],x,got,y);}}
    vkDestroyPipeline(device,pipeline,NULL);vkDestroyShaderModule(device,frag,NULL);
   }
+  if(timings)fprintf(stderr,"PSH timing case=%u ref_build_ns=%llu native_build_ns=%llu ref_submit_fence_ns=%llu native_submit_fence_ns=%llu UNQUALIFIED\n",test,(unsigned long long)build_ns[0],(unsigned long long)build_ns[1],(unsigned long long)draw_ns[0],(unsigned long long)draw_ns[1]);
   bool sampled=false;for(unsigned j=0;j<4;j++)sampled|=((state.shader_stage_program>>(j*5))&31)==PS_TEXTUREMODES_PROJECT2D;
-  for(unsigned j=0;j<16;j++){if(expected[j*4]==0xc0000000u)discarded++;else{written++;sample_pixels+=sampled;point_pixels+=test>=8192;}}
+  for(unsigned j=0;j<16;j++){if(expected[j*4]==0xc0000000u)discarded++;else{written++;sample_pixels+=sampled;point_pixels+=(test>=8192 && (test<10240 || (test>=14336 && test<16384)));}}
   release(&modules[0]);release(&modules[1]);
  }
  printf("Fragment GPU: %u scalar color/depth/discard results, %u differences, %u validation errors; validation=%s\n",compared,failures,errors,validated?"enabled":"DISABLED");
- if(first>=4096)assert(written && discarded && sample_pixels);
- if(first>=8192)assert(point_pixels);
+ if(first>=4096 && (first<10240 || (first>=14336 && first<16384)))assert(written && discarded && sample_pixels);
+ if(first>=8192 && (first<10240 || (first>=14336 && first<16384)))assert(point_pixels);
  printf("Fragment coverage: written_pixels=%u discarded_pixels=%u sampled_pixels=%u point_pixels=%u\n",written,discarded,sample_pixels,point_pixels);
  printf("Fragment work: reference_words=%llu native_words=%llu avoided_GLSL_bytes=%llu; work counts only, no latency/GPU execution claim\n",(unsigned long long)words[0],(unsigned long long)words[1],(unsigned long long)reference_source_bytes);
  for(unsigned j=0;j<2;j++){vkDestroyShaderModule(device,vertices[j],NULL);}vkDestroyFence(device,fence,NULL);vkDestroyCommandPool(device,commands,NULL);vkDestroyDescriptorPool(device,pool,NULL);vkDestroyPipelineLayout(device,layout,NULL);vkDestroyDescriptorSetLayout(device,set_layout,NULL);vkDestroyFramebuffer(device,fb,NULL);vkDestroyRenderPass(device,pass,NULL);drop_image(color);drop_image(depth);drop(uniform);drop(readback);for(unsigned j=0;j<16;j++)vkDestroySampler(device,samplers[j],NULL);drop_image(texture);vkDestroyDevice(device,NULL);if(validated)destroy(instance,messenger,NULL);vkDestroyInstance(instance,NULL);return failures||errors?1:0;

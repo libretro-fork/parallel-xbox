@@ -43,8 +43,8 @@ module words still identify the generated driver shader/pipeline normally.
 
 ## Coverage and remaining work
 
-Texture families not listed below and dynamic combiner shaders still use the
-correct GLSL/compiler path.
+Texture families not listed below still use the correct GLSL/compiler path.
+Static and live combiners are native for the supported texture families.
 Unsupported texture/depth modifiers, invalid registers/destinations/stage counts,
 and reference-undefined disabled-final-combiner recipes reject before allocating.
 No draw is dropped and no placeholder is substituted. Extending those families
@@ -128,3 +128,69 @@ results are not the comparison oracle. It emitted
 GLSL source bytes across those fixtures. All 49 contract suites, 26 GL/VK game
 runs, four lifecycle cases and five exact image pairs passed. These work counts
 and correctness checks do not qualify cold-play or GPU execution performance.
+
+
+## Live register combiners
+
+Dynamic combiner recipes now emit native SPIR-V too. The existing combCtl,
+combFinal0/1, combRgbIn/Out and combAlphaIn/Out uniforms drive one counted stage
+loop and a sixteen-slot shader-private register bank. Source and destination
+slots remain masked to four bits; zero writes are suppressed, constant slots
+fetch existing uniforms, and all RGB/alpha operands are evaluated before any
+writes. Blue-to-alpha and aliased destinations retain reference store order.
+
+The dynamic reference's scale/bias tables have a different expression shape
+from the static mapper. Native emission follows the dynamic multiply/add order,
+including reserved mappings, rather than substituting static algebra. One shared
+source-fetch helper avoids repeating its constant/bank branches at every input.
+MSB/LSB mux selection remains lazy, avoiding undefined float-to-uint conversion
+when the MSB path is selected. Final sums, complement/clamp controls, E/F products
+and final input reads retain their ordering; all-zero final controls explicitly
+produce zero, as the dynamic reference does.
+
+Seven existing uniform fields append to the unchanged texture layout: three
+uint controls, alignment padding, then four eight-element std140 uint arrays.
+They add 528 bytes, for a final extent of 1024, 1040, 1088 or 1104 bytes. No new
+binding, sampler, image view, buffer allocation or upload path is introduced.
+The private register bank and immutable scale/bias tables are shader values,
+matching the reference, rather than new host or GPU resource owners.
+
+The immutable cache/job recipe and bounded precise-ID record retain their
+synchronous count/write lends. Exactly two final allocations remain, and native
+source adoption transfers their exact pointers into existing reference owners.
+No guest/uniform payload snapshot, retained lend, compiler AST, intermediate
+GLSL/word buffer, cache schema/default change or file I/O is added. The previous
+8,192 static modules are byte-identical to the parent.
+
+CPU coverage expands to 12,288 modules and twenty-five allocation-free rejected
+recipes, including ignored static combiner-field poisoning, two shader loops,
+all appended layout bounds and final owner independence. GPU coverage adds
+6,144 live recipes spanning all sixteen register slots, mapping/store aliases,
+zero through eight stages, both mux modes, unique/shared constants, final
+sum/EF controls, all-zero finals and the supported texture/point families.
+Invalid live stage counts beyond the reference's eight-element arrays are not
+qualified. The CPU emitter ignores the unused static count in dynamic mode;
+the reference fixture retains its canonical zero count because its parser still
+walks that field before choosing the dynamic generator.
+
+Correctness, work counts and cold-play/driver-cache qualification remain
+separate. This extends translation coverage; it does not establish ready PSOs,
+zero draw-path compilation/waits, GPU execution savings or stutter recovery.
+
+The full 16,896-case matrix matched 1,351,680 scalar outputs per device on
+llvmpipe with validation and RTX 5090 without installed validation layers.
+An extra 512 cases cover infinities, NaNs, negative zero, subnormals, non-binary
+fractions and disabled alpha conversion with exceptional live colors. The
+reference and native path match on each device; differing NaN payloads remain
+permitted only when both results are NaN. Aggregate fixture output used
+90,524,558 native words versus 120,500,425 reference words and avoided
+145,042,821 GLSL bytes. These are work counts, not game/GPU speedup claims.
+All 49 contract suites, 26 GL/VK game checks, four lifecycle cases and five
+exact parent/candidate image pairs passed.
+
+The test-only `PSH_COMPILER_TIMINGS=1` probe separates host pipeline creation
+from submit-to-fence wall time by recipe/path. It is not linked into the core,
+does not record presentation latency or GPU timestamps, and never weakens the
+output/coverage checks. Its 512-case physical attribution probe passed; timings
+remain unqualified because driver caches are warmed/uncontrolled and CPU/software
+correctness checks overlap. No latency baseline or recovery claim follows.
