@@ -236,6 +236,55 @@ static void loops(void)
     }
     puts("PASS: real one/17/33-sample looping buffers and nonzero loop points without skips or completion");
 }
+static void pending_streams(void)
+{
+    unsigned cases=0;
+    for(unsigned format=0;format<5;format++)for(unsigned stereo=0;stereo<2;stereo++)
+    for(unsigned zero_address=0;zero_address<2;zero_address++)for(unsigned metadata=0;metadata<2;metadata++) {
+        MCPXAPUState*d=setup(64,format,stereo,0);
+        put(d,NV_PAVS_VOICE_CFG_FMT,NV_PAVS_VOICE_CFG_FMT_DATA_TYPE,1);
+        put(d,NV_PAVS_VOICE_CFG_FMT,NV_PAVS_VOICE_CFG_FMT_PERSIST,1);
+        d->vp.ssl[64].count[0]=1;
+        put(d,NV_PAVS_VOICE_PAR_STATE,NV_PAVS_VOICE_PAR_STATE_EACUR,NV_PAVS_VOICE_PAR_STATE_EFCUR_SUSTAIN);
+        put(d,NV_PAVS_VOICE_CFG_ENVA,NV_PAVS_VOICE_CFG_ENVA_EA_SUSTAINLEVEL,255);
+        hwaddr sample_address=zero_address?0:0x70000;
+        unsigned container=format==0?0:format==1?1:format==4?2:3;
+        uint32_t flags=(container<<16)|(stereo<<18)|(stereo<<23);
+        store(d,0x8000,sample_address);store(d,0x8004,metadata?flags:0);
+        int32_t out[32][2],before[32][2];memset(out,0x5a,sizeof(out));memcpy(before,out,sizeof(out));
+        for(unsigned retry=0;retry<3;retry++) {
+            assert(voice_get_samples(d,64,out,32)==-1);
+            assert(!memcmp(out,before,sizeof(out)));
+            assert(!voice_get_mask(d,64,NV_PAVS_VOICE_PAR_OFFSET,NV_PAVS_VOICE_PAR_OFFSET_CBO));
+            assert(!d->vp.ssl[64].ssl_seg&&!d->vp.ssl[64].ssl_index);
+            assert(!d->notices[0]&&!d->notices[1]&&!d->vp.filters[64].source_ended);
+        }
+        int64_t mix[32][32];
+        for(unsigned retry=0;retry<3;retry++) {
+            frame(d,mix);
+            for(unsigned n=0;n<32;n++)for(unsigned bin=0;bin<32;bin++)assert(!mix[n][bin]);
+            assert(voice_get_mask(d,64,NV_PAVS_VOICE_PAR_STATE,NV_PAVS_VOICE_PAR_STATE_ACTIVE_VOICE));
+            assert(!d->notices[0]&&!d->notices[1]&&!d->vp.filters[64].source_ended);
+        }
+        fill(d,sample_address,64,format,stereo);
+        store(d,0x8004,64|flags);
+        assert(voice_get_samples(d,64,out,32)==32);
+        for(unsigned n=0;n<32;n++)for(unsigned ch=0;ch<2;ch++)assert(out[n][ch]==pcm_value(n,stereo?ch:0,format));
+        assert(voice_get_mask(d,64,NV_PAVS_VOICE_PAR_OFFSET,NV_PAVS_VOICE_PAR_OFFSET_CBO)==32);
+        assert(!d->notices[0]&&!d->notices[1]);
+        bool audible=false;
+        /* Existing resampler look-ahead can still contain queued silence.
+         * It must drain within these bounded frames and adopt the data. */
+        for(unsigned retry=0;retry<3;retry++) {
+            frame(d,mix);
+            for(unsigned n=0;n<32;n++)for(unsigned bin=0;bin<32;bin++)audible|=mix[n][bin]!=0;
+        }
+        assert(audible);
+        dispose(d);cases++;
+    }
+    printf("PASS: %u pending SSL publication/retry cases; silence, active voice, unchanged position/notifications and valid RAM address zero\n",cases);
+}
+
 static void streams(void)
 {
     MCPXAPUState*d=setup(33,1,false,0);
@@ -621,10 +670,11 @@ static void lock_boundaries(void)
 }
 int main(int argc,char**argv)
 {
+    if(argc>1&&!strcmp(argv[1],"pending")){pending_streams();return 0;}
     if(argc>1&&strcmp(argv[1],"tail")==0){tails();return 0;}
     if(argc>1&&strcmp(argv[1],"filters")==0){signed_filters();return 0;}
     if(argc>1&&strcmp(argv[1],"locks")==0){lock_boundaries();return 0;}
     lock_boundaries();
     signed_filters();
-    inclusive_boundary();tails();loops();streams();control_paths();pcm_pages();adpcm_pages();adpcm_partial_fetches();rejected_adpcm();pitch_cache();return 0;
+    inclusive_boundary();tails();loops();pending_streams();streams();control_paths();pcm_pages();adpcm_pages();adpcm_partial_fetches();rejected_adpcm();pitch_cache();return 0;
 }
