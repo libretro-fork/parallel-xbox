@@ -49,4 +49,8 @@ typedef enum {
 
 #define TCG_TARGET_NB_REGS 64
 
+/* Fresh jumps already target their reset offsets; the final code flush
+ * covers them without a second per-slot instruction-cache flush. */
+#define TCG_TARGET_GOTO_TB_EMITS_RESET 1
+
 #endif /* AARCH64_TCG_TARGET_H */

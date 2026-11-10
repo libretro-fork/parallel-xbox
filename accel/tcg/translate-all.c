@@ -260,6 +260,27 @@ static int setjmp_gen_code(CPUArchState *env, TranslationBlock *tb,
 }
 
 /* Called with mmap_lock held for user mode emulation.  */
+/* Fresh reset-form code is covered by tcg_gen_code's final cache flush.
+ * Recycled blocks may still contain links and must be patched normally. */
+static inline void tb_init_jump(TranslationBlock *tb, int n, bool recycled)
+{
+#ifdef TCG_TARGET_GOTO_TB_EMITS_RESET
+    if (!recycled) {
+        tb->jmp_target_addr[n] =
+            (uintptr_t)tb->tc.ptr + tb->jmp_reset_offset[n];
+#ifdef CONFIG_DEBUG_TCG
+        tcg_debug_assert(tb->jmp_reset_offset[n] ==
+                         tb->jmp_insn_offset[n] + 8);
+        tcg_debug_assert(*(const uint32_t *)(tb->tc.ptr +
+                                             tb->jmp_insn_offset[n]) ==
+                         0x14000002);
+#endif
+        return;
+    }
+#endif
+    tb_reset_jump(tb, n);
+}
+
 TranslationBlock *tb_gen_code(CPUState *cpu, TCGTBCPUState s)
 {
     CPUArchState *env = cpu_env(cpu);
@@ -437,10 +458,10 @@ recycle_tb:
 
     /* init original jump addresses which have been set during tcg_gen_code() */
     if (tb->jmp_reset_offset[0] != TB_JMP_OFFSET_INVALID) {
-        tb_reset_jump(tb, 0);
+        tb_init_jump(tb, 0, recycled);
     }
     if (tb->jmp_reset_offset[1] != TB_JMP_OFFSET_INVALID) {
-        tb_reset_jump(tb, 1);
+        tb_init_jump(tb, 1, recycled);
     }
 
     /*

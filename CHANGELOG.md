@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- ARM64 CPU translation emits fresh block jumps directly in their reset form, avoiding redundant jump patches and per-slot instruction-cache flushes. Recycled blocks retain normal resets. Gameplay performance remains unmeasured.
+
 - Vulkan directly emits projective shadow shaders whose dimension/cube metadata is ignored by the reference sampler. Keep the existing 2D views, allocation counts and borrowed input lifetimes.
 
 - CPU translation drops stale block-chain pointers when generating a block flushes the code cache, preventing jump patches into reused code. Regression coverage forces cache resets and block-address reuse.
