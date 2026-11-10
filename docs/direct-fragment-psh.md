@@ -353,3 +353,53 @@ now contains 27136 recipes against the production GLSL implementation.
 Existing synchronous PSO misses and uncontrolled driver-cache qualification
 remain open. Removing these GLSL intermediates does not establish draw-path
 pipeline readiness, GPU execution improvement or cold-first-play recovery.
+
+
+## Dot-product chains, reflection and depth replacement
+
+The native emitter now translates DOTPRODUCT, DOT_ST, DOT_ZW, DOT_RFLCT_DIFF,
+DOT_RFLCT_SPEC, DOT_STR_3D and DOT_STR_CUBE. A four-entry SSA-ID array records
+dot results in stage order. Invalid unit placement, missing preceding dot
+results, self/forward input reads and out-of-range mappings reject before
+allocation. Diffuse reflection additionally reads the next unit's varying
+and mapping; a reference to a not-yet-defined texture result remains rejected.
+That varying is declared even when the following texture stage is disabled,
+including PointCoord when point sprites provide it.
+
+Each consumed signed dot mapping has one shared function. Sign helpers are
+shared too, including the existing bump sign3 helper and its function type.
+HILO mapping preserves the reference's unsigned A/R and G/B packing. The
+three hemisphere mappings still return RGB as in the reference's FIXME;
+this does not implement missing hardware behavior or define invalid float
+to integer conversions. No dot tables, input payloads or source keys are
+cloned. Types, function IDs and dot results live only in the synchronous
+bounded Context; the final word and layout allocations retain their owners.
+
+DOT_ZW replaces window-space depth with preceding/current dot, using float
+max for a zero denominator. The original depth range test is deferred; each
+replacement applies the same range/precise-clamp behavior. Polygon offset
+therefore does not survive replacement. Chained replacement fixtures exercise
+two range tests and sampled-dot predecessors. Sampling retains the existing
+2D/volume/cube resources, rectangle scaling, border adjustment, cube face/tie
+rules, reflection arithmetic and alpha/key order. DOT_ST border adjustment
+and rectangle volume combinations remain excluded. No new uniform groups,
+bindings, host resources or payload storage are introduced.
+
+CPU coverage adds 4096 dot recipes and sixteen allocation-free rejection
+controls (28672 final-owner recipes, forty-nine rejects in total). GPU coverage
+adds 4096 production-GLSL comparisons for all eight mappings, stage placement,
+processed and zero predecessors, sampled and depth-replacement chains,
+rectangle/volume/cube kinds, reflection singularities, point coordinates,
+static/live combiners and replacement clipping. The full matrix has 31232
+recipes. Signed/depth-format sampling, shadow comparisons, UI clamp and the
+reference-unimplemented BRDF/constant-specular modes remain open. Expanded
+translation is not evidence of ready PSOs or cold-first-play recovery.
+
+
+Integer-packed HILO lookup chains explicitly encode a zero implicit-LOD bias.
+The operand-free form matched arithmetic/UV probes but diverged in RTX mip
+selection. Explicit gradients and unconditional bias introduced other
+mismatches and remain rejected diagnostic variants. The mapping-specific zero
+bias preserves implicit derivatives and sampler filtering; regression coverage
+checks its exact zero operand and keeps other dot mappings operand-free. All
+failed probes remain retained; this is not a tolerance or coverage relaxation.

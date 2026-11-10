@@ -136,7 +136,7 @@ static void texture_allocate(Context *c)
         c->image_other[kind-1]=id(c->w);c->sampled_other[kind-1]=id(c->w);c->sampler_other_ptr[kind-1]=id(c->w);
     }
     for(unsigned j=0;j<4;j++){
-        if(texture_mode(c->state,j)==PS_TEXTUREMODES_CUBEMAP && !c->state->tex_cubemap[j] && !c->cube_fn){c->cube_fn=id(c->w);c->cube_fn_type=id(c->w);}
+        if(cube_stage(c->state,j) && !c->state->tex_cubemap[j] && !c->cube_fn){c->cube_fn=id(c->w);c->cube_fn_type=id(c->w);}
         if(texture_mode(c->state,j)==PS_TEXTUREMODES_PROJECT2D && sampler_kind(c->state,j)==2 && !c->project_cube_fn){c->project_cube_fn=id(c->w);c->project_cube_type=id(c->w);}
     }
     if(has_bump(c->state)){
@@ -162,9 +162,11 @@ static void texture_types(Context *c)
         op(w,SpvOpTypeSampledImage,2,c->sampled_other[kind-1],c->image_other[kind-1]);
         op(w,SpvOpTypePointer,3,c->sampler_other_ptr[kind-1],(uint32_t)SpvStorageClassUniformConstant,c->sampled_other[kind-1]);
     }
-    if(c->sign_fn){
+    if(c->bump_m2){
         op(w,SpvOpTypeMatrix,3,c->bump_m2,c->v2,2u);
         op(w,SpvOpTypePointer,3,c->uniform_v2,(uint32_t)SpvStorageClassUniform,c->v2);
+    }
+    if(c->sign_fn){
         op(w,SpvOpTypeFunction,3,c->sign_type,c->f,c->f);
         const float values[]={127,128,256};
         for(unsigned j=0;j<3;j++){uint32_t bits;memcpy(&bits,values+j,4);op(w,SpvOpConstant,3,c->f,c->sign_constants[j],bits);}

@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Translate dot-product texture chains, 2D/volume/cube lookups, reflection and depth replacement directly to Vulkan SPIR-V. Share sign/mapping helpers, read existing varying and texture results, and defer depth clipping until replacement. Preserve sampler/uniform owners and two final allocations; unsupported recipes retain the compiler and first-use PSO readiness remains open.
+
 - Emit dependent AR/GB texture reads, bump environment maps and bump luminance directly as Vulkan SPIR-V. Read processed predecessor results, reuse existing padded matrix columns and texture resources, and retain alpha/key ordering. Keep two final allocations and prior modules byte-identical, without intermediate GLSL, texture copies or retained lends; unsupported recipes retain the compiler.
 
 - Emit projected 3D and cube texture stages directly as Vulkan SPIR-V with per-unit 2D/3D/cube sampler types. Share cube-coordinate helpers, preserve projective instructions, face/tie rules and existing border/key/alpha behavior, and reuse current image views, samplers and retirement. Keep two final allocations and prior module words/layouts unchanged; no texture copies, new bindings or retained lends.

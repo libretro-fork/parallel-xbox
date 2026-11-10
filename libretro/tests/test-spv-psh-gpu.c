@@ -79,7 +79,7 @@ static Image dimensional_texture(unsigned kind,VkCommandBuffer cmd,VkQueue queue
  b.srcAccessMask=VK_ACCESS_TRANSFER_WRITE_BIT;b.dstAccessMask=VK_ACCESS_SHADER_READ_BIT;b.oldLayout=VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;b.newLayout=VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;vkCmdPipelineBarrier(cmd,VK_PIPELINE_STAGE_TRANSFER_BIT,VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,0,0,NULL,0,NULL,1,&b);CHECK(vkEndCommandBuffer(cmd));
  VkSubmitInfo submit={.sType=VK_STRUCTURE_TYPE_SUBMIT_INFO,.commandBufferCount=1,.pCommandBuffers=&cmd};CHECK(vkQueueSubmit(queue,1,&submit,fence));CHECK(vkWaitForFences(device,1,&fence,VK_TRUE,10000000000ull));CHECK(vkResetFences(device,1,&fence));CHECK(vkResetCommandBuffer(cmd,0));drop(staging);return a;
 }
-static unsigned fixture_kind(const PshState *s,unsigned j){unsigned mode=(s->shader_stage_program>>(j*5))&31;return mode==PS_TEXTUREMODES_CUBEMAP?(s->tex_cubemap[j]?2:0):s->dim_tex[j]==3?1:mode==PS_TEXTUREMODES_PROJECT2D && s->tex_cubemap[j]?2:0;}
+static unsigned fixture_kind(const PshState *s,unsigned j){unsigned mode=(s->shader_stage_program>>(j*5))&31;return (mode==PS_TEXTUREMODES_CUBEMAP || mode==PS_TEXTUREMODES_DOT_RFLCT_DIFF || mode==PS_TEXTUREMODES_DOT_RFLCT_SPEC || mode==PS_TEXTUREMODES_DOT_STR_CUBE)?(s->tex_cubemap[j]?2:0):s->dim_tex[j]==3?1:mode==PS_TEXTUREMODES_PROJECT2D && s->tex_cubemap[j]?2:0;}
 static void fixture_family(PshState *s,unsigned unit,unsigned family){
  unsigned mode=family<1?PS_TEXTUREMODES_PROJECT2D:family<3?PS_TEXTUREMODES_PROJECT3D:family==3?PS_TEXTUREMODES_PROJECT2D:PS_TEXTUREMODES_CUBEMAP;
  s->shader_stage_program=(s->shader_stage_program&~(31u<<(unit*5)))|(mode<<(unit*5));s->dim_tex[unit]=family<2?3:2;s->tex_cubemap[unit]=family==3 || family==4;
@@ -309,6 +309,42 @@ int main(int argc,char **argv){
    state.final_inputs_0=0x20000000u|(reg<<16);state.final_inputs_1=(reg|16u)<<8;values.combFinal0[0]=state.final_inputs_0;values.combFinal1[0]=state.final_inputs_1;
    if(live){state.combiner_control=0;state.final_inputs_0=state.final_inputs_1=0;}
    float plane[3][4]={{0,0,100,1},{4,0,200,1},{0,4,300,1}};memcpy(data[4],plane,sizeof(plane));data[7][1]=0;
+  }
+  if(test>=27136){
+   unsigned f=test-27136,family=f%8,unit=family==0 || family==2 || family==4?2:3;
+   const unsigned modes[]={PS_TEXTUREMODES_DOT_ST,PS_TEXTUREMODES_DOT_ST,PS_TEXTUREMODES_DOT_ZW,PS_TEXTUREMODES_DOT_ZW,PS_TEXTUREMODES_DOT_RFLCT_DIFF,PS_TEXTUREMODES_DOT_RFLCT_SPEC,PS_TEXTUREMODES_DOT_STR_3D,PS_TEXTUREMODES_DOT_STR_CUBE};
+   unsigned mode=modes[family];bool cube_family=family==4 || family==5 || family==7,sampled=mode!=PS_TEXTUREMODES_DOT_ZW;
+   memset(&state,0,sizeof(state));memset(&values,0,sizeof(values));state.smooth_shading=!!(f&1);state.depth_format=(f/8)%4;state.z_perspective=!!(f&32);state.depth_clipping=!!(f&1024);
+   state.shader_stage_program=PS_TEXTUREMODES_PROJECT2D | (PS_TEXTUREMODES_DOTPRODUCT<<5);state.dim_tex[0]=2;
+   if(unit==3)state.shader_stage_program|=PS_TEXTUREMODES_DOTPRODUCT<<10;
+   if(unit==3 && (f&128)){
+    unsigned preceding=family==3?PS_TEXTUREMODES_DOT_ZW:PS_TEXTUREMODES_DOT_ST;
+    state.shader_stage_program=(state.shader_stage_program&~(31u<<10))|(preceding<<10);state.dim_tex[2]=2;
+    if(f&256)state.colorkey_mode[2]=COLOR_KEY_KILL_ALPHA;
+   }
+   state.shader_stage_program|=mode<<(unit*5);state.dim_tex[unit]=family==6 && (f&64)?3:2;state.tex_cubemap[unit]=cube_family && !!(f&64);
+   state.point_sprite=!!(f&2048);state.rect_tex[unit]=sampled && !cube_family && state.dim_tex[unit]==2 && !!(f&128) && !(unit==3 && state.point_sprite);
+   state.border_adjust[unit]=sampled && mode!=PS_TEXTUREMODES_DOT_ST && !!(f&256);state.colorkey_mode[unit]=sampled?(f/512)%4:0;state.alphakill[unit]=!!(f&16);state.alpha_dynamic=!!(f&512);
+   state.other_stage_input=((f/8)%8) | (((f/64)%8)<<4) | (((f/512)%8)<<8) | (((f/16)%2)<<16) | (((f/32)%(family==4?2:3))<<20);
+   if(f&128)state.colorkey_mode[0]=COLOR_KEY_KILL_ALPHA;
+   values.surfaceScale[0][0]=values.surfaceScale[0][1]=1;values.clipRange[0][1]=values.clipRange[0][3]=16777215;
+   if((family==2 || family==3) && (f&256)){values.clipRange[0][2]=.25f;values.clipRange[0][3]=1.5f;}
+   values.depthFactor[0]=(f&16)?32:-16;values.depthOffset[0]=(f&8)?1000:-500;values.alphaKillMask[0]=(f/16)%16;
+   for(unsigned j=0;j<8;j++){values.clipRegion[j][2]=4;values.clipRegion[j][3]=4;}
+   for(unsigned j=0;j<4;j++){
+    values.texScale[j]=.5f+(j%3)*.5f;values.borderLogicalSize[j][0]=values.borderLogicalSize[j][1]=values.borderLogicalSize[j][2]=2;
+    values.borderInvRealSize[j][0]=values.borderInvRealSize[j][1]=values.borderInvRealSize[j][2]=.125f;values.colorKeyMask[j]=(f&64)?0xff000000u:0;values.colorKey[j]=0x80000000u;
+    unsigned kind=fixture_kind(&state,j);VkDescriptorImageInfo info={samplers[(f/16+j)%16],kind==1?volume.view:kind==2?cube.view:texture.view,VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL};VkWriteDescriptorSet w={.sType=VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,.dstSet=set,.dstBinding=2+j,.descriptorCount=1,.descriptorType=VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,.pImageInfo=&info};vkUpdateDescriptorSets(device,1,&w,0,NULL);
+   }
+   unsigned stages=(f/32)%9,reg=PS_REGISTER_T0+unit;state.combiner_control=stages;values.combCtl[0]=stages|0x100;
+   for(unsigned j=0;j<8;j++){
+    state.rgb_inputs[j]=(reg<<24)|0x00200000u;state.alpha_inputs[j]=((reg|16u)<<24)|0x00200000u;state.rgb_outputs[j]=12<<4;state.alpha_outputs[j]=12<<4;
+    values.combRgbIn[j]=state.rgb_inputs[j];values.combAlphaIn[j]=state.alpha_inputs[j];values.combRgbOut[j]=state.rgb_outputs[j];values.combAlphaOut[j]=state.alpha_outputs[j];
+   }
+   if(stages)reg=PS_REGISTER_R0;
+   state.final_inputs_0=0x20000000u|(reg<<16);state.final_inputs_1=(reg|16u)<<8;values.combFinal0[0]=state.final_inputs_0;values.combFinal1[0]=state.final_inputs_1;
+   state.combiner_dynamic=!!(f&512);if(state.combiner_dynamic){state.combiner_control=0;state.final_inputs_0=state.final_inputs_1=0;}
+   float plane[3][4]={{0,0,100,1},{4,0,200,1},{0,4,300,1}};memcpy(data[4],plane,sizeof(plane));data[7][1]=.125f;data[7][3]=(float)(128+f%128);if(state.point_sprite)data[7][3]=-data[7][3];
   }
   GlslcResult modules[2];SpvPshOptions opts={.spirv_1_6=!!(test&256),.ubo_binding=1,.tex_binding=2};assert(pgraph_spv_psh(&state,opts,&modules[1]));MString *source=pgraph_glsl_gen_psh(&state,(GenPshGlslOptions){.vulkan=true,.locations=true,.ubo_binding=1,.tex_binding=2});GlslcOptions go={.spirv_1_6=opts.spirv_1_6,.emit_layout=true};if(!glslc_compile(GLSLC_STAGE_FRAGMENT,mstring_get_str(source),&go,&modules[0])){fprintf(stderr,"fragment %u %d %s\n",test,modules[0].error_line,modules[0].error);abort();}reference_source_bytes+=strlen(mstring_get_str(source));mstring_unref(source);
   words[0]+=modules[0].num_words;words[1]+=modules[1].num_words;

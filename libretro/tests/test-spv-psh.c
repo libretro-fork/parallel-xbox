@@ -168,6 +168,64 @@ int main(int argc,char **argv)
         memset(&s,0xa5,sizeof(s));char path[4096];snprintf(path,sizeof(path),"%s/dependent-%u.spv",argv[1],i);FILE *f=fopen(path,"wb");assert(f);assert(fwrite(a.words,4,a.num_words,f)==a.num_words);fclose(f);
         glslc_result_free_words(&a);free(a.uniforms.members);glslc_result_free_words(&b);free(b.uniforms.members);
     }
+    for(unsigned i=0;i<4096;i++){
+        const unsigned modes[]={PS_TEXTUREMODES_DOT_ST,PS_TEXTUREMODES_DOT_ST,PS_TEXTUREMODES_DOT_ZW,PS_TEXTUREMODES_DOT_ZW,PS_TEXTUREMODES_DOT_RFLCT_DIFF,PS_TEXTUREMODES_DOT_RFLCT_SPEC,PS_TEXTUREMODES_DOT_STR_3D,PS_TEXTUREMODES_DOT_STR_CUBE};
+        unsigned family=i%8,unit=family==0 || family==2 || family==4?2:3,mode=modes[family];
+        PshState s={.final_inputs_0=0x20080000,.final_inputs_1=0x1800,.shader_stage_program=PS_TEXTUREMODES_PROJECT2D | (PS_TEXTUREMODES_DOTPRODUCT<<5)};
+        s.dim_tex[0]=2;if(unit==3)s.shader_stage_program|=PS_TEXTUREMODES_DOTPRODUCT<<10;
+        if(unit==3 && (i&128)){
+            unsigned preceding=family==3?PS_TEXTUREMODES_DOT_ZW:PS_TEXTUREMODES_DOT_ST;
+            s.shader_stage_program=(s.shader_stage_program&~(31u<<10))|(preceding<<10);s.dim_tex[2]=2;
+        }
+        s.shader_stage_program|=mode<<(unit*5);s.dim_tex[unit]=family==6 && (i&64)?3:2;
+        bool cube=family==4 || family==5 || family==7,sampled=mode!=PS_TEXTUREMODES_DOT_ZW;
+        s.tex_cubemap[unit]=cube && !!(i&64);s.border_adjust[unit]=sampled && mode!=PS_TEXTUREMODES_DOT_ST && !!(i&32);
+        s.point_sprite=!!(i&256);s.rect_tex[unit]=sampled && !cube && s.dim_tex[unit]==2 && !!(i&128) && !(unit==3 && s.point_sprite);
+        s.alpha_dynamic=!!(i&512);s.combiner_dynamic=!!(i&1024);s.depth_clipping=!!(i&2048);s.depth_format=(i/8)%4;
+        s.colorkey_mode[unit]=sampled?(i/16)%4:0;s.alphakill[unit]=!!(i&16);
+        s.other_stage_input=((i/8)%8) | (((i/64)%8)<<4) | (((i/512)%8)<<8) | (((i/4)%2)<<16) | (((i/16)%(family==4?2:3))<<20);
+        SpvPshOptions opts={.spirv_1_6=!!(i&16),.ubo_binding=1,.tex_binding=2};GlslcResult a,b;allocations=0;
+        assert(pgraph_spv_psh(&s,opts,&a) && allocations==2);unsigned dots=0;
+        for(size_t k=5;k<a.num_words;k+=a.words[k]>>16)dots+=(a.words[k]&65535)==SpvOpDot;
+        assert(dots>=unit);
+        unsigned biased=0,float_type=0,zero_id=0;
+        for(size_t k=5;k<a.num_words;k+=a.words[k]>>16){
+            unsigned op=a.words[k]&65535;
+            if(op==SpvOpTypeFloat)float_type=a.words[k+1];
+            if(op==SpvOpConstant && a.words[k+1]==float_type && !a.words[k+3])zero_id=a.words[k+2];
+            if(op==SpvOpImageSampleImplicitLod && (a.words[k]>>16)==7){assert(a.words[k+5]==SpvImageOperandsBiasMask && a.words[k+6]==zero_id);biased++;}
+        }
+        bool hilo=(s.other_stage_input&15)==4 || ((s.other_stage_input>>4)&15)==4 || ((unit==3 || family==4) && ((s.other_stage_input>>8)&15)==4);
+        assert(biased==(unsigned)hilo*(sampled+(unit==3 && (i&128) && family!=3)));
+
+        assert(a.uniforms.size<=1616 && a.uniforms.count<=27);
+        for(size_t j=0;j<a.uniforms.count;j++){
+            const GlslcUniform *u=a.uniforms.members+j;assert(u->offset+u->stride*(u->dim_a-1)+u->dim_v*4<=a.uniforms.size);
+            assert((const char *)u->name>=(const char *)(a.uniforms.members+a.uniforms.count));
+        }
+        memset(s.compare_mode,1,sizeof(s.compare_mode));s.surface_zeta_format=0xbeef;
+        assert(pgraph_spv_psh(&s,opts,&b) && allocations==4);assert(a.num_words==b.num_words && !memcmp(a.words,b.words,a.num_words*4));
+        memset(&s,0xa5,sizeof(s));char path[4096];snprintf(path,sizeof(path),"%s/dot-%u.spv",argv[1],i);FILE *f=fopen(path,"wb");assert(f);assert(fwrite(a.words,4,a.num_words,f)==a.num_words);fclose(f);
+        glslc_result_free_words(&a);free(a.uniforms.members);glslc_result_free_words(&b);free(b.uniforms.members);
+    }
+    for(unsigned i=0;i<16;i++){
+        PshState s={.final_inputs_0=0x20080000,.final_inputs_1=0x1800,.shader_stage_program=PS_TEXTUREMODES_PASSTHRU | (PS_TEXTUREMODES_DOTPRODUCT<<5) | (PS_TEXTUREMODES_DOT_ST<<10)};s.dim_tex[2]=2;
+        if(i==0)s.shader_stage_program=PS_TEXTUREMODES_DOTPRODUCT;
+        if(i==1)s.shader_stage_program|=PS_TEXTUREMODES_DOTPRODUCT<<15;
+        if(i==2)s.shader_stage_program=PS_TEXTUREMODES_DOT_ST<<5;
+        if(i==3)s.shader_stage_program&=~(31u<<5);
+        if(i>=4 && i<=6)s.shader_stage_program=(s.shader_stage_program&~(31u<<10))|((i==4?PS_TEXTUREMODES_DOT_RFLCT_SPEC:i==5?PS_TEXTUREMODES_DOT_STR_3D:PS_TEXTUREMODES_DOT_STR_CUBE)<<10);
+        if(i==7){s.shader_stage_program=(s.shader_stage_program&~(31u<<10))|(PS_TEXTUREMODES_DOTPRODUCT<<10)|(PS_TEXTUREMODES_DOT_RFLCT_DIFF<<15);s.dim_tex[3]=2;}
+        if(i==8)s.dim_tex[2]=3;
+        if(i==9)s.border_adjust[2]=true;
+        if(i==10){s.shader_stage_program=(s.shader_stage_program&~(31u<<10))|(PS_TEXTUREMODES_DOT_RFLCT_DIFF<<10);s.other_stage_input=2<<20;}
+        if(i==11)s.other_stage_input=2<<16;
+        if(i==12)s.shader_stage_program=PS_TEXTUREMODES_DOT_ZW<<5;
+        if(i==13){s.shader_stage_program=(PS_TEXTUREMODES_DOTPRODUCT<<10)|(PS_TEXTUREMODES_DOT_RFLCT_SPEC<<15);s.dim_tex[3]=2;}
+        if(i==14){s.shader_stage_program=(s.shader_stage_program&~(31u<<10))|(PS_TEXTUREMODES_DOTPRODUCT<<10)|(PS_TEXTUREMODES_DOT_STR_3D<<15);s.dim_tex[3]=3;s.rect_tex[3]=true;}
+        if(i==15)s.shadow_map[2]=true;
+        allocations=0;GlslcResult a;assert(!pgraph_spv_psh(&s,(SpvPshOptions){.ubo_binding=1,.tex_binding=2},&a));assert(!allocations && !a.words && !a.uniforms.members);
+    }
     for(unsigned i=0;i<8;i++){
         PshState s={.final_inputs_0=0x20080000,.final_inputs_1=0x1800,.shader_stage_program=PS_TEXTUREMODES_DPNDNT_AR<<10};s.dim_tex[2]=2;
         if(i==0){s.shader_stage_program=PS_TEXTUREMODES_DPNDNT_AR;s.dim_tex[0]=2;}
@@ -214,5 +272,5 @@ int main(int argc,char **argv)
         if(i==15){s.combiner_control=1;s.rgb_inputs[0]=0x0f000000;}
         allocations=0;GlslcResult a;memset(&a,0xa5,sizeof(a));assert(!pgraph_spv_psh(&s,opts,&a));assert(!allocations && !a.words && !a.uniforms.members && !a.push_constants.members);
     }
-    puts("Direct PSH: 24576 deterministic/final-allocation/ignored-key/owned-layout modules and thirty-three allocation-free unsupported cases PASS");return 0;
+    puts("Direct PSH: 28672 deterministic/final-allocation/ignored-key/owned-layout modules and forty-nine allocation-free unsupported cases PASS");return 0;
 }
