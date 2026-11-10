@@ -7,6 +7,7 @@
 #define TARGET_PAGE_MASK (~UINT64_C(4095))
 #define CF_COUNT_MASK 255u
 #define CF_NOIRQ 256u
+#define CF_PCREL 1024u
 #define unlikely(x) (x)
 #define MIN(a,b) ((a)<(b)?(a):(b))
 #define tcg_debug_assert assert
@@ -18,6 +19,10 @@ typedef struct { unsigned first_tb; } PageDesc;
 struct page_collection { unsigned unused; };
 static TranslationBlock blocks[3], *running;
 static unsigned page_link[3], invalid, restored, unlocked, unprotected;
+static unsigned flushes;
+static CPUState *only_cpu;
+#define CPU_FOREACH(c) for ((c)=only_cpu; (c); (c)=NULL)
+static void tcg_flush_jmp_cache(CPUState *c) { flushes++; }
 static PageDesc *active_page;
 static jmp_buf exit_env;
 static TranslationBlock *tcg_tb_lookup(uintptr_t ra) { return running; }
@@ -26,10 +31,10 @@ static uint64_t tb_page_addr1(TranslationBlock *t) { return t->page[1]; }
 static unsigned tb_cflags(TranslationBlock *t) { return t->cflags; }
 static unsigned curr_cflags(CPUState *c) { return 512; }
 static void cpu_restore_state_from_tb(CPUState *c, TranslationBlock *t, uintptr_t ra) { restored++; }
-static void tb_phys_invalidate__locked(TranslationBlock *t) { invalid |= 1u << t->id; active_page->first_tb--; }
-static void tlb_unprotect_code(uint64_t start) { unprotected++; }
+static void tb_phys_invalidate__locked(TranslationBlock *t, bool *owed) { invalid |= 1u << t->id; active_page->first_tb--; *owed=true; }
+static void tlb_unprotect_code(uint64_t start) { assert(flushes==1); unprotected++; }
 static void page_collection_unlock(struct page_collection *p) { unlocked++; }
-static void cpu_loop_exit_noexc(CPUState *c) { longjmp(exit_env, 1); }
+static void cpu_loop_exit_noexc(CPUState *c) { assert(flushes==1); longjmp(exit_env, 1); }
 #define PAGE_FOR_EACH_TB(start,last,p,t,n) \
     for (unsigned i=0; i<3 && ((t=&blocks[i]), (n=page_link[i]), true); i++)
 /* PRODUCTION */
@@ -47,7 +52,7 @@ int main(void)
     CPUState cpu = {0};
     typeof(*cpu.cc) cc = {0};
     typeof(*cc.tcg_ops) tcg_ops = {ops.precise_smc};
-    cc.tcg_ops=&tcg_ops; cpu.cc=&cc;
+    cc.tcg_ops=&tcg_ops; cpu.cc=&cc; only_cpu=&cpu;
     struct page_collection pages={0};
     for (unsigned second=0; second<2; second++)
     for (unsigned writer=0; writer<6; writer++)
@@ -80,9 +85,10 @@ int main(void)
         }
         bool restart=precise && (expected&(1u<<running->id)) && running->cflags!=1;
         PageDesc pd={3}; active_page=&pd;
-        invalid=restored=unlocked=unprotected=0;cpu.cflags_next_tb=0;
+        invalid=restored=unlocked=unprotected=flushes=0;cpu.cflags_next_tb=0;
         run(context,&pages,&pd,page+off,width,ra);
         assert(invalid==expected);
+        assert(flushes==(expected!=0));
         assert(restored==restart && unlocked==restart);
         assert(unprotected==(expected==7));
         assert(cpu.cflags_next_tb==(restart?(1|CF_NOIRQ|512):0));

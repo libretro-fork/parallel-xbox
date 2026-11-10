@@ -26,6 +26,10 @@ jobs:
       - uses: actions/checkout@v4
       - name: Carry specialization rejects the DOA3 throughput regression
         run: python3 libretro/tests/test-tb-lookup-state.py . cc
+      - name: Code-page invalidation batches cache clears
+        run: |
+          python3 libretro/tests/test-tb-page-cache.py . cc
+          python3 libretro/tests/test-tb-store-overlap.py . cc
       - name: Incoming carry arithmetic stays inline and correct
         run: python3 libretro/tests/test-byte-carry.py . cc
       - name: Throughput gate rejects large drops and inconclusive measurements

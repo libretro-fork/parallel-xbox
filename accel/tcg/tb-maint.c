@@ -752,7 +752,7 @@ static inline void tb_jmp_unlink(TranslationBlock *dest)
     qemu_spin_unlock(&dest->jmp_lock);
 }
 
-static void tb_jmp_cache_inval_tb(TranslationBlock *tb)
+static void tb_jmp_cache_inval_tb(TranslationBlock *tb, bool *flush_owed)
 {
     CPUState *cpu;
 
@@ -763,6 +763,10 @@ static void tb_jmp_cache_inval_tb(TranslationBlock *tb)
          * remaps flush them on the tlb_flush paths.
          */
         if (!xemu_cpu_boost) {
+            if (flush_owed) {
+                *flush_owed = true;
+                return;
+            }
             CPU_FOREACH(cpu) {
                 tcg_flush_jmp_cache(cpu);
             }
@@ -792,7 +796,7 @@ static void tb_jmp_cache_inval_tb(TranslationBlock *tb)
  * locks held.
  */
 static void do_tb_phys_invalidate(TranslationBlock *tb, bool rm_from_page_list,
-                                  bool reusable)
+                                  bool reusable, bool *flush_owed)
 {
     uint32_t h;
     tb_page_addr_t phys_pc;
@@ -825,7 +829,7 @@ static void do_tb_phys_invalidate(TranslationBlock *tb, bool rm_from_page_list,
     }
 
     /* remove the TB from the hash list */
-    tb_jmp_cache_inval_tb(tb);
+    tb_jmp_cache_inval_tb(tb, flush_owed);
 
     /* suppress this TB from the two jump lists */
     tb_remove_from_jmp_list(tb, 0);
@@ -836,10 +840,10 @@ static void do_tb_phys_invalidate(TranslationBlock *tb, bool rm_from_page_list,
 
 }
 
-static void tb_phys_invalidate__locked(TranslationBlock *tb)
+static void tb_phys_invalidate__locked(TranslationBlock *tb, bool *flush_owed)
 {
     qemu_thread_jit_write();
-    do_tb_phys_invalidate(tb, true, true);
+    do_tb_phys_invalidate(tb, true, true, flush_owed);
     qemu_thread_jit_execute();
 }
 
@@ -852,10 +856,10 @@ static void tb_phys_invalidate_impl(TranslationBlock *tb,
 {
     if (page_addr == -1 && tb_page_addr0(tb) != -1) {
         tb_lock_pages(tb);
-        do_tb_phys_invalidate(tb, true, reusable);
+        do_tb_phys_invalidate(tb, true, reusable, NULL);
         tb_unlock_pages(tb);
     } else {
-        do_tb_phys_invalidate(tb, false, reusable);
+        do_tb_phys_invalidate(tb, false, reusable, NULL);
     }
 }
 
@@ -925,6 +929,7 @@ tb_invalidate_phys_page_range__locked(CPUState *cpu,
     bool current_tb_modified = false;
     TranslationBlock *current_tb = NULL;
     bool whole_page = true;
+    bool flush_owed = false;
 
     /* Range may not cross a page. */
     tcg_debug_assert(((start ^ last) & TARGET_PAGE_MASK) == 0);
@@ -974,7 +979,16 @@ tb_invalidate_phys_page_range__locked(CPUState *cpu,
                 current_tb_modified = true;
                 cpu_restore_state_from_tb(cpu, current_tb, retaddr);
             }
-            tb_phys_invalidate__locked(tb);
+            tb_phys_invalidate__locked(tb, &flush_owed);
+        }
+    }
+
+    /* Every removed TB is already CF_INVALID and unlinked. Complete the
+     * page's cache flush before unprotecting code or leaving via longjmp. */
+    if (flush_owed) {
+        CPUState *c;
+        CPU_FOREACH(c) {
+            tcg_flush_jmp_cache(c);
         }
     }
 
