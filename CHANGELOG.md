@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- x86-64 hard-FPU quiet x87 comparisons order normal values and signed zero using integer fields. Keep SoftFloat for exceptional and unsupported encodings, preserving comparison results, sticky flags and host control state. Gameplay performance remains unmeasured.
+
 - Software-FPU x87 conditional moves select the exact 80-bit register image with integer operations instead of branching around a helper call. Preserve NaN payloads, extended exponents, flags and tags, while retaining the cached hard-FPU path. Gameplay performance remains unmeasured.
 
 - Apple Silicon CPU JIT opens write access when watchpoints or I/O recompilation invalidate a single translated block, then restores execute mode before returning. Protect both block metadata and jump patches in the JIT allocation. Physical Mac qualification remains unmeasured.
