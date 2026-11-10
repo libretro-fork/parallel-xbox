@@ -35,7 +35,7 @@ static void pgraph_vk_eager_frame_update(PGRAPHState *pg){(void)pg;services++;}
 static void pgraph_vk_cpu_ahead_refresh(NV2AState *d){(void)d;services++;}
 static void xemu_cost_resolve_frame(NV2AState*d,int*ops,unsigned scale){assert(ops==&pgraph_vk_cost_ops&&scale==d->pgraph.surface_scale_factor);resolves++;}
 static void pgraph_vk_debug_frame_terminator(void){services++;}
-static void pgraph_vk_seed_service(void){services++;}
+static void pgraph_vk_seed_service(PGRAPHState *pg){assert(pg && pg->vk_renderer_state);services++;}
 static void pgraph_vk_libpump_step(PGRAPHState*pg){(void)pg;services++;}
 static void pgraph_vk_save_pipeline_cache(PGRAPHState*pg,bool wait){(void)pg;assert(!wait);saves++;}
 static void xemu_cost_flip_deadline(NV2AState*d){assert(!d->pgraph.host_flip_pending);deadlines++;}
