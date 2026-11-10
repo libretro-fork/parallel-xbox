@@ -243,6 +243,8 @@ typedef struct DisasContext {
     TCGOp *prev_insn_end;
 
     /* Floating point */
+    /* MMX set TOP to zero and all tags valid since the last x87 change. */
+    bool mmx_entered;
     bool flcr_set;
     int fpstt_delta;
     TCGv_fp fpregs[8];
@@ -1962,9 +1964,14 @@ static void gen_fxchg_ST0_STN(DisasContext *s, int st_index)
 
 static void gen_enter_mmx(DisasContext *s)
 {
-    GEN_HELPER_FALLBACK_v_v(enter_mmx);
-
-    gen_flush_fp((DisasContext *)tcg_ctx->disas_ctx);
+    if (s->mmx_entered) {
+        return;
+    }
+    s->mmx_entered = true;
+    /* Publish pending x87 payloads and FIP before changing TOP and tags,
+     * just as the former helper boundary did. Later MMX instructions
+     * cannot change these fields before an invalidating instruction. */
+    gen_flush_fp(s);
 
     tcg_gen_movi_i32(fpstt, 0);
 
@@ -3150,6 +3157,7 @@ static void gen_sty_env_A0(DisasContext *s, int offset, bool align)
 
 static void gen_x87(DisasContext *s, X86DecodedInsn *decode)
 {
+    s->mmx_entered = false;
     bool update_fip = true;
     int b = decode->b;
     int modrm = s->modrm;
@@ -4451,6 +4459,7 @@ static void i386_tr_init_disas_context(DisasContextBase *dcbase, CPUState *cpu)
         dc->fpregs[i] = NULL;
     }
     dc->fpstt_delta = 0;
+    dc->mmx_entered = false;
     dc->fip_pend = false;
     dc->fdp_pend_seg = -1;
     dc->fip_val = NULL;
@@ -4506,6 +4515,7 @@ static void i386_tr_translate_insn(DisasContextBase *dcbase, CPUState *cpu)
     bool orig_cc_op_dirty = dc->cc_op_dirty;
     CCOp orig_cc_op = dc->cc_op;
     target_ulong orig_pc_save = dc->pc_save;
+    bool orig_mmx_entered = dc->mmx_entered;
 
     switch (sigsetjmp(dc->jmpbuf, 0)) {
     case 0:
@@ -4516,6 +4526,7 @@ static void i386_tr_translate_insn(DisasContextBase *dcbase, CPUState *cpu)
         break;
     case 2:
         /* Restore state that may affect the next instruction. */
+        dc->mmx_entered = orig_mmx_entered;
         dc->pc = dc->base.pc_next;
         assert(dc->cc_op_dirty == orig_cc_op_dirty);
         assert(dc->cc_op == orig_cc_op);

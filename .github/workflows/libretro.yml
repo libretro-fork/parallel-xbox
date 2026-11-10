@@ -26,6 +26,8 @@ jobs:
       - uses: actions/checkout@v4
       - name: Carry specialization rejects the DOA3 throughput regression
         run: python3 libretro/tests/test-tb-lookup-state.py . cc
+      - name: MMX entry preserves x87 publication and state transitions
+        run: python3 libretro/tests/test-mmx-entry.py . cc
       - name: MMX scalar generators match existing helpers
         run: python3 libretro/tests/test-mmx-scalar.py . cc
       - name: Code-cache flushes discard stale block chains

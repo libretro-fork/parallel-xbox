@@ -91,7 +91,58 @@ start:
     mov ecx,128
     repe cmpsd
     jne fail
-    check ebp,19
+    ; Restore and x87 transitions between MMX operations must re-enter,
+    ; even when an earlier MMX instruction already set the same TB flag.
+%assign top 0
+%rep 8
+    inc ebp
+    fninit
+%rep top
+    fincstp
+%endrep
+    fxsave [0x4000]
+    movq mm0,[payload]
+    fxrstor [0x4000]
+    movq mm1,[payload]
+    fxsave [0x5000]
+    check byte [0x5004],0xff
+    movzx eax,word [0x5002]
+    and eax,0x3800
+    check eax,0
+    inc ebp
+    movq mm0,[payload]
+    fincstp
+    movq mm1,[payload]
+    fxsave [0x5000]
+    check byte [0x5004],0xff
+    movzx eax,word [0x5002]
+    and eax,0x3800
+    check eax,0
+    inc ebp
+    movq mm0,[payload]
+    ffree st3
+    movq mm1,[payload]
+    fxsave [0x5000]
+    check byte [0x5004],0xff
+    inc ebp
+    movq mm0,[payload]
+    emms
+    movq mm1,[payload]
+    fxsave [0x5000]
+    check byte [0x5004],0xff
+%assign top top+1
+%endrep
+    ; Pending hard-FPU values must land before TOP is replaced by MMX.
+    inc ebp
+    fninit
+    fld1
+    fld qword [two]
+    fadd st0,st1
+    movq mm0,[payload]
+    fxsave [0x5000]
+    check word [0x5088],0x4000 ; physical register 6 still holds 3.0
+    check dword [0x5084],0xc0000000
+    check ebp,52
     mov dword [R],0x4b4f4d4d ; MMOK
 .halt:
     cli
