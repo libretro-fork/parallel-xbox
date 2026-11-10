@@ -12,6 +12,17 @@ static uint32_t inputs(unsigned i)
     static const unsigned regs[]={0,1,2,3,4,5,8,9,10,11,12,13,14};uint32_t v=0;
     for(unsigned j=0;j<4;j++){unsigned b=regs[(i+j*5)%13] | (((i>>(j%3))&7)<<5) | ((i+j)&1?16:0);v=(v<<8)|b;}return v;
 }
+static void poison_dead(PshState *s,unsigned i){
+ s->g8b8_mip_flags=(i*17+1)&255;s->g8b8_mip_clamp_u=(i*13+7)&255;s->g8b8_mip_clamp_v=(i*19+11)&255;s->g8b8_mip_mirror=(i*23+3)&255;
+ for(unsigned j=0;j<4;j++){
+  unsigned mode=(s->shader_stage_program>>(j*5))&31;
+  if(mode==PS_TEXTUREMODES_NONE || mode==PS_TEXTUREMODES_PASSTHRU || mode==PS_TEXTUREMODES_CLIPPLANE || mode==PS_TEXTUREMODES_DOTPRODUCT || mode==PS_TEXTUREMODES_DOT_ZW){
+   s->tex_x8y24[j]=true;s->shadow_map[j]=1+(i+j*17)%255;s->dim_tex[j]=(int)((i+j)%9)-2;s->tex_cubemap[j]=!!((i+j)&1);s->conv_tex[j]=99;s->colorkey_mode[j]=99;s->alphakill[j]=!!((i+j)&1);
+   if(mode!=PS_TEXTUREMODES_PASSTHRU)s->border_adjust[j]=!!((i+j)&2);
+   if(!(s->point_sprite && j==3))s->rect_tex[j]=!!((i+j)&4);
+  }
+ }
+}
 int main(int argc,char **argv)
 {
     assert(argc==2);
@@ -255,7 +266,7 @@ int main(int argc,char **argv)
         if(i>=7 && i<=9)s.dim_tex[0]=i==9?3:i-7;
         if(i==10)s.tex_cubemap[0]=true;
         if(i==11)s.g8b8_signed[0]=1;
-        if(i==12)s.g8b8_mip_flags=1;
+        if(i==12){s.g8b8_mip_flags=1;s.g8b8_signed[0]=1;}
         if(i==13)opts.tex_binding=29;
         if(i==14)opts.ubo_binding=2;
         if(i==15)s.colorkey_mode[0]=4;
@@ -267,7 +278,7 @@ int main(int argc,char **argv)
         if(i<6){s.shadow_depth_func=i+1;s.shadow_map[0]=64;}
         if(i>=6 && i<=8)s.dim_tex[0]=i==8?3:i-6;
         if(i==9)s.g8b8_signed[0]=1;
-        if(i==10)s.g8b8_mip_flags=1;
+        if(i==10){s.g8b8_mip_flags=1;s.g8b8_signed[0]=1;}
         if(i==11)s.colorkey_mode[0]=-1;
         if(i==12)s.colorkey_mode[0]=4;
         if(i==13)opts.ubo_binding=32;
@@ -367,7 +378,7 @@ int main(int argc,char **argv)
         if(i==5)s.dim_tex[0]=0;
         if(i==6)s.tex_cubemap[0]=true;
         if(i==7)s.g8b8_signed[0]=1;
-        if(i==8)s.g8b8_mip_flags=1;
+        if(i==8){s.g8b8_mip_flags=1;s.g8b8_signed[0]=1;}
         if(i==9)s.colorkey_mode[0]=4;
         if(i==10)opts.ubo_binding=2;
         if(i==11)opts.tex_binding=29;
@@ -456,6 +467,27 @@ int main(int argc,char **argv)
         allocations=0;GlslcResult a;assert(!pgraph_spv_psh(&s,opts,&a));assert(!allocations && !a.words && !a.uniforms.members);
     }
 
+ for(unsigned i=0;i<4096;i++){
+  unsigned family=i%8,unit=(i/8)%4;PshState state={.final_inputs_0=0x20040000,.final_inputs_1=0x1400};
+  state.smooth_shading=!!(i&16);state.depth_format=(i/32)%4;state.z_perspective=!!(i&128);state.depth_clipping=!!(i&256);state.alpha_dynamic=!!(i&512);state.combiner_dynamic=!!(i&1024);state.point_sprite=!!(i&2048);
+  for(unsigned j=0;j<4;j++)state.dim_tex[j]=2;
+  if(family==1)state.shader_stage_program=PS_TEXTUREMODES_PASSTHRU<<(unit*5);
+  if(family==2)state.shader_stage_program=PS_TEXTUREMODES_CLIPPLANE<<(unit*5);
+  if(family==3)state.shader_stage_program=PS_TEXTUREMODES_PROJECT2D<<(unit*5);
+  if(family==4){state.shader_stage_program=PS_TEXTUREMODES_PROJECT3D<<(unit*5);state.dim_tex[unit]=(i&64)?3:2;}
+  if(family==5){state.shader_stage_program=PS_TEXTUREMODES_CUBEMAP<<(unit*5);state.tex_cubemap[unit]=!!(i&64);}
+  if(family==6){state.shader_stage_program=PS_TEXTUREMODES_PROJECT2D|(((i&64)?PS_TEXTUREMODES_BUMPENVMAP_LUM:PS_TEXTUREMODES_BUMPENVMAP)<<5);state.dim_tex[1]=(i&128)?3:2;}
+  if(family==7)state.shader_stage_program=PS_TEXTUREMODES_PASSTHRU|(PS_TEXTUREMODES_DOTPRODUCT<<5)|(PS_TEXTUREMODES_DOT_ZW<<10);
+  SpvPshOptions so={.spirv_1_6=!!(i&16),.ubo_binding=1,.tex_binding=2};GlslcResult a,b;
+  allocations=0;assert(pgraph_spv_psh(&state,so,&a) && allocations==2);
+  poison_dead(&state,i);assert(pgraph_spv_psh(&state,so,&b) && allocations==4);
+  assert(a.num_words==b.num_words && !memcmp(a.words,b.words,a.num_words*4));assert(a.uniforms.count==b.uniforms.count && a.uniforms.size==b.uniforms.size);
+  for(unsigned j=0;j<a.uniforms.count;j++){const GlslcUniform *x=a.uniforms.members+j,*y=b.uniforms.members+j;assert(!strcmp(x->name,y->name) && x->offset==y->offset && x->dim_v==y->dim_v && x->dim_a==y->dim_a && x->stride==y->stride);}
+  memset(&state,0xa5,sizeof(state));assert(!a.allocation && !b.allocation && a.allocation_words==a.num_words && b.allocation_words==b.num_words);
+  char path[4096];snprintf(path,sizeof(path),"%s/dead-%u.spv",argv[1],i);FILE *f=fopen(path,"wb");assert(f && fwrite(b.words,4,b.num_words,f)==b.num_words);fclose(f);
+  glslc_result_free_words(&a);free(a.uniforms.members);glslc_result_free_words(&b);free(b.uniforms.members);
+ }
+
     for(unsigned i=0;i<16;i++){
         PshState s={.final_inputs_0=0x04200000,.final_inputs_1=0x1400};SpvPshOptions opts={.ubo_binding=1};
         if(i==0)opts.ubo_binding=32;
@@ -463,10 +495,10 @@ int main(int argc,char **argv)
         if(i==2)s.combiner_control=9;
         if(i==3)s.final_inputs_0=s.final_inputs_1=0;
         if(i==4)s.shader_stage_program=1;
-        if(i==5)s.g8b8_mip_flags=1;
+        if(i==5){s.g8b8_mip_flags=1;s.g8b8_signed[0]=1;}
         if(i==6)s.g8b8_signed[0]=1;
-        if(i==7)s.tex_x8y24[1]=true;
-        if(i==8)s.shadow_map[2]=1;
+        if(i==7){s.tex_x8y24[1]=true;s.g8b8_signed[1]=1;}
+        if(i==8){s.shadow_map[2]=1;s.g8b8_signed[2]=1;}
         if(i==9)s.depth_format=DEPTH_FORMAT_UI_CLAMP;
         if(i==10){s.point_sprite=true;s.rect_tex[3]=true;}
         if(i==11)s.other_stage_input=8;
@@ -476,5 +508,5 @@ int main(int argc,char **argv)
         if(i==15){s.combiner_control=1;s.rgb_inputs[0]=0x0f000000;}
         allocations=0;GlslcResult a;memset(&a,0xa5,sizeof(a));assert(!pgraph_spv_psh(&s,opts,&a));assert(!allocations && !a.words && !a.uniforms.members && !a.push_constants.members);
     }
-    puts("Direct PSH: 51200 deterministic/final-allocation/ignored-key/owned-layout modules and one hundred twenty-nine allocation-free unsupported cases PASS");return 0;
+    puts("Direct PSH: 55296 deterministic/final-allocation/ignored-key/owned-layout modules and one hundred twenty-nine allocation-free unsupported cases PASS");return 0;
 }

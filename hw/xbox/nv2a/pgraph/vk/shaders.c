@@ -863,7 +863,7 @@ static bool vk_module_triangle_options(const ShaderModuleCacheKey *key,
                                         SpvTriangleGeomOptions *opts)
 {
     if (key->kind != VK_SHADER_STAGE_GEOMETRY_BIT ||
-        (!key->geom.glsl_opts.vulkan || key->geom.glsl_opts.ui_clamp_stage)) {
+        (!key->geom.glsl_opts.vulkan || key->geom.glsl_opts.ui_clamp_stage > 4)) {
         return false;
     }
     const GeomState *state = &key->geom.state;
@@ -883,6 +883,7 @@ static bool vk_module_triangle_options(const ShaderModuleCacheKey *key,
         .smooth_shading = state->smooth_shading,
         .spirv_1_6 = pgraph_vk_spirv_1_6,
         .z_perspective = state->z_perspective,
+        .ui_clamp_stage = key->geom.glsl_opts.ui_clamp_stage,
         .polygon_mode = state->polygon_front_mode == POLY_MODE_LINE ? SPV_GEOM_LINE :
                         state->polygon_front_mode == POLY_MODE_POINT ? SPV_GEOM_POINT : SPV_GEOM_FILL,
         /* Match get_vertex_order(), including its else case. */
@@ -899,7 +900,7 @@ static bool vk_module_quad_options(const ShaderModuleCacheKey *key,
                                     SpvQuadGeomOptions *opts)
 {
     if (key->kind != VK_SHADER_STAGE_GEOMETRY_BIT ||
-        (!key->geom.glsl_opts.vulkan || key->geom.glsl_opts.ui_clamp_stage)) {
+        (!key->geom.glsl_opts.vulkan || key->geom.glsl_opts.ui_clamp_stage > 4)) {
         return false;
     }
     const GeomState *state = &key->geom.state;
@@ -914,6 +915,7 @@ static bool vk_module_quad_options(const ShaderModuleCacheKey *key,
         .smooth_shading = state->smooth_shading,
         .spirv_1_6 = pgraph_vk_spirv_1_6,
         .z_perspective = state->z_perspective,
+        .ui_clamp_stage = key->geom.glsl_opts.ui_clamp_stage,
         .polygon_mode = state->polygon_front_mode == POLY_MODE_LINE ? SPV_GEOM_LINE :
                         state->polygon_front_mode == POLY_MODE_POINT ? SPV_GEOM_POINT : SPV_GEOM_FILL,
         .strip = state->primitive_mode == PRIM_TYPE_QUAD_STRIP,

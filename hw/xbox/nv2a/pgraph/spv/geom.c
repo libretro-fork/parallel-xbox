@@ -5,8 +5,9 @@
 #include <spirv/unified1/spirv.h>
 #include "geom.h"
 
-/* The three GLSL.std.450 instructions used by triangle depth slopes. */
-enum { GLSLstd450FAbs = 4, GLSLstd450FMax = 40, GLSLstd450Fma = 50 };
+/* GLSL.std.450 instructions used by depth slopes and UI classification. */
+enum { GLSLstd450FAbs = 4, GLSLstd450Ceil = 9, GLSLstd450FMin = 37,
+       GLSLstd450FMax = 40, GLSLstd450Fma = 50 };
 
 /* The same deterministic emitter first counts, then fills the final owned
  * allocation. Counting repeats instruction construction, not shader parsing.
@@ -166,11 +167,40 @@ static void line_positions(Writer *w, uint32_t float_t, uint32_t vec4_t,
     positions[2] = value(w, SpvOpCompositeConstruct, vec4_t, 4, x2, y2, z0, w0);
 }
 
+#include "geom-ui.inc"
+
+/* Valid UI rectangles use the marker without evaluating their depth plane. */
+static uint32_t ui_slope(GeomUi *u, bool perspective,
+                         uint32_t p0, uint32_t p1, uint32_t p2)
+{
+    Writer *w = u->w;
+    uint32_t before = u->block, body = id(w), merge = id(w);
+    op(w, SpvOpSelectionMerge, 2, merge, SpvSelectionControlMaskNone);
+    op(w, SpvOpBranchConditional, 3, u->valid, merge, body);
+    op(w, SpvOpLabel, 1, body);
+    uint32_t slope = triangle_slope(w, u->ft, u->bt, u->ext, u->zero,
+                                    perspective, p0, p1, p2);
+    op(w, SpvOpBranch, 1, merge);
+    op(w, SpvOpLabel, 1, merge);
+    uint32_t result = value(w, SpvOpPhi, u->ft, 4,
+        u->negative_zero, before, slope, body);
+    u->block = merge;
+    return result;
+}
+
+static uint32_t ui_position(GeomUi *u, uint32_t vt, uint32_t p, const uint32_t xy[2])
+{
+    uint32_t result = value(u->w, SpvOpCompositeInsert, vt, 3, xy[0], p, 0u);
+    result = value(u->w, SpvOpCompositeInsert, vt, 3, xy[1], result, 1u);
+    return value(u->w, SpvOpSelect, vt, 3, u->valid, result, p);
+}
+
 static void emit_geom(Writer *w, SpvLineGeomOptions opts,
                        const SpvTriangleGeomOptions *tri,
                        const SpvQuadGeomOptions *quad)
 {
     bool planar = tri || quad;
+    unsigned ui_stage = tri ? tri->ui_clamp_stage : quad ? quad->ui_clamp_stage : 0;
     SpvGeomPolygonMode polygon_mode = tri ? tri->polygon_mode :
                                       quad ? quad->polygon_mode : SPV_GEOM_FILL;
     bool wire = planar && polygon_mode == SPV_GEOM_LINE;
@@ -203,6 +233,11 @@ static void emit_geom(Writer *w, SpvLineGeomOptions opts,
         outputs[i] = id(w);
     }
     uint32_t gl_in = id(w), gl_out = id(w);
+    GeomUi ui = {.w=w, .ft=float_t, .bt=bool_t, .ext=ext, .zero=fzero};
+    if (ui_stage) {
+        ui.one=id(w); ui.half=id(w); ui.epsilon=id(w);
+        ui.negative_zero=id(w); ui.yes=id(w); ui.no=id(w);
+    }
 
     word(w, SpvMagicNumber);
     word(w, opts.spirv_1_6 ? 0x00010600 : 0x00010500);
@@ -272,6 +307,14 @@ static void emit_geom(Writer *w, SpvLineGeomOptions opts,
     op(w, SpvOpConstant, 3, uint_t, one, 1u);
     op(w, SpvOpConstant, 3, uint_t, two, 2u);
     op(w, SpvOpConstant, 3, float_t, fzero, 0u);
+    if (ui_stage) {
+        op(w, SpvOpConstant, 3, float_t, ui.one, 0x3f800000u);
+        op(w, SpvOpConstant, 3, float_t, ui.half, 0x3f000000u);
+        op(w, SpvOpConstant, 3, float_t, ui.epsilon, 0x358637bdu);
+        op(w, SpvOpConstant, 3, float_t, ui.negative_zero, 0x80000000u);
+        op(w, SpvOpConstantTrue, 2, bool_t, ui.yes);
+        op(w, SpvOpConstantFalse, 2, bool_t, ui.no);
+    }
     if (planar) { op(w, SpvOpConstant, 3, uint_t, three, 3u); }
     if (quad) { op(w, SpvOpConstant, 3, uint_t, four, 4u); }
     op(w, SpvOpTypeStruct, 3, pervertex_t, vec4_t, float_t);
@@ -298,12 +341,14 @@ static void emit_geom(Writer *w, SpvLineGeomOptions opts,
     op(w, SpvOpVariable, 3, out_pervertex_ptr, gl_out, SpvStorageClassOutput);
     if (parity_needed) { op(w, SpvOpVariable, 3, in_uint_ptr, primitive, SpvStorageClassInput); }
     op(w, SpvOpFunction, 4, void_t, main_id, SpvFunctionControlMaskNone, fn_t);
-    op(w, SpvOpLabel, 1, id(w));
+    ui.block = id(w);
+    op(w, SpvOpLabel, 1, ui.block);
 
     uint32_t indices[3] = {zero, one, two};
     uint32_t p0 = 0, p1 = 0, p2 = 0, dz = fzero;
     uint32_t flat_index = opts.provoking_vertex ? one : zero;
     uint32_t quad_planes[2][3], quad_positions[4], quad_slopes[2], quad_merge = 0;
+    uint32_t ui_positions[4], ui_textures[4];
     if (quad) {
         if (quad->strip) {
             uint32_t pid = value(w, SpvOpLoad, uint_t, 1, primitive);
@@ -314,6 +359,7 @@ static void emit_geom(Writer *w, SpvLineGeomOptions opts,
             op(w, SpvOpSelectionMerge, 2, quad_merge, SpvSelectionControlMaskNone);
             op(w, SpvOpBranchConditional, 3, even, body, quad_merge);
             op(w, SpvOpLabel, 1, body);
+            ui.block = body;
         }
         const uint32_t constants[4] = {zero, one, two, three};
         const unsigned plane_order[2][2][3] = {
@@ -322,16 +368,32 @@ static void emit_geom(Writer *w, SpvLineGeomOptions opts,
         for (unsigned i = 0; i < 4; i++) {
             quad_positions[i] = load_at(w, inputs[9], constants[i], in_vec4_ptr, vec4_t);
         }
+        if (ui_stage) {
+            for (unsigned i=0; i<4; i++) {
+                ui_textures[i]=load_at(w, inputs[4+ui_stage], constants[i], in_vec4_ptr, vec4_t);
+            }
+            ui_prepare(&ui, 4, quad_positions, ui_textures);
+        }
         for (unsigned plane = 0; plane < 2; plane++) {
             for (unsigned i = 0; i < 3; i++) {
                 quad_planes[plane][i] = quad_positions[plane_order[quad->strip][plane][i]];
             }
-            quad_slopes[plane] = triangle_slope(w, float_t, bool_t, ext, fzero,
+            quad_slopes[plane] = ui_stage ? ui_slope(&ui, quad->z_perspective,
+                quad_planes[plane][0], quad_planes[plane][1], quad_planes[plane][2]) :
+                triangle_slope(w, float_t, bool_t, ext, fzero,
                 quad->z_perspective, quad_planes[plane][0],
                 quad_planes[plane][1], quad_planes[plane][2]);
         }
         flat_index = three; /* Quads always provoke from input 3. */
     } else if (tri) {
+        if (ui_stage) {
+            const uint32_t constants[3] = {zero, one, two};
+            for (unsigned i=0; i<3; i++) {
+                ui_positions[i]=load_at(w, inputs[9], constants[i], in_vec4_ptr, vec4_t);
+                ui_textures[i]=load_at(w, inputs[4+ui_stage], constants[i], in_vec4_ptr, vec4_t);
+            }
+            ui_prepare(&ui, 3, ui_positions, ui_textures);
+        }
         uint32_t even = 0;
         if (parity_needed) {
             uint32_t pid = value(w, SpvOpLoad, uint_t, 1, primitive);
@@ -352,10 +414,21 @@ static void emit_geom(Writer *w, SpvLineGeomOptions opts,
             flat_index = value(w, SpvOpSelect, uint_t, 3, even, flat_index,
                                indices[tri->provoking_odd]);
         }
-        p0 = load_at(w, inputs[9], indices[0], in_vec4_ptr, vec4_t);
-        p1 = load_at(w, inputs[9], indices[1], in_vec4_ptr, vec4_t);
-        p2 = load_at(w, inputs[9], indices[2], in_vec4_ptr, vec4_t);
-        dz = triangle_slope(w, float_t, bool_t, ext, fzero,
+        uint32_t positions[3];
+        for (unsigned i=0; i<3; i++) {
+            if (ui_stage) {
+                positions[i]=ui_positions[rotations[tri->rotation_even][i]];
+                if (tri->rotation_even!=tri->rotation_odd) {
+                    positions[i]=value(w, SpvOpSelect, vec4_t, 3, even,
+                        positions[i], ui_positions[rotations[tri->rotation_odd][i]]);
+                }
+            } else {
+                positions[i]=load_at(w, inputs[9], indices[i], in_vec4_ptr, vec4_t);
+            }
+        }
+        p0=positions[0]; p1=positions[1]; p2=positions[2];
+        dz = ui_stage ? ui_slope(&ui, tri->z_perspective, p0, p1, p2) :
+            triangle_slope(w, float_t, bool_t, ext, fzero,
                             tri->z_perspective, p0, p1, p2);
     } else {
         p0 = load_at(w, inputs[9], zero, in_vec4_ptr, vec4_t);
@@ -425,9 +498,24 @@ static void emit_geom(Writer *w, SpvLineGeomOptions opts,
             /* Load on first emission; repeated edges/vertices reuse immutable
              * input SSA values without preloading future vertices. */
             for (unsigned i = 0; i < 9; i++) {
-                vertex_values[input_slot][i] = i < 4 && !opts.smooth_shading ? flat_colours[i] :
+                if (ui_stage && i == 4+ui_stage) {
+                    uint32_t texture = ui_textures[input_slot];
+                    if (tri) {
+                        const unsigned rotations[3][3]={{0,1,2},{2,0,1},{1,2,0}};
+                        texture=ui_textures[rotations[tri->rotation_even][input_slot]];
+                        if (tri->rotation_even!=tri->rotation_odd) {
+                            uint32_t match=value(w, SpvOpIEqual, bool_t, 2,
+                                index, constants[rotations[tri->rotation_even][input_slot]]);
+                            texture=value(w, SpvOpSelect, vec4_t, 3, match,
+                                texture, ui_textures[rotations[tri->rotation_odd][input_slot]]);
+                        }
+                    }
+                    vertex_values[input_slot][i]=texture;
+                } else {
+                    vertex_values[input_slot][i] = i < 4 && !opts.smooth_shading ? flat_colours[i] :
                     load_at(w, inputs[i], index, i == 4 ? in_float_ptr : in_vec4_ptr,
                             i == 4 ? float_t : vec4_t);
+                }
             }
             for (unsigned member = 0; member < 2; member++) {
                 uint32_t src = value(w, SpvOpAccessChain,
@@ -458,8 +546,8 @@ static void emit_geom(Writer *w, SpvLineGeomOptions opts,
             op(w, SpvOpStore, 2, outputs[i], data);
         }
         op(w, SpvOpStore, 2, outputs[9], p0);
-        op(w, SpvOpStore, 2, outputs[10], p1);
-        op(w, SpvOpStore, 2, outputs[11], p2);
+        op(w, SpvOpStore, 2, outputs[10], ui_stage ? ui_position(&ui, vec4_t, p1, ui.lo) : p1);
+        op(w, SpvOpStore, 2, outputs[11], ui_stage ? ui_position(&ui, vec4_t, p2, ui.hi) : p2);
         op(w, SpvOpStore, 2, outputs[12], dz);
         op(w, SpvOpEmitVertex, 0);
         if (points || (wire || !planar ? (emission & 1) : emission % 3 == 2)) {
@@ -504,7 +592,7 @@ bool pgraph_spv_triangle_geom(SpvTriangleGeomOptions opts, SpvDirectModule *out)
     memset(out, 0, sizeof(*out));
     if (opts.rotation_even > 2 || opts.rotation_odd > 2 ||
         opts.provoking_even > 2 || opts.provoking_odd > 2 ||
-        (unsigned)opts.polygon_mode > SPV_GEOM_POINT) {
+        (unsigned)opts.polygon_mode > SPV_GEOM_POINT || opts.ui_clamp_stage > 4) {
         return false;
     }
     SpvLineGeomOptions common = {
@@ -528,7 +616,7 @@ bool pgraph_spv_triangle_geom(SpvTriangleGeomOptions opts, SpvDirectModule *out)
 bool pgraph_spv_quad_geom(SpvQuadGeomOptions opts, SpvDirectModule *out)
 {
     memset(out, 0, sizeof(*out));
-    if ((unsigned)opts.polygon_mode > SPV_GEOM_POINT) { return false; }
+    if ((unsigned)opts.polygon_mode > SPV_GEOM_POINT || opts.ui_clamp_stage > 4) { return false; }
     SpvLineGeomOptions common = {
         .smooth_shading = opts.smooth_shading, .spirv_1_6 = opts.spirv_1_6,
     };

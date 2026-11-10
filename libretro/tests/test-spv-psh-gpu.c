@@ -123,6 +123,17 @@ static Image signed_gb_texture(VkCommandBuffer cmd,VkQueue queue,VkFence fence){
  VkSubmitInfo submit={.sType=VK_STRUCTURE_TYPE_SUBMIT_INFO,.commandBufferCount=1,.pCommandBuffers=&cmd};CHECK(vkQueueSubmit(queue,1,&submit,fence));CHECK(vkWaitForFences(device,1,&fence,VK_TRUE,10000000000ull));CHECK(vkResetFences(device,1,&fence));CHECK(vkResetCommandBuffer(cmd,0));drop(staging);return a;
 }
 static unsigned fixture_kind(const PshState *s,unsigned j){unsigned mode=(s->shader_stage_program>>(j*5))&31;if(s->tex_x8y24[j] && (s->shadow_map[j] || mode==PS_TEXTUREMODES_PROJECT3D || (mode==PS_TEXTUREMODES_PROJECT2D && s->dim_tex[j]==2)))return 3;return (mode==PS_TEXTUREMODES_CUBEMAP || mode==PS_TEXTUREMODES_DOT_RFLCT_DIFF || mode==PS_TEXTUREMODES_DOT_RFLCT_SPEC || mode==PS_TEXTUREMODES_DOT_STR_CUBE)?(s->tex_cubemap[j]?2:0):s->dim_tex[j]==3?1:mode==PS_TEXTUREMODES_PROJECT2D && s->tex_cubemap[j]?2:0;}
+static void fixture_dead_meta(PshState *s,unsigned i){
+ s->g8b8_mip_flags=(i*17+1)&255;s->g8b8_mip_clamp_u=(i*13+7)&255;s->g8b8_mip_clamp_v=(i*19+11)&255;s->g8b8_mip_mirror=(i*23+3)&255;
+ for(unsigned j=0;j<4;j++){
+  unsigned mode=(s->shader_stage_program>>(j*5))&31;
+  if(mode==PS_TEXTUREMODES_NONE || mode==PS_TEXTUREMODES_PASSTHRU || mode==PS_TEXTUREMODES_CLIPPLANE || mode==PS_TEXTUREMODES_DOTPRODUCT || mode==PS_TEXTUREMODES_DOT_ZW){
+   s->tex_x8y24[j]=true;s->shadow_map[j]=1+(i+j*17)%255;s->dim_tex[j]=(int)((i+j)%9)-2;s->tex_cubemap[j]=!!((i+j)&1);s->conv_tex[j]=99;s->colorkey_mode[j]=99;s->alphakill[j]=!!((i+j)&1);
+   if(mode!=PS_TEXTUREMODES_PASSTHRU)s->border_adjust[j]=!!((i+j)&2);
+   if(!(s->point_sprite && j==3))s->rect_tex[j]=!!((i+j)&4);
+  }
+ }
+}
 static void fixture_family(PshState *s,unsigned unit,unsigned family){
  unsigned mode=family<1?PS_TEXTUREMODES_PROJECT2D:family<3?PS_TEXTUREMODES_PROJECT3D:family==3?PS_TEXTUREMODES_PROJECT2D:PS_TEXTUREMODES_CUBEMAP;
  s->shader_stage_program=(s->shader_stage_program&~(31u<<(unit*5)))|(mode<<(unit*5));s->dim_tex[unit]=family<2?3:2;s->tex_cubemap[unit]=family==3 || family==4;
@@ -651,6 +662,28 @@ int main(int argc,char **argv){
    values.combCtl[0]=state.combiner_control;values.combRgbIn[0]=state.rgb_inputs[0];values.combRgbOut[0]=state.rgb_outputs[0];values.combFinal0[0]=state.final_inputs_0;values.combFinal1[0]=state.final_inputs_1;state.combiner_dynamic=!!(f&1024);if(state.combiner_dynamic){state.combiner_control=0;state.final_inputs_0=state.final_inputs_1=0;}
    float plane[3][4]={{0,0,100,1},{4,0,200,1},{0,4,300,1}};if(ui && marked){plane[1][0]=.125f;plane[1][1]=.25f;plane[2][0]=.625f;plane[2][1]=.75f;}
    memcpy(data[4],plane,sizeof(plane));data[7][0]=.5f;data[7][1]=marked?-0.0f:0.0f;data[7][2]=1;data[7][3]=(float)(1+(f/17)%64);if(state.point_sprite)data[7][3]=-data[7][3];
+  }
+
+  if(test>=66560){
+   unsigned f=test-66560,family=f%8,unit=(f/8)%4,reg=PS_REGISTER_V0;
+   memset(&state,0,sizeof(state));memset(&values,0,sizeof(values));state.smooth_shading=!!(f&16);state.depth_format=(f/32)%4;state.z_perspective=!!(f&128);state.depth_clipping=!!(f&256);state.alpha_dynamic=!!(f&512);state.point_sprite=!!(f&2048);
+   for(unsigned j=0;j<4;j++)state.dim_tex[j]=2;
+   if(family==1){state.shader_stage_program=PS_TEXTUREMODES_PASSTHRU<<(unit*5);reg=PS_REGISTER_T0+unit;}
+   if(family==2)state.shader_stage_program=PS_TEXTUREMODES_CLIPPLANE<<(unit*5);
+   if(family==3){state.shader_stage_program=PS_TEXTUREMODES_PROJECT2D<<(unit*5);reg=PS_REGISTER_T0+unit;}
+   if(family==4){state.shader_stage_program=PS_TEXTUREMODES_PROJECT3D<<(unit*5);state.dim_tex[unit]=(f&64)?3:2;reg=PS_REGISTER_T0+unit;}
+   if(family==5){state.shader_stage_program=PS_TEXTUREMODES_CUBEMAP<<(unit*5);state.tex_cubemap[unit]=!!(f&64);reg=PS_REGISTER_T0+unit;}
+   if(family==6){state.shader_stage_program=PS_TEXTUREMODES_PROJECT2D|(((f&64)?PS_TEXTUREMODES_BUMPENVMAP_LUM:PS_TEXTUREMODES_BUMPENVMAP)<<5);state.dim_tex[1]=(f&128)?3:2;reg=PS_REGISTER_T0+1;}
+   if(family==7)state.shader_stage_program=PS_TEXTUREMODES_PASSTHRU|(PS_TEXTUREMODES_DOTPRODUCT<<5)|(PS_TEXTUREMODES_DOT_ZW<<10);
+   values.surfaceScale[0][0]=values.surfaceScale[0][1]=1;values.clipRange[0][1]=values.clipRange[0][3]=16777215;values.alphaKillMask[0]=(f/32)%16;
+   for(unsigned j=0;j<8;j++){values.clipRegion[j][2]=4;values.clipRegion[j][3]=4;}
+   for(unsigned j=0;j<4;j++){
+    values.texScale[j]=.5f+(j%3)*.5f;values.bumpMat[j][0]=.125f;values.bumpMat[j][1]=-.0625f;values.bumpMat[j][2]=.0625f;values.bumpMat[j][3]=.25f;values.bumpScale[j]=.125f;values.bumpOffset[j]=.75f;
+    unsigned kind=fixture_kind(&state,j);VkDescriptorImageInfo info={samplers[(f/16+j)%16],kind==1?volume.view:kind==2?cube.view:texture.view,VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL};VkWriteDescriptorSet w={.sType=VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,.dstSet=set,.dstBinding=2+j,.descriptorCount=1,.descriptorType=VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,.pImageInfo=&info};vkUpdateDescriptorSets(device,1,&w,0,NULL);
+   }
+   state.final_inputs_0=0x20000000u|(reg<<16);state.final_inputs_1=(reg|16u)<<8;values.combFinal0[0]=state.final_inputs_0;values.combFinal1[0]=state.final_inputs_1;state.combiner_dynamic=!!(f&1024);if(state.combiner_dynamic)state.final_inputs_0=state.final_inputs_1=0;
+   fixture_dead_meta(&state,f);
+   float plane[3][4]={{0,0,100,1},{4,0,200,1},{0,4,300,1}};memcpy(data[4],plane,sizeof(plane));data[7][0]=.5f;data[7][1]=0;data[7][2]=1;data[7][3]=(float)(1+(f/17)%64);if(state.point_sprite)data[7][3]=-data[7][3];
   }
   GlslcResult modules[2];SpvPshOptions opts={.spirv_1_6=!!(test&256),.ubo_binding=1,.tex_binding=2};assert(pgraph_spv_psh(&state,opts,&modules[1]));MString *source=pgraph_glsl_gen_psh(&state,(GenPshGlslOptions){.vulkan=true,.locations=true,.ubo_binding=1,.tex_binding=2});GlslcOptions go={.spirv_1_6=opts.spirv_1_6,.emit_layout=true};if(!glslc_compile(GLSLC_STAGE_FRAGMENT,mstring_get_str(source),&go,&modules[0])){fprintf(stderr,"fragment %u %d %s\n",test,modules[0].error_line,modules[0].error);abort();}reference_source_bytes+=strlen(mstring_get_str(source));mstring_unref(source);
   words[0]+=modules[0].num_words;words[1]+=modules[1].num_words;

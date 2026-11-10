@@ -21,11 +21,13 @@ typedef struct SpvTriangleGeomOptions {
     unsigned rotation_even, rotation_odd; /* 0, 1 or 2 */
     unsigned provoking_even, provoking_odd; /* logical vertex 0, 1 or 2 */
     SpvGeomPolygonMode polygon_mode;
+    unsigned ui_clamp_stage; /* 0 disables; otherwise texture stage 1..4 */
 } SpvTriangleGeomOptions;
 
 typedef struct SpvQuadGeomOptions {
     bool smooth_shading, spirv_1_6, z_perspective, strip;
     SpvGeomPolygonMode polygon_mode;
+    unsigned ui_clamp_stage;
 } SpvQuadGeomOptions;
 
 typedef struct SpvDirectModule {

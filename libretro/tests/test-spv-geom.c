@@ -125,8 +125,16 @@ int line_tests(int argc,char **argv){
   ShaderModuleCacheKey key={.kind=VK_SHADER_STAGE_GEOMETRY_BIT,.geom={.glsl_opts={.vulkan=true,.ui_clamp_stage=stage}}};
   SpvLineGeomOptions line;SpvTriangleGeomOptions tri;SpvQuadGeomOptions quad;
   key.geom.state.primitive_mode=PRIM_TYPE_LINES;assert(!vk_module_line_options(&key,&line));
+  key.geom.state.primitive_mode=PRIM_TYPE_TRIANGLES;assert(vk_module_triangle_options(&key,&tri) && tri.ui_clamp_stage==stage);
+  key.geom.state.primitive_mode=PRIM_TYPE_QUADS;assert(vk_module_quad_options(&key,&quad) && quad.ui_clamp_stage==stage);
+ }
+ for(unsigned stage=5;stage<=6;stage++){
+  ShaderModuleCacheKey key={.kind=8,.geom={.glsl_opts={.vulkan=true,.ui_clamp_stage=stage}}};
+  SpvTriangleGeomOptions tri;SpvQuadGeomOptions quad;SpvDirectModule invalid;
   key.geom.state.primitive_mode=PRIM_TYPE_TRIANGLES;assert(!vk_module_triangle_options(&key,&tri));
   key.geom.state.primitive_mode=PRIM_TYPE_QUADS;assert(!vk_module_quad_options(&key,&quad));
+  allocations=0;assert(!pgraph_spv_triangle_geom((SpvTriangleGeomOptions){.ui_clamp_stage=stage},&invalid));assert(!allocations&&!invalid.words&&!invalid.num_words);
+  assert(!pgraph_spv_quad_geom((SpvQuadGeomOptions){.ui_clamp_stage=stage},&invalid));assert(!allocations&&!invalid.words&&!invalid.num_words);
  }
  for(unsigned version=0;version<2;version++)for(unsigned stage=1;stage<=4;stage++)for(unsigned mode=0;mode<3;mode++){
   GeomState state={.primitive_mode=mode==0?PRIM_TYPE_TRIANGLES:mode==1?PRIM_TYPE_QUADS:PRIM_TYPE_QUAD_STRIP,
@@ -134,9 +142,13 @@ int line_tests(int argc,char **argv){
   MString *glsl=pgraph_glsl_gen_geom(&state,(GenGeomGlslOptions){.vulkan=true,.ui_clamp_stage=stage});
   GlslcResult code=compile(GLSLC_STAGE_GEOMETRY,glsl->str,version);
   char name[64];snprintf(name,sizeof(name),"ui-%u-%u",mode,stage);save(argv[1],name,version,0,0,code.words,code.num_words);
+  SpvDirectModule native;allocations=0;
+  if(mode==0){assert(pgraph_spv_triangle_geom((SpvTriangleGeomOptions){.smooth_shading=true,.spirv_1_6=version,.ui_clamp_stage=stage},&native));}
+  else {assert(pgraph_spv_quad_geom((SpvQuadGeomOptions){.smooth_shading=true,.spirv_1_6=version,.strip=mode==2,.ui_clamp_stage=stage},&native));}
+  assert(allocations==1);char direct_name[64];snprintf(direct_name,sizeof(direct_name),"ui-direct-%u-%u",mode,stage);save(argv[1],direct_name,version,0,0,native.words,native.num_words);free(native.words);
   free(code.words);mstring_unref(glsl);
  }
- puts("UI geometry: 24 complete modules and native-selector exclusions passed");
+ puts("UI geometry: 24 reference/native modules, one allocation and selectors passed");
  SpvDirectModule invalid;allocations=0;assert(!pgraph_spv_line_geom((SpvLineGeomOptions){.provoking_vertex=2},&invalid));assert(!allocations&&!invalid.words&&!invalid.num_words);
  for(unsigned version=0;version<2;version++)for(unsigned smooth=0;smooth<2;smooth++)for(unsigned provoking=0;provoking<2;provoking++){
   GeomState state={.primitive_mode=PRIM_TYPE_LINES,.polygon_front_mode=POLY_MODE_FILL,.polygon_back_mode=POLY_MODE_FILL,.smooth_shading=smooth,.first_vertex_is_provoking=provoking==0};
@@ -163,4 +175,14 @@ int line_tests(int argc,char **argv){
 #include "spv-triangle-tests.h"
 #include "spv-quad-tests.h"
 #include "spv-modes-tests.h"
-int main(int argc,char **argv){int result=line_tests(argc,argv);triangle_tests(argv[1]);quad_tests(argv[1]);modes_tests(argv[1]);return result;}
+#include "spv-ui-geom-tests.h"
+int main(int argc,char **argv){
+#ifdef TEST_VULKAN
+ if(getenv("GEOM_UI_ONLY")){assert(argc==2);quiet_test_errors();ui_geometry_gpu_tests(argv[1]);return 0;}
+#endif
+ int result=line_tests(argc,argv);triangle_tests(argv[1]);quad_tests(argv[1]);modes_tests(argv[1]);
+#ifdef TEST_VULKAN
+ ui_geometry_gpu_tests(argv[1]);
+#endif
+ return result;
+}

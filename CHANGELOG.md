@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Vulkan emits UI rectangle geometry directly as SPIR-V, preserving fractional pixel bounds, winding and quad-strip behavior without intermediate shader text or geometry copies.
+
+- Keep shaders on the direct Vulkan SPIR-V path when they carry unused signed-mip metadata or format flags on samplerless stages. Preserve the original key and emitted program/layout, without new allocations, copies or retained lends; live format and invalid-shape checks remain in place.
+
 - DSP DMA: read each seven-word descriptor through one backend operation, with a stable snapshot before payload writes. Preserve ordered reads across memory aliases and callback-only backends, strict program-memory checks, and program-write invalidation; add boundary, overlap and linked-node regressions.
 
 - Read unsigned integer color textures directly as Vulkan SPIR-V, including projected/rectangle reads and nine-tap convolution. Convert numeric texels to floats before filtering without shadow-depth decoding, reuse existing unsigned views and preserve alpha/key processing. Keep two final allocations without texel copies or retained lends; unsupported shapes retain the compiler.

@@ -290,7 +290,7 @@ static bool dest_valid(unsigned r)
 { return r==0 || r==4 || r==5 || (r>=8 && r<=13); }
 bool pgraph_spv_psh_supported(const PshState *s,SpvPshOptions opts)
 {
-    if(opts.ubo_binding>=32 || (!s->combiner_dynamic && ((s->combiner_control&255)>8 || !(s->final_inputs_0 || s->final_inputs_1))) || (s->g8b8_mip_flags && !has_signed_gb(s)) || ((s->depth_format&DEPTH_FORMAT_UI_CLAMP) && !pgraph_glsl_ui_clamp_stage(s)))return false;
+    if(opts.ubo_binding>=32 || (!s->combiner_dynamic && ((s->combiner_control&255)>8 || !(s->final_inputs_0 || s->final_inputs_1))) || ((s->depth_format&DEPTH_FORMAT_UI_CLAMP) && !pgraph_glsl_ui_clamp_stage(s)))return false;
     bool dots[4]={false};
     for(unsigned j=0;j<4;j++){
         unsigned mode=texture_mode(s,j);
@@ -306,7 +306,7 @@ bool pgraph_spv_psh_supported(const PshState *s,SpvPshOptions opts)
             dots[j]=true;
         }
         if(s->g8b8_signed[j] && (!(s->g8b8_signed[j]&15) || (s->g8b8_signed[j]&~255u) || mode!=PS_TEXTUREMODES_PROJECT2D || s->dim_tex[j]!=2 || s->tex_cubemap[j] || s->shadow_map[j] || s->tex_x8y24[j] || s->border_adjust[j]))return false;
-        if((s->tex_x8y24[j] || s->shadow_map[j]) && !constant_shadow(s,j) && !sampled_shadow(s,j) && !raw_color(s,j) && !(mode==PS_TEXTUREMODES_PROJECT2D && s->dim_tex[j]==3 && !s->shadow_map[j]))return false;
+        if(sample_stage(s,j) && (s->tex_x8y24[j] || s->shadow_map[j]) && !constant_shadow(s,j) && !sampled_shadow(s,j) && !raw_color(s,j) && !(mode==PS_TEXTUREMODES_PROJECT2D && s->dim_tex[j]==3 && !s->shadow_map[j]))return false;
         if(dependent_stage(s,j)){
             if(!j || texture_input(s,j)>=j)return false;
             if(!bump_stage(s,j) && (s->dim_tex[j]!=2 || s->rect_tex[j] || s->border_adjust[j]))return false;

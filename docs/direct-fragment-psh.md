@@ -623,3 +623,55 @@ saturation so equality checks expose conversion/filtering differences. The
 full matrix contains66560 cases. These value/work-count checks do not certify
 pipeline readiness, GPU execution speed or cold-play smoothness. Driver caches
 remain uncontrolled and the stutter regression stays BAD/OPEN.
+
+
+## Unused texture metadata
+
+Signed-mip metadata is ignored when no signed texture consumes it. Format
+flags are ignored on NONE, PASSTHRU, CLIPPLANE, DOTPRODUCT and DOT_ZW stages,
+which do not sample an image. Live sampler, signed-format, passthrough-border,
+dot-chain and global point/rectangle checks remain unchanged. Invalid signed
+flags still use the compiler fallback. Previously negative cases whose fields
+are now proven unused move to positive coverage; their negative controls now
+request conflicting signed formats instead.
+
+This changes eligibility only. The immutable input key remains borrowed and
+unmodified; it is neither cloned nor canonicalized. The emitter, final two
+allocations, layouts, resource owners and retirement order are unchanged.
+4096 cases across eight stage families prove identical production GLSL text,
+native words and owned layouts with and without the extra metadata. The same
+cases retain two final allocations and validate as Vulkan SPIR-V. GPU fixtures
+add4096 sampled, samplerless, dot-depth, dependent, static/live and point cases
+using existing views and buffers. The public matrix contains55296 CPU modules,
+129 allocation-free rejections and70656 GPU cases. No new shader instructions,
+resource copies, file I/O, retained pointers or release diagnostics are added.
+Pipeline readiness and cold-first-play smoothness remain separate BAD/OPEN work.
+
+## Native UI geometry companion
+
+The fragment UI clamp has a native triangle/quad geometry companion. It reads
+original input positions and selected texture coordinates, validates finite
+axis-aligned rectangles, constant Z/W/positive Q, first qualifying edge gradients
+and quad affine tolerance, then computes fractional-origin pixel-center UV
+bounds. Valid rectangles bypass plane calculation and retain the negative-zero
+marker. Invalid candidates retain the precise plane calculation. Fill, wire and
+point output use the same shared vertex UI override as production GLSL. Odd
+quad-strip invocations remain empty.
+
+Native options carry the existing one-based UI stage; persisted geometry keys
+and GLSL option layouts are unchanged. UI-disabled modules remain byte-identical.
+Existing GPU position/texture SSA values are reused during emission. There are
+no geometry snapshots, new resources, uniforms, descriptors or retained borrowed
+pointers. Generation retains one final word allocation and a bounded stack-only
+annotation list. Classifier arithmetic does not enter the precise-plane list.
+Stages outside1..4 retain allocation-free fallback; narrow two-input lines keep
+their existing fallback.
+
+CPU tests cover native/reference generation, stage bounds and allocations.
+GPU tests capture every geometry output against production GLSL, including exact
+signed-zero markers, fill/line/point, all four texture stages, both SPIR-V versions,
+smooth/flat colors, both depth conventions, strip parity and rotated triangles.
+Fixtures include flipped/swapped axes, fractional origins, different Q/Z/W,
+nonfinite inputs, short extents, nonaffine UVs and large coordinates. These checks
+do not establish PSO readiness, GPU execution speed or cold-play recovery; the
+regression remains BAD/OPEN.
