@@ -78,9 +78,13 @@ start:
     pushfd
     pop eax
     and eax,0x45
+    inc ebp
+    mov [R+0x10],eax
     check eax,0x45
     fnstsw ax
     and eax,1
+    inc ebp
+    mov [R+0x14],eax
     check eax,1
     fninit
     fld tword [0x6020]
@@ -89,9 +93,13 @@ start:
     pushfd
     pop eax
     and eax,0x45
+    inc ebp
+    mov [R+0x18],eax
     check eax,0x45
     fnstsw ax
     and eax,1
+    inc ebp
+    mov [R+0x1c],eax
     check eax,0
     mov dword [R],0x4b4f5753 ; SWOK
 .halt:
