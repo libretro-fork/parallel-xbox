@@ -31,7 +31,7 @@ static void physical_memory_set_dirty_range(ram_addr_t ram, unsigned size, unsig
 static void tb_invalidate_phys_range_fast(CPUState *cpu, ram_addr_t ram, unsigned size, uintptr_t ra) { CHECK(cpu && ram == expected_ram && size == expected_size && ra == expected_ra); invalidations++; }
 static bool physical_memory_is_clean(ram_addr_t ram) { CHECK(ram == expected_ram); return clean; }
 static void trace_memory_notdirty_set_dirty(vaddr va) { CHECK(va == expected_va); }
-static void tlb_set_dirty(CPUState *cpu, vaddr va) { CHECK(cpu && va == expected_va); tlb_dirties++; }
+static void tlb_set_dirty(CPUState *cpu, vaddr va, ram_addr_t xlat) { CHECK(cpu && va == expected_va && va + xlat == expected_ram); tlb_dirties++; }
 static void mem_check_access_callback_vaddr(CPUState *cpu, vaddr va, int size, int wp, CPUTLBEntryFull *full) { CHECK(cpu && va == expected_va && size == (int)expected_size && wp == BP_MEM_WRITE && full); callbacks++; }
 static void cpu_check_watchpoint(CPUState *cpu, vaddr va, int size, int attrs, int wp, uintptr_t ra) { CHECK(cpu && va == expected_va && size == (int)expected_size && attrs == 7 && wp == BP_MEM_WRITE && ra == expected_ra && callbacks == 1); watches++; }
 /* PRODUCTION */
