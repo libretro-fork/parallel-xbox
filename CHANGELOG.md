@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Vulkan now directly translates vertex instructions whose invalid operand bounds are irrelevant because their writes are masked, including discarded paired MAC results. Address-register writes and live-operand fallback checks remain intact.
+
 - CPU writes retain dirty tracking on TLB entries that share a virtual address but map to different physical pages. Preserve first-write trapping for page-table updates, saved-memory tracking and code invalidation across MMU modes.
 
 - USB OHCI publishes completion queues and frame numbers before raising frame interrupts, and preserves guest-cleared queue heads on frames with no new completions. Prevent a DMA interleaving from exposing an interrupt before its completion data. Game-specific qualification remains unmeasured.

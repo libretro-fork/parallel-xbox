@@ -51,6 +51,25 @@ static void unused_c(uint32_t t[4], unsigned kind)
     if(kind<3){unsigned reg=13+kind;t[3]=(t[3]&~(15u<<28))|((reg&3)<<30)|(PARAM_R<<28);t[2]=(t[2]&~3u)|(reg>>2);}
     else{t[1]=(t[1]&~(255u<<13))|((kind==3?192u:255u)<<13);t[3]=(t[3]&~(3u<<28))|(PARAM_C<<28);}
 }
+/* Construct an instruction with one decoded but unconsumed operand. */
+static unsigned masked_operand(uint32_t t[4], unsigned variant, bool invalid)
+{
+    unsigned style=variant%6, kind=(variant/6)%5, arg=style==1||style>=4?2:0;
+    unsigned m=style==1?0:style==4?MAC_MOV:style==5?MAC_ARL:1+(variant/30)%12;
+    unsigned l=style==0?0:1+(variant/360)%7;
+    token(t,m,l,m==MAC_ARL?15:1,9,style==2||style==3,false);
+    t[2]=(t[2]&~(3u<<11))|(PARAM_V<<11);
+    t[3]&=~((15u<<24)|(15u<<16)|(15u<<12));
+    if(style==2||style==3)t[3]|=(15u<<16)|(15u<<12);
+    if(style==3)t[3]=(t[3]&~(15u<<20))|(1u<<20)|(15u<<24);
+    if(style==4)t[3]|=(15u<<24)|(15u<<12);
+    if(kind>=3)t[1]=(t[1]&~(255u<<13))|((kind==3?192u:255u)<<13);
+    unsigned source=invalid?(kind<3?PARAM_R:PARAM_C):PARAM_V, reg=13+kind%3;
+    if(arg==0)t[2]=(t[2]&~((15u<<28)|(3u<<26)))|(reg<<28)|(source<<26);
+    else {t[2]=(t[2]&~3u)|(reg>>2);t[3]=(t[3]&~(15u<<28))|((reg&3)<<30)|(source<<28);}
+    return arg;
+}
+
 static void make_case(VshState *s, unsigned variant)
 {
     memset(s, 0, sizeof(*s));
@@ -341,6 +360,39 @@ int main(int argc, char **argv)
         char path[4096];snprintf(path,sizeof(path),"%s/unused-c-%u.spv",argv[1],i);FILE *f=fopen(path,"wb");assert(f&&fwrite(b.words,4,b.num_words,f)==b.num_words);fclose(f);
         glslc_result_free_words(&a);free(a.uniforms.members);free(a.push_constants.members);glslc_result_free_words(&b);free(b.uniforms.members);free(b.push_constants.members);total++;
     }
+    for(unsigned i=0;i<1024;i++){
+        VshState state={0};state.programmable.program_length=1;
+        uint32_t *t=state.programmable.program_data[0];masked_operand(t,i,false);t[3]|=1;
+        state.uniform_attrs=i&32?3:0;SpvVshOptions opts={.preserve_float32=true,.spirv_1_6=!!(i&64),.push_constants=!!(i&128)};
+        GlslcResult a,b;allocations=0;assert(pgraph_spv_vsh(&state,opts,&a));unsigned expected=2u+(unsigned)(opts.push_constants&&state.uniform_attrs);assert(allocations==expected);
+        unsigned arg=masked_operand(t,i,true);t[3]|=1;
+        assert(pgraph_spv_vsh(&state,opts,&b)&&allocations==expected*2);
+        assert(a.num_words==b.num_words&&!memcmp(a.words,b.words,a.num_words*4));
+        assert(a.uniforms.size==b.uniforms.size&&a.uniforms.count==b.uniforms.count&&a.push_constants.size==b.push_constants.size&&a.push_constants.count==b.push_constants.count);
+        /* Restore a real write: the same operand must then reject, without allocation. */
+        if(arg==0)t[3]|=15u<<24;else t[3]|=15u<<16;
+        if(i%6==3)t[3]=(t[3]&~(15u<<20))|(2u<<20);
+        GlslcResult rejected;unsigned before=allocations;
+        assert(!pgraph_spv_vsh(&state,opts,&rejected)&&allocations==before);
+        /* Invalid eagerly decoded muxes reject even when all writes disappear. */
+        masked_operand(t,i,true);t[3]|=1;
+        if(arg==0)t[2]&=~(3u<<26);else t[3]&=~(3u<<28);
+        assert(!pgraph_spv_vsh(&state,opts,&rejected)&&allocations==before);
+        memset(&state,0xa5,sizeof(state));assert(!strcmp(a.uniforms.members[0].name,"c")&&!strcmp(b.uniforms.members[0].name,"c"));
+        char path[4096];snprintf(path,sizeof(path),"%s/masked-%u.spv",argv[1],i);FILE *f=fopen(path,"wb");assert(f&&fwrite(b.words,4,b.num_words,f)==b.num_words);fclose(f);
+        glslc_result_free_words(&a);free(a.uniforms.members);free(a.push_constants.members);glslc_result_free_words(&b);free(b.uniforms.members);free(b.push_constants.members);total++;
+    }
+    for(unsigned i=0;i<10;i++){
+        VshState state={0};state.programmable.program_length=1;uint32_t *t=state.programmable.program_data[0];
+        token(t,MAC_ARL,i/5?ILU_MOV:ILU_NOP,15,0,false,true);
+        t[3]&=~((15u<<24)|(15u<<16)|(15u<<12));
+        unsigned kind=i%5;
+        if(kind<3)t[2]=(t[2]&~((15u<<28)|(3u<<26)))|((13u+kind)<<28)|(PARAM_R<<26);
+        else {t[1]=(t[1]&~(255u<<13))|((kind==3?192u:255u)<<13);t[2]=(t[2]&~(3u<<26))|(PARAM_C<<26);}
+        GlslcResult result;allocations=0;
+        assert(!pgraph_spv_vsh(&state,(SpvVshOptions){.preserve_float32=true},&result));
+        assert(!allocations&&!result.words&&!result.uniforms.members&&!result.push_constants.members);
+    }
     for(unsigned i=0;i<16;i++){
         VshState state={0};state.programmable.program_length=1;uint32_t *t=state.programmable.program_data[0];unsigned m=i==1||i==2||i==15?3:i==3||i==4?4:i==7||i==8||i==14?0:i==10||i==12?2:i==13?13:1;
         unsigned l=i==5?1:i==6?2:i==7?3:i==8?4:i==14?7:0;token(t,m,l,0,0,!!l,true);t[2]=(t[2]&~(3u<<11))|(PARAM_V<<11);
@@ -395,6 +447,6 @@ int main(int argc, char **argv)
         assert(!pgraph_spv_vsh(&s, opts, &result));
         assert(!allocations && !result.words && !result.uniforms.members && !result.push_constants.members);
     }
-    printf("Direct VSH: %u deterministic native-module/owned-layout/poisoned-key cases; 55 allocation-free unsupported paths; 512 device-capability/generation checks PASS\n", total);
+    printf("Direct VSH: %u deterministic native-module/owned-layout/poisoned-key cases; 2113 allocation-free unsupported paths; 512 device-capability/generation checks PASS\n", total);
     return 0;
 }

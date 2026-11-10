@@ -116,10 +116,29 @@ static uint64_t fixture_key_hash(const VshState *s,const SpvVshOptions *o){
  h=(h^o->spirv_1_6)*1099511628211ull;h=(h^o->preserve_float32)*1099511628211ull;
  h=(h^o->push_constants)*1099511628211ull;return (h^o->ubo_binding)*1099511628211ull;
 }
+/* Construct an instruction with one decoded but unconsumed operand. */
+static unsigned masked_operand(uint32_t t[4], unsigned variant, bool invalid)
+{
+    unsigned style=variant%6, kind=(variant/6)%5, arg=style==1||style>=4?2:0;
+    unsigned m=style==1?0:style==4?MAC_MOV:style==5?MAC_ARL:1+(variant/30)%12;
+    unsigned l=style==0?0:1+(variant/360)%7;
+    token(t,m,l,m==MAC_ARL?15:1,9,style==2||style==3,false);
+    t[2]=(t[2]&~(3u<<11))|(PARAM_V<<11);
+    t[3]&=~((15u<<24)|(15u<<16)|(15u<<12));
+    if(style==2||style==3)t[3]|=(15u<<16)|(15u<<12);
+    if(style==3)t[3]=(t[3]&~(15u<<20))|(1u<<20)|(15u<<24);
+    if(style==4)t[3]|=(15u<<24)|(15u<<12);
+    if(kind>=3)t[1]=(t[1]&~(255u<<13))|((kind==3?192u:255u)<<13);
+    unsigned source=invalid?(kind<3?PARAM_R:PARAM_C):PARAM_V, reg=13+kind%3;
+    if(arg==0)t[2]=(t[2]&~((15u<<28)|(3u<<26)))|(reg<<28)|(source<<26);
+    else {t[2]=(t[2]&~3u)|(reg>>2);t[3]=(t[3]&~(15u<<28))|((reg&3)<<30)|(source<<28);}
+    return arg;
+}
+
 int main(int argc, char **argv) {
  assert(argc==1 || argc==3);
- unsigned first=argc==3?strtoul(argv[1],NULL,10):0, limit=argc==3?strtoul(argv[2],NULL,10):37392;
- assert(first<limit && limit<=37392);
+ unsigned first=argc==3?strtoul(argv[1],NULL,10):0, limit=argc==3?strtoul(argv[2],NULL,10):38416;
+ assert(first<limit && limit<=38416);
  printf("Fixture range [%u, %u)\n",first,limit);
  const bool validated=getenv("NO_VALIDATION")==NULL;
  const char *layer="VK_LAYER_KHRONOS_validation",*debug=VK_EXT_DEBUG_UTILS_EXTENSION_NAME;
@@ -346,6 +365,15 @@ int main(int argc, char **argv) {
    uint32_t *t=state.programmable.program_data[1];t[2]=(t[2]&~(3u<<11))|(PARAM_V<<11);unused_c(t,(f/11)%5);
    token(state.programmable.program_data[2],MAC_MOV,0,0,10,false,false);
    if(m==MAC_ARL){uint32_t *next=state.programmable.program_data[2];next[1]=(next[1]&~(255u<<13))|(96u<<13);next[2]=(next[2]&~(3u<<26))|(PARAM_C<<26);next[3]|=2;}
+   token(state.programmable.program_data[3],MAC_MOV,0,0,11,false,false);token(state.programmable.program_data[4],MAC_MOV,0,1,5,false,true);
+   state.smooth_shading=!!(f&16);state.uniform_attrs=f&32?3:0;opts.push_constants=!!(f&64);
+  }
+  if(test>=37392){
+   unsigned f=test-37392;memset(&state,0,sizeof(state));state.programmable.program_length=5;
+   token(state.programmable.program_data[0],MAC_MOV,0,0,0,false,false);
+   masked_operand(state.programmable.program_data[1],f,true);
+   token(state.programmable.program_data[2],MAC_MOV,0,0,10,false,false);
+   if(f%6==5){uint32_t *next=state.programmable.program_data[2];next[1]=(next[1]&~(255u<<13))|(96u<<13);next[2]=(next[2]&~(3u<<26))|(PARAM_C<<26);next[3]|=2;}
    token(state.programmable.program_data[3],MAC_MOV,0,0,11,false,false);token(state.programmable.program_data[4],MAC_MOV,0,1,5,false,true);
    state.smooth_shading=!!(f&16);state.uniform_attrs=f&32?3:0;opts.push_constants=!!(f&64);
   }

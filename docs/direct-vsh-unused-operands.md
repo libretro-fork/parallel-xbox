@@ -21,3 +21,9 @@ a key snapshot. Initial signed-zero failures came from a fixture-order bug
 that changed state after compilation and skipped fixed-function reference FP32
 setup; those runs and policy diagnostics remain retained investigation evidence,
 not passes. The renderer/compiler FP32 policy remains unchanged.
+
+## Masked instructions
+
+Bounds checks follow emitted reads, rather than opcode arity alone. A masked MAC or ILU result emits no operand reads. Paired MAC writes to R1 are discarded; paired ILU writes still use R1. ARL always updates A0, even when its ordinary masks are zero, so its A operand remains live. Mux validation still follows the reference decoder, which formats operands before discarding masked results.
+
+The regression fixture adds 1,024 native/canonical word comparisons, checks unchanged final-owner allocation counts and poisoned input lifetimes, and restores each discarded operand to a live write to require allocation-free rejection. Invalid decoded muxes also reject with all results masked. Vulkan comparisons construct the complete key before compilation, cover paired live results and observe ARL through a subsequent relative-constant load. No payload is copied or retained by the eligibility checks.

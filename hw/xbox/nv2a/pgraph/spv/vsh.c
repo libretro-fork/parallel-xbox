@@ -139,10 +139,18 @@ bool pgraph_spv_vsh_supported(const VshState *s, SpvVshOptions opts)
         unsigned m = mac(t), l = ilu(t), output = field(t[3], 3, 4);
         if (m >= 14) { return false; }
         if (m || l) {
-            /* The decoder always forms C, so its mux must be valid. Its
-             * register/constant text is discarded when neither pipe uses C. */
-            unsigned used = (m ? mac_params[m] : 0) | (l ? 4 : 0);
-            unsigned decoded = used | 4;
+            /* Formatting validates muxes even when all writes are masked.
+             * Bounds matter only for operands emitted into the shader.
+             * ARL always writes A0, including in a paired instruction. */
+            unsigned decoded = (m ? mac_params[m] : 0) | 4;
+            bool output_write = field(t[3], 12, 4) != 0;
+            bool scalar_output = field(t[3], 2, 1) != 0;
+            bool mac_live = m && (m == MAC_ARL ||
+                (output_write && !scalar_output) ||
+                (field(t[3], 24, 4) && !(l && field(t[3], 20, 4) == 1)));
+            bool ilu_live = l && ((output_write && scalar_output) ||
+                                  field(t[3], 16, 4));
+            unsigned used = (mac_live ? mac_params[m] : 0) | (ilu_live ? 4 : 0);
             for (unsigned a = 0; a < 3; a++) {
                 if (!(decoded & (1u << a))) { continue; }
                 unsigned source = mux(t, a);
