@@ -605,12 +605,15 @@ static inline int ohci_put_iso_td(OHCIState *ohci,
 }
 
 static inline int ohci_put_hcca(OHCIState *ohci,
-                                dma_addr_t addr, struct ohci_hcca *hcca)
+                                dma_addr_t addr, struct ohci_hcca *hcca,
+                                bool done)
 {
     return dma_memory_write(ohci->as,
                             addr + ohci->localmem_base + HCCA_WRITEBACK_OFFSET,
                             (char *)hcca + HCCA_WRITEBACK_OFFSET,
-                            HCCA_WRITEBACK_SIZE, MEMTXATTRS_UNSPECIFIED);
+                            done ? HCCA_WRITEBACK_SIZE :
+                            offsetof(struct ohci_hcca, done) -
+                            HCCA_WRITEBACK_OFFSET, MEMTXATTRS_UNSPECIFIED);
 }
 
 /* Read/Write the contents of a TD from/to main memory.  */
@@ -1319,12 +1322,11 @@ static void ohci_eof_timer(OHCIState *ohci)
 {
     timer_mod(ohci->eof_timer, ohci->sof_time + usb_frame_time);
 }
-/* Set a timer for EOF and generate a SOF event */
+/* Set a timer for EOF; the caller publishes HCCA before raising SOF. */
 static void ohci_sof(OHCIState *ohci)
 {
     ohci->sof_time += usb_frame_time;
     ohci_eof_timer(ohci);
-    ohci_set_interrupt(ohci, OHCI_INTR_SF);
 }
 
 /* Process Control and Bulk lists. */
@@ -1353,6 +1355,7 @@ static void ohci_frame_boundary(void *opaque)
 {
     OHCIState *ohci = opaque;
     struct ohci_hcca hcca;
+    bool done = false;
 
     if (ohci_read_hcca(ohci, ohci->hcca, &hcca)) {
         trace_usb_ohci_hcca_read_error(ohci->hcca);
@@ -1399,7 +1402,7 @@ static void ohci_frame_boundary(void *opaque)
         hcca.done = cpu_to_le32(ohci->done);
         ohci->done = 0;
         ohci->done_count = 7;
-        ohci_set_interrupt(ohci, OHCI_INTR_WD);
+        done = true;
     }
 
     if (ohci->done_count != 7 && ohci->done_count != 0) {
@@ -1408,10 +1411,17 @@ static void ohci_frame_boundary(void *opaque)
     /* Do SOF stuff here */
     ohci_sof(ohci);
 
-    /* Writeback HCCA */
-    if (ohci_put_hcca(ohci, ohci->hcca, &hcca)) {
+    /*
+     * Publish before notifying: DMA may release the BQL, allowing the guest
+     * to handle an interrupt before this frame returns. Only publish a done
+     * head when handing over a new queue; otherwise a guest-cleared head
+     * could be overwritten with the stale value read at frame entry.
+     */
+    if (ohci_put_hcca(ohci, ohci->hcca, &hcca, done)) {
         ohci_die(ohci);
+        return;
     }
+    ohci_set_interrupt(ohci, OHCI_INTR_SF | (done ? OHCI_INTR_WD : 0));
 }
 
 /*
