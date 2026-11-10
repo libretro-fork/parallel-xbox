@@ -555,3 +555,17 @@ with validation and the RTX 5090 without installed validation layers. All 48
 contract suites passed; the rebuilt core completed 26 OpenGL/Vulkan game checks,
 four lifecycle cases and five exact image pairs. Driver caches and timings remain
 unqualified. Cold-play smoothness and draw-path PSO recovery remain open.
+
+Constant-row emission reuses one SSA value when the selector, A0 definition and
+basic block are unchanged. The cache contains four 32-bit IDs/indices, no
+uniform payload or pointer. A different block ends reuse even when an earlier
+value could dominate it; this conservative scope avoids retaining branch-local
+values. An A0 update changes the relative-address key. Direct and relative reads
+remain distinct, and each count/write pass starts with an empty cache.
+
+Three constant operands need one access/load pair rather than three: operand
+setup falls from 57 to 37 words, or 72 to 42 for relative reads. These are operand
+work counts, not whole-shader or frame-time percentages. Arithmetic, swizzles,
+negation, layouts and fallback eligibility are unchanged. Existing persistent
+modules remain compatible because the ABI and results are unchanged; no cache
+schema/key change or invalidation is needed.

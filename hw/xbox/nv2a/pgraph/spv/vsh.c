@@ -265,6 +265,7 @@ typedef struct Context {
     uint32_t inputs[16], outputs[13], position, point_size, ubo, pc;
     uint32_t main, ext, mat4, texgen_array, viewer_mask, point_array, point_limit, texgen_half, texgen_shift9, texgen_bit8;
     uint32_t r[12], o[13], a0, input_values[16], skin_weights[4], fog_control, fog_distance, normal_value;
+    uint32_t constant_index, constant_address, constant_block, constant_value;
     unsigned lighting_mask, lighting_members[L_COUNT];
     uint32_t lighting_arrays[4], uniform_v3, specular_max;
     uint32_t light_shift, light_mask, back_bit, true_value, false_value, light_control;
@@ -383,12 +384,32 @@ static uint32_t input(Context *c, unsigned index)
     return result;
 }
 
+/* One-entry immutable UBO-row lend. Cache SSA identity only, never parameter
+ * bytes or a host pointer. A new block or A0 definition ends reuse; this avoids
+ * borrowing a value that does not dominate its next shader consumer. */
+static uint32_t constant_read(Context *c, unsigned index, bool relative)
+{
+    uint32_t address = relative ? c->a0 : 0;
+    if (c->constant_value && c->constant_index == index &&
+        c->constant_address == address && c->constant_block == c->w->block) {
+        return c->constant_value;
+    }
+    uint32_t row = c->ci[index];
+    if (relative) { row = binary(c, SpvOpIAdd, c->i, address, row); }
+    uint32_t ptr = value(c->w, SpvOpAccessChain, c->uniform_v4, 3,
+                         c->ubo, c->ci[0], row);
+    uint32_t result = unary(c, SpvOpLoad, c->v4, ptr);
+    c->constant_index = index;
+    c->constant_address = address;
+    c->constant_block = c->w->block;
+    c->constant_value = result;
+    return result;
+}
 static uint32_t constant(Context *c, unsigned index)
 {
-    uint32_t ptr = value(c->w, SpvOpAccessChain, c->uniform_v4, 3,
-                         c->ubo, c->ci[0], c->ci[index]);
-    return unary(c, SpvOpLoad, c->v4, ptr);
+    return constant_read(c, index, false);
 }
+
 static uint32_t transform(Context *c, uint32_t v, unsigned base)
 {
     uint32_t column[4];
@@ -1187,11 +1208,7 @@ static uint32_t operand(Context *c, const uint32_t *t, unsigned arg)
     } else if (source == PARAM_V) {
         v = input(c, field(t[1], 9, 4));
     } else {
-        uint32_t index = c->ci[field(t[1], 13, 8)];
-        if (t[3] & 2) { index = binary(c, SpvOpIAdd, c->i, c->a0, index); }
-        uint32_t p = value(c->w, SpvOpAccessChain, c->uniform_v4, 3,
-                           c->ubo, c->ci[0], index);
-        v = unary(c, SpvOpLoad, c->v4, p);
+        v = constant_read(c, field(t[1], 13, 8), (t[3] & 2) != 0);
     }
     unsigned shift = arg == 0 ? 0 : arg == 1 ? 17 : 2;
     uint32_t sw = arg == 0 ? t[1] : t[2];
