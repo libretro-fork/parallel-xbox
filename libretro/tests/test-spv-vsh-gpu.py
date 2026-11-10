@@ -43,5 +43,5 @@ DEF_UNIFORM_INFO_ARR(VshUniform,VSH_UNIFORM_DECL_X)
   sources += [r/'libretro/glib/gcontainers.c']+[r/'libretro-common'/f for f in ['compat/compat_strl.c','encodings/encoding_utf.c','encodings/encoding_base64.c','hash/lrc_hash.c','features/features_cpu.c','time/rtime.c','compat/fopen_utf8.c','string/rstrtod.c','streams/file_stream.c','vfs/vfs_implementation.c','file/file_path.c','file/file_path_io.c','compat/compat_posix_string.c','string/stdstring.c']]
  subprocess.run(flags+list(map(str,sources))+['-Wl,--gc-sections','-lm',*([str(Path(os.environ.get('WINDIR','C:/Windows'))/'System32/vulkan-1.dll')] if os.name=='nt' else ['-lvulkan']),'-o',str(exe)],check=True)
  # Keep the full growing corpus, with a separate watchdog per bounded batch.
- for first,limit in [(0,7168),(7168,14096),(14096,19984)]:
+ for first,limit in [(0,7168),(7168,14096),(14096,19984),(19984,22032),(22032,24080)]:
   subprocess.run([str(exe),str(first),str(limit)],check=True,timeout=300)

@@ -105,8 +105,8 @@ static void pack(uint8_t *dst,const GlslcLayout *layout,const VshUniformValues *
 static void release(GlslcResult *r){glslc_result_free_words(r);free(r->uniforms.members);free(r->push_constants.members);}
 int main(int argc, char **argv) {
  assert(argc==1 || argc==3);
- unsigned first=argc==3?strtoul(argv[1],NULL,10):0, limit=argc==3?strtoul(argv[2],NULL,10):19984;
- assert(first<limit && limit<=19984);
+ unsigned first=argc==3?strtoul(argv[1],NULL,10):0, limit=argc==3?strtoul(argv[2],NULL,10):24080;
+ assert(first<limit && limit<=24080);
  printf("Fixture range [%u, %u)\n",first,limit);
  const bool validated=getenv("NO_VALIDATION")==NULL;
  const char *layer="VK_LAYER_KHRONOS_validation",*debug=VK_EXT_DEBUG_UTILS_EXTENSION_NAME;
@@ -292,6 +292,18 @@ int main(int argc, char **argv) {
    state.fixed_function.foggen=FOGGEN_RADIAL+combo%3;
    state.fixed_function.texgen_dynamic=!!(f&64);state.point_params_enable=!!(f&32);
   }
+  if(test>=19984){
+   unsigned f=test-19984, material=(f/7)%81;
+   state.fixed_function.lighting=true;state.fixed_function.light_dynamic=false;
+   state.fixed_function.two_sided=!!(f&256);state.fixed_function.local_eye=!!(f&512);
+   state.specular_enable=!!(f&1024);state.separate_specular=!!(f&2048);
+   state.fixed_function.skinning=(f/16)%7;
+   state.fixed_function.ambient_src=material%3;material/=3;
+   state.fixed_function.emission_src=material%3;material/=3;
+   state.fixed_function.diffuse_src=material%3;material/=3;
+   state.fixed_function.specular_src=material;
+   for(unsigned l=0;l<8;l++)state.fixed_function.light[l]=f&(1u<<l)?LIGHT_INFINITE:LIGHT_OFF;
+  }
   for(unsigned a=0;a<16;a++)attrs[a].format=state.compressed_attrs&(1u<<a)?VK_FORMAT_R32_SINT:VK_FORMAT_R32G32B32A32_SFLOAT;
   opts.preserve_float32=fp.shaderSignedZeroInfNanPreserveFloat32;
   VshState excluded=state;excluded.point_params_enable=true;
@@ -378,6 +390,24 @@ int main(int argc, char **argv) {
    const float params[]={-.01f,0.0f,-0.0f,.5f,INFINITY,-INFINITY,NAN,0x1p-100f};
    values.fogParam[0][0]=1.25f;values.fogParam[0][1]=params[(f/16)%8];
    values.c[NV_IGRAPH_XF_XFCTX_FOG][3]=params[(f/16+3)%8];
+  }
+  if(test>=19984){
+   unsigned f=test-19984;
+   for(unsigned i=0;i<NV2A_LTCTXA_COUNT;i++)for(unsigned k=0;k<4;k++)values.ltctxa[i][k]=((int)((i*3+k*5)%13)-6)*.125f;
+   for(unsigned i=0;i<NV2A_LTCTXB_COUNT;i++)for(unsigned k=0;k<4;k++)values.ltctxb[i][k]=((int)((i*7+k*3)%17)-8)*.0625f;
+   /* Keep specular cutoffs observable instead of saturating every color. */
+   for(unsigned i=0;i<NV2A_LTCTXB_COUNT;i++)for(unsigned k=0;k<3;k++){
+    if((f&128) && (i%6==2 || i%6==5))values.ltctxb[i][k]*=0.0001f;
+    if((f&64) && (i%6==1 || i%6==4))values.ltctxb[i][k]*=.01f;
+   }
+   values.material_alpha[0]=.625f;values.back_material_alpha[0]=.375f;
+   for(unsigned i=0;i<8;i++)for(unsigned k=0;k<3;k++){
+    values.lightInfiniteDirection[i][k]=.2f+(i%3)*.125f+k*.17f;
+    values.lightInfiniteHalfVector[i][k]=-.5f+i*.125f+k*.5f;
+   }
+   static const float coefficients[8][3]={{-.25f,.75f,.125f},{1,0,0},{0,1,-.5f},{NAN,1,1},{0,INFINITY,1},{0,1,INFINITY},{0,0,-0.0f},{0,0,-1}};
+   for(unsigned k=0;k<3;k++){values.specularParams[0][k]=coefficients[(f/64)%8][k];values.specularParamsBack[0][k]=coefficients[(f/128+3)%8][k];}
+   values.c[NV_IGRAPH_XF_XFCTX_EYEP][0]=.125f;values.c[NV_IGRAPH_XF_XFCTX_EYEP][1]=-.5f;values.c[NV_IGRAPH_XF_XFCTX_EYEP][2]=1.75f;values.c[NV_IGRAPH_XF_XFCTX_EYEP][3]=f&16?1:2;
   }
   unsigned packed=0;for(unsigned a=0;a<16;a++)if(state.uniform_attrs&(1u<<a)) {
    for(unsigned k=0;k<4;k++)values.inlineValue[packed][k]=a==0?(k==3?1:k==2?100:40):(a==15?2:((int)(a+k)%7-3)*.5f);

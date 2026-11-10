@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Emit fixed-function material shading and all eight static directional-light slots directly as Vulkan SPIR-V. Preserve front/back material sources, viewer-dependent half vectors, coefficient specular guards and separate/combined colors. Share the transformed normal with texgen and append only consumed existing uniform groups, without new allocations, payload clones, bindings or retained pointers. Preserve prior modules/layouts; local, spot and dynamic lights retain GLSL fallback pending native support.
+
 - Emit unlit dynamic fixed-function fog directly as Vulkan SPIR-V, sharing one live control read and model-view result with existing texgen/point work. Pin four quadratic products to reference order after physical-GPU tests isolated a reassociation difference, recovering the six previously excluded static transformed-distance quadratic combinations. Write annotations directly through the count/write passes, without module patch buffers, new allocations or retained lends; prior accepted modules/layouts stay byte-identical.
 
 - Emit unlit dynamic fixed-function texgen directly as Vulkan SPIR-V. Read live coordinate modes and matrix enables from existing uniforms; share normal/viewer/reflection work, retain lazy coordinate/matrix selection and zero unsupported dynamic R/Q components as the reference does. Reuse final owners without new allocations, geometry/matrix snapshots or payload clones. Ignore unused static fields, preserve prior words/layouts and retain GLSL for unsupported lighting/fog states.

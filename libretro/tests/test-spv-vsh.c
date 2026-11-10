@@ -70,7 +70,7 @@ int main(int argc, char **argv)
 {
     assert(argc == 2);check_caps();
     unsigned total = 0;
-    for (unsigned i = 0; i < 18576; i++) {
+    for (unsigned i = 0; i < 22672; i++) {
         VshState state;
         unsigned base=i%1120;
         make_case(&state, base);
@@ -159,6 +159,18 @@ int main(int argc, char **argv)
    state.fixed_function.foggen=FOGGEN_RADIAL+combo%3;
    state.fixed_function.texgen_dynamic=!!(f&64);state.point_params_enable=!!(f&32);
   }
+  if(i>=18576){
+   unsigned f=i-18576, material=(f/7)%81;
+   state.fixed_function.lighting=true;state.fixed_function.light_dynamic=false;
+   state.fixed_function.two_sided=!!(f&256);state.fixed_function.local_eye=!!(f&512);
+   state.specular_enable=!!(f&1024);state.separate_specular=!!(f&2048);
+   state.fixed_function.skinning=(f/16)%7;
+   state.fixed_function.ambient_src=material%3;material/=3;
+   state.fixed_function.emission_src=material%3;material/=3;
+   state.fixed_function.diffuse_src=material%3;material/=3;
+   state.fixed_function.specular_src=material;
+   for(unsigned l=0;l<8;l++)state.fixed_function.light[l]=f&(1u<<l)?LIGHT_INFINITE:LIGHT_OFF;
+  }
         SpvVshOptions opts = { .spirv_1_6 = !!(i & 1),
                               .push_constants = !!(i & 4), .ubo_binding = i % 3,
                               .preserve_float32 = i>=1120 || !!(i&8) };
@@ -171,10 +183,11 @@ int main(int argc, char **argv)
             memset(state.programmable.program_data,0xa5,sizeof(state.programmable.program_data));
             state.programmable.program_length=-42;
             bool consumes_normal=state.fixed_function.texgen_dynamic;
+            if(state.fixed_function.lighting)for(unsigned l=0;l<8;l++)consumes_normal|=state.fixed_function.light[l]!=LIGHT_OFF;
             for(unsigned t=0;t<4;t++)for(unsigned a=0;a<3;a++)consumes_normal|=state.fixed_function.texgen[t][a]>=TEXGEN_SPHERE_MAP;
             if(!consumes_normal)state.fixed_function.normalization=!state.fixed_function.normalization;
-            state.fixed_function.light_dynamic=!state.fixed_function.light_dynamic;
-            state.fixed_function.two_sided=!state.fixed_function.two_sided;
+            if(!state.fixed_function.lighting)state.fixed_function.light_dynamic=!state.fixed_function.light_dynamic;
+            if(!state.fixed_function.lighting)state.fixed_function.two_sided=!state.fixed_function.two_sided;
             if(!state.fog_enable)state.fixed_function.foggen=(enum VshFoggen)-1;
             if(state.fog_dynamic){state.fog_enable=!state.fog_enable;state.fog_mode=(enum VshFogMode)8;state.fixed_function.foggen=(enum VshFoggen)8;}
             if(state.fixed_function.texgen_dynamic){
@@ -188,24 +201,27 @@ int main(int argc, char **argv)
         bool dynamic=state.is_fixed_function && state.fixed_function.texgen_dynamic;
         bool viewer=dynamic;
         if(state.is_fixed_function)for(unsigned t=0;t<4;t++)for(unsigned k=0;k<3;k++){enum VshTexgen m=state.fixed_function.texgen[t][k];viewer|=m==TEXGEN_SPHERE_MAP || m==TEXGEN_REFLECTION_MAP;}
-        assert(a.uniforms.count == 7u + (!opts.push_constants && state.uniform_attrs != 0) + viewer + (state.is_fixed_function && state.point_params_enable) + dynamic);
+        bool lit=state.is_fixed_function && state.fixed_function.lighting, active=false;
+        if(lit)for(unsigned l=0;l<8;l++)active|=state.fixed_function.light[l]!=LIGHT_OFF;
+        unsigned lighting_members=lit?(1u+(state.fixed_function.diffuse_src==MATERIAL_COLOR_SRC_MATERIAL)+state.fixed_function.two_sided+active*2u+(active && state.specular_enable)*(1u+state.fixed_function.two_sided+!state.fixed_function.local_eye)):0;
+        assert(a.uniforms.count == lighting_members + 7u + (!opts.push_constants && state.uniform_attrs != 0) + viewer + (state.is_fixed_function && state.point_params_enable) + dynamic);
         if(viewer){
             const GlslcUniform *u=&a.uniforms.members[7u+(!opts.push_constants && state.uniform_attrs!=0)];
             assert(!strcmp(u->name,"texgenMode") && u->dim_v==1 && u->dim_a==4 && u->stride==16);
             assert(u->offset==3120u+(!opts.push_constants && state.uniform_attrs!=0)*256u);
-            assert(a.uniforms.size==u->offset+64+(state.point_params_enable?128u:0)+dynamic*16u);
+            if(!lit)assert(a.uniforms.size==u->offset+64+(state.point_params_enable?128u:0)+dynamic*16u);
         }
         if(state.is_fixed_function && state.point_params_enable){
-            const GlslcUniform *u=&a.uniforms.members[a.uniforms.count-1-dynamic];
+            const GlslcUniform *u=&a.uniforms.members[a.uniforms.count-1-dynamic-lighting_members];
             assert(!strcmp(u->name,"pointParams") && u->dim_v==1 && u->dim_a==8 && u->stride==16);
             assert(u->offset==3120u+(!opts.push_constants && state.uniform_attrs!=0)*256u+viewer*64u);
-            assert(a.uniforms.size==u->offset+128+dynamic*16u);
+            if(!lit)assert(a.uniforms.size==u->offset+128+dynamic*16u);
         }
         if(dynamic){
-            const GlslcUniform *u=&a.uniforms.members[a.uniforms.count-1];
+            const GlslcUniform *u=&a.uniforms.members[a.uniforms.count-1-lighting_members];
             assert(!strcmp(u->name,"texMatEnable") && u->dim_v==1 && u->dim_a==1 && u->stride==4);
             assert(u->offset==3120u+(!opts.push_constants && state.uniform_attrs!=0)*256u+64u+state.point_params_enable*128u);
-            assert(a.uniforms.size==u->offset+16);
+            if(!lit)assert(a.uniforms.size==u->offset+16);
         }
         assert(a.uniforms.members[0].dim_a == 192 && a.uniforms.members[0].stride == 16);
         assert(a.uniforms.members[6].offset == 3112 && a.uniforms.members[6].dim_v == 2);
@@ -241,19 +257,21 @@ int main(int argc, char **argv)
         else if(state.is_fixed_function)for(unsigned t=0;t<4;t++)expected_transforms+=state.fixed_function.texture_matrix_enable[t];
         bool needs_eye=state.is_fixed_function && state.fog_enable && state.fixed_function.foggen>=FOGGEN_RADIAL && state.fixed_function.foggen<=FOGGEN_ABS_PLANAR;
         if(state.is_fixed_function)for(unsigned t=0;t<4;t++)for(unsigned a=0;a<4;a++)needs_eye|=state.fixed_function.texgen[t][a]==TEXGEN_EYE_LINEAR;
-        needs_eye|=(state.is_fixed_function && state.fog_dynamic) || viewer || (state.is_fixed_function && state.point_params_enable);
+        needs_eye|=(active && state.specular_enable && state.fixed_function.local_eye) || (state.is_fixed_function && state.fog_dynamic) || viewer || (state.is_fixed_function && state.point_params_enable);
         unsigned bones=0;
         if(state.is_fixed_function){static const unsigned counts[]={0,2,2,3,3,4,4};bones=counts[state.fixed_function.skinning];}
         expected_transforms+=bones?bones:needs_eye;
         if(bones && state.point_params_enable)expected_transforms++;
-        bool needs_normal=dynamic;
+        bool needs_normal=dynamic || active;
         if(state.is_fixed_function)for(unsigned t=0;t<4;t++)for(unsigned a=0;a<3;a++)needs_normal|=state.fixed_function.texgen[t][a]>=TEXGEN_SPHERE_MAP;
         expected_transforms+=needs_normal*(bones?bones:1);
         /* One existing homogeneous-w guard, plus the lazy viewer choice.
          * Eager Normalize/Select regressed physical-GPU reflection rounding. */
-        if(state.is_fixed_function)assert(branches==1u+(unsigned)viewer+dynamic*4u);
+        unsigned lights=0;
+        if(lit)for(unsigned l=0;l<8;l++)lights+=state.fixed_function.light[l]!=LIGHT_OFF;
+        if(state.is_fixed_function)assert(branches==1u+(unsigned)viewer+dynamic*4u+lights*3u*state.specular_enable*(1u+state.fixed_function.two_sided));
         assert(reflections==(unsigned)viewer);
-        assert(normalizations==(unsigned)(needs_normal && state.fixed_function.normalization)+(unsigned)viewer);
+        assert(normalizations==(unsigned)(needs_normal && state.fixed_function.normalization)+(unsigned)viewer+lights+(active && state.specular_enable && state.fixed_function.local_eye)*(1u+lights));
         assert(matrices==(unsigned)state.is_fixed_function && transforms==expected_transforms);
         memset(&state, 0xa5, sizeof(state));
         assert(!strcmp(a.uniforms.members[0].name, "c"));
@@ -266,7 +284,7 @@ int main(int argc, char **argv)
         glslc_result_free_words(&b); free(b.uniforms.members); free(b.push_constants.members);
         total++;
     }
-    for (unsigned i = 0; i < 32; i++) {
+    for (unsigned i = 0; i < 39; i++) {
         VshState s; make_case(&s, 0); SpvVshOptions opts = {0};
         if (i == 0) { s.is_fixed_function = true; }
         if (i == 1) { s.fog_enable = true; s.fog_dynamic = false; s.fog_mode = FOG_MODE_ERROR2; }
@@ -282,11 +300,11 @@ int main(int argc, char **argv)
         if (i == 11) { s.fog_enable = true; s.fog_mode = (enum VshFogMode)-1; }
         if(i>=12){
             s.is_fixed_function=true;s.fog_mode=FOG_MODE_LINEAR;opts.preserve_float32=true;
-            if(i==12)s.fixed_function.lighting=true;
+            if(i==12){s.fixed_function.lighting=true;s.fixed_function.light[0]=LIGHT_LOCAL;}
             if(i==13)s.fixed_function.csv0c_dynamic=true;
             if(i==14){s.fixed_function.texgen_dynamic=true;opts.ubo_binding=32;}
             if(i==15)s.fixed_function.skinning=(enum VshSkinning)-1;
-            if(i==16){s.fog_dynamic=true;s.fixed_function.lighting=true;}
+            if(i==16){s.fog_dynamic=true;s.fixed_function.lighting=true;s.fixed_function.light[0]=LIGHT_SPOT;}
             if(i==17){s.fog_enable=true;s.fixed_function.foggen=(enum VshFoggen)5;}
             if(i==18){s.point_params_enable=true;opts.preserve_float32=false;}
             if(i==19)s.fixed_function.texgen[1][3]=TEXGEN_NORMAL_MAP;
@@ -296,10 +314,20 @@ int main(int argc, char **argv)
         }
         if(i>=28){s.is_fixed_function=true;opts.preserve_float32=true;s.fixed_function.texgen[0][i==28?0:i==29?2:3]=i==28?(enum VshTexgen)-1:i==29?TEXGEN_SPHERE_MAP:TEXGEN_REFLECTION_MAP;}
         if(i==31){s.fixed_function.texgen[0][3]=TEXGEN_DISABLE;s.fixed_function.skinning=(enum VshSkinning)7;}
+        if(i>=32){
+            s=(VshState){.is_fixed_function=true};opts.preserve_float32=true;s.fixed_function.lighting=true;
+            if(i==32)s.fixed_function.ambient_src=(enum MaterialColorSource)3;
+            if(i==33)s.fixed_function.emission_src=(enum MaterialColorSource)3;
+            if(i==34)s.fixed_function.diffuse_src=(enum MaterialColorSource)3;
+            if(i==35)s.fixed_function.specular_src=(enum MaterialColorSource)3;
+            if(i==36)s.fixed_function.light_dynamic=true;
+            if(i==37)s.fixed_function.light[0]=(enum VshLight)-1;
+            if(i==38)s.fixed_function.light[0]=(enum VshLight)4;
+        }
         GlslcResult result; memset(&result, 0xa5, sizeof(result)); allocations = 0;
         assert(!pgraph_spv_vsh(&s, opts, &result));
         assert(!allocations && !result.words && !result.uniforms.members && !result.push_constants.members);
     }
-    printf("Direct VSH: %u deterministic native-module/owned-layout/poisoned-key cases; thirty-two allocation-free unsupported paths; 512 device-capability/generation checks PASS\n", total);
+    printf("Direct VSH: %u deterministic native-module/owned-layout/poisoned-key cases; thirty-nine allocation-free unsupported paths; 512 device-capability/generation checks PASS\n", total);
     return 0;
 }

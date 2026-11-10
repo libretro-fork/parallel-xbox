@@ -1,7 +1,7 @@
 # Direct vertex emission
 
 Vulkan module preparation tries NV2A programmable microcode -> SPIR-V and
-a bounded unlit fixed-function subset before generating GLSL. Geometry emitters
+a bounded fixed-function subset before generating GLSL. Geometry emitters
 and the established GLSL compiler remain available. This is a translation-work reduction, not a claim that
 first-use pipeline stutter is fixed or that draws never compile pipelines.
 
@@ -68,12 +68,12 @@ may bypass translation; a warm driver cache is a separate compilation milestone.
 
 ## Regression coverage and qualification
 
-- `test-spv-vsh.py`: 18,576 deterministic SPIR-V modules, final-owner allocation
-  counts, poisoned source keys, thirty-two allocation-free unsupported paths, UBSan and
+- `test-spv-vsh.py`: 22,672 deterministic SPIR-V modules, final-owner allocation
+  counts, poisoned source keys, thirty-nine allocation-free unsupported paths, UBSan and
   spirv-val. Both SPIR-V 1.5 and 1.6 targets are covered. Extracted native device
   setup is checked across 512 API/property/generation cases, including stale
   target reset and zero queries on older APIs.
-- `test-spv-vsh-gpu.py`: 19,984 programs / 32,613,888 scalar outputs compared with
+- `test-spv-vsh-gpu.py`: 24,080 programs / 39,298,560 scalar outputs compared with
   the production GLSL generator/compiler using Vulkan transform feedback. It
   captures all user outputs, position and point size before clipping; numerical
   differences fail (NaN payload identity is not required). It exercises opcode
@@ -122,10 +122,11 @@ requires forced invalidation. Legacy non-point modules retain their prior words.
 
 ## Unlit fixed-function subset
 
-The direct subset requires lighting off and static CSV0_C.
+The direct subset requires static CSV0_C. It supports material/base shading and
+static directional lights, as detailed below.
 It supports static/live texture matrices and coordinate-generation modes, all
 skinning modes and register/attenuated points as detailed below. Unsupported
-states, including lighting and dynamic CSV0_C, retain the GLSL path. The existing FP32 property gate applies;
+states, including local/spot/dynamic lighting and dynamic CSV0_C, retain the GLSL path. The existing FP32 property gate applies;
 no new device query is added.
 
 The composite matrix already contains model-view when skinning is off. Emit
@@ -194,7 +195,7 @@ stage and all sixteen texture-matrix masks, plus supported fog combinations,
 input formats and exceptional inputs. Matrix-operation counts verify that the
 model-view result is shared. All 3,712 earlier fixtures retain byte-identical
 modules. Negative/unknown modes, invalid static sphere/reflection components,
-lighting and dynamic CSV0_C retain GLSL fallback.
+local/spot/dynamic lighting and dynamic CSV0_C retain GLSL fallback.
 No key schema or driver-cache defaults change, and this does not establish
 cold-play recovery.
 
@@ -250,7 +251,7 @@ There are still two or three final-owner allocations per supported translation;
 only final metadata size and shader words change. No intermediate module clone,
 CPU matrix snapshot, retained lend or file I/O is added. Sphere R/Q and
 normal/reflection Q retain allocation-free fallback, along with existing
-lighting and dynamic CSV0_C exclusions. This is expanded
+local/spot/dynamic lighting and dynamic CSV0_C exclusions. This is expanded
 translation coverage, not proof that cold-play PSO stutter has recovered.
 
 ## Fixed-function point attenuation
@@ -277,7 +278,7 @@ fog/texgen, both viewer settings, input formats and normalized/raw normals with
 point attenuation. GPU inputs vary every parameter across zero, signed zero,
 positive/negative finite, Infinity, NaN and tiny values, including unused 4/5;
 point scales/registers are independently varied. Hardware FP32 preservation
-remains required, and lighting and dynamic CSV0_C retain GLSL fallback. No cache schema or file-I/O path changes.
+remains required, and local/spot/dynamic lighting and dynamic CSV0_C retain GLSL fallback. No cache schema or file-I/O path changes.
 These checks establish translation equivalence, not cold-play recovery.
 
 ## Fixed-function skinning
@@ -309,7 +310,7 @@ fractions, negative/above-one sums and exceptional values, in vertex and inline
 storage. The GPU driver runs the full 19,984-fixture corpus in three bounded
 batches, preserving every case while retaining a separate 300-second watchdog
 per batch. Work counts and CPU-clock totals remain separate from gameplay
-latency evidence; lighting and dynamic CSV0_C remain open.
+latency evidence; local/spot/dynamic lighting and dynamic CSV0_C remain open.
 
 ## Dynamic fixed-function texgen
 
@@ -344,7 +345,7 @@ inline inputs, exceptional values and unrelated high-bit noise. CPU contracts
 verify ignored static state, five control reads, sixteen selections, four guarded
 matrix operations and shared transforms. All 12,688 earlier module words and
 uniform members remain identical despite sharing the normal/reflection emitters.
-Dynamic CSV0_C and lighting still use GLSL. Expanding direct translation does not establish
+Dynamic CSV0_C and local/spot/dynamic lighting still use GLSL. Expanding direct translation does not establish
 cold-play PSO recovery.
 
 ## Dynamic fixed-function fog and quadratic precision
@@ -384,3 +385,44 @@ contracts require four precision annotations only on affected shaders, one
 shared control read, ignored static fog fields and shared transforms. All
 13,712 prior modules/layout members remain identical. The regression retains
 initial failures and strict comparisons; cold-play PSO recovery remains open.
+
+## Material and directional lighting
+
+Static fixed-function lighting supports all eight directional-light slots and
+all 256 on/off masks. Local, spot and dynamic light modes remain correct GLSL
+fallbacks pending their native implementation. The material base follows the
+existing ambient/emission-source formula, with all three valid source values,
+material/diffuse/specular alpha selection, two-sided back material colors and
+separate/combined specular behavior. Back light colors use their own register
+rows and negated normal dots, preserving their distinct source rules.
+
+Directional vectors are normalized; programmed infinite half vectors are not.
+Local-viewer half vectors use normalized direction + eye vector, with explicit
+component division by homogeneous w. Specular uses the hardware-coefficient
+rational model and its exact cutoffs, denominator guards and 10000 bound. Its
+division executes only on the valid branch. Disabled specular calculations and
+associated uniform groups are omitted. The normal result is cached as an SSA ID
+across texgen and lighting, preserving one weighted transform/normalization.
+This cache is local to the emission call and contains no guest pointer.
+
+A profile appends only consumed existing lighting uniform groups to the final
+UBO layout, with std140 offsets and array strides. It does not create additional
+bindings, buffers, staging copies or allocations. Names share the same final
+metadata allocation; final words/layout owners and native retirement remain
+unchanged. Existing tracked source updates populate these groups. No geometry,
+matrix or immutable-key payload is cloned, and no file I/O is added. All 18,576
+prior fixture modules and layouts remain byte-identical.
+
+An additional 4,096 fixtures cross all directional masks with two-sided,
+local-viewer, specular-enable and separate-specular flags, rotating through all
+81 material-source combinations, skinning, points, fog and texgen. GPU inputs
+include nonzero scene/light registers, asymmetric directional/raw half vectors,
+material alphas and exceptional/zero/negative-denominator specular coefficients.
+Small light colors keep the specular cutoff bound observable before final color
+clamping.
+CPU checks cover profile membership, guarded specular paths, normal sharing,
+final allocation counts, poisoned keys and unsupported local/spot/dynamic modes
+and material-source values. The growing GPU corpus retains every case across
+five bounded batches with the same per-process watchdog. This is a foundation
+for the remaining light modes, not completion of direct lighting or cold-play
+PSO recovery.
