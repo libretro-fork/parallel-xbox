@@ -21,6 +21,9 @@ assert rollback.index('case 2:')<rollback.index('dc->mmx_entered = orig_mmx_ente
 assert '[0x0e] = X86_OP_ENTRY0(EMMS,' in (r/'target/i386/tcg/decode-new.c.inc').read_text()
 decode=(r/'target/i386/tcg/decode-new.c.inc').read_text()
 assert decode.index('gen_enter_mmx(s);')<decode.index('gen_lea_modrm(s, &decode);')
+declarations=(r/'target/i386/helper.h').read_text()
+assert 'DEF_HELPER_2(fxrstor, void, env, tl)' in declarations
+assert 'DEF_HELPER_3(xrstor, void, env, tl, i64)' in declarations
 code=Path(__file__).with_suffix('.c').read_text().replace('/* HELPERS */',helpers).replace('/* PRODUCTION */','\n'.join(parts))
 with tempfile.TemporaryDirectory(prefix='mmx-entry-') as d:
     p=Path(d);src=p/'test.c';binary=os.environ.get('MMX_ENTRY_BINARY',str(p/'test'))

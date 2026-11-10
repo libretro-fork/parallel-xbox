@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- CPU translation enters MMX with inline state stores once per uninterrupted MMX sequence in a block. Publish pending x87 state first and re-enter after x87 instructions, EMMS/FEMMS or state restoration; preserve decode rollback and memory-fault ordering. Gameplay performance remains unmeasured.
+- CPU translation enters MMX with inline state stores once per uninterrupted MMX sequence in a block. Publish pending x87 state first and re-enter after x87 instructions, EMMS/FEMMS or state restoration; preserve decode rollback and memory-fault ordering. Correct FXRSTOR/XRSTOR's declared effects on the cached x87 TOP value. Gameplay performance remains unmeasured.
 
 - MMX unpack and signed high-word multiply instructions use inline integer translation operations instead of arithmetic helpers. Preserve register aliases, memory operands and SSE/VEX dispatch. Gameplay performance remains unmeasured.
 
