@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Hard-FPU integer-conversion helpers publish invalid and inexact exceptions to the guest x87 status and preserve sticky flags. Keep the existing SoftFloat rounding and integer-indefinite results for 16/32/64-bit rounded and truncating conversions.
+
 - x86-64 hard-FPU comparison helpers use integer ordering for normal values and signed zero, and the correct ordered/quiet SoftFloat fallback for exceptional inputs. Merge comparison exception flags into the guest x87 status, including invalid for ordered quiet-NaN comparisons, while preserving host FP control state. Gameplay performance remains unmeasured.
 
 - Vulkan uses immutable SPIR-V words for its six fixed PVIDEO, GPU-property and S3TC utility programs, removing their GLSL compilation and temporary word allocations. Preserve exact reference words, existing pipeline creation and retirement, and synchronous borrowed word lifetimes. Make reference compiler member-ID allocation order explicit so ARM64 and x86 produce the same words.
