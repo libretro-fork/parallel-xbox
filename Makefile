@@ -280,7 +280,7 @@ ALL_OBJECTS := $(OBJECTS) $(OBJS_UTIL) $(DEP_OBJECTS)
 
 clean:
 	rm -f $(TARGET) $(LIBQEMUUTIL) $(VERSION_H) $(filter %.a,$(DEPS_LIBS))
-	rm -f $(ALL_OBJECTS) $(ALL_OBJECTS:.o=.d) $(DSPDIFF) $(DSPDIFF).exe $(DSPAUDIT) $(DSPDMATEST) $(DSPBOOTSTRAP) $(DSPDMASPANS) $(DSPINVALIDATE) $(DSPCOVERAGE) $(DSPFLUSH) $(DSPINIT) $(DSPNATIVE) $(SEEDSHADERS) $(S3TCTEST) $(S3TCTEST).exe $(FILEIOTEST)
+	rm -f $(ALL_OBJECTS) $(ALL_OBJECTS:.o=.d) $(DSPDIFF) $(DSPDIFF).exe $(DSPAUDIT) $(DSPDMATEST) $(DSPBOOTSTRAP) $(DSPDMASPANS) $(DSPINVALIDATE) $(DSPCOVERAGE) $(DSPFLUSH) $(DSPINIT) $(DSPYMEMORY) $(DSPNATIVE) $(SEEDSHADERS) $(S3TCTEST) $(S3TCTEST).exe $(FILEIOTEST)
 
 # The DSP JIT against the interpreter (libretro/tests/dspdiff.c), built
 # from the DSP's own sources, nothing else of the core: a plain program,
@@ -314,6 +314,14 @@ $(DSPINIT): $(CORE_DIR)/libretro/tests/test-dsp-init.c $(DSPDIFF_SRC) $(DSP_TEST
 dspinit: $(DSPINIT)
 	$(DSP_PROGRAM_RUNNER) $(DSPINIT)
 .PHONY: dspinit
+
+DSPYMEMORY := $(CORE_DIR)/libretro/tests/dspymemory$(if $(filter win,$(platform)),.exe,)
+$(DSPYMEMORY): $(CORE_DIR)/libretro/tests/test-dsp-y-memory.c $(DSPDIFF_SRC) $(DSP_TEST_HEADERS)
+	$(CC) -O2 $(QEMU_CFLAGS) $(ARCH_CFLAGS) -DDSPJIT_TEST -I$(CORE_DIR)/hw/xbox/mcpx/apu/dsp -I$(CORE_DIR)/hw/xbox/mcpx/apu/dsp/interp -o $@ $(filter-out $(CORE_DIR)/libretro/tests/dspdiff.c,$(DSPDIFF_SRC)) $<
+
+dspymemory: $(DSPYMEMORY)
+	$(DSP_PROGRAM_RUNNER) $(DSPYMEMORY)
+.PHONY: dspymemory
 
 DSPCOVERAGE := $(CORE_DIR)/libretro/tests/dspcoverage$(if $(filter win,$(platform)),.exe,)
 $(DSPCOVERAGE): $(CORE_DIR)/libretro/tests/test-dsp-coverage.c $(DSPDIFF_SRC) $(DSP_TEST_HEADERS)
