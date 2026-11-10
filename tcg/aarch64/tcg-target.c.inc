@@ -1995,7 +1995,8 @@ static void tcg_out_goto_tb(TCGContext *s, int which)
     tcg_debug_assert(i_off == sextract64(i_off, 0, 21));
 
     set_jmp_insn_offset(s, which);
-    tcg_out32(s, I3206_B);
+    /* B +8: the reset target after the indirect-branch instruction. */
+    tcg_out32(s, deposit32(I3206_B, 0, 26, 2));
     tcg_out_insn(s, 3207, BR, TCG_REG_TMP0);
     set_jmp_reset_offset(s, which);
     tcg_out_bti(s, BTI_J);

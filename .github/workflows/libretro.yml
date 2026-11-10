@@ -144,6 +144,8 @@ jobs:
       - uses: actions/checkout@v4
       - name: Install focused DSP toolchains
         run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends libepoxy-dev gcc-aarch64-linux-gnu libc6-dev-arm64-cross qemu-user
+      - name: ARM64 fresh and recycled CPU jump execution
+        run: python3 libretro/tests/test-arm64-fresh-jumps.py . aarch64-linux-gnu-gcc
       - name: Cache publication and flush under ASan and UBSan
         run: make CC="cc -fsanitize=address,undefined -fno-omit-frame-pointer -fno-sanitize-recover=all" DSPINIT="$RUNNER_TEMP/dspinit-sanitize" DSPFLUSH="$RUNNER_TEMP/dspflush-sanitize" DSPCOVERAGE="$RUNNER_TEMP/dspcoverage-sanitize" DSPBOOTSTRAP="$RUNNER_TEMP/dspbootstrap-sanitize" DSPDMASPANS="$RUNNER_TEMP/dspdmaspans-sanitize" dspflush dspcoverage dspbootstrap dspdmaspans dspinit
       - name: Cache publication and flush on emulated ARM64
