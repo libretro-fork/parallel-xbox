@@ -1,6 +1,50 @@
 /* SPDX-License-Identifier: GPL-2.0-or-later */
 /* Internal texture IR helpers. All arrays below contain SSA IDs; final shader
  * words/layouts remain the only host allocations and borrowed keys do not escape. */
+static uint32_t texture_image_type(Context *c,unsigned kind)
+{ return kind?c->image_other[kind-1]:c->image_t; }
+static uint32_t texture_sampled_type(Context *c,unsigned kind)
+{ return kind?c->sampled_other[kind-1]:c->sampled_t; }
+static uint32_t texture_sampler_pointer(Context *c,unsigned kind)
+{ return kind?c->sampler_other_ptr[kind-1]:c->sampler_ptr; }
+/* Keep division in the selected major-axis branch, including reference ties. */
+static uint32_t texture_cube_axis(Context *c,uint32_t coord,uint32_t abs_coord,unsigned axis)
+{
+    uint32_t x=extract(c,coord,0),y=extract(c,coord,1),z=extract(c,coord,2),a,b;
+    uint32_t positive=binary(c,SpvOpFOrdGreaterThan,c->b,extract(c,coord,axis),c->cf[F_ZERO]);
+    if(axis==0){a=choose(c,c->f,positive,unary(c,SpvOpFNegate,c->f,z),z);b=y;}
+    else if(axis==1){a=x;b=choose(c,c->f,positive,unary(c,SpvOpFNegate,c->f,z),z);}
+    else{a=choose(c,c->f,positive,x,unary(c,SpvOpFNegate,c->f,x));b=y;}
+    uint32_t uv=val(c->w,SpvOpCompositeConstruct,c->v2,2,a,b);
+    return binary(c,SpvOpFDiv,c->v2,uv,splat(c,c->v2,extract(c,abs_coord,axis),2));
+}
+static uint32_t texture_cube_to_2d(Context *c,uint32_t coord)
+{
+    if(!c->cube_body)return val(c->w,SpvOpFunctionCall,c->v2,2,c->cube_fn,coord);
+    uint32_t absolute=ext1(c,GLSLstd450FAbs,c->v3,coord);
+    uint32_t x=extract(c,absolute,0),y=extract(c,absolute,1),z=extract(c,absolute,2);
+    uint32_t x_major=binary(c,SpvOpLogicalAnd,c->b,binary(c,SpvOpFOrdGreaterThan,c->b,x,y),binary(c,SpvOpFOrdGreaterThan,c->b,x,z));
+    uint32_t yes=id(c->w),other=id(c->w),merge=id(c->w);
+    op(c->w,SpvOpSelectionMerge,2,merge,0u);op(c->w,SpvOpBranchConditional,3,x_major,yes,other);
+    op(c->w,SpvOpLabel,1,yes);uint32_t uv_x=texture_cube_axis(c,coord,absolute,0);
+    op(c->w,SpvOpBranch,1,merge);op(c->w,SpvOpLabel,1,other);
+    uint32_t y_major=binary(c,SpvOpLogicalAnd,c->b,binary(c,SpvOpFOrdGreaterThan,c->b,y,x),binary(c,SpvOpFOrdGreaterThan,c->b,y,z));
+    uint32_t yy=id(c->w),zz=id(c->w),inner=id(c->w);
+    op(c->w,SpvOpSelectionMerge,2,inner,0u);op(c->w,SpvOpBranchConditional,3,y_major,yy,zz);
+    op(c->w,SpvOpLabel,1,yy);uint32_t uv_y=texture_cube_axis(c,coord,absolute,1);
+    op(c->w,SpvOpBranch,1,inner);op(c->w,SpvOpLabel,1,zz);uint32_t uv_z=texture_cube_axis(c,coord,absolute,2);
+    op(c->w,SpvOpBranch,1,inner);op(c->w,SpvOpLabel,1,inner);
+    uint32_t uv_other=val(c->w,SpvOpPhi,c->v2,4,uv_y,yy,uv_z,zz);
+    op(c->w,SpvOpBranch,1,merge);op(c->w,SpvOpLabel,1,merge);
+    return val(c->w,SpvOpPhi,c->v2,4,uv_x,yes,uv_other,inner);
+}
+static uint32_t texture_2d_to_cube(Context *c,uint32_t coord)
+{
+    if(!c->project_cube_body)return val(c->w,SpvOpFunctionCall,c->v3,2,c->project_cube_fn,coord);
+    uint32_t st=binary(c,SpvOpFDiv,c->v2,xy(c,coord),splat(c,c->v2,extract(c,coord,2),2));
+    uint32_t direction=val(c->w,SpvOpCompositeConstruct,c->v3,3,c->cf[F_ONE],extract(c,st,1),unary(c,SpvOpFNegate,c->f,extract(c,st,0)));
+    return ext1(c,GLSLstd450Normalize,c->v3,direction);
+}
 static uint32_t texture_border(Context *c,uint32_t coord,unsigned unit)
 {
     if(!c->state->border_adjust[unit])return coord;
@@ -57,6 +101,13 @@ static uint32_t texture_convolution(Context *c,uint32_t sample,uint32_t uv,uint3
 }
 static void texture_allocate(Context *c)
 {
+    for(unsigned kind=1;kind<3;kind++)if(has_sampler_kind(c->state,kind)){
+        c->image_other[kind-1]=id(c->w);c->sampled_other[kind-1]=id(c->w);c->sampler_other_ptr[kind-1]=id(c->w);
+    }
+    for(unsigned j=0;j<4;j++){
+        if(texture_mode(c->state,j)==PS_TEXTUREMODES_CUBEMAP && !c->state->tex_cubemap[j] && !c->cube_fn){c->cube_fn=id(c->w);c->cube_fn_type=id(c->w);}
+        if(texture_mode(c->state,j)==PS_TEXTUREMODES_PROJECT2D && sampler_kind(c->state,j)==2 && !c->project_cube_fn){c->project_cube_fn=id(c->w);c->project_cube_type=id(c->w);}
+    }
     if(has_border_samples(c->state)){c->border_array=id(c->w);c->uniform_v3=id(c->w);}
     if(has_color_key(c->state)){c->key_array=id(c->w);c->uvec4_t=id(c->w);}
     if(has_convolution(c->state)){
@@ -71,6 +122,13 @@ static void texture_allocate(Context *c)
 static void texture_types(Context *c)
 {
     Writer *w=c->w;
+    for(unsigned kind=1;kind<3;kind++)if(c->image_other[kind-1]){
+        op(w,SpvOpTypeImage,8,c->image_other[kind-1],c->f,(uint32_t)(kind==1?SpvDim3D:SpvDimCube),0u,0u,0u,1u,(uint32_t)SpvImageFormatUnknown);
+        op(w,SpvOpTypeSampledImage,2,c->sampled_other[kind-1],c->image_other[kind-1]);
+        op(w,SpvOpTypePointer,3,c->sampler_other_ptr[kind-1],(uint32_t)SpvStorageClassUniformConstant,c->sampled_other[kind-1]);
+    }
+    if(c->cube_fn)op(w,SpvOpTypeFunction,3,c->cube_fn_type,c->v2,c->v3);
+    if(c->project_cube_fn)op(w,SpvOpTypeFunction,3,c->project_cube_type,c->v3,c->v3);
     if(c->uniform_v3)op(w,SpvOpTypePointer,3,c->uniform_v3,(uint32_t)SpvStorageClassUniform,c->v3);
     if(c->uvec4_t)op(w,SpvOpTypeVector,3,c->uvec4_t,c->u,4u);
     if(!has_convolution(c->state))return;
@@ -89,4 +147,21 @@ static void texture_types(Context *c)
     for(unsigned j=0;j<9;j++)word(w,c->conv_vec2[j]);
     op(w,SpvOpVariable,4,c->conv_ptr,c->conv_weights,(uint32_t)SpvStorageClassPrivate,c->conv_weight_init);
     op(w,SpvOpVariable,4,c->conv_offsets_ptr,c->conv_offsets,(uint32_t)SpvStorageClassPrivate,c->conv_offset_init);
+}
+
+/* Share helpers across units instead of cloning their branches/arithmetic. */
+static void texture_helpers(Context *c)
+{
+    if(c->cube_fn){
+        op(c->w,SpvOpFunction,4,c->v2,c->cube_fn,0u,c->cube_fn_type);
+        uint32_t coord=id(c->w);op(c->w,SpvOpFunctionParameter,2,c->v3,coord);op(c->w,SpvOpLabel,1,id(c->w));
+        c->cube_body=true;uint32_t value=texture_cube_to_2d(c,coord);c->cube_body=false;
+        op(c->w,SpvOpReturnValue,1,value);op(c->w,SpvOpFunctionEnd,0);
+    }
+    if(c->project_cube_fn){
+        op(c->w,SpvOpFunction,4,c->v3,c->project_cube_fn,0u,c->project_cube_type);
+        uint32_t coord=id(c->w);op(c->w,SpvOpFunctionParameter,2,c->v3,coord);op(c->w,SpvOpLabel,1,id(c->w));
+        c->project_cube_body=true;uint32_t value=texture_2d_to_cube(c,coord);c->project_cube_body=false;
+        op(c->w,SpvOpReturnValue,1,value);op(c->w,SpvOpFunctionEnd,0);
+    }
 }

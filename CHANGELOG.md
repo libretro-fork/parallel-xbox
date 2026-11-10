@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Emit projected 3D and cube texture stages directly as Vulkan SPIR-V with per-unit 2D/3D/cube sampler types. Share cube-coordinate helpers, preserve projective instructions, face/tie rules and existing border/key/alpha behavior, and reuse current image views, samplers and retirement. Keep two final allocations and prior module words/layouts unchanged; no texture copies, new bindings or retained lends.
+
 - Translate 2D border adjustment, masked color keys and the existing Gaussian/quincunx convolution path directly to Vulkan SPIR-V with static or live combiners. Keep alpha kill before color-key changes and convolution offsets after projection, using a counted nine-tap loop. Reuse existing samplers, texture views and uniform uploads; append only consumed border/key fields, retain two final allocations and preserve earlier modules byte-for-byte.
 
 - Emit live register-combiner shaders directly as Vulkan SPIR-V for the supported texture families. Preserve one counted stage loop, all sixteen register slots, mapping tables, lazy mux conversion, aliased writes and live final-stage controls. Reuse existing uniform uploads and shader-local storage; keep two final allocations and borrow the immutable recipe without GLSL or payload snapshots. Previously supported modules remain byte-identical; other texture families retain the compiler.

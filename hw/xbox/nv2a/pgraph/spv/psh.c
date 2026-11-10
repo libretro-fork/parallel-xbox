@@ -5,7 +5,7 @@
 /* GLSL.std.450 numbers, as in the other native emitters; no extra SDK header. */
 enum { GLSLstd450Round=1, GLSLstd450FAbs=4, GLSLstd450Floor=8,
        GLSLstd450UMin=38, GLSLstd450FMax=40, GLSLstd450FClamp=43,
-       GLSLstd450FMix=46, GLSLstd450Fma=50 };
+       GLSLstd450FMix=46, GLSLstd450Fma=50, GLSLstd450Normalize=69 };
 #include "psh.h"
 
 /* Count/write share an immutable key. Only bounded arithmetic IDs are
@@ -43,14 +43,26 @@ static const struct {const char *name;unsigned width,count,offset;bool integer;}
 };
 static unsigned texture_mode(const PshState *s,unsigned stage)
 { return (s->shader_stage_program>>(stage*5))&31; }
+static bool sample_stage(const PshState *s,unsigned stage)
+{ unsigned mode=texture_mode(s,stage);return mode==PS_TEXTUREMODES_PROJECT2D || mode==PS_TEXTUREMODES_PROJECT3D || mode==PS_TEXTUREMODES_CUBEMAP; }
+/* Same descriptor slot; only its SPIR-V sampler dimension varies. */
+static unsigned sampler_kind(const PshState *s,unsigned stage)
+{
+    unsigned mode=texture_mode(s,stage);
+    if(mode==PS_TEXTUREMODES_CUBEMAP)return s->tex_cubemap[stage]?2:0;
+    if(s->dim_tex[stage]==3)return 1;
+    return mode==PS_TEXTUREMODES_PROJECT2D && s->tex_cubemap[stage]?2:0;
+}
+static bool has_sampler_kind(const PshState *s,unsigned kind)
+{ for(unsigned j=0;j<4;j++)if(sample_stage(s,j) && sampler_kind(s,j)==kind)return true;return false; }
 static bool has_samples(const PshState *s)
-{ for(unsigned j=0;j<4;j++)if(texture_mode(s,j)==PS_TEXTUREMODES_PROJECT2D)return true;return false; }
+{ for(unsigned j=0;j<4;j++)if(sample_stage(s,j))return true;return false; }
 static bool has_rect_samples(const PshState *s)
-{ for(unsigned j=0;j<4;j++)if(texture_mode(s,j)==PS_TEXTUREMODES_PROJECT2D && s->rect_tex[j])return true;return false; }
+{ for(unsigned j=0;j<4;j++)if(sample_stage(s,j) && texture_mode(s,j)!=PS_TEXTUREMODES_CUBEMAP && s->rect_tex[j])return true;return false; }
 static bool has_border_samples(const PshState *s)
-{ for(unsigned j=0;j<4;j++)if(texture_mode(s,j)==PS_TEXTUREMODES_PROJECT2D && s->border_adjust[j])return true;return false; }
+{ for(unsigned j=0;j<4;j++)if(sample_stage(s,j) && texture_mode(s,j)!=PS_TEXTUREMODES_CUBEMAP && s->border_adjust[j])return true;return false; }
 static bool has_color_key(const PshState *s)
-{ for(unsigned j=0;j<4;j++)if(texture_mode(s,j)==PS_TEXTUREMODES_PROJECT2D && s->colorkey_mode[j]!=COLOR_KEY_NONE)return true;return false; }
+{ for(unsigned j=0;j<4;j++)if(sample_stage(s,j) && s->colorkey_mode[j]!=COLOR_KEY_NONE)return true;return false; }
 static bool convolution_stage(const PshState *s,unsigned stage)
 { return texture_mode(s,stage)==PS_TEXTUREMODES_PROJECT2D && s->conv_tex[stage]!=CONVOLUTION_FILTER_DISABLED; }
 static bool has_convolution(const PshState *s)
@@ -83,6 +95,7 @@ typedef struct Context {
     uint32_t si[32],ui32[32],cf[FLOATS],u127,u313,yes,no;
     uint32_t inputs[9],frag_coord,front,color,depth;
     uint32_t tex_inputs[4],samplers[4],image_t,sampled_t,sampler_ptr,scale_array,min_q,point_coord,in_v2;
+    uint32_t image_other[2],sampled_other[2],sampler_other_ptr[2];
     uint32_t r[16],ef,z,positions[3],coord,clip;
     /* Shader-local bank and immutable mapping-table IDs; never host payloads. */
     uint32_t comb_array,bank_array,bank_ptr,bank_element,bank;
@@ -90,6 +103,8 @@ typedef struct Context {
     uint32_t border_array,uniform_v3,key_array,uvec4_t;
     uint32_t conv_array,conv_offsets_array,conv_ptr,conv_offsets_ptr,conv_element,conv_offset_element;
     uint32_t conv_weights,conv_offsets,conv_weight_init,conv_offset_init,conv_negative,conv_weight[3],conv_vec2[9];
+    uint32_t cube_fn,cube_fn_type,project_cube_fn,project_cube_type;
+    bool cube_body,project_cube_body;
     bool fetch_body;
     bool precise;
 } Context;
@@ -189,8 +204,17 @@ bool pgraph_spv_psh_supported(const PshState *s,SpvPshOptions opts)
     for(unsigned j=0;j<4;j++){
         unsigned mode=texture_mode(s,j);
         if(s->g8b8_signed[j] || s->tex_x8y24[j] || s->shadow_map[j])return false;
-        if(mode==PS_TEXTUREMODES_PROJECT2D){
-            if(opts.tex_binding>=29 || (opts.ubo_binding>=opts.tex_binding && opts.ubo_binding<opts.tex_binding+4) || s->dim_tex[j]!=2 || s->tex_cubemap[j] || (s->conv_tex[j]!=CONVOLUTION_FILTER_DISABLED && s->conv_tex[j]!=CONVOLUTION_FILTER_GAUSSIAN && s->conv_tex[j]!=CONVOLUTION_FILTER_QUINCUNX) || s->colorkey_mode[j]<COLOR_KEY_NONE || s->colorkey_mode[j]>COLOR_KEY_DISCARD)return false;
+        if(sample_stage(s,j)){
+            if(opts.tex_binding>=29 || (opts.ubo_binding>=opts.tex_binding && opts.ubo_binding<opts.tex_binding+4) || s->colorkey_mode[j]<COLOR_KEY_NONE || s->colorkey_mode[j]>COLOR_KEY_DISCARD)return false;
+            if(mode==PS_TEXTUREMODES_CUBEMAP){if(s->dim_tex[j]!=2)return false;}
+            else{
+                if(s->dim_tex[j]!=2 && s->dim_tex[j]!=3)return false;
+                /* The reference rectangle helper is 2D, including cube sizes. */
+                if(s->dim_tex[j]==3 && s->rect_tex[j])return false;
+                if(mode==PS_TEXTUREMODES_PROJECT2D && s->conv_tex[j]!=CONVOLUTION_FILTER_DISABLED){
+                    if(s->dim_tex[j]!=2 || s->tex_cubemap[j] || (s->conv_tex[j]!=CONVOLUTION_FILTER_GAUSSIAN && s->conv_tex[j]!=CONVOLUTION_FILTER_QUINCUNX))return false;
+                }
+            }
         }else if(mode==PS_TEXTUREMODES_PASSTHRU){if(s->border_adjust[j])return false;}
         else if(mode!=PS_TEXTUREMODES_NONE && mode!=PS_TEXTUREMODES_CLIPPLANE)return false;
     }
@@ -293,15 +317,28 @@ static void texture_stages(Context *c)
             c->r[PS_REGISTER_T0+j]=splat(c,c->v4,c->cf[F_ZERO],4);
             for(unsigned k=0;k<4;k++)discard_if(c,binary(c,c->state->compare_mode[j][k]?SpvOpFOrdGreaterThanEqual:SpvOpFOrdLessThan,c->b,extract(c,coord,k),c->cf[F_ZERO]));
         }else{
-            coord=texture_border(c,coord,j);
-            uint32_t sample=unary(c,SpvOpLoad,c->sampled_t,c->samplers[j]),uv=xy(c,coord);
-            if(c->state->rect_tex[j]){
-                uint32_t image=unary(c,SpvOpImage,c->image_t,sample),size=val(c->w,SpvOpImageQuerySizeLod,c->iv2,2,image,c->si[0]);
+            unsigned kind=sampler_kind(c->state,j);
+            if(mode!=PS_TEXTUREMODES_CUBEMAP)coord=texture_border(c,coord,j);
+            uint32_t sample=unary(c,SpvOpLoad,texture_sampled_type(c,kind),c->samplers[j]),uv=xy(c,coord);
+            if(c->state->rect_tex[j] && mode!=PS_TEXTUREMODES_CUBEMAP){
+                uint32_t image=unary(c,SpvOpImage,texture_image_type(c,kind),sample),size=val(c->w,SpvOpImageQuerySizeLod,c->iv2,2,image,c->si[0]);
                 uint32_t scaled=binary(c,SpvOpFDiv,c->v2,unary(c,SpvOpConvertSToF,c->v2,size),splat(c,c->v2,unif(c,TEX_SCALE,j),2));
                 uv=binary(c,SpvOpFDiv,c->v2,uv,scaled);
             }
             uint32_t color;
-            if(convolution_stage(c->state,j))color=texture_convolution(c,sample,uv,extract(c,coord,3));
+            if(mode==PS_TEXTUREMODES_CUBEMAP){
+                uint32_t lookup=kind==2?xyz(c,coord):texture_cube_to_2d(c,xyz(c,coord));
+                color=val(c->w,SpvOpImageSampleImplicitLod,c->v4,2,sample,lookup);
+            }else if(mode==PS_TEXTUREMODES_PROJECT3D || kind==1){
+                uint32_t projected=coord;
+                if(mode==PS_TEXTUREMODES_PROJECT2D || c->state->rect_tex[j])projected=v4(c,extract(c,uv,0),extract(c,uv,1),c->cf[F_ZERO],extract(c,coord,3));
+                /* Match the reference textureProj instruction and coordinate width. */
+                color=val(c->w,SpvOpImageSampleProjImplicitLod,c->v4,2,sample,projected);
+            }else if(kind==2){
+                uint32_t projected=val(c->w,SpvOpCompositeConstruct,c->v3,3,extract(c,uv,0),extract(c,uv,1),extract(c,coord,3));
+                uint32_t direction=texture_2d_to_cube(c,projected);
+                color=val(c->w,SpvOpImageSampleImplicitLod,c->v4,2,sample,direction);
+            }else if(convolution_stage(c->state,j))color=texture_convolution(c,sample,uv,extract(c,coord,3));
             else{
                 uint32_t q=ext2(c,GLSLstd450FMax,c->f,extract(c,coord,3),c->min_q);
                 uv=binary(c,SpvOpFDiv,c->v2,uv,splat(c,c->v2,q,2));
@@ -382,9 +419,9 @@ static void allocate(Context *c)
     c->frag_coord=id(c->w);c->front=id(c->w);c->color=id(c->w);c->depth=id(c->w);c->ubo=id(c->w);c->entry=id(c->w);c->ext=id(c->w);
     for(unsigned j=0;j<4;j++)if(texture_mode(c->state,j)!=PS_TEXTUREMODES_NONE){
         if(j==3 && c->state->point_sprite){c->point_coord=id(c->w);c->in_v2=id(c->w);}else c->tex_inputs[j]=id(c->w);
-        if(texture_mode(c->state,j)==PS_TEXTUREMODES_PROJECT2D)c->samplers[j]=id(c->w);
+        if(sample_stage(c->state,j))c->samplers[j]=id(c->w);
     }
-    if(has_samples(c->state)){c->image_t=id(c->w);c->sampled_t=id(c->w);c->sampler_ptr=id(c->w);c->min_q=id(c->w);}
+    if(has_sampler_kind(c->state,0)){c->image_t=id(c->w);c->sampled_t=id(c->w);c->sampler_ptr=id(c->w);c->min_q=id(c->w);}
     if(has_rect_samples(c->state))c->scale_array=id(c->w);
     if(c->state->combiner_dynamic)dynamic_allocate(c);
     texture_allocate(c);
@@ -452,10 +489,11 @@ static void emit(Writer *w,const PshState *state,SpvPshOptions opts)
     op(w,SpvOpVariable,3,c.out_v4,c.color,(uint32_t)SpvStorageClassOutput);op(w,SpvOpVariable,3,c.out_f,c.depth,(uint32_t)SpvStorageClassOutput);op(w,SpvOpVariable,3,c.ubo_ptr,c.ubo,(uint32_t)SpvStorageClassUniform);
     for(unsigned j=0;j<4;j++){
         if(c.tex_inputs[j])op(w,SpvOpVariable,3,c.in_v4,c.tex_inputs[j],(uint32_t)SpvStorageClassInput);
-        if(c.samplers[j])op(w,SpvOpVariable,3,c.sampler_ptr,c.samplers[j],(uint32_t)SpvStorageClassUniformConstant);
+        if(c.samplers[j])op(w,SpvOpVariable,3,texture_sampler_pointer(&c,sampler_kind(state,j)),c.samplers[j],(uint32_t)SpvStorageClassUniformConstant);
     }
     if(c.point_coord)op(w,SpvOpVariable,3,c.in_v2,c.point_coord,(uint32_t)SpvStorageClassInput);
     if(state->combiner_dynamic)dynamic_helpers(&c);
+    texture_helpers(&c);
     op(w,SpvOpFunction,4,c.void_t,c.entry,0u,c.fn);op(w,SpvOpLabel,1,id(w));
     c.coord=unary(&c,SpvOpLoad,c.v4,c.frag_coord);c.clip=unif(&c,CLIP,0);for(unsigned j=0;j<3;j++)c.positions[j]=unary(&c,SpvOpLoad,c.v4,c.inputs[j+5]);
     window_clip(&c);barycentric(&c);uint32_t color=combiners(&c);alpha_test(&c,color);op(w,SpvOpStore,2,c.color,color);

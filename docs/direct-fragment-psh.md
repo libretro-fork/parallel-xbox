@@ -102,8 +102,9 @@ sampler, uniform or descriptor pointer escapes count/write. Existing native
 references, texture owners and descriptor/command retirement cover all last
 consumers; no new resource creation or file I/O is introduced.
 
-Cubemaps, 3D/dependent/bump/dot/shadow sampling and special signed/integer
-formats still use the correct compiler path. Border adjustment, color key and
+Dependent/bump/dot/shadow sampling and special signed/integer formats still
+use the correct compiler path. Projected 3D and cube families are described
+below. Border adjustment, color key and
 the existing convolution path are native. Bindings that would overlap the UBO
 or exceed the bounded four-unit range
 reject allocation-free. Full practical direct fragment coverage remains open.
@@ -240,7 +241,7 @@ ordering, point sprites and mixed four-unit filtering. Mask scheduling is
 independent of key mode so discard is visibly exercised. Output comparison,
 watchdog and coverage requirements are unchanged.
 
-Other sampler dimensions/modes, special signed/integer formats and shadow
+Remaining dependent/bump/dot modes, special signed/integer formats and shadow
 sampling remain on the correct compiler path. Full practical direct coverage,
 cold-play smoothness and draw-critical PSO compilation remain open.
 
@@ -252,3 +253,61 @@ suites, 26 OpenGL/Vulkan game checks, four lifecycle cases and five exact image
 pairs passed. These correctness/work counts do not establish GPU execution or
 cold-play latency improvements; driver-cache and timing qualification remain
 open.
+
+
+## Per-unit 3D and cube sampling
+
+Each unit now declares its actual 2D, 3D or cube sampler type while keeping the
+existing `tex_binding + unit` combined-image/sampler descriptor. Multiple kinds
+can coexist in one module. Image views and per-unit samplers remain owned and
+retired by the existing texture/descriptor paths; no resource creation, copy,
+new binding, CPU coordinate snapshot or additional final allocation is added.
+
+PROJECT2D with a volume sampler uses the reference projected vec4(X,Y,0,Q).
+PROJECT3D supports 2D and volume samplers and preserves the reference
+textureProj instruction and supplied coordinate width. Rectangle PROJECT3D
+coordinates retain the reference vec4(normalizedXY,0,Q) construction. These
+paths do not substitute ordinary PROJECT2D's positive-Q clamp.
+
+CUBEMAP samples XYZ directly for a cube view. With a 2D view it uses the exact
+reference cube-to-2D mapping: strict X major, then strict Y major, otherwise Z,
+including ties and sign choices. Division stays inside the chosen axis branch.
+PROJECT2D with a cube view preserves projected XY normalization and the shared
+normalize(vec3(1, projectedY, -projectedX)) helper. Shared helpers avoid repeating
+their branches/arithmetic for four units. Border adjustment and rectangle scale
+are consumed only where the reference uses them; CUBEMAP's unused flags do not
+append uniforms. Alpha kill and color keys retain their previous ordering.
+
+Cube-to-2D and projected-cube functions each have one declaration per module,
+regardless of unit count. Their parameters/results and the new sampler/type
+records are SSA IDs, not pointers into guest data or retained host payloads.
+Count/write borrow the same immutable recipe and bounded precise-ID record;
+exact final word/layout pointers still move through existing native references.
+No shader/cache schema or default changes are needed: prior compiled modules
+remain equivalent. All 16,384 previously supported modules are byte-identical.
+
+Rectangle volume combinations retain fallback because the reference rectangle
+helper is two-dimensional; invalid dimensions, cube convolution and other
+unsupported encodings reject allocation-free. Remaining dependent/bump/dot,
+shadow and special signed/integer formats are still open. No ready-PSO or
+cold-play recovery claim follows from the expanded translation coverage.
+
+CPU coverage expands to 20,480 modules and twenty-five rejected recipes. New
+checks inspect actual image dimensions, projected/sample/query instruction
+counts, single helper declarations, mixed/all-same sampler families, ownership
+and layout bounds. GPU fixtures add marked three-level volume and six-face cube
+images, all units, six face directions, strict-axis ties, zero directions,
+positive/negative/zero/tiny Q, rectangle scale, border/key/alpha controls, points
+and mixed/all-same four-unit samplers. Exceptional-coordinate observations do not establish portable behavior for
+invalid coordinates. Comparison is against production GLSL on each same device,
+rather than a cross-device face/color oracle.
+
+The completed 23,040-case GPU matrix matched 1,843,200 scalar outputs per device
+on llvmpipe with validation and RTX 5090 without installed validation layers.
+Aggregate fixture output used 121,653,110 native words versus 156,850,296
+reference words and avoided 193,643,809 GLSL bytes. Both rectangle-volume modes
+were also compiled through the production reference as rejection controls;
+they fail with vector-size errors, consistent with the native exclusion.
+All 49 contract suites, 26 GL/VK game checks, four lifecycle cases and five
+exact image pairs passed. Timing/driver-cache qualification remains open;
+these work counts do not establish GPU execution or cold-play recovery.
