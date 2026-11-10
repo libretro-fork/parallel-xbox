@@ -232,6 +232,28 @@ ShaderModuleInfo *pgraph_vk_create_shader_module_from_glsl(
         r, pgraph_vk_compile_shader(stage, glsl));
 }
 
+/* Word lend ends when vkCreateShaderModule returns. Names/descriptors are
+ * borrowed from the immutable core image through module teardown; mutable
+ * parameter bytes live in the final module owner. Never pass transient metadata. */
+ShaderModuleInfo *pgraph_vk_create_static_shader_module(
+    PGRAPHVkState *r, const uint32_t *words, size_t num_words,
+    const ShaderUniform *push_constants, size_t count, size_t size)
+{
+    assert((count != 0) == (size != 0));
+    assert(!count || push_constants);
+    size_t offset = (sizeof(ShaderModuleInfo) + 15) & ~(size_t)15;
+    assert(size <= SIZE_MAX - offset);
+    ShaderModuleInfo *info = g_malloc0(offset + size);
+    info->push_constants = (ShaderUniformLayout){
+        .uniforms=push_constants, .num_uniforms=count, .total_size=size,
+        .allocation=size ? (char *)info + offset : NULL,
+    };
+    assert(r->next_shader_module_identity != UINT64_MAX);
+    info->identity = ++r->next_shader_module_identity;
+    info->module = pgraph_vk_create_shader_module_from_words(r, words, num_words);
+    return info;
+}
+
 
 void pgraph_vk_ref_shader_module(ShaderModuleInfo *info)
 {

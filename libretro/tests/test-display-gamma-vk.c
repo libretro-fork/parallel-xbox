@@ -8,6 +8,7 @@
 #include <volk.h>
 #include "hw/xbox/nv2a/pgraph/spv/glslc.h"
 #include "hw/xbox/nv2a/pgraph/gamma.h"
+#include "hw/xbox/nv2a/pgraph/spv/display.h"
 #include "display-gamma-fixture.h"
 /* GPU HELPERS */
 typedef struct {VkImage image;VkImageView view;VkDeviceMemory memory;} TestImage;
@@ -37,7 +38,7 @@ static void upload(TestImage image,Buffer buffer,unsigned width,unsigned height)
 static GlslcResult compile(const char *path,GlslcStage stage)
 {
     FILE *f=fopen(path,"rb");assert(f);assert(!fseek(f,0,SEEK_END));long n=ftell(f);rewind(f);char *text=calloc(n+1,1);assert(text&&fread(text,1,n,f)==(size_t)n);fclose(f);
-    GlslcResult result={0};GlslcOptions options={.emit_layout=true};
+    GlslcResult result={0};GlslcOptions options={.emit_layout=true,.spirv_1_6=getenv("STATIC_DISPLAY_SPIRV") && !strcmp(getenv("STATIC_DISPLAY_SPIRV"),"1")};
     if(!glslc_compile(stage,text,&options,&result)){fprintf(stderr,"%s:%d: %s\n",path,result.error_line,result.error);abort();}
     free(text);char name[4096];snprintf(name,sizeof(name),"%s.spv",path);f=fopen(name,"wb");assert(f&&fwrite(result.words,4,result.num_words,f)==result.num_words);fclose(f);return result;
 }
@@ -54,7 +55,15 @@ int main(int argc,char **argv)
     GlslcResult vertex=compile(argv[1],GLSLC_STAGE_VERTEX),fragment[2]={compile(argv[2],GLSLC_STAGE_FRAGMENT),compile(argv[3],GLSLC_STAGE_FRAGMENT)};
     assert(fragment[0].push_constants.size==128&&fragment[1].push_constants.size==128);
     assert(fragment[0].uniforms.size==1024&&fragment[1].uniforms.size==1024);
-    VkShaderModule vs=gpu_module(vertex.words,vertex.num_words),fs[2]={gpu_module(fragment[0].words,fragment[0].num_words),gpu_module(fragment[1].words,fragment[1].num_words)};
+    const char *fixed=getenv("STATIC_DISPLAY_SPIRV");
+    SpvDisplayShader static_shader[2]={pgraph_spv_display(false,fixed&&!strcmp(fixed,"1")),pgraph_spv_display(true,fixed&&!strcmp(fixed,"1"))};
+    VkShaderModule vs=gpu_module(vertex.words,vertex.num_words),fs[2];
+    for(unsigned i=0;i<2;i++){
+        const uint32_t *words=fixed?static_shader[i].module.words:fragment[i].words;
+        size_t count=fixed?static_shader[i].module.num_words:fragment[i].num_words;
+        fs[i]=gpu_module(words,count);
+    }
+
     VkPhysicalDeviceProperties props;vkGetPhysicalDeviceProperties(physical,&props);size_t stride=pgraph_gamma_stride(props.limits.minUniformBufferOffsetAlignment,props.limits.nonCoherentAtomSize);
     Buffer staging=make_buffer(GAMMA_WIDTH*GAMMA_HEIGHT*4,VK_BUFFER_USAGE_TRANSFER_SRC_BIT),output=make_buffer(GAMMA_WIDTH*GAMMA_HEIGHT*4,VK_BUFFER_USAGE_TRANSFER_DST_BIT),lut=make_buffer(stride*PGRAPH_GAMMA_SLOTS,VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT);
     TestImage src[3],video=image_new(VK_FORMAT_R8G8B8A8_UNORM,1,1,VK_IMAGE_USAGE_SAMPLED_BIT|VK_IMAGE_USAGE_TRANSFER_DST_BIT),target=image_new(VK_FORMAT_R8G8B8A8_UNORM,GAMMA_WIDTH,GAMMA_HEIGHT,VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT|VK_IMAGE_USAGE_TRANSFER_SRC_BIT);
@@ -98,6 +107,7 @@ int main(int argc,char **argv)
             gamma_check(output.mapped,format,curve,overlay,enabled,false,format?baseline:NULL);cases++;
         }
     }
+    printf("Display programs: %s\n",fixed?(!strcmp(fixed,"1")?"static SPIR-V1.6":"static SPIR-V1.5"):"reference compiler");
     printf("PASS: %u actual Vulkan native/byte display cases, %u RGBA components; 128-byte push ABI, 1024-byte LUT, slot descriptors, alpha and overlay ordering\n",cases,cases*GAMMA_WIDTH*GAMMA_HEIGHT*4);
     for(unsigned i=0;i<2;i++){vkDestroyPipeline(device,pipelines[i],NULL);vkDestroyShaderModule(device,fs[i],NULL);free(fragment[i].words);free(fragment[i].uniforms.members);free(fragment[i].push_constants.members);}
     vkDestroyShaderModule(device,vs,NULL);free(vertex.words);free(vertex.uniforms.members);free(vertex.push_constants.members);

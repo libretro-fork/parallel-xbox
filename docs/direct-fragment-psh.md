@@ -675,3 +675,20 @@ Fixtures include flipped/swapped axes, fractional origins, different Q/Z/W,
 nonfinite inputs, short extents, nonaffine UVs and large coordinates. These checks
 do not establish PSO readiness, GPU execution speed or cold-play recovery; the
 regression remains BAD/OPEN.
+
+
+## Fixed display programs
+
+The fixed native/byte scanout fragment variants are precompiled with the in-tree
+compiler as immutable SPIR-V1.5/1.6. CPU regression tests require exact module
+words and push metadata for both compiler prefix modes. Shader source is retained
+in display-glsl.h solely for tests/regeneration; runtime display initialization
+neither parses nor constructs GLSL, allocates word buffers, nor clones payloads.
+Four variants occupy64560 read-only bytes. Each shader module still has one final
+owner with aligned mutable128-byte push storage. Static names/descriptors belong
+to the core image through module destruction; word lends end after synchronous
+vkCreateShaderModule. Dynamic shaders keep their existing reference owners.
+Unused host gamma reflection storage is omitted; actual GPU LUT, descriptors,
+publication and retirement remain unchanged. Driver internal copies/allocations
+are unmeasured. Startup translation removal does not establish draw-path PSO
+readiness, GPU execution speed or cold-play recovery; the regression stays open.

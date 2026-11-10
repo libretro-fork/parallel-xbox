@@ -1022,6 +1022,10 @@ ShaderModuleInfo *pgraph_vk_create_shader_module_from_spirv(PGRAPHVkState *r,
                                                              ShaderSource *spirv);
 ShaderModuleInfo *pgraph_vk_create_shader_module_from_glsl(
     PGRAPHVkState *r, VkShaderStageFlagBits stage, const char *glsl);
+/* Static metadata must belong to the core image through module destruction. */
+ShaderModuleInfo *pgraph_vk_create_static_shader_module(
+    PGRAPHVkState *r, const uint32_t *words, size_t num_words,
+    const ShaderUniform *push_constants, size_t count, size_t size);
 void pgraph_vk_ref_shader_module(ShaderModuleInfo *info);
 void pgraph_vk_unref_shader_module(PGRAPHVkState *r, ShaderModuleInfo *info);
 void pgraph_vk_destroy_shader_module(PGRAPHVkState *r, ShaderModuleInfo *info);

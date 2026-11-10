@@ -5287,3 +5287,22 @@ case were rejected; their raw samples are retained separately.
 ### DSP initialization
 
 `make dspinit` compares every byte of a freshly initialized DSP against the previous zero-allocation/reset/three-RAM-fill recipe, then executes CLR and HALT. It covers GP/EP, C/JIT and repeated allocation with poisoned test allocations. The dedicated DSP sanitizer/ARM64 job also runs this test. The optimization removes a redundant 40 KiB zero-initialization request per instance; it does not establish a gameplay or startup timing improvement.
+
+
+`python libretro/tests/test-spv-display.py . gcc` checks all four immutable
+scanout variants against the production compiler, with and without prefix
+storage, including every push-constant name/dimension/offset and one final
+module-owner allocation. It checks8192 independent owner pairs, poisoned
+caller views, static metadata lends, identities and native retirement.
+`--generate` explicitly refreshes display-words.inc; rerun without that flag
+before committing. CI never refreshes its expected words automatically.
+
+`python libretro/tests/test-display-gamma.py . --cc gcc --gpu` runs the existing
+OpenGL oracle plus reference and static Vulkan programs (SPIR-V1.5/1.6), with
+negotiated shader-demote enablement. `--vulkan-only` supports a Vulkan-only
+machine; it does not qualify OpenGL. Static words occupy64560 immutable bytes.
+They are borrowed through vkCreateShaderModule; push names remain owned by the
+core image through module destruction. Only mutable128-byte push values share
+the final module owner. The unused1024-byte host gamma reflection allocation
+per variant disappears; the real GPU LUT/descriptors/upload ring stay unchanged.
+Driver allocation/copy behavior and cold-play smoothness remain unqualified.

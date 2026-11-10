@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Vulkan starts its two fixed scanout programs from immutable SPIR-V instead of parsing GLSL. Preserve both negotiated SPIR-V versions and the 128-byte push layout, borrow static words and names, and omit unused host gamma reflection storage without changing upload or retirement ownership.
+
 - DSP startup initializes its 40 KiB RAM power-on pattern directly, avoiding a redundant zero-initialization request. Complete-state regression coverage checks both DSP roles and C/JIT backends.
 
 - CPU translation: track active temporary state during liveness analysis, combine reachability and temporary-lifetime discovery, and initialize/copy-propagate optimizer operands in one pass. Preserve explicit context owners and generated liveness decisions; synthetic differential checks cover the prior passes. Gameplay performance remains unmeasured.
