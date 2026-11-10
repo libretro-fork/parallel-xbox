@@ -19,7 +19,7 @@
 #define NV2A_PROF_QUEUE_SUBMIT_AUX 0
 /* CONSTANTS */
 enum {BUFFER_STAGING_SRC,BUFFER_UNSWIZZLE_OUT};
-typedef struct {size_t buffer_size;VkMemoryPropertyFlags properties;} StorageBuffer;
+typedef struct {size_t buffer_size;VkMemoryPropertyFlags properties;uint8_t *mapped;} StorageBuffer;
 typedef struct {
  VkDevice device;
  /* AUX TYPE */
@@ -73,6 +73,23 @@ static uint32_t rng=0x842a7913;
 static unsigned random_word(void){rng^=rng<<13;rng^=rng>>17;rng^=rng<<5;return rng;}
 int main(void){
  quiet_test_errors();
+ /* Streaming refusal never grows storage or changes the caller's result.
+  * Retain the open recording until its explicit submit, then retry safely. */
+ for(unsigned coherent=0;coherent<2;coherent++){
+  setup(512,512);
+  if(!coherent)state.storage_buffers[0].properties=VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT;
+  VkCommandBuffer c=pgraph_vk_begin_single_time_commands(&pg);
+  state.storage_buffers[0].mapped=(uint8_t *)bytes[0];
+  VkDeviceSize off=UINT64_MAX;uint8_t *ptr=(uint8_t *)(uintptr_t)7;
+  assert(!pgraph_vk_staging_try_alloc(&pg,512,16,&off,&ptr)&&off==UINT64_MAX&&ptr==(uint8_t *)(uintptr_t)7&&!growths);
+  allocate(0,256,16);allocate(0,256,16);
+  assert(!pgraph_vk_staging_try_alloc(&pg,1,16,&off,&ptr)&&off==UINT64_MAX&&ptr==(uint8_t *)(uintptr_t)7&&!growths);
+  assert(state.in_aux_command_buffer&&!waits);
+  submit(c);c=pgraph_vk_begin_single_time_commands(&pg);
+  assert(pgraph_vk_staging_try_alloc(&pg,128,16,&off,&ptr)&&off==0&&ptr==(uint8_t *)bytes[0]&&!growths);
+  submit(c);finish();
+ }
+ puts("Streaming ring: oversize/open-recording refusal, explicit rotation and retry; zero growth");
  unsigned poll_cases=0;
  for(unsigned start=0;start<PGRAPH_VK_AUX_SLOTS;start++)
  for(unsigned n=0;n<=PGRAPH_VK_AUX_SLOTS;n++)for(unsigned complete=0;complete<=n;complete++)

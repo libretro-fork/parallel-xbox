@@ -8,7 +8,8 @@ if os.name!='nt':
  resource.setrlimit(resource.RLIMIT_CORE,(0,0))
 s=(r/'hw/xbox/nv2a/pgraph/vk/glsl.c').read_text();start=s.index('VkShaderModule pgraph_vk_create_utility_shader_module(');end=s.index('\n}',start)+2;body=s[start:end]
 assert all(x not in body for x in ['compile_glsl','malloc','memcpy','ShaderSource','glslc_compile'])
-for name,kinds in [('pvideo.c',['PVIDEO']),('gpuprops.c',['PROPS_VERTEX','PROPS_GEOMETRY','PROPS_FRAGMENT']),('s3tc-decode.h',['S3TC_ARRAY','S3TC_VOLUME'])]:
+s3tc_site='s3tc-pipeline-job.h' if (r/'hw/xbox/nv2a/pgraph/vk/s3tc-pipeline-job.h').exists() else 's3tc-decode.h'
+for name,kinds in [('pvideo.c',['PVIDEO']),('gpuprops.c',['PROPS_VERTEX','PROPS_GEOMETRY','PROPS_FRAGMENT']),(s3tc_site,['S3TC_ARRAY','S3TC_VOLUME'])]:
  text=(r/'hw/xbox/nv2a/pgraph/vk'/name).read_text();assert 'create_fixed_shader_module_from_glsl' not in text
  for kind in kinds:assert 'SPV_UTILITY_'+kind in text
 props=(r/'hw/xbox/nv2a/pgraph/vk/gpuprops.c').read_text()

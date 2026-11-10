@@ -81,6 +81,7 @@ typedef struct {
  unsigned aux_slot;bool in_aux_command_buffer;struct {bool pending;} aux[PGRAPH_VK_AUX_SLOTS];
     struct {
         bool enabled;
+        uint8_t pending_mask;
         VkDescriptorSetLayout set_layout;
         VkPipelineLayout layout;
         VkPipeline pipelines[2]; /* 2D array layer, 3D */
@@ -112,12 +113,43 @@ static VkDeviceSize pgraph_vk_staging_alloc(PGRAPHState *pg,size_t size,size_t a
 static void pgraph_vk_staging_flush(PGRAPHState *p,VkDeviceSize off,size_t size){(void)p;(void)off;(void)size;}
 static void pgraph_vk_wait_for_aux(PGRAPHState *p){(void)p;/* The test waits every fence before teardown. */}
 static bool pgraph_vk_spirv_1_6;
-static VkShaderModule pgraph_vk_create_utility_shader_module(PGRAPHVkState *r,enum SpvUtilityShader shader)
+#include "hw/xbox/nv2a/pgraph/vk/s3tc-pipeline-job.h"
+static bool force_pipeline_pending;
+static unsigned stream_test, stream_probes, stream_ready_after, stream_rotations;
+static VkQueue stream_queue;
+static VkCommandBuffer stream_command;
+static bool pgraph_vk_staging_try_alloc(PGRAPHState *pg,size_t size,size_t align,VkDeviceSize *off,uint8_t **out)
 {
- SpvStaticModule words=pgraph_spv_utility(shader,pgraph_vk_spirv_1_6);
- VkShaderModuleCreateInfo ci={.sType=VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,.codeSize=words.num_words*4,.pCode=words.words};
- VkShaderModule module;CHECK(vkCreateShaderModule(r->device,&ci,NULL,&module));return module;
+ size_t next=ROUND_UP(pg->src,align);
+ if(size>=pg->vk_renderer_state->storage_buffers[0].buffer_size ||
+    next+size>pg->vk_renderer_state->storage_buffers[0].buffer_size)return false;
+ *off=pgraph_vk_staging_alloc(pg,size,align,out);return true;
 }
+/* Value/synchronization fixture submits and retires each reused command here.
+ * Async eight-slot range ownership is tested separately by ring-pressure. */
+static void pgraph_vk_end_single_time_commands_async(PGRAPHState *pg,VkCommandBuffer cmd)
+{
+ assert(stream_test&&cmd==stream_command);CHECK(vkEndCommandBuffer(cmd));
+ VkSubmitInfo si={.sType=VK_STRUCTURE_TYPE_SUBMIT_INFO,.commandBufferCount=1,.pCommandBuffers=&cmd};
+ VkFenceCreateInfo fi={.sType=VK_STRUCTURE_TYPE_FENCE_CREATE_INFO};VkFence f;
+ CHECK(vkCreateFence(device,&fi,NULL,&f));CHECK(vkQueueSubmit(stream_queue,1,&si,f));
+ CHECK(vkWaitForFences(device,1,&f,VK_TRUE,10000000000ULL));vkDestroyFence(device,f,NULL);
+ CHECK(vkResetCommandBuffer(cmd,0));pg->src=32;stream_rotations++;
+}
+static VkCommandBuffer pgraph_vk_begin_single_time_commands(PGRAPHState *pg)
+{
+ (void)pg;assert(stream_test);VkCommandBufferBeginInfo bi={.sType=VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
+ CHECK(vkBeginCommandBuffer(stream_command,&bi));return stream_command;
+}
+static bool pgraph_vk_s3tc_pipeline_ready(PGRAPHState *pg,unsigned volume)
+{
+ if(force_pipeline_pending && stream_test==2 && ++stream_probes>=stream_ready_after)force_pipeline_pending=false;
+ return !force_pipeline_pending && pg->vk_renderer_state->s3tc_decode.pipelines[volume]!=VK_NULL_HANDLE;
+}
+static bool pgraph_vk_s3tc_pipeline_uncovered(PGRAPHState *pg,unsigned volume)
+{(void)pg;(void)volume;return false;} /* fixture models a started worker */
+static void pgraph_vk_quiesce_pipeline_worker(PGRAPHState *pg)
+{assert(!pg->vk_renderer_state->s3tc_decode.pending_mask);}
 
 /* CPU PRODUCTION */
 static VkBuffer test_ram_handle;
@@ -244,11 +276,19 @@ static Case record_case(PGRAPHVkState *r, PGRAPHState *pg, VkCommandBuffer cmd,
         r->device_props.limits.maxStorageBufferRange=kind==6?staged_largest:kind==5?largest:end-first;
         assert(r->device_props.limits.maxStorageBufferRange<*nv->vram);
     }
-    if((size_t)shape.width*shape.height*shape.depth>=65536) assert(upload_s3tc_image_gpu(pg,cmd,b,skip));
+    if(stream_test){
+        assert(!queued&&kind==1);stream_command=cmd;stream_queue=queue;
+        stream_probes=0;stream_ready_after=8;force_pipeline_pending=true;
+        if((size_t)shape.width*shape.height*shape.depth>=65536)assert(upload_s3tc_image_gpu(pg,&cmd,b,skip));
+        else {assert(s3tc_decode_levels(pg,cmd,b,levels,n,mode)==S3TC_DECODE_PENDING);assert(s3tc_decode_stream(pg,&cmd,b,levels,n,mode));}
+        if(stream_test==2)assert(!force_pipeline_pending);
+        force_pipeline_pending=false;
+    }
+    else if((size_t)shape.width*shape.height*shape.depth>=65536) assert(upload_s3tc_image_gpu(pg,&cmd,b,skip));
     else assert(s3tc_decode_levels(pg,cmd,b,levels,n,mode));
     r->device_props.limits.maxStorageBufferRange=saved_limit;
     size_t packed=0;for(unsigned j=0;j<n;j++)packed+=ROUND_UP(levels[j].size,16);
-    assert(pg->written==((kind==1||kind==3||kind==4||kind==5)?0:packed));
+    if(!stream_test)assert(pg->written==((kind==1||kind==3||kind==4||kind==5)?0:packed));
     if(kind!=1&&kind!=4&&kind!=5)for(unsigned j=0;j<n;j++)memset(nv->vram_ptr+levels[j].source,0xEE,levels[j].size);
     c.view=r->s3tc_decode.slots[c.slot].views[0];
     VkImageMemoryBarrier image={.sType=VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,.srcAccessMask=VK_ACCESS_SHADER_WRITE_BIT|VK_ACCESS_TRANSFER_WRITE_BIT,
@@ -286,8 +326,10 @@ static void check_rejections(PGRAPHVkState *r,PGRAPHState *pg,VkCommandBuffer cm
     uint32_t limit=r->device_props.limits.maxStorageBufferRange;r->device_props.limits.maxStorageBufferRange=8;assert(!s3tc_decode_levels(pg,cmd,&b,&l,1,2));r->device_props.limits.maxStorageBufferRange=limit;
     uint32_t z=r->device_props.limits.maxComputeWorkGroupCount[2];r->device_props.limits.maxComputeWorkGroupCount[2]=0;assert(!s3tc_decode_levels(pg,cmd,&b,&l,1,2));r->device_props.limits.maxComputeWorkGroupCount[2]=z;
     VkDeviceSize size=r->storage_buffers[0].buffer_size;r->storage_buffers[0].buffer_size=16;r->vram_buffer=VK_NULL_HANDLE;assert(!s3tc_decode_levels(pg,cmd,&b,&l,1,2));r->storage_buffers[0].buffer_size=size;
+    force_pipeline_pending=true;assert(s3tc_decode_levels(pg,cmd,&b,&l,1,2)==S3TC_DECODE_PENDING);force_pipeline_pending=false;
+    assert(!pg->written&&pg->src==17&&r->s3tc_decode.slots[r->aux_slot].used==used);
     b.key.state=(TextureShape){.width=4,.height=4,.depth=1,.levels=1,.dimensionality=3,.color_format=3};
-    assert(!upload_s3tc_image_gpu(pg,cmd,&b,0));r->bc_native=true;assert(!upload_s3tc_image_gpu(pg,cmd,&b,0));r->bc_native=false;
+    assert(!upload_s3tc_image_gpu(pg,&cmd,&b,0));r->bc_native=true;assert(!upload_s3tc_image_gpu(pg,&cmd,&b,0));r->bc_native=false;
     assert(!pg->written&&pg->src==17&&r->s3tc_decode.slots[r->aux_slot].used==used);
     puts("S3TC preflight: disabled/native/small, format/usage, source bounds, storage/dispatch/capacity rejection leave staging and descriptors untouched");
 }
@@ -449,6 +491,11 @@ int main(void)
 
  PGRAPHVkState r={.in_aux_command_buffer=true,.physical_device=gpu,.device=device,.device_props=properties};
  r.s3tc_decode.enabled=true;
+ for(unsigned volume=0;volume<2;volume++){
+  S3tcPipelineJob job={.volume=volume,.spirv_1_6=pgraph_vk_spirv_1_6,.owns_layout=r.s3tc_decode.layout==VK_NULL_HANDLE};
+  s3tc_pipeline_job_create(r.device,VK_NULL_HANDLE,&r.s3tc_decode.layout,&job,&r.s3tc_decode.pipelines[volume]);
+  if(job.owns_layout)r.s3tc_decode.set_layout=job.created_set_layout;
+ }
  size_t capacity=16*1024*1024;
  Buffer ram=buffer(capacity),src=buffer(capacity),dst=buffer(capacity);test_ram_handle=ram.handle;
  r.storage_buffers[0]=(StorageBuffer){src.handle,capacity,src.mapped};
@@ -485,7 +532,22 @@ int main(void)
   exhaustive_channel=ch;TextureShape shape={.width=1024,.height=1024,.depth=1,.levels=1,.dimensionality=2,.color_format=mode+1};
   r.aux_slot=cases%8;Case c=record_case(&r,pg,commands[r.aux_slot],queue,dst,shape,1,0,false);complete_case(&r,&c,dst,commands[r.aux_slot]);
  }
- exhaustive_channel=-1;check_rejections(&r,pg,commands[0]);
+ exhaustive_channel=-1;
+ unsigned stream_cases=cases;
+ r.storage_buffers[0].buffer_size=4096;
+ for(stream_test=1;stream_test<=2;stream_test++)for(unsigned mode=0;mode<3;mode++){
+  for(unsigned volume=0;volume<2;volume++)for(unsigned odd=0;odd<2;odd++){
+   TextureShape shape={.width=odd?129:64,.height=odd?19:64,.depth=volume?5:1,.levels=1,.dimensionality=volume?3:2,.color_format=mode+1};
+   r.aux_slot=cases%8;Case c=record_case(&r,pg,commands[r.aux_slot],queue,dst,shape,1,0,false);complete_case(&r,&c,dst,commands[r.aux_slot]);
+  }
+  for(unsigned border=0;border<2;border++)for(unsigned skip=0;skip<2;skip++){
+   TextureShape shape={.width=64,.height=64,.depth=1,.levels=7,.dimensionality=2,.color_format=mode+1,.cubemap=true,.border=border};
+   r.aux_slot=cases%8;Case c=record_case(&r,pg,commands[r.aux_slot],queue,dst,shape,1,skip?0x25:0,false);complete_case(&r,&c,dst,commands[r.aux_slot]);
+  }
+ }
+ stream_test=0;r.storage_buffers[0].buffer_size=capacity;
+ printf("Bounded stream GPU: %u cases, %u reused-command rotations; 4KiB ring, CPU-only/delayed-ready takeover, volume/odd/cube/border/mips/skips\n",cases-stream_cases,stream_rotations);
+ check_rejections(&r,pg,commands[0]);
  if(getenv("VK_S3TC_BENCH"))benchmark(&r,pg,commands,queue);
  s3tc_decode_finalize(pg);drop_buffer(ram);drop_buffer(src);drop_buffer(dst);vkDestroyCommandPool(device,pool,NULL);vkDestroyDevice(device,NULL);if(messenger)destroy(instance,messenger,NULL);vkDestroyInstance(instance,NULL);
  printf("S3TC real driver capability queries=%u\n",format_queries);

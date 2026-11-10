@@ -298,8 +298,8 @@ static bool ring_tail(PGRAPHVkState *r, int ring, size_t *tail)
     return false;
 }
 
-bool pgraph_vk_ring_alloc(PGRAPHState *pg, int ring, size_t size,
-                          size_t alignment, VkDeviceSize *offset)
+static bool ring_alloc(PGRAPHState *pg, int ring, size_t size,
+                       size_t alignment, VkDeviceSize *offset, bool allow_growth)
 {
     PGRAPHVkState *r = pg->vk_renderer_state;
     StorageBuffer *b = &r->storage_buffers[ring_buffer[ring]];
@@ -308,7 +308,7 @@ bool pgraph_vk_ring_alloc(PGRAPHState *pg, int ring, size_t size,
     assert(r->in_aux_command_buffer);
     assert(size > 0);
     if (size >= b->buffer_size) {
-        if (ring != PGRAPH_VK_RING_STAGING) {
+        if (ring != PGRAPH_VK_RING_STAGING || !allow_growth) {
             return false;
         }
         /* Grown for it, once everything has settled: the recording so far
@@ -365,11 +365,32 @@ bool pgraph_vk_ring_alloc(PGRAPHState *pg, int ring, size_t size,
             continue;
         }
         /* the open recording alone holds more than the ring */
-        if (ring != PGRAPH_VK_RING_STAGING) {
+        if (ring != PGRAPH_VK_RING_STAGING || !allow_growth) {
             return false;
         }
         assert(!"staging ring: the open recording does not fit");
     }
+}
+
+bool pgraph_vk_ring_alloc(PGRAPHState *pg, int ring, size_t size,
+                          size_t alignment, VkDeviceSize *offset)
+{
+    return ring_alloc(pg, ring, size, alignment, offset, true);
+}
+
+/* A streaming producer can submit its current recording and retry without
+ * growing native storage. Existing GPU readers retire through the same ring
+ * fences; false leaves offset/pointer untouched and never resizes a buffer. */
+bool pgraph_vk_staging_try_alloc(PGRAPHState *pg, size_t size, size_t alignment,
+                                 VkDeviceSize *offset, uint8_t **ptr)
+{
+    if (!ring_alloc(pg, PGRAPH_VK_RING_STAGING, size, alignment, offset, false)) {
+        return false;
+    }
+    StorageBuffer *b = &pg->vk_renderer_state->storage_buffers[BUFFER_STAGING_SRC];
+    assert(b->mapped);
+    *ptr = b->mapped + *offset;
+    return true;
 }
 
 VkDeviceSize pgraph_vk_staging_alloc(PGRAPHState *pg, size_t size,

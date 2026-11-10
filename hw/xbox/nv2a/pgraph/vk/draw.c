@@ -1014,10 +1014,13 @@ typedef struct GplFragKey {
         uint32_t has_zeta, attachments, blend_valid, push_size;
 } GplFragKey;
 
+#include "s3tc-pipeline-job.h"
+
 /* Queued pipeline compiles own every structure their create info references.
  * Synchronous creation may borrow its caller's key until the call returns. */
 typedef struct {
     bool frag;
+    bool compute; /* uses the existing padding before hash */
     bool full;     /* a whole pipeline, for the pipeline cache */
     uint64_t hash; /* a library's; a whole pipeline's key hash */
     uint64_t state_hash; /* full: the shader state it was met as */
@@ -1045,10 +1048,16 @@ typedef struct {
         PipelineKey key; /* complete PSO identity */
         GplPreKey pre_key;
         GplFragKey frag_key;
+        S3tcPipelineJob s3tc; /* fixed compute metadata, not a key snapshot */
     }; /* final slot owns the active identity through worker completion */
     bool has_dynamic_line_width;
     VkPipeline result;
 } LibJob;
+
+typedef struct LibJobHeaderBeforeCompute { bool frag,full; uint64_t hash; } LibJobHeaderBeforeCompute;
+_Static_assert(offsetof(LibJob,hash)==offsetof(LibJobHeaderBeforeCompute,hash),
+               "compute discriminator uses existing job-header padding");
+_Static_assert(sizeof(S3tcPipelineJob)<=sizeof(PipelineKey),"compute metadata fits native job union");
 
 _Static_assert(sizeof(GplPreKey) <= sizeof(PipelineKey), "library key fits native job storage");
 _Static_assert(sizeof(GplFragKey) <= sizeof(PipelineKey), "fragment key fits native job storage");
@@ -1119,6 +1128,9 @@ static void *pipe_worker_fn(void *opaque)
             LibJob *job = &pump_jobs[pr % PUMP_RING];
             if (retro_atomic_load_acquire_int(&pump_cancel)) {
                 job->result = VK_NULL_HANDLE;
+            } else if (job->compute) {
+                s3tc_pipeline_job_create(job->device,job->cache,&job->layout,
+                                         &job->s3tc,&job->result);
             } else {
                 VK_CHECK(vkCreateGraphicsPipelines(job->device, job->cache, 1,
                                                    &job->ci, NULL,
@@ -1257,7 +1269,7 @@ static VkPipeline pump_take_library(PGRAPHVkState *r, bool frag, uint64_t hash,
     for (unsigned i = pump_d; i != done; i++) {
         LibJob *job = &pump_jobs[i % PUMP_RING];
         const void *owned = frag ? (const void *)&job->frag_key : &job->pre_key;
-        if (!job->full && job->frag == frag && job->result &&
+        if (!job->compute && !job->full && job->frag == frag && job->result &&
             job->hash == hash && !memcmp(owned, key, gpl_key_size(r, frag))) {
             VkPipeline result = job->result;
             gpl_store(r, frag, hash, owned, result);
@@ -1474,7 +1486,7 @@ static bool pump_full_in_flight(uint64_t key_hash, const PipelineKey *key)
 {
     for (unsigned i = pump_d; i < pump_w_local; i++) {
         LibJob *j = &pump_jobs[i % PUMP_RING];
-        if (j->full && j->hash == key_hash &&
+        if (!j->compute && j->full && j->hash == key_hash &&
             !memcmp(&j->key, key, sizeof(*key))) {
             return true;
         }
@@ -1517,6 +1529,31 @@ static void library_land(PGRAPHVkState *r, LibJob *job)
     }
 }
 
+/* Completion publication ends the worker's slot lend. Transfer only owned
+ * native handles; a later ordered drain must not touch this result again. */
+static void s3tc_pipeline_job_land(PGRAPHVkState *r, LibJob *job)
+{
+    if (job->s3tc.retired) { return; }
+    assert(job->device==r->device && job->cache==r->vk_pipeline_cache);
+    unsigned volume=job->s3tc.volume;
+    assert(volume<2);
+    r->s3tc_decode.pending_mask &= ~(1u<<volume);
+    if (job->result) {
+        assert(!r->s3tc_decode.pipelines[volume]);
+        if (job->s3tc.owns_layout) {
+            assert(!r->s3tc_decode.layout && !r->s3tc_decode.set_layout);
+            r->s3tc_decode.layout=job->layout;
+            r->s3tc_decode.set_layout=job->s3tc.created_set_layout;
+            job->s3tc.created_set_layout=VK_NULL_HANDLE;
+        } else {
+            assert(job->layout==r->s3tc_decode.layout);
+        }
+        r->s3tc_decode.pipelines[volume]=job->result;
+        job->result=VK_NULL_HANDLE;
+    }
+    job->s3tc.retired=true;
+}
+
 /* Land what the worker finished: libraries in the lookup tables, whole
  * pipelines in the pipeline cache. */
 static void pump_drain(PGRAPHState *pg)
@@ -1528,7 +1565,9 @@ static void pump_drain(PGRAPHState *pg)
     unsigned done = (unsigned)retro_atomic_load_acquire_int(&pump_r);
     while (pump_d != done) {
         LibJob *job = &pump_jobs[pump_d % PUMP_RING];
-        if (job->result == VK_NULL_HANDLE) {
+        if (job->compute) {
+            s3tc_pipeline_job_land(r,job);
+        } else if (job->result == VK_NULL_HANDLE) {
             /* Cancelled or already-transferred handles leave no result to
              * publish. Release their referenced modules below; layouts
              * remain renderer-owned. */
@@ -1555,7 +1594,7 @@ static bool pump_take_pipeline(PGRAPHState *pg, PipelineBinding *binding,
     unsigned done = (unsigned)retro_atomic_load_acquire_int(&pump_r);
     for (unsigned i = pump_d; i != done; i++) {
         LibJob *job = &pump_jobs[i % PUMP_RING];
-        if (job->full && job->result && job->hash == hash &&
+        if (!job->compute && job->full && job->result && job->hash == hash &&
             !memcmp(&job->key, key, sizeof(*key))) {
             binding->pipeline = job->result;
             binding->layout = job->layout;
@@ -1609,11 +1648,72 @@ static void pump_submit(LibJob *job)
     if (job->full) {
         job->vertex_key = &job->key;
     }
-    lib_job_link(job); /* ring slots never move */
+    if (!job->compute) { lib_job_link(job); } /* ring slots never move */
     pipe_start();
     pump_w_local++;
     retro_atomic_store_release_int(&pump_w, (int)pump_w_local);
     retro_eventcount_notify(&pipe_ec_work);
+}
+
+/* Only inspect published compute completions while texture/key lends may
+ * be live. Do not drain unrelated graphics caches or recycle their slots. */
+bool pgraph_vk_s3tc_pipeline_ready(PGRAPHState *pg, unsigned volume)
+{
+    PGRAPHVkState *r=pg->vk_renderer_state;
+    assert(volume<2);
+    if (!r->s3tc_decode.enabled) { return false; }
+    if (r->s3tc_decode.pipelines[volume]) { return true; }
+    /* Do not create an optional worker/thread stack on an upload. Normal
+     * pipeline preparation starts it; CPU decode stays valid until then. */
+    if (!pipe_started) { return false; }
+    {
+        unsigned done=(unsigned)retro_atomic_load_acquire_int(&pump_r);
+        for (unsigned i=pump_d;i!=done;i++) {
+            LibJob *job=&pump_jobs[i%PUMP_RING];
+            if (job->compute) { s3tc_pipeline_job_land(r,job); }
+        }
+    }
+    if (r->s3tc_decode.pipelines[volume]) { return true; }
+    if ((r->s3tc_decode.pending_mask&(1u<<volume)) ||
+        (!r->s3tc_decode.layout && r->s3tc_decode.pending_mask)) { return false; }
+    LibJob *job=pump_slot();
+    if (!job) { return false; } /* optional work; CPU decode remains ready */
+    job->compute=true;
+    job->s3tc=(S3tcPipelineJob){.volume=volume,.spirv_1_6=pgraph_vk_spirv_1_6,
+                              .owns_layout=r->s3tc_decode.layout==VK_NULL_HANDLE};
+    job->device=r->device;
+    job->cache=r->vk_pipeline_cache;
+    job->layout=r->s3tc_decode.layout;
+    r->s3tc_decode.pending_mask|=1u<<volume;
+    pump_submit(job);
+    return false;
+}
+
+/* Explicit uncovered configuration: no existing graphics preparation worker.
+ * Keep the previous correct GPU path rather than creating an optional thread
+ * or making every upload decode on the CPU forever. This synchronous miss is
+ * still a tracked draw-path violation; it is not nonblocking coverage. */
+bool pgraph_vk_s3tc_pipeline_uncovered(PGRAPHState *pg, unsigned volume)
+{
+    PGRAPHVkState *r = pg->vk_renderer_state;
+    assert(volume < 2);
+    if (pipe_started || !r->s3tc_decode.enabled) return false;
+    if (r->s3tc_decode.pipelines[volume]) return true;
+    S3tcPipelineJob job = {
+        .volume = volume, .spirv_1_6 = pgraph_vk_spirv_1_6,
+        .owns_layout = r->s3tc_decode.layout == VK_NULL_HANDLE
+    };
+    s3tc_pipeline_job_create(r->device, r->vk_pipeline_cache,
+        &r->s3tc_decode.layout, &job, &r->s3tc_decode.pipelines[volume]);
+    if (job.owns_layout) r->s3tc_decode.set_layout = job.created_set_layout;
+    return true;
+}
+
+/* Teardown only: fixed layout/cache/device lends end after ordinary worker
+ * cancellation/drain. Never call this from a draw or an upload. */
+void pgraph_vk_quiesce_pipeline_worker(PGRAPHState *pg)
+{
+    pump_quiesce(pg);
 }
 
 /* Scoped render-thread lend of a published immutable key. The worker only
@@ -1630,7 +1730,7 @@ const ShaderState *pgraph_vk_pending_shader_state(PGRAPHState *pg,
         return NULL;
     }
     const LibJob *job = &pump_jobs[ticket % PUMP_RING];
-    if (!job->full) {
+    if (job->compute || !job->full) {
         return NULL;
     }
     *hash = job->state_hash;
@@ -1893,7 +1993,7 @@ bool pgraph_vk_pre_library_ready(PGRAPHState *pg, const VkPrewarmState *pipeline
     if (!found) {
         for (unsigned i = pump_d; i < pump_w_local; i++) {
             LibJob *pending = &pump_jobs[i % PUMP_RING];
-            if (!pending->full && !pending->frag && pending->hash == job->hash &&
+            if (!pending->compute && !pending->full && !pending->frag && pending->hash == job->hash &&
                 !memcmp(&pending->pre_key, &job->pre_key, gpl_key_size(r, false))) {
                 found = true;
                 break;
