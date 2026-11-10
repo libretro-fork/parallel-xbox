@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Apple Silicon CPU JIT opens write access when watchpoints or I/O recompilation invalidate a single translated block, then restores execute mode before returning. Protect both block metadata and jump patches in the JIT allocation. Physical Mac qualification remains unmeasured.
+
 - Streaming APU voices wait silently for SSL entries with no published samples instead of aborting. Retry the entry without advancing source position or reporting completion, and preserve valid samples stored at RAM address zero.
 
 - Shader regression checks now compare native fragment eligibility with the production GLSL compiler across 17 texture families and 3,360 shape/format states. Reject silent fallback for supported families and unexpected acceptance of reference errors, without GPU or private game fixtures.
