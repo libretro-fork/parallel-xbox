@@ -116,15 +116,6 @@ floatx80 floatx80_div__hard(floatx80 a, floatx80 b, float_status *status)
 }
 
 static inline
-FloatRelation floatx80_compare__hard(floatx80 a, floatx80 b, float_status *status)
-{
-    if (a.fval < b.fval) return float_relation_less;
-    if (a.fval > b.fval) return float_relation_greater;
-    if (a.fval == b.fval) return float_relation_equal;
-    return float_relation_unordered;
-}
-
-static inline
 floatx80 float32_to_floatx80__hard(float32 val, float_status *status)
 {
     return (floatx80){ .fval = *(float *)&val };
@@ -207,6 +198,19 @@ floatx80_compare_quiet__hard(floatx80 a, floatx80 b, float_status *status)
         return ((ka < kb) ^ sa) ? float_relation_less : float_relation_greater;
     }
     return floatx80_compare_quiet(a, b, status);
+}
+
+/* Ordered and quiet comparisons agree on this ordinary-value domain.
+ * Exceptional inputs must use the ordered SoftFloat entry point: FCOM
+ * raises invalid for quiet NaNs too, unlike FUCOM. Avoid host FP state. */
+static inline FloatRelation
+floatx80_compare__hard(floatx80 a, floatx80 b, float_status *status)
+{
+    if (likely(floatx80_is_normal_or_zero__hard(a) &&
+               floatx80_is_normal_or_zero__hard(b))) {
+        return floatx80_compare_quiet__hard(a, b, status);
+    }
+    return floatx80_compare(a, b, status);
 }
 
 #define floatx80_compare_quiet floatx80_compare_quiet__hard
@@ -365,7 +369,6 @@ static inline floatx80 double_to_floatx80(CPUX86State *env, double a)
     return float64_to_floatx80(u.f64, &env->fp_status);
 }
 
-#ifndef USE_HARD_FPU
 static void fpu_set_exception(CPUX86State *env, int mask)
 {
     env->fpus |= mask;
@@ -374,6 +377,7 @@ static void fpu_set_exception(CPUX86State *env, int mask)
     }
 }
 
+#ifndef USE_HARD_FPU
 void cpu_init_fp_statuses(CPUX86State *env)
 {
     /*
@@ -445,9 +449,9 @@ static inline int save_exception_flags(CPUX86State *env)
     return old_flags;
 }
 
-static void merge_exception_flags(CPUX86State *env, int old_flags)
+/* Comparisons use exact SoftFloat status even in the hard-FPU build. */
+static void merge_softfloat_exception_flags(CPUX86State *env, int old_flags)
 {
-#ifndef USE_HARD_FPU
     int new_flags = get_float_exception_flags(&env->fp_status);
     float_raise(old_flags, &env->fp_status);
     fpu_set_exception(env,
@@ -457,6 +461,12 @@ static void merge_exception_flags(CPUX86State *env, int old_flags)
                        (new_flags & float_flag_underflow ? FPUS_UE : 0) |
                        (new_flags & float_flag_inexact ? FPUS_PE : 0) |
                        (new_flags & float_flag_input_denormal_used ? FPUS_DE : 0)));
+}
+
+static void merge_exception_flags(CPUX86State *env, int old_flags)
+{
+#ifndef USE_HARD_FPU
+    merge_softfloat_exception_flags(env, old_flags);
 #endif
 }
 
@@ -776,7 +786,7 @@ void helper_fcom_ST0_FT0(CPUX86State *env)
 
     ret = floatx80_compare(ST0, FT0, &env->fp_status);
     env->fpus = (env->fpus & ~0x4500) | fcom_ccval[ret + 1];
-    merge_exception_flags(env, old_flags);
+    merge_softfloat_exception_flags(env, old_flags);
 }
 
 void helper_fucom_ST0_FT0(CPUX86State *env)
@@ -786,7 +796,7 @@ void helper_fucom_ST0_FT0(CPUX86State *env)
 
     ret = floatx80_compare_quiet(ST0, FT0, &env->fp_status);
     env->fpus = (env->fpus & ~0x4500) | fcom_ccval[ret + 1];
-    merge_exception_flags(env, old_flags);
+    merge_softfloat_exception_flags(env, old_flags);
 }
 
 static const int fcomi_ccval[4] = {CC_C, CC_Z, 0, CC_Z | CC_P | CC_C};
@@ -801,7 +811,7 @@ void helper_fcomi_ST0_FT0(CPUX86State *env)
     eflags = cpu_cc_compute_all(env) & ~(CC_Z | CC_P | CC_C);
     CC_SRC = eflags | fcomi_ccval[ret + 1];
     CC_OP = CC_OP_EFLAGS;
-    merge_exception_flags(env, old_flags);
+    merge_softfloat_exception_flags(env, old_flags);
 }
 
 void helper_fucomi_ST0_FT0(CPUX86State *env)
@@ -814,7 +824,7 @@ void helper_fucomi_ST0_FT0(CPUX86State *env)
     eflags = cpu_cc_compute_all(env) & ~(CC_Z | CC_P | CC_C);
     CC_SRC = eflags | fcomi_ccval[ret + 1];
     CC_OP = CC_OP_EFLAGS;
-    merge_exception_flags(env, old_flags);
+    merge_softfloat_exception_flags(env, old_flags);
 }
 
 void helper_fadd_ST0_FT0(CPUX86State *env)

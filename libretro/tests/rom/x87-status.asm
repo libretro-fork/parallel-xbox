@@ -66,6 +66,41 @@ start:
     check dword [0x6010],0x3f800000
     fnstsw ax
     check ax,0
+    ; Ordered FCOMI must set invalid for a quiet NaN; FUCOMI must not.
+    ; Both report unordered in EFLAGS. Exercise real hard/soft helpers.
+    mov dword [0x6020],0x123
+    mov dword [0x6024],0xc0000000
+    mov word [0x6028],0x7fff
+    fninit
+    fld tword [0x6020]
+    fld1
+    fcomi st0,st1
+    pushfd
+    pop eax
+    and eax,0x45
+    inc ebp
+    mov [R+0x10],eax
+    check eax,0x45
+    fnstsw ax
+    and eax,1
+    inc ebp
+    mov [R+0x14],eax
+    check eax,1
+    fninit
+    fld tword [0x6020]
+    fld1
+    fucomi st0,st1
+    pushfd
+    pop eax
+    and eax,0x45
+    inc ebp
+    mov [R+0x18],eax
+    check eax,0x45
+    fnstsw ax
+    and eax,1
+    inc ebp
+    mov [R+0x1c],eax
+    check eax,0
     mov dword [R],0x4b4f5753 ; SWOK
 .halt:
     cli
