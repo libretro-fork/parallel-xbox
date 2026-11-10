@@ -28,8 +28,16 @@
 #define NV2A_PROF_SHADER_BIND_NOTDIRTY 2
 typedef struct ShaderModuleInfo ShaderModuleInfo;
 /* TYPES */
-typedef struct {Lru shader_cache;ShaderBinding entry,initial,*shader_binding;bool shader_bindings_changed,ahead_valid;ShaderState ahead_state;uint64_t ahead_hash;} PGRAPHVkState;
+typedef struct {Lru shader_cache;ShaderBinding entry,initial,*shader_binding;bool shader_bindings_changed,ahead_valid,sibling_retry;ShaderState ahead_state;uint64_t ahead_hash;} PGRAPHVkState;
 struct PGRAPHState {PGRAPHVkState *vk_renderer_state;};
+/* These historical hash/copy schedules have no outstanding worker job.
+ * test-pending-key-lend exercises the real retry/lend path separately. Fail
+ * if a schedule accidentally enters it instead of silently modeling a miss. */
+static bool vk_try_pending_binding(PGRAPHState *pg)
+{
+    (void)pg;
+    abort();
+}
 typedef struct {unsigned generated,uniforms,fallback,notdirty,queues,releases,adds;uint64_t queued_hash,released[2],added;ShaderState queued;} Log;
 static Log log_data;
 static ShaderState requested;
