@@ -3,6 +3,7 @@
 ## Unreleased
 
 - Vertex-shader constant uploads compare and update complete rows together, preserving partial-word uploads, dirty flags and command consumption. Gameplay performance remains unmeasured.
+- Vulkan directly translates vertex programs whose output mux selects a NOP pipe even when unused output fields describe an invalid register or constant destination. Keep live output validation and temporary/address-register writes unchanged.
 
 - Vulkan now directly translates vertex instructions whose invalid operand bounds are irrelevant because their writes are masked, including discarded paired MAC results. Address-register writes and live-operand fallback checks remain intact.
 
