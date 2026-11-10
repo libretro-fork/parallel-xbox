@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- DSP startup initializes its 40 KiB RAM power-on pattern directly, avoiding a redundant zero-initialization request. Complete-state regression coverage checks both DSP roles and C/JIT backends.
+
 - CPU translation: track active temporary state during liveness analysis, combine reachability and temporary-lifetime discovery, and initialize/copy-propagate optimizer operands in one pass. Preserve explicit context owners and generated liveness decisions; synthetic differential checks cover the prior passes. Gameplay performance remains unmeasured.
 
 - CPU translation: finish temporary-heavy blocks before the next instruction is likely to exhaust translation storage, reducing discarded translations and retries. Unusually large instructions retain the existing overflow retry. Performance and cold/warm gameplay qualification remain pending.

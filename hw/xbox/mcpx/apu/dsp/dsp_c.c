@@ -377,7 +377,16 @@ static void dsp_c_sync_from_vm(DSPState *dsp)
 
 void dsp_c_init(DSPState *dsp)
 {
-    dsp_core_t *core = g_new0(dsp_core_t, 1);
+    dsp_core_t *core = g_new(dsp_core_t, 1);
+    /* RAM gets its power-on pattern directly, rather than zeroing it first.
+     * These three arrays must remain adjacent for this initialization span. */
+    _Static_assert(offsetof(dsp_core_t, yram) == offsetof(dsp_core_t, xram) + sizeof(core->xram), "X/Y RAM layout");
+    _Static_assert(offsetof(dsp_core_t, pram) == offsetof(dsp_core_t, yram) + sizeof(core->yram), "Y/P RAM layout");
+    const size_t ram_begin = offsetof(dsp_core_t, xram);
+    const size_t ram_end = offsetof(dsp_core_t, pram) + sizeof(core->pram);
+    memset(core, 0, ram_begin);
+    memset((uint8_t *)core + ram_begin, 0xCA, ram_end - ram_begin);
+    memset((uint8_t *)core + ram_end, 0, sizeof(*core) - ram_end);
     core->opaque = dsp;
     core->read_peripheral = c_read_peripheral;
     core->write_peripheral = c_write_peripheral;
@@ -397,9 +406,6 @@ void dsp_c_init(DSPState *dsp)
      * will be overwritten by the subsequent sync_from_vm. */
     dsp56k_reset_cpu(core);
 
-    memset(core->pram, 0xCA, DSP_PRAM_SIZE * sizeof(uint32_t));
-    memset(core->xram, 0xCA, DSP_XRAM_SIZE * sizeof(uint32_t));
-    memset(core->yram, 0xCA, DSP_YRAM_SIZE * sizeof(uint32_t));
     dsp->ops->invalidate_opcache(dsp);
 }
 

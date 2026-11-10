@@ -5283,3 +5283,7 @@ time. Longer scalar X/Y/P controls have overlapping samples and medians within
 1% of the parent. These are bounded kernel measurements, not game/FPS/startup
 or Rust comparisons. Earlier direct-borrow variants that regressed the boundary
 case were rejected; their raw samples are retained separately.
+
+### DSP initialization
+
+`make dspinit` compares every byte of a freshly initialized DSP against the previous zero-allocation/reset/three-RAM-fill recipe, then executes CLR and HALT. It covers GP/EP, C/JIT and repeated allocation with poisoned test allocations. The dedicated DSP sanitizer/ARM64 job also runs this test. The optimization removes a redundant 40 KiB zero-initialization request per instance; it does not establish a gameplay or startup timing improvement.

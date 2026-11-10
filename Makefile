@@ -280,7 +280,7 @@ ALL_OBJECTS := $(OBJECTS) $(OBJS_UTIL) $(DEP_OBJECTS)
 
 clean:
 	rm -f $(TARGET) $(LIBQEMUUTIL) $(VERSION_H) $(filter %.a,$(DEPS_LIBS))
-	rm -f $(ALL_OBJECTS) $(ALL_OBJECTS:.o=.d) $(DSPDIFF) $(DSPDIFF).exe $(DSPAUDIT) $(DSPDMATEST) $(DSPBOOTSTRAP) $(DSPDMASPANS) $(DSPINVALIDATE) $(DSPCOVERAGE) $(DSPFLUSH) $(DSPNATIVE) $(SEEDSHADERS) $(S3TCTEST) $(S3TCTEST).exe $(FILEIOTEST)
+	rm -f $(ALL_OBJECTS) $(ALL_OBJECTS:.o=.d) $(DSPDIFF) $(DSPDIFF).exe $(DSPAUDIT) $(DSPDMATEST) $(DSPBOOTSTRAP) $(DSPDMASPANS) $(DSPINVALIDATE) $(DSPCOVERAGE) $(DSPFLUSH) $(DSPINIT) $(DSPNATIVE) $(SEEDSHADERS) $(S3TCTEST) $(S3TCTEST).exe $(FILEIOTEST)
 
 # The DSP JIT against the interpreter (libretro/tests/dspdiff.c), built
 # from the DSP's own sources, nothing else of the core: a plain program,
@@ -307,6 +307,13 @@ $(DSPFLUSH): $(CORE_DIR)/libretro/tests/test-dsp-flush.c $(DSPDIFF_SRC) $(DSP_TE
 dspflush: $(DSPFLUSH)
 	$(DSP_PROGRAM_RUNNER) $(DSPFLUSH)
 .PHONY: dspflush
+
+DSPINIT := $(CORE_DIR)/libretro/tests/dspinit$(if $(filter win,$(platform)),.exe,)
+$(DSPINIT): $(CORE_DIR)/libretro/tests/test-dsp-init.c $(DSPDIFF_SRC) $(DSP_TEST_HEADERS)
+	$(CC) -O2 $(QEMU_CFLAGS) $(ARCH_CFLAGS) -DDSPJIT_TEST -I$(CORE_DIR)/hw/xbox/mcpx/apu/dsp -I$(CORE_DIR)/hw/xbox/mcpx/apu/dsp/interp -o $@ $(filter-out $(CORE_DIR)/libretro/tests/dspdiff.c,$(DSPDIFF_SRC)) $<
+dspinit: $(DSPINIT)
+	$(DSP_PROGRAM_RUNNER) $(DSPINIT)
+.PHONY: dspinit
 
 DSPCOVERAGE := $(CORE_DIR)/libretro/tests/dspcoverage$(if $(filter win,$(platform)),.exe,)
 $(DSPCOVERAGE): $(CORE_DIR)/libretro/tests/test-dsp-coverage.c $(DSPDIFF_SRC) $(DSP_TEST_HEADERS)
