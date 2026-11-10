@@ -1328,10 +1328,12 @@ static VkColorComponentFlags color_write_mask(uint32_t control_0)
  * attrs). Libraries linked together need the same range, so it keys them. */
 static uint32_t push_constant_size(PGRAPHVkState *r, const ShaderState *st)
 {
-    if (!r->use_push_constants_for_uniform_attrs) {
-        return 0;
-    }
-    return __builtin_popcount(st->vsh.uniform_attrs) * 4 * sizeof(float);
+    (void)st;
+    /* Shader initialization enables this only when all 16 vec4 values fit.
+     * One range keeps fragment libraries compatible across vertex masks;
+     * command recording still uploads only the values the shader uses. */
+    return r->use_push_constants_for_uniform_attrs ?
+           NV2A_VERTEXSHADER_ATTRIBUTES * 4 * sizeof(float) : 0;
 }
 
 /* Identity of a fragment library: the fragment module, the render pass, the
@@ -1635,8 +1637,8 @@ const ShaderState *pgraph_vk_pending_shader_state(PGRAPHState *pg,
     return &job->key.shader_state;
 }
 
-/* A state's pipeline layout: the descriptor set, and the vertex shader's
- * uniform attributes as push constants when they fit. */
+/* One compatible graphics layout per device generation. The clear layout
+ * remains descriptor-free. Push-enabled devices already support all values. */
 /* All graphics users borrow these immutable device-generation owners.
  * The descriptor set layout is created by shader initialization first. */
 static void init_pipeline_layouts(PGRAPHVkState *r)
@@ -1648,18 +1650,16 @@ static void init_pipeline_layouts(PGRAPHVkState *r)
                                    &r->clear_pipeline_layout));
     info.setLayoutCount = 1;
     info.pSetLayouts = &r->descriptor_set_layout;
-    unsigned count = r->use_push_constants_for_uniform_attrs ?
-                     ARRAY_SIZE(r->graphics_pipeline_layouts) : 1;
-    for (unsigned i = 0; i < count; i++) {
-        VkPushConstantRange range = {
-            .stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
-            .size = i * 4 * sizeof(float),
-        };
-        info.pushConstantRangeCount = i ? 1 : 0;
-        info.pPushConstantRanges = i ? &range : NULL;
-        VK_CHECK(vkCreatePipelineLayout(r->device, &info, NULL,
-                                       &r->graphics_pipeline_layouts[i]));
-    }
+    unsigned index = r->use_push_constants_for_uniform_attrs ?
+                     NV2A_VERTEXSHADER_ATTRIBUTES : 0;
+    VkPushConstantRange range = {
+        .stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
+        .size = NV2A_VERTEXSHADER_ATTRIBUTES * 4 * sizeof(float),
+    };
+    info.pushConstantRangeCount = index ? 1 : 0;
+    info.pPushConstantRanges = index ? &range : NULL;
+    VK_CHECK(vkCreatePipelineLayout(r->device, &info, NULL,
+                                   &r->graphics_pipeline_layouts[index]));
 }
 
 /* Called after worker quiescence, GPU slot settlement and pipeline/library

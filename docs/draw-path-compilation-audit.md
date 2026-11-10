@@ -80,14 +80,14 @@ it is a collision-correctness tradeoff, not an established latency win. Full
 ready-PSO hits bypass this lookup. The job union reuses existing key storage;
 alignment may change its total size. Persistent cache schemas are unchanged.
 
-Graphics pipeline layouts now have one renderer-generation owner: the empty
-clear layout and one exact descriptor/push-range layout per possible uniform
-attribute count. Initialization creates two layouts when push constants are
-unavailable, otherwise eighteen (0 through 16 vec4 attributes plus clear).
+Graphics pipeline layouts have renderer-generation ownership. The initial
+arrangement used an empty clear layout and one descriptor/push-range layout
+per uniform attribute count: two layouts without push constants, otherwise
+eighteen. The common graphics range described below supersedes that table.
 The 64-bit handle table costs 144 bytes; this bounded initialization work is
-not PSO compilation or speculative shader precompilation. All create infos
-match the former per-use layout shapes, including an empty descriptor-free
-clear layout. No key/schema or emitted shader changes are required.
+not PSO compilation or speculative shader precompilation. That initial change preserved the former per-use layout shapes, including
+the descriptor-free clear layout, without changing keys or emitted shaders.
+The later common-range change explicitly updates graphics layout shapes.
 
 Draw jobs, queued jobs and cached bindings borrow immutable layout handles.
 Queue completion/cancellation and cache eviction no longer destroy those
@@ -729,3 +729,67 @@ remain uncovered. Driver caches are uncontrolled; boundary process checks saw
 no concurrent RetroArch for these runs but do not prove continuous isolation.
 Instrumented timing comparisons remain unqualified. Diagnostic metadata uses
 bounded private storage and is absent from the clean release build.
+
+## Compatible graphics push range (2026-11-10)
+
+The NGB GPL/8x diagnostic grouped actual fragment-library creations by exact
+canonical metadata after projecting out only the vertex push-range size.
+The empty-cache sample had 57 creations across 46 otherwise-identical keys;
+the warm sample had 55 across 40 keys. Eight and ten groups, respectively,
+contained multiple push-range sizes. No capture overflow occurred. This
+identifies avoidable layout variants, not a general frame-time improvement.
+
+Graphics pipelines now use one renderer-owned layout. If shader initialization
+has already verified support for all sixteen vec4 vertex values (256 bytes),
+the layout declares that full vertex-only range, including when a shader uses
+no push constants. Other devices retain the unchanged UBO path and a layout
+without push ranges. [Vulkan permits unused portions of a push range](https://docs.vulkan.org/spec/latest/chapters/descriptorsets.html#descriptorsets-pipelinelayout),
+provided every statically consumed shader byte and stage is covered. Actual
+push commands still upload only the consumed attribute values. Emitted shader
+words, attribute masks, the full PSO key and descriptor-set layout are unchanged.
+
+Both cases create only two boot owners: the descriptor-free clear layout and
+one graphics layout. The existing 144-byte handle table is retained, with one
+occupied graphics slot rather than aliases that could be double-destroyed.
+Jobs and cached pipelines borrow that owner through their existing native
+quiescence, GPU retirement and teardown order. There is no new buffer, mapping,
+queue, allocation call, capacity reservation, upload or retained payload lend.
+
+The internal GPL fragment key's push size now describes the common layout,
+so otherwise-identical libraries can be reused across vertex attribute counts.
+This changes renderer-local key values, not the key structure or persisted
+shader/seed formats. Existing opaque driver-cache entries remain driver-managed
+hints; old-layout misses are not proof of a broken cache. Unknown states can
+still create libraries or pipelines on the draw path. No recovery is claimed.
+
+Validation: 47 required suites passed. Final Windows and Linux guards each
+passed 4,194,304 layout queries over every attribute mask, push/no-push devices
+and 32 owner generations. Required mutations reject restoring mask-dependent
+ranges, losing the maximum range, wrong stage/range/owner metadata and stale
+teardown handles. Source guards retain the physical 256-byte eligibility test
+and actual consumed-byte upload size. No emitter or compiler source changed.
+
+Thirty main matrix runs, six additional NGB GPL/8x runs, four verified DOA3
+fight restores, four focused work traces and eight separate timestamp/cadence
+runs completed. All eight strict lifecycle cases passed both exact RAM
+comparisons and reset. NGB images match on GL, native Vulkan and GPL/8x Vulkan;
+verified loaded DOA3 images match on both renderers. The separate cold-boot
+DOA3 pair differs by 12,262,122 bytes and remains unqualified.
+
+In the paired NGB GPL/8x work traces, fragment creations were 57 parent versus
+46 candidate with empty core caches, and 17 versus 11 warm. Both sides had
+46 and 11 otherwise-identical canonical groups, respectively. The candidate
+recorded no push-range duplicates; pre-raster creation counts were unchanged.
+These are library work counts, not an equivalent reduction in whole PSO misses
+or proof of a frame-time improvement.
+
+Across callbacks 512 through 1799 in the separate cadence runs, candidate mean
+GPU-completion intervals ranged from 4.66 to 4.87 ms and parent means from
+4.68 to 4.78 ms. They overlap and do not establish a speedup. These intervals
+include CPU/queue idle time rather than isolated shader execution. Full first-use
+spikes and worst-frame data remain retained. The initial analyzer incorrectly
+differenced a CSV field that already held GPU intervals; it was corrected
+against the harness writer without changing raw data or the sample minimum.
+Driver caches remain uncontrolled and process boundary checks do not establish
+continuous isolation. Latency and cold-play recovery remain unqualified; no
+acceptance threshold or existing baseline was raised.

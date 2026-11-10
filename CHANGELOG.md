@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Reuse Vulkan fragment libraries across vertex uniform-attribute counts by giving graphics pipelines one compatible layout. Devices already supporting the full 256-byte vertex range use it for layout compatibility; other devices keep their UBO path. Actual push uploads and emitted shaders are unchanged. Reduce boot layout creation from up to eighteen objects to two, with existing renderer-owned lifetimes and no new buffers or payload copies.
+
 - Reuse exact Vulkan libraries and full pipelines that the worker has already finished when a draw misses the cache, instead of creating a duplicate before normal queue draining. Transfer only the published handle into its existing native cache owner; retain module references until ordered draining. No new queue, payload snapshot, wait or allocation call. Unfinished and unknown states retain their correct creation path; first-use stutter recovery remains open.
 
 - Avoid cloning the complete OpenGL shader state when looking up or queuing a dynamic fallback. Canonicalize only the unpublished capture's pixel-shader metadata, restoring every byte before handing off an exact recipe. Keep vertex microcode and geometry in the original capture, with no new allocation or retained lend. Add exact/canonical queue-key and padding-restoration regression controls.
