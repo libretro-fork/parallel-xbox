@@ -32,12 +32,15 @@ uint64_t user_read(void *opaque, hwaddr addr, unsigned int size)
     NV2AState *d = (NV2AState *)opaque;
 
     unsigned int channel_id = addr >> 16;
-    assert(channel_id < NV2A_NUM_CHANNELS);
+    if (channel_id >= NV2A_NUM_CHANNELS) {
+        nv2a_reg_log_read(NV_USER, addr, size, 0);
+        return 0;
+    }
 
     uint32_t channel_modes = pfifo_reg_r(d, NV_PFIFO_MODE);
 
     uint64_t r = 0;
-    if (channel_modes & (1 << channel_id)) {
+    if (channel_modes & (1u << channel_id)) {
         /* DMA Mode */
 
         unsigned int cur_channel_id =
@@ -69,12 +72,10 @@ uint64_t user_read(void *opaque, hwaddr addr, unsigned int size)
                 break;
             }
         } else {
-            /* ramfc */
-            assert(!"Unsupported: channel_id != cur_channel_id");
+            /* Inactive RAMFC channels are not implemented; read as zero. */
         }
     } else {
-        /* PIO Mode */
-        assert(!"Failed to enter DMA mode - entered PIO mode");
+        /* PIO mode is not implemented; read as zero. */
     }
 
     nv2a_reg_log_read(NV_USER, addr, size, r);
@@ -88,10 +89,12 @@ void user_write(void *opaque, hwaddr addr, uint64_t val, unsigned int size)
     nv2a_reg_log_write(NV_USER, addr, size, val);
 
     unsigned int channel_id = addr >> 16;
-    assert(channel_id < NV2A_NUM_CHANNELS);
+    if (channel_id >= NV2A_NUM_CHANNELS) {
+        return;
+    }
 
     uint32_t channel_modes = pfifo_reg_r(d, NV_PFIFO_MODE);
-    if (channel_modes & (1 << channel_id)) {
+    if (channel_modes & (1u << channel_id)) {
         /* DMA Mode */
         unsigned int cur_channel_id =
             GET_MASK(pfifo_reg_r(d, NV_PFIFO_CACHE1_PUSH1),
@@ -112,19 +115,16 @@ void user_write(void *opaque, hwaddr addr, uint64_t val, unsigned int size)
                 pfifo_reg_w(d, NV_PFIFO_CACHE1_REF, (uint32_t)val);
                 break;
             default:
-                NV2A_DPRINTF(true, "Unsupported NV_USER write: channel=%u offset=0x%04x\n", channel_id, (unsigned)(addr & 0xFFFF));
-                assert(!"Unsupported NV_USER DMA register write offset");
-                break;
+                /* Unsupported register: do not publish work to PFIFO. */
+                return;
             }
 
             pfifo_kick_guest(d);
 
         } else {
-            /* ramfc */
-            assert(!"Invalid channel id");
+            /* Inactive RAMFC channels are not implemented. */
         }
     } else {
-        /* PIO Mode */
-        assert(!"Failed to enter DMA mode - entered PIO mode");
+        /* PIO mode is not implemented. */
     }
 }
