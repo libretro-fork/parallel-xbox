@@ -298,7 +298,45 @@ start:
     scalar_case pmulhw,0x123456789abcdef0,0x7fff7fff7fff7fff,0x09192b3bcd5eef78,0x014b1d34280e0445
     scalar_case pmulhw,0x123456789abcdef0,0x0001000100010001,0x00000000ffffffff,0x014b1d34280e0445
     scalar_case pmulhw,0x123456789abcdef0,0x123456789abcdef0,0x014b1d34280e0445,0x014b1d34280e0445
-    check ebp,757
+    ; MOVD zeroes the upper half for register and memory sources. Seed
+    ; every destination with nonzero high bits before each operation.
+%assign value 0
+%rep 6
+%if value == 0
+%assign input 0
+%elif value == 1
+%assign input 1
+%elif value == 2
+%assign input 0x7fffffff
+%elif value == 3
+%assign input 0x80000000
+%elif value == 4
+%assign input 0xffffffff
+%else
+%assign input 0xdeadbeef
+%endif
+%assign reg 0
+%rep 8
+    inc ebp
+    pcmpeqd mm %+ reg,mm %+ reg
+    mov eax,input
+    movd mm %+ reg,eax
+    movq [0x6100],mm %+ reg
+    check dword [0x6100],input
+    check dword [0x6104],0
+    inc ebp
+    pcmpeqd mm %+ reg,mm %+ reg
+    mov dword [0x6000],input
+    movd mm %+ reg,[0x6000]
+    movq [0x6100],mm %+ reg
+    check dword [0x6100],input
+    check dword [0x6104],0
+%assign reg reg+1
+%endrep
+%assign value value+1
+%endrep
+    emms
+    check ebp,853
     mov dword [R],0x4b4f534d ; MSOK
 .halt:
     cli
