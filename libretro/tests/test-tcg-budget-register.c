@@ -28,7 +28,7 @@ typedef intptr_t tcg_target_long;
 typedef uint8_t tcg_insn_unit;
 typedef struct {int out_kind;} TCGHelperInfo;
 typedef struct {uint32_t head;struct{struct{struct{uint16_t low,high;}u16;}icount_decr;}neg;uint64_t tail[4];} CPUState;
-typedef struct {uint32_t reg[16];uint8_t mem[512];unsigned events;int event[8];ptrdiff_t immediate;int delta;bool request;}TCGContext;
+typedef struct {uint32_t reg[16];uint8_t mem[512];unsigned events;int event[8];ptrdiff_t immediate;int delta;bool request;int8_t tlbm_mmu[2];}TCGContext;
 static uint16_t read16(TCGContext*s,ptrdiff_t off){uint16_t v;memcpy(&v,s->mem+128+off,2);return v;}
 static void write16(TCGContext*s,ptrdiff_t off,uint16_t v){memcpy(s->mem+128+off,&v,2);}
 static void event(TCGContext*s,int e){assert(s->events<8);s->event[s->events++]=e;}
@@ -81,6 +81,7 @@ int main(void){
  for(unsigned v=0;v<=65535;v+=17)for(unsigned d=0;d<sizeof(deltas)/sizeof(*deltas);d++)for(unsigned irq=0;irq<2;irq++){
   TCGContext s={.delta=deltas[d],.request=irq};s.reg[15]=v;write16(&s,low,0xDEAD);write16(&s,low+2,0x0123);
   tcg_out_call(&s,NULL,&info);
+  assert(s.tlbm_mmu[0]==-1&&s.tlbm_mmu[1]==-1);
   assert(s.events==3&&s.event[0]==2&&s.event[1]==7&&s.event[2]==1);
   assert(s.reg[15]==(uint16_t)(v+deltas[d]));assert(s.reg[0]==0xC0FFEE);
   assert(read16(&s,low+2)==(irq?65535:0x0123));cases++;

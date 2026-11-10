@@ -428,6 +428,13 @@ struct TCGContext {
     MemOp riscv_cur_vsew;
     TCGType riscv_cur_type;
 #endif
+#ifdef TCG_TARGET_TLB_MEMO
+    /* Translation-time plan and MMU identity of the two softmmu memo slots. */
+    uint8_t *tlbm_hint;
+    int tlbm_nhint, tlbm_ihint;
+    int8_t tlbm_mmu[2];
+    uint8_t tlbm_filled;
+#endif
     /*
      * During the tcg_reg_alloc_op loop, we are within a sequence of
      * carry-using opcodes like addco+addci.
