@@ -748,5 +748,24 @@ PROJECT2D shape restrictions and unsupported packed/F16 combinations remain.
 2560 paired CPU cases compare exact words, owned layouts and two final
 allocations across all four units and poisoned caller keys. 1536 GPU recipes
 compare production GLSL values and exact source identity against canonical
-2D metadata. Current totals are 63488 CPU modules and 77824 GPU recipes.
+2D metadata. This stage brought coverage to 63488 CPU modules and 77824 GPU recipes.
 Ready PSOs and cold-play recovery remain separate open requirements.
+
+## Packed and constant sampler precedence
+
+Packed PROJECT2D shadow samplers select unsigned 2D before cube metadata.
+Packed PROJECT3D colors select unsigned 2D before dimension metadata. Native
+eligibility now follows both rules. PROJECT2D NEVER/ALWAYS shadows with a 3D
+non-rectangle sampler also use the existing constant path: they read no image.
+Rectangle 3D combinations retain fallback because the reference norm helper
+is incompatible with that sampler shape. Float cube shadows and packed/F16
+combinations remain unsupported.
+
+1536 paired CPU cases require exact words, owned layouts and two final
+allocations before/after metadata changes, followed by caller poisoning.
+1536 GPU recipes cover the three families against production GLSL. Packed
+recipes additionally prove identical reference source with canonical metadata;
+each new GPU batch requires nontrivial numeric-color output.
+Totals are 65024 CPU modules and 79360 GPU recipes. No view creation, texel
+copy, retained lend or key mutation is added. Draw-path PSO readiness and
+cold-play recovery remain open; driver caches are uncontrolled.

@@ -104,7 +104,7 @@ static bool raw_color(const PshState *s,unsigned stage)
      * projective divide or shadow comparison. Packed type takes precedence. */
     if(mode==PS_TEXTUREMODES_DOT_STR_3D && s->dim_tex[stage]==2)return true;
     if(s->shadow_map[stage])return false;
-    return (mode==PS_TEXTUREMODES_PROJECT2D && s->dim_tex[stage]==2) || (mode==PS_TEXTUREMODES_PROJECT3D && (s->dim_tex[stage]==2 || s->dim_tex[stage]==3));
+    return (mode==PS_TEXTUREMODES_PROJECT2D && s->dim_tex[stage]==2) || mode==PS_TEXTUREMODES_PROJECT3D;
 }
 /* Same descriptor slot; only its SPIR-V sampler type/dimension varies. */
 static unsigned sampler_kind(const PshState *s,unsigned stage)
@@ -318,12 +318,12 @@ bool pgraph_spv_psh_supported(const PshState *s,SpvPshOptions opts)
             if(!bump_stage(s,j) && (s->dim_tex[j]!=2 || s->rect_tex[j] || s->border_adjust[j]))return false;
         }
         if(constant_shadow(s,j)){
-            if((mode!=PS_TEXTUREMODES_PROJECT3D && s->dim_tex[j]!=2) || s->colorkey_mode[j]<COLOR_KEY_NONE || s->colorkey_mode[j]>COLOR_KEY_DISCARD)return false;
+            if((mode!=PS_TEXTUREMODES_PROJECT3D && s->dim_tex[j]!=2 && !(s->dim_tex[j]==3 && !s->rect_tex[j])) || s->colorkey_mode[j]<COLOR_KEY_NONE || s->colorkey_mode[j]>COLOR_KEY_DISCARD)return false;
         }else if(sample_stage(s,j)){
             if(opts.tex_binding>=29 || (opts.ubo_binding>=opts.tex_binding && opts.ubo_binding<opts.tex_binding+4) || s->colorkey_mode[j]<COLOR_KEY_NONE || s->colorkey_mode[j]>COLOR_KEY_DISCARD)return false;
-            /* PROJECT3D shadow samplers are always 2D in the reference,
-             * regardless of the dimension and cube metadata. */
-            if(sampled_shadow(s,j)){if((mode!=PS_TEXTUREMODES_PROJECT3D && (s->dim_tex[j]!=2 || s->tex_cubemap[j])) || (f16_shadow(s,j) && s->tex_x8y24[j]))return false;}
+            /* PROJECT3D shadows force 2D. Packed PROJECT2D shadows also
+             * select unsigned 2D before considering cube metadata. */
+            if(sampled_shadow(s,j)){if((mode!=PS_TEXTUREMODES_PROJECT3D && (s->dim_tex[j]!=2 || (s->tex_cubemap[j] && !s->tex_x8y24[j]))) || (f16_shadow(s,j) && s->tex_x8y24[j]))return false;}
             else if(raw_color(s,j)){
                 if(mode==PS_TEXTUREMODES_PROJECT2D){
                     if(s->conv_tex[j]==CONVOLUTION_FILTER_DISABLED){if(s->tex_cubemap[j])return false;}
