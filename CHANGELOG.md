@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Translate UI rectangle sampling clamps directly to Vulkan SPIR-V. Borrow the existing geometry marker and UV bounds, preserve the non-rectangle depth path and first projected stage, and retain two final allocations without geometry copies or new resources. Unsupported recipes still use the compiler.
+
 - Translate sampled fixed-depth comparisons and packed X8Y24 projective reads directly to Vulkan SPIR-V. Reuse existing float/unsigned texture views and descriptors, preserve depth markers, raw-Q projection, normalization/scale rounding and alpha/key order, and keep two final allocations without texel copies or retained lends. F16 decoding and unsupported formats retain the compiler.
 
 - Emit constant NEVER/ALWAYS depth-texture comparison results directly as Vulkan SPIR-V. Preserve alpha kill, color keys and dependent reads while omitting unused sampler interfaces, texture coordinates, queries and texture/border uniforms. Reuse existing resource owners and two final allocations; general depth comparisons retain the compiler.

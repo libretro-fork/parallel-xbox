@@ -6,7 +6,7 @@ static uint32_t dot_coord(Context *c,unsigned unit)
         uint32_t p=unary(c,SpvOpLoad,c->v2,c->point_coord);
         return v4(c,extract(c,p,0),extract(c,p,1),c->cf[F_ONE],c->cf[F_ONE]);
     }
-    return unary(c,SpvOpLoad,c->v4,c->tex_inputs[unit]);
+    return ui_clamp_coord(c,unary(c,SpvOpLoad,c->v4,c->tex_inputs[unit]),unit);
 }
 static uint32_t dot_mapped(Context *c,uint32_t input,unsigned mapping)
 {

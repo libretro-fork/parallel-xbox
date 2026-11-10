@@ -318,6 +318,22 @@ int main(int argc,char **argv)
         if(i==8){s.shader_stage_program=PS_TEXTUREMODES_PASSTHRU;s.border_adjust[0]=true;}
         allocations=0;assert(!pgraph_spv_psh(&s,opts,&a));assert(!allocations && !a.words && !a.uniforms.members);
     }
+ for(unsigned i=0;i<1024;i++){
+  unsigned unit=i%4;
+  PshState s={.final_inputs_0=((8u+unit)<<24)|0x00200000,.final_inputs_1=0x1800};
+  s.shader_stage_program=PS_TEXTUREMODES_PROJECT2D<<(unit*5);s.dim_tex[unit]=2;
+  s.depth_format=(i/4)%4|DEPTH_FORMAT_UI_CLAMP;s.z_perspective=!!(i&16);s.depth_clipping=!!(i&32);s.combiner_dynamic=!!(i&64);s.smooth_shading=!!(i&128);
+  s.rect_tex[unit]=!!(i&256);s.point_sprite=!!(i&512) && !(unit==3 && s.rect_tex[unit]);s.alphakill[unit]=!!(i&8);
+  SpvPshOptions opts={.spirv_1_6=!!(i&8),.ubo_binding=1,.tex_binding=2};GlslcResult a,b;allocations=0;
+  assert(pgraph_glsl_ui_clamp_stage(&s)==unit+1);assert(pgraph_spv_psh(&s,opts,&a) && allocations==2);
+  s.surface_zeta_format=0xdead;assert(pgraph_spv_psh(&s,opts,&b) && allocations==4);
+  assert(a.num_words==b.num_words && !memcmp(a.words,b.words,a.num_words*4));
+  memset(&s,0xa5,sizeof(s));assert(a.allocation_words==a.num_words && !a.allocation);
+  for(unsigned j=0;j<a.uniforms.count;j++){const GlslcUniform *u=a.uniforms.members+j;assert(u->offset+u->stride*(u->dim_a-1)+u->dim_v*4<=a.uniforms.size);assert((const char *)u->name>=(const char *)(a.uniforms.members+a.uniforms.count));}
+  char path[4096];snprintf(path,sizeof(path),"%s/ui-%u.spv",argv[1],i);FILE *f=fopen(path,"wb");assert(f && fwrite(a.words,4,a.num_words,f)==a.num_words);fclose(f);
+  glslc_result_free_words(&a);free(a.uniforms.members);glslc_result_free_words(&b);free(b.uniforms.members);
+ }
+
     for(unsigned i=0;i<16;i++){
         PshState s={.final_inputs_0=0x04200000,.final_inputs_1=0x1400};SpvPshOptions opts={.ubo_binding=1};
         if(i==0)opts.ubo_binding=32;
@@ -338,5 +354,5 @@ int main(int argc,char **argv)
         if(i==15){s.combiner_control=1;s.rgb_inputs[0]=0x0f000000;}
         allocations=0;GlslcResult a;memset(&a,0xa5,sizeof(a));assert(!pgraph_spv_psh(&s,opts,&a));assert(!allocations && !a.words && !a.uniforms.members && !a.push_constants.members);
     }
-    puts("Direct PSH: 36864 deterministic/final-allocation/ignored-key/owned-layout modules and eighty-one allocation-free unsupported cases PASS");return 0;
+    puts("Direct PSH: 37888 deterministic/final-allocation/ignored-key/owned-layout modules and eighty-one allocation-free unsupported cases PASS");return 0;
 }

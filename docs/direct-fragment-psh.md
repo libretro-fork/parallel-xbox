@@ -488,3 +488,30 @@ Read-only mapped recipe inspection of completed phase120 profiles accepts all
 recorded/seeded keys, not draw frequencies or ready PSOs. DOA3's seven UI-clamp
 recipes, general F16/signed/mip coverage and existing draw-path pipeline misses
 remain open. Driver caches and cold-first-play qualification remain unqualified.
+
+
+## UI rectangle clamp coverage
+
+UI-clamp recipes use the existing geometry stage's negative-zero slope marker
+and plane-position UV bounds. A structured selection bypasses barycentric
+reconstruction for marked rectangles and merges zero weights, preserving the
+reference's depth arithmetic after that merge. Other pixels follow the original
+overflow recovery, perspective normalization, depth offset and clipping path.
+Only the first PROJECT2D stage is clamped, using the shared one-based stage
+selector. A missing projected stage remains an allocation-free unsupported
+recipe. Dot/future coordinate reads share that clamp helper; Z/W stay intact.
+
+The marker and bounds remain in their existing varying owners. The generator
+borrows immutable keys synchronously and stores only SSA IDs in bounded stack
+state. Exactly two final word/layout allocations remain. There are no geometry
+snapshots, new descriptors, renderer resources, intermediate GLSL or retained
+lends. Non-UI recipes emit no new instructions or constants.
+
+CPU fixtures add 1024 marker/type/depth/rectangle/point/final-owner recipes;
+the overall validator matrix contains 37888 modules and eighty-one rejected
+recipes. GPU fixtures add 4096 cases, covering marked and unmarked inputs,
+all four projected-stage slots, Q/filter/address/rectangle/point variations,
+static and live combiners, alpha/key finishing and all depth formats. The
+full matrix contains 48128 cases. These are correctness/work-count fixtures,
+not pipeline-readiness, GPU execution-time or cold-first-play certification.
+Driver cache state remains uncontrolled; the stutter regression stays BAD/OPEN.

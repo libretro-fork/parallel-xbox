@@ -137,7 +137,7 @@ typedef struct Context {
     Writer *w;const PshState *state;SpvPshOptions opts;
     uint32_t void_t,fn,f,v2,v3,v4,i,u,b,iv2,iv4,in_f,in_v4,in_b,out_f,out_v4,uf,uv4,uiv2,uiv4,ui,uu;
     uint32_t region_array,const_array,ubo_type,ubo_ptr,ubo,entry,ext;
-    uint32_t si[32],ui32[32],cf[FLOATS],u127,u313,yes,no;
+    uint32_t si[32],ui32[32],cf[FLOATS],u127,u313,yes,no,ui_marker,ui_rect;
     uint32_t inputs[9],frag_coord,front,color,depth;
     uint32_t tex_inputs[4],samplers[4],image_t,sampled_t,sampler_ptr,scale_array,min_q,point_coord,in_v2;
     uint32_t image_other[3],sampled_other[3],sampler_other_ptr[3];
@@ -204,6 +204,16 @@ static uint32_t area(Context *c,uint32_t sample,uint32_t b,uint32_t d)
 }
 static void barycentric(Context *c)
 {
+    bool ui=(c->state->depth_format&DEPTH_FORMAT_UI_CLAMP)!=0;
+    uint32_t ui_skip=0,ui_merge=0;
+    if(ui){
+        uint32_t slope=unary(c,SpvOpLoad,c->f,c->inputs[8]);
+        c->ui_rect=binary(c,SpvOpIEqual,c->b,unary(c,SpvOpBitcast,c->u,slope),c->ui_marker);
+        uint32_t normal=id(c->w);ui_skip=id(c->w);ui_merge=id(c->w);
+        op(c->w,SpvOpSelectionMerge,2,ui_merge,0u);
+        op(c->w,SpvOpBranchConditional,3,c->ui_rect,ui_skip,normal);
+        op(c->w,SpvOpLabel,1,normal);
+    }
     uint32_t sample=xy(c,c->coord),scale=unary(c,SpvOpConvertSToF,c->v2,unif(c,SCALE,0));sample=binary(c,SpvOpFDiv,c->v2,sample,scale);
     uint32_t p[3];for(unsigned j=0;j<3;j++)p[j]=xy(c,c->positions[j]);
     uint32_t bc[3];for(unsigned j=0;j<3;j++)bc[j]=area(c,sample,p[(j+1)%3],p[(j+2)%3]);
@@ -227,6 +237,13 @@ static void barycentric(Context *c)
     c->precise=true;if(c->state->z_perspective)for(unsigned j=0;j<3;j++)bc[j]=divf(c,bc[j],extract(c,c->positions[j],3));c->precise=false;
     uint32_t inverse=divf(c,c->cf[F_ONE],add(c,add(c,bc[0],bc[1]),bc[2]));inverse=choose(c,c->f,unary(c,SpvOpIsInf,c->b,inverse),c->cf[F_ZERO],inverse);
     c->precise=true;bc[1]=mul(c,bc[1],inverse);bc[2]=mul(c,bc[2],inverse);
+    if(ui){
+        uint32_t last=c->w->block;
+        op(c->w,SpvOpBranch,1,ui_merge);op(c->w,SpvOpLabel,1,ui_skip);
+        op(c->w,SpvOpBranch,1,ui_merge);op(c->w,SpvOpLabel,1,ui_merge);
+        bc[1]=val(c->w,SpvOpPhi,c->f,4,bc[1],last,c->cf[F_ZERO],ui_skip);
+        bc[2]=val(c->w,SpvOpPhi,c->f,4,bc[2],last,c->cf[F_ZERO],ui_skip);
+    }
     unsigned component=c->state->z_perspective?3:2;uint32_t z0=extract(c,c->positions[0],component),z1=extract(c,c->positions[1],component),z2=extract(c,c->positions[2],component);
     c->z=add(c,z0,add(c,mul(c,bc[1],sub(c,z1,z0)),mul(c,bc[2],sub(c,z2,z0))));c->precise=false;
     uint32_t offset=unif(c,OFFSET,0),fz=unif(c,FACTOR,0),slope=unary(c,SpvOpLoad,c->f,c->inputs[8]);
@@ -250,7 +267,7 @@ static bool dest_valid(unsigned r)
 { return r==0 || r==4 || r==5 || (r>=8 && r<=13); }
 bool pgraph_spv_psh_supported(const PshState *s,SpvPshOptions opts)
 {
-    if(opts.ubo_binding>=32 || (!s->combiner_dynamic && ((s->combiner_control&255)>8 || !(s->final_inputs_0 || s->final_inputs_1))) || s->g8b8_mip_flags || (s->depth_format&DEPTH_FORMAT_UI_CLAMP))return false;
+    if(opts.ubo_binding>=32 || (!s->combiner_dynamic && ((s->combiner_control&255)>8 || !(s->final_inputs_0 || s->final_inputs_1))) || s->g8b8_mip_flags || ((s->depth_format&DEPTH_FORMAT_UI_CLAMP) && !pgraph_glsl_ui_clamp_stage(s)))return false;
     bool dots[4]={false};
     for(unsigned j=0;j<4;j++){
         unsigned mode=texture_mode(s,j);
@@ -370,6 +387,14 @@ static void stage_store(Context *c,Stage s)
         else{uint32_t a=extract(c,old,3);if(j<2 && ((s.out>>12)&(j==0?PS_COMBINEROUTPUT_AB_BLUE_TO_ALPHA:PS_COMBINEROUTPUT_CD_BLUE_TO_ALPHA)))a=extract(c,x,2);c->r[r]=v4(c,extract(c,x,0),extract(c,x,1),extract(c,x,2),a);}
     }
 }
+/* Existing geometry owns the marker and UV bounds; lend only SSA IDs. */
+static uint32_t ui_clamp_coord(Context *c,uint32_t coord,unsigned unit)
+{
+    if(!(c->state->depth_format&DEPTH_FORMAT_UI_CLAMP) || pgraph_glsl_ui_clamp_stage(c->state)!=unit+1)return coord;
+    uint32_t uv=ext3(c,GLSLstd450FClamp,c->v2,xy(c,coord),xy(c,c->positions[1]),xy(c,c->positions[2]));
+    uint32_t clamped=v4(c,extract(c,uv,0),extract(c,uv,1),extract(c,coord,2),extract(c,coord,3));
+    return choose(c,c->v4,c->ui_rect,clamped,coord);
+}
 #include "psh-texture.inc"
 #include "psh-dot.inc"
 #include "psh-shadow.inc"
@@ -395,6 +420,7 @@ static void texture_stages(Context *c)
             uint32_t point=unary(c,SpvOpLoad,c->v2,c->point_coord);
             coord=v4(c,extract(c,point,0),extract(c,point,1),c->cf[F_ONE],c->cf[F_ONE]);
         }else coord=unary(c,SpvOpLoad,c->v4,c->tex_inputs[j]);
+        coord=ui_clamp_coord(c,coord,j);
         if(mode==PS_TEXTUREMODES_DOTPRODUCT || mode==PS_TEXTUREMODES_DOT_ZW){
             c->dots[j]=texture_dot(c,coord,j);c->r[PS_REGISTER_T0+j]=splat(c,c->v4,c->cf[F_ZERO],4);
             if(mode==PS_TEXTUREMODES_DOT_ZW)texture_dot_depth(c,j);
@@ -509,6 +535,7 @@ static void allocate(Context *c)
     if(has_rect_samples(c->state) || has_bump_luma(c->state))c->scale_array=id(c->w);
     if(c->state->combiner_dynamic)dynamic_allocate(c);
     texture_allocate(c);dot_allocate(c);
+    if(c->state->depth_format&DEPTH_FORMAT_UI_CLAMP)c->ui_marker=id(c->w);
 }
 static void emit(Writer *w,const PshState *state,SpvPshOptions opts)
 {
@@ -552,6 +579,7 @@ static void emit(Writer *w,const PshState *state,SpvPshOptions opts)
     op(w,SpvOpTypeVoid,1,c.void_t);op(w,SpvOpTypeFunction,2,c.fn,c.void_t);op(w,SpvOpTypeFloat,2,c.f,32u);op(w,SpvOpTypeInt,3,c.i,32u,1u);op(w,SpvOpTypeInt,3,c.u,32u,0u);op(w,SpvOpTypeBool,1,c.b);
     op(w,SpvOpTypeVector,3,c.v2,c.f,2u);op(w,SpvOpTypeVector,3,c.v3,c.f,3u);op(w,SpvOpTypeVector,3,c.v4,c.f,4u);op(w,SpvOpTypeVector,3,c.iv2,c.i,2u);op(w,SpvOpTypeVector,3,c.iv4,c.i,4u);
     for(unsigned j=0;j<32;j++){op(w,SpvOpConstant,3,c.i,c.si[j],j);op(w,SpvOpConstant,3,c.u,c.ui32[j],j);}
+    if(c.ui_marker)op(w,SpvOpConstant,3,c.u,c.ui_marker,0x80000000u);
     const float constants[]={0,.5f,1,2,4,255,65535,16777216,0x1.fffffep127f};
     for(unsigned j=0;j<FLOATS;j++){uint32_t bits;memcpy(&bits,constants+j,4);op(w,SpvOpConstant,3,c.f,c.cf[j],bits);}
     op(w,SpvOpConstant,3,c.u,c.u127,127u);op(w,SpvOpConstant,3,c.u,c.u313,313u);op(w,SpvOpConstantTrue,2,c.b,c.yes);op(w,SpvOpConstantFalse,2,c.b,c.no);
