@@ -154,7 +154,7 @@ int main(void) {
  VkPipelineMultisampleStateCreateInfo ms={.sType=VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO,.rasterizationSamples=VK_SAMPLE_COUNT_1_BIT};
  uint32_t reference[VERTICES*60];unsigned compared=0,failures=0;
  clock_t reference_ticks=0,direct_ticks=0;size_t reference_words=0,direct_words=0;
- for(unsigned test=0;test<3136;test++) {
+ for(unsigned test=0;test<4160;test++) {
   VshState state={0};state.smooth_shading=test&1;state.fog_dynamic=true;state.specular_enable=test&2;state.ignore_specular_alpha=test&4;
   unsigned variant=(test%1568)/112,m=test%14,l=(test%112)/14;state.programmable.program_length=5;
   token(state.programmable.program_data[0],MAC_MOV,ILU_NOP,0,0,false,false);
@@ -200,11 +200,24 @@ int main(void) {
    if(input_style==1 || input_style==2){state.uniform_attrs=3;opts.push_constants=input_style==2;}
    if(input_style==3){state.compressed_attrs=2;state.swizzle_attrs=4;}
   }
-  for(unsigned a=0;a<16;a++)attrs[a].format=state.compressed_attrs&(1u<<a)?VK_FORMAT_R32_SINT:VK_FORMAT_R32G32B32A32_SFLOAT;
   state.point_params_enable=test>=1568;
   if(state.point_params_enable && variant==1 && m!=MAC_ARL){
    uint32_t *t=state.programmable.program_data[1];t[3]=(t[3]&~(15u<<3))|(6u<<3);
   }
+  if(test>=3136){
+   unsigned f=test-3136;
+   state=(VshState){.is_fixed_function=true,.smooth_shading=!!(f&1),.specular_enable=!!(f&2),.ignore_specular_alpha=!!(f&4),.separate_specular=!!(f&8)};
+   state.fixed_function.normalization=!!(f&16);state.fixed_function.light_dynamic=!!(f&32);state.fixed_function.two_sided=!!(f&64);
+   for(unsigned t=0;t<4;t++)state.fixed_function.texture_matrix_enable[t]=!!(f&(1u<<t));
+   state.programmable.program_length=0x7fffffff; /* Must not consume microcode. */
+   opts.push_constants=false;
+   unsigned style=(f/16)%5;
+   if(style==1)state.uniform_attrs=0x1f99;
+   if(style==2){state.uniform_attrs=props.limits.maxPushConstantsSize>=256?0xffff:0xff;opts.push_constants=true;}
+   if(style==3){state.compressed_attrs=(1<<0)|(1<<9)|(1<<11);state.swizzle_attrs=(1<<3)|(1<<10)|(1<<12);}
+   if(style==4)state.uniform_attrs=0xffff;
+  }
+  for(unsigned a=0;a<16;a++)attrs[a].format=state.compressed_attrs&(1u<<a)?VK_FORMAT_R32_SINT:VK_FORMAT_R32G32B32A32_SFLOAT;
   opts.preserve_float32=fp.shaderSignedZeroInfNanPreserveFloat32;
   VshState excluded=state;excluded.point_params_enable=true;
   SpvVshOptions unavailable=opts;unavailable.preserve_float32=false;
@@ -217,7 +230,7 @@ int main(void) {
    const float scales[]={0.0f,-0.0f,1.0f,2.0f,-1.0f,.5f,INFINITY,NAN};
    values.pointScale[0]=scales[(test/14)%8];
   }
-  if(variant>=8){
+  if(variant>=8 && !state.is_fixed_function){
    /* Static fog must ignore the live fogCtl, including its disabled bit. */
    values.fogCtl[0]=(test*13u)&15u;
    const float params[]={-.01f,0.0f,-0.0f,.5f,INFINITY,-INFINITY,NAN,0x1p-100f};
@@ -225,19 +238,36 @@ int main(void) {
    values.fogParam[0][0]=params[test%8];
   }
   for(unsigned i=0;i<192;i++)for(unsigned k=0;k<4;k++)values.c[i][k]=((int)((i*7+k*13)%37)-18)*.125f;
+  if(state.is_fixed_function){
+   unsigned f=test-3136;
+   const float sizes[]={0.0f,-0.0f,1.0f,.25f,-1.0f,2.5f,INFINITY,NAN};
+   values.pointSizeReg[0]=sizes[(f/8)%8];values.pointScale[0]=sizes[(f/64)%8];
+   if(f&128){
+    static const float composite[4][4]={{1,0,0,2},{0,1,0,-3},{0,0,1,.5f},{0,0,0,1}};
+    memcpy(values.c,composite,sizeof(composite));
+   }
+   if(f&256){
+    static const float composite[4][4]={{.125f,-.25f,.5f,1},{-.5f,2,.0625f,-1},{1,.125f,-.25f,.5f},{.25f,-.125f,.5f,-2}};
+    memcpy(values.c,composite,sizeof(composite));
+   }
+   values.c[NV_IGRAPH_XF_XFCTX_VPOFF][0]=-2.375f;
+   values.c[NV_IGRAPH_XF_XFCTX_VPOFF][1]=1.1875f;
+   values.c[NV_IGRAPH_XF_XFCTX_VPOFF][2]=INFINITY;
+   values.c[NV_IGRAPH_XF_XFCTX_VPOFF][3]=NAN;
+  }
   unsigned packed=0;for(unsigned a=0;a<16;a++)if(state.uniform_attrs&(1u<<a)) {
    for(unsigned k=0;k<4;k++)values.inlineValue[packed][k]=a==0?(k==3?1:k==2?100:40):(a==15?2:((int)(a+k)%7-3)*.5f);
    packed++;
   }
   const float samples[]={0,-0.0f,1,-1,2,-2,.5f,-.5f,4,8,16,-32,INFINITY,-INFINITY,NAN,0x1p-100f};
   for(unsigned v=0;v<VERTICES;v++)for(unsigned a=0;a<16;a++)for(unsigned k=0;k<4;k++) {
-   float f=samples[(v+a*3+k*5)%16];if(a==0)f=k==3?1:k==2?100:(float)(v*3+40);if(a==15)f=(float)(v%8);
+   float f=samples[(v+a*3+k*5)%16];if(a==0 && !(state.is_fixed_function && (test&512)))f=k==3?1:k==2?100:(float)(v*3+40);if(a==15)f=(float)(v%8);
    memcpy(input.mapped+v*256+a*16+k*4,&f,4);
   }
   for(unsigned path=0;path<2;path++) {
    pack(uniform.mapped,&modules[path].uniforms,&values);memset(output.mapped,0xa5,VERTICES*240);
    size_t words;GlslcResult reference_module=modules[path];
-   if(!path && state.point_params_enable)reference_module.words=preserve_float(&modules[path],&reference_module.num_words);
+   if(!path && (state.point_params_enable || state.is_fixed_function))reference_module.words=preserve_float(&modules[path],&reference_module.num_words);
    uint32_t *code=xfb(&reference_module,&words);
    if(reference_module.words!=modules[path].words)free(reference_module.words);
    VkShaderModuleCreateInfo smi={.sType=VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,.codeSize=words*4,.pCode=code};VkShaderModule shader;CHECK(vkCreateShaderModule(device,&smi,NULL,&shader));free(code);

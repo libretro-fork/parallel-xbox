@@ -86,16 +86,32 @@ static unsigned reg(const uint32_t *t, unsigned arg)
 
 bool pgraph_spv_vsh_supported(const VshState *s, SpvVshOptions opts)
 {
-    /* Point scaling must preserve exceptional RSQ/LOG results. The device
-     * property is queried before worker startup, never on the draw path. */
-    if (s->is_fixed_function || (s->point_params_enable && !opts.preserve_float32) ||
+    /* Point scaling and the unlit matrix path use an explicit FP32 environment.
+     * Device support is queried before worker startup, never on the draw path. */
+    if ((s->point_params_enable && !opts.preserve_float32) ||
         opts.ubo_binding >= 32 ||
         (s->fog_enable && !s->fog_dynamic &&
          ((unsigned)s->fog_mode >= 8 || s->fog_mode == FOG_MODE_ERROR2 ||
           s->fog_mode == FOG_MODE_ERROR6)) ||
         (s->compressed_attrs & s->uniform_attrs) ||
-        (s->swizzle_attrs & (s->uniform_attrs | s->compressed_attrs)) ||
-        s->programmable.program_length <= 0 ||
+        (s->swizzle_attrs & (s->uniform_attrs | s->compressed_attrs))) {
+        return false;
+    }
+    if (s->is_fixed_function) {
+        const FixedFunctionVshState *ff = &s->fixed_function;
+        if (!opts.preserve_float32 || s->point_params_enable || s->fog_dynamic ||
+            s->fog_enable || ff->lighting || ff->csv0c_dynamic ||
+            ff->texgen_dynamic || ff->skinning != SKINNING_OFF) {
+            return false;
+        }
+        for (unsigned t = 0; t < 4; t++) {
+            for (unsigned a = 0; a < 4; a++) {
+                if (ff->texgen[t][a] != TEXGEN_DISABLE) { return false; }
+            }
+        }
+        return true;
+    }
+    if (s->programmable.program_length <= 0 ||
         s->programmable.program_length > NV2A_MAX_TRANSFORM_PROGRAM_LENGTH) {
         return false;
     }
@@ -142,7 +158,7 @@ typedef struct Context {
     uint32_t c_array, inline_array, push_array, ubo_t, pc_t, ubo_p, pc_p;
     uint32_t ci[256], cu[8], cf[F_COUNT], zero4, initial4;
     uint32_t inputs[16], outputs[13], position, point_size, ubo, pc;
-    uint32_t main, ext;
+    uint32_t main, ext, mat4;
     uint32_t r[12], o[13], a0, input_values[16];
 } Context;
 
@@ -223,6 +239,38 @@ static uint32_t input(Context *c, unsigned index)
     }
     c->input_values[index] = result;
     return result;
+}
+
+static uint32_t constant(Context *c, unsigned index)
+{
+    uint32_t ptr = value(c->w, SpvOpAccessChain, c->uniform_v4, 3,
+                         c->ubo, c->ci[0], c->ci[index]);
+    return unary(c, SpvOpLoad, c->v4, ptr);
+}
+static uint32_t transform(Context *c, uint32_t v, unsigned base)
+{
+    uint32_t column[4];
+    for (unsigned i = 0; i < 4; i++) { column[i] = constant(c, base + i); }
+    uint32_t matrix = value(c->w, SpvOpCompositeConstruct, c->mat4, 4,
+                            column[0], column[1], column[2], column[3]);
+    return binary(c, SpvOpVectorTimesMatrix, c->v4, v, matrix);
+}
+static void unlit(Context *c)
+{
+    static const unsigned tex_matrix[] = {
+        NV_IGRAPH_XF_XFCTX_T0MAT, NV_IGRAPH_XF_XFCTX_T1MAT,
+        NV_IGRAPH_XF_XFCTX_T2MAT, NV_IGRAPH_XF_XFCTX_T3MAT,
+    };
+    c->o[0] = transform(c, input(c, 0), NV_IGRAPH_XF_XFCTX_CMAT0);
+    c->o[3] = input(c, 3); c->o[4] = input(c, 4);
+    c->o[7] = input(c, 7); c->o[8] = input(c, 8);
+    for (unsigned t = 0; t < 4; t++) {
+        uint32_t v = input(c, 9 + t);
+        if (c->state->fixed_function.texture_matrix_enable[t]) {
+            v = transform(c, v, tex_matrix[t]);
+        }
+        c->o[9 + t] = v;
+    }
 }
 
 static uint32_t operand(Context *c, const uint32_t *t, unsigned arg)
@@ -430,23 +478,47 @@ static uint32_t color(Context *c, uint32_t v)
 }
 static void finish(Context *c)
 {
-    uint32_t p = c->o[0];
-    uint32_t x = divf(c, ext1(c, GLSLstd450Trunc, c->f, mul(c, extract(c, p, 0), c->cf[F_SIXTEEN])), c->cf[F_SIXTEEN]);
-    uint32_t y = divf(c, ext1(c, GLSLstd450Trunc, c->f, mul(c, extract(c, p, 1), c->cf[F_SIXTEEN])), c->cf[F_SIXTEEN]);
-    uint32_t z = extract(c, p, 2), w = clamp_away(c, extract(c, p, 3));
-    uint32_t raw = make_v4(c, x, y, z, w);
-    uint32_t surface = load_uniform(c, 6, c->v2, c->uniform_v2);
-    uint32_t clip = load_uniform(c, 1, c->v4, c->uniform_v4);
-    uint32_t sx = value(c->w, SpvOpCompositeExtract, c->f, 2, surface, 0u);
-    uint32_t sy = value(c->w, SpvOpCompositeExtract, c->f, 2, surface, 1u);
-    x = mul(c, divf(c, sub(c, mul(c, c->cf[F_TWO], x), sx), sx), w);
-    y = mul(c, divf(c, sub(c, mul(c, c->cf[F_TWO], y), sy), sy), w);
-    z = mul(c, divf(c, z, extract(c, clip, 1)), w);
-    op(c->w, SpvOpStore, 2, c->position, make_v4(c, x, y, z, w));
+    uint32_t raw;
+    if (c->state->is_fixed_function) {
+        uint32_t p = c->o[0], w = clamp_away(c, extract(c, p, 3));
+        uint32_t viewport = constant(c, NV_IGRAPH_XF_XFCTX_VPOFF);
+        uint32_t x = add(c, divf(c, extract(c, p, 0), w), extract(c, viewport, 0));
+        uint32_t y = add(c, divf(c, extract(c, p, 1), w), extract(c, viewport, 1));
+        x = divf(c, ext1(c, GLSLstd450Trunc, c->f, mul(c, x, c->cf[F_SIXTEEN])), c->cf[F_SIXTEEN]);
+        y = divf(c, ext1(c, GLSLstd450Trunc, c->f, mul(c, y, c->cf[F_SIXTEEN])), c->cf[F_SIXTEEN]);
+        uint32_t z = extract(c, p, 2);
+        raw = make_v4(c, x, y, divf(c, z, w), w);
+        uint32_t surface = load_uniform(c, 6, c->v2, c->uniform_v2);
+        uint32_t clip = load_uniform(c, 1, c->v4, c->uniform_v4);
+        uint32_t sx = value(c->w, SpvOpCompositeExtract, c->f, 2, surface, 0u);
+        uint32_t sy = value(c->w, SpvOpCompositeExtract, c->f, 2, surface, 1u);
+        x = mul(c, divf(c, sub(c, mul(c, c->cf[F_TWO], x), sx), sx), w);
+        y = mul(c, divf(c, sub(c, mul(c, c->cf[F_TWO], y), sy), sy), w);
+        z = divf(c, z, extract(c, clip, 1));
+        op(c->w, SpvOpStore, 2, c->position, make_v4(c, x, y, z, w));
+    } else {
+        uint32_t p = c->o[0];
+        uint32_t x = divf(c, ext1(c, GLSLstd450Trunc, c->f, mul(c, extract(c, p, 0), c->cf[F_SIXTEEN])), c->cf[F_SIXTEEN]);
+        uint32_t y = divf(c, ext1(c, GLSLstd450Trunc, c->f, mul(c, extract(c, p, 1), c->cf[F_SIXTEEN])), c->cf[F_SIXTEEN]);
+        uint32_t z = extract(c, p, 2), w = clamp_away(c, extract(c, p, 3));
+        raw = make_v4(c, x, y, z, w);
+        uint32_t surface = load_uniform(c, 6, c->v2, c->uniform_v2);
+        uint32_t clip = load_uniform(c, 1, c->v4, c->uniform_v4);
+        uint32_t sx = value(c->w, SpvOpCompositeExtract, c->f, 2, surface, 0u);
+        uint32_t sy = value(c->w, SpvOpCompositeExtract, c->f, 2, surface, 1u);
+        x = mul(c, divf(c, sub(c, mul(c, c->cf[F_TWO], x), sx), sx), w);
+        y = mul(c, divf(c, sub(c, mul(c, c->cf[F_TWO], y), sy), sy), w);
+        z = mul(c, divf(c, z, extract(c, clip, 1)), w);
+        op(c->w, SpvOpStore, 2, c->position, make_v4(c, x, y, z, w));
+    }
     uint32_t point = extract(c, c->o[6], 0);
     if (!c->state->point_params_enable) {
         point = load_uniform(c, 4, c->f, c->uniform_f);
-        point = choose(c, c->f, binary(c, SpvOpFOrdLessThanEqual, c->b, point, c->cf[F_ZERO]), c->cf[F_ONE], point);
+        if (c->state->is_fixed_function) {
+            point = ext2(c, GLSLstd450FMax, c->f, c->cf[F_ONE], point);
+        } else {
+            point = choose(c, c->f, binary(c, SpvOpFOrdLessThanEqual, c->b, point, c->cf[F_ZERO]), c->cf[F_ONE], point);
+        }
     }
     point = mul(c, point, load_uniform(c, 5, c->f, c->uniform_f));
     op(c->w, SpvOpStore, 2, c->point_size, point);
@@ -549,6 +621,7 @@ static void allocate_ids(Context *c)
     for (unsigned i = 0; i < 13; i++) { c->outputs[i] = id(w); }
     c->position = id(w); c->point_size = id(w); c->ubo = id(w);
     c->pc = id(w); c->main = id(w); c->ext = id(w);
+    if (c->state->is_fixed_function) { c->mat4 = id(w); }
 }
 static void emit(Writer *w, const VshState *state, SpvVshOptions opts)
 {
@@ -560,7 +633,7 @@ static void emit(Writer *w, const VshState *state, SpvVshOptions opts)
     word(w, SpvMagicNumber); word(w, opts.spirv_1_6 ? 0x00010600u : 0x00010500u);
     word(w, 0); word(w, 0); word(w, 0);
     op(w, SpvOpCapability, 1, (uint32_t)SpvCapabilityShader);
-    if (state->point_params_enable) {
+    if (state->point_params_enable || state->is_fixed_function) {
         op(w, SpvOpCapability, 1, (uint32_t)SpvCapabilitySignedZeroInfNanPreserve);
     }
     op(w, SpvOpExtInstImport, 5, c.ext, 0x4c534c47u, 0x6474732eu, 0x3035342eu, 0u);
@@ -572,7 +645,7 @@ static void emit(Writer *w, const VshState *state, SpvVshOptions opts)
     for (unsigned i = 0; i < 13; i++) { word(w, c.outputs[i]); }
     word(w, c.position); word(w, c.point_size); word(w, c.ubo);
     if (pc) { word(w, c.pc); }
-    if (state->point_params_enable) {
+    if (state->point_params_enable || state->is_fixed_function) {
         op(w, SpvOpExecutionMode, 3, c.main,
            (uint32_t)SpvExecutionModeSignedZeroInfNanPreserve, 32u);
     }
@@ -605,6 +678,7 @@ static void emit(Writer *w, const VshState *state, SpvVshOptions opts)
     op(w, SpvOpTypeVector, 3, c.v2, c.f, 2u);
     op(w, SpvOpTypeVector, 3, c.v3, c.f, 3u);
     op(w, SpvOpTypeVector, 3, c.v4, c.f, 4u);
+    if (state->is_fixed_function) { op(w, SpvOpTypeMatrix, 3, c.mat4, c.v4, 4u); }
     op(w, SpvOpTypeBool, 1, c.b);
     op(w, SpvOpTypeVector, 3, c.b4, c.b, 4u);
     op(w, SpvOpTypeInt, 3, c.i, 32u, 1u);
@@ -612,10 +686,24 @@ static void emit(Writer *w, const VshState *state, SpvVshOptions opts)
     bool used[256] = {0};
     for (unsigned i = 0; i <= 32; i++) { used[i] = true; }
     used[NV2A_VERTEXSHADER_CONSTANTS] = true;
-    for (int i = 0; i < state->programmable.program_length; i++) {
-        const uint32_t *t = state->programmable.program_data[i];
-        used[field(t[1], 13, 8)] = true;
-        if (t[3] & 1) { break; }
+    if (state->is_fixed_function) {
+        used[NV_IGRAPH_XF_XFCTX_VPOFF] = true;
+        for (unsigned j = 0; j < 4; j++) { used[NV_IGRAPH_XF_XFCTX_CMAT0 + j] = true; }
+        static const unsigned bases[] = {
+            NV_IGRAPH_XF_XFCTX_T0MAT, NV_IGRAPH_XF_XFCTX_T1MAT,
+            NV_IGRAPH_XF_XFCTX_T2MAT, NV_IGRAPH_XF_XFCTX_T3MAT,
+        };
+        for (unsigned t = 0; t < 4; t++) {
+            if (state->fixed_function.texture_matrix_enable[t]) {
+                for (unsigned j = 0; j < 4; j++) { used[bases[t] + j] = true; }
+            }
+        }
+    } else {
+        for (int i = 0; i < state->programmable.program_length; i++) {
+            const uint32_t *t = state->programmable.program_data[i];
+            used[field(t[1], 13, 8)] = true;
+            if (t[3] & 1) { break; }
+        }
     }
     for (unsigned i = 0; i < 256; i++) { if (used[i]) { op(w, SpvOpConstant, 3, c.i, c.ci[i], i); } }
     for (unsigned i = 0; i < 8; i++) { op(w, SpvOpConstant, 3, c.u, c.cu[i], i); }
@@ -663,7 +751,8 @@ static void emit(Writer *w, const VshState *state, SpvVshOptions opts)
     for (unsigned i = 0; i < 12; i++) { c.r[i] = c.zero4; }
     for (unsigned i = 0; i < 13; i++) { c.o[i] = c.initial4; }
     c.a0 = c.ci[0];
-    program(&c); finish(&c);
+    if (state->is_fixed_function) { unlit(&c); } else { program(&c); }
+    finish(&c);
     op(w, SpvOpReturn, 0); op(w, SpvOpFunctionEnd, 0);
     if (w->words) { w->words[3] = w->next; }
 }

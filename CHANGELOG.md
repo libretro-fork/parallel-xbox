@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Translate unlit, unskinned fixed-function Vulkan vertex shaders directly to SPIR-V when fog and texgen are disabled, including static texture matrices. Preserve composite transforms, viewport rounding, colors and point-register behavior using the existing constant uniforms. Require supported FP32 preservation, borrow the immutable recipe through final-buffer emission and retain GLSL fallback for other fixed-function states. No matrix snapshots, new allocations or file I/O; existing direct programmable modules remain byte-identical.
+
 - Extend direct Vulkan vertex translation to programmed point sizes on devices supporting FP32 signed-zero/Infinity/NaN preservation. Query support once during device setup and emit the required float-control mode, preventing exceptional RSQ/LOG results from being lost during point scaling. Reuse final buffers and native owners; unsupported devices keep GLSL fallback. Include the target property in worker memo identity and add capability, exceptional-value and lifecycle coverage.
 
 - Extend direct Vulkan vertex translation to all six valid static fog modes, preserving absolute-mode and exceptional-distance behavior without a runtime mode switch. Reuse existing uniform/layout owners and final-buffer emission; previously supported direct modules remain byte-identical. Invalid fog modes and programmed point sizes keep their existing fallback.

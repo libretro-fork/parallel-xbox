@@ -70,7 +70,7 @@ int main(int argc, char **argv)
 {
     assert(argc == 2);check_caps();
     unsigned total = 0;
-    for (unsigned i = 0; i < 2240; i++) {
+    for (unsigned i = 0; i < 2752; i++) {
         VshState state;
         unsigned base=i%1120;
         make_case(&state, base);
@@ -83,6 +83,13 @@ int main(int argc, char **argv)
             uint32_t *t=state.programmable.program_data[1];
             t[3]=(t[3]&~(15u<<3))|(6u<<3);
         }
+        if(i>=2240){
+            state.is_fixed_function=true;state.point_params_enable=false;
+            state.fog_dynamic=false;state.fog_enable=false;
+            state.programmable.program_length=0x7fffffff;
+            for(unsigned t=0;t<4;t++)state.fixed_function.texture_matrix_enable[t]=!!(i&(1u<<t));
+            state.fixed_function.normalization=!!(i&16);state.fixed_function.two_sided=!!(i&32);
+        }
         SpvVshOptions opts = { .spirv_1_6 = !!(i & 1),
                               .push_constants = !!(i & 4), .ubo_binding = i % 3,
                               .preserve_float32 = i>=1120 || !!(i&8) };
@@ -91,6 +98,13 @@ int main(int argc, char **argv)
         assert(pgraph_spv_vsh_supported(&state, opts));
         assert(pgraph_spv_vsh(&state, opts, &a));
         assert(allocations == 2u + (opts.push_constants && state.uniform_attrs != 0));
+        if(state.is_fixed_function){
+            memset(state.programmable.program_data,0xa5,sizeof(state.programmable.program_data));
+            state.programmable.program_length=-42;
+            state.fixed_function.normalization=!state.fixed_function.normalization;
+            state.fixed_function.light_dynamic=!state.fixed_function.light_dynamic;
+            state.fixed_function.two_sided=!state.fixed_function.two_sided;
+        }
         assert(pgraph_spv_vsh(&state, opts, &b));
         assert(a.num_words == b.num_words && !memcmp(a.words, b.words, a.num_words * 4));
         assert(a.allocation == NULL && a.allocation_words == a.num_words);
@@ -101,10 +115,12 @@ int main(int argc, char **argv)
         if (a.push_constants.count) {
             assert(a.push_constants.members[0].dim_a == (size_t)__builtin_popcount(state.uniform_attrs));
         }
-        unsigned switches=0, unsigned_type=0, control_pointer=0, control_reads=0, preserve_modes=0, preserve_caps=0;
+        unsigned switches=0, unsigned_type=0, control_pointer=0, control_reads=0, preserve_modes=0, preserve_caps=0, matrices=0, transforms=0;
         for(size_t w=5;w<a.num_words;w+=a.words[w]>>16){
             unsigned op=a.words[w]&65535;
             if(op==SpvOpSwitch)switches++;
+            if(op==SpvOpTypeMatrix)matrices++;
+            if(op==SpvOpVectorTimesMatrix)transforms++;
             if(op==SpvOpExecutionMode && a.words[w+2]==SpvExecutionModeSignedZeroInfNanPreserve){assert(a.words[w+3]==32);preserve_modes++;}
             if(op==SpvOpCapability && a.words[w+1]==SpvCapabilitySignedZeroInfNanPreserve)preserve_caps++;
             if(op==SpvOpTypeInt && a.words[w+2]==32 && !a.words[w+3])unsigned_type=a.words[w+1];
@@ -113,9 +129,12 @@ int main(int argc, char **argv)
             if((a.words[w]&65535)==SpvOpTypePointer && a.words[w+2]==SpvStorageClassUniform && a.words[w+3]==unsigned_type)control_pointer=a.words[w+1];
         for(size_t w=5;w<a.num_words;w+=a.words[w]>>16)
             if((a.words[w]&65535)==SpvOpAccessChain && a.words[w+1]==control_pointer)control_reads++;
-        assert(preserve_modes==(unsigned)state.point_params_enable && preserve_caps==preserve_modes);
+        assert(preserve_modes==(unsigned)(state.point_params_enable || state.is_fixed_function) && preserve_caps==preserve_modes);
         assert(switches==(unsigned)state.fog_dynamic);
         assert(control_reads==(unsigned)state.fog_dynamic);
+        unsigned expected_transforms=state.is_fixed_function;
+        if(state.is_fixed_function)for(unsigned t=0;t<4;t++)expected_transforms+=state.fixed_function.texture_matrix_enable[t];
+        assert(matrices==(unsigned)state.is_fixed_function && transforms==expected_transforms);
         memset(&state, 0xa5, sizeof(state));
         assert(!strcmp(a.uniforms.members[0].name, "c"));
         assert(!strcmp(a.uniforms.members[6].name, "surfaceSize"));
@@ -127,7 +146,7 @@ int main(int argc, char **argv)
         glslc_result_free_words(&b); free(b.uniforms.members); free(b.push_constants.members);
         total++;
     }
-    for (unsigned i = 0; i < 12; i++) {
+    for (unsigned i = 0; i < 21; i++) {
         VshState s; make_case(&s, 0); SpvVshOptions opts = {0};
         if (i == 0) { s.is_fixed_function = true; }
         if (i == 1) { s.fog_enable = true; s.fog_dynamic = false; s.fog_mode = FOG_MODE_ERROR2; }
@@ -141,10 +160,22 @@ int main(int argc, char **argv)
         if (i == 9) { s.fog_enable = true; s.fog_mode = FOG_MODE_ERROR6; }
         if (i == 10) { s.fog_enable = true; s.fog_mode = (enum VshFogMode)8; }
         if (i == 11) { s.fog_enable = true; s.fog_mode = (enum VshFogMode)-1; }
+        if(i>=12){
+            s.is_fixed_function=true;s.fog_mode=FOG_MODE_LINEAR;opts.preserve_float32=true;
+            if(i==12)s.fixed_function.lighting=true;
+            if(i==13)s.fixed_function.csv0c_dynamic=true;
+            if(i==14)s.fixed_function.texgen_dynamic=true;
+            if(i==15)s.fixed_function.skinning=SKINNING_1WEIGHTS;
+            if(i==16)s.fog_dynamic=true;
+            if(i==17)s.fog_enable=true;
+            if(i==18)s.point_params_enable=true;
+            if(i==19)s.fixed_function.texgen[1][2]=TEXGEN_NORMAL_MAP;
+            if(i==20)s.compressed_attrs=s.swizzle_attrs=2;
+        }
         GlslcResult result; memset(&result, 0xa5, sizeof(result)); allocations = 0;
         assert(!pgraph_spv_vsh(&s, opts, &result));
         assert(!allocations && !result.words && !result.uniforms.members && !result.push_constants.members);
     }
-    printf("Direct VSH: %u deterministic native-module/owned-layout/poisoned-key cases; twelve allocation-free unsupported paths; 512 device-capability/generation checks PASS\n", total);
+    printf("Direct VSH: %u deterministic native-module/owned-layout/poisoned-key cases; twenty-one allocation-free unsupported paths; 512 device-capability/generation checks PASS\n", total);
     return 0;
 }
