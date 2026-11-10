@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- MMX unpack and signed high-word multiply instructions use inline integer translation operations instead of arithmetic helpers. Preserve register aliases, memory operands and SSE/VEX dispatch. Gameplay performance remains unmeasured.
+
 - Vulkan avoids GLSL fallback for packed projective samplers with ignored dimension/cube metadata and for non-rectangle 3D constant shadow results. Reuse existing texture views and final module owners without extra copies or allocations.
 
 - ARM64 CPU translation emits fresh block jumps directly in their reset form, avoiding redundant jump patches and per-slot instruction-cache flushes. Recycled blocks retain normal resets. Gameplay performance remains unmeasured.
