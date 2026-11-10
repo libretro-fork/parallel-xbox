@@ -22,74 +22,11 @@
 
 static GPUProperties pgraph_vk_gpu_properties;
 
-static const char *vertex_shader_source =
-    "#version 450\n"
-    "layout(location = 0) out vec3 v_fragColor;\n"
-    "\n"
-    "vec2 positions[11] = vec2[](\n"
-    "    vec2(-0.5, -0.75),\n"
-    "    vec2(-0.25, -0.25),\n"
-    "    vec2(-0.75, -0.25),\n"
-    "    vec2(0.25, -0.25),\n"
-    "    vec2(0.25, -0.75),\n"
-    "    vec2(0.75, -0.25),\n"
-    "    vec2(0.75, -0.75),\n"
-    "    vec2(-0.75, 0.75),\n"
-    "    vec2(-0.75, 0.25),\n"
-    "    vec2(-0.25, 0.25),\n"
-    "    vec2(-0.25, 0.75)\n"
-    ");\n"
-    "\n"
-    "vec3 colors[11] = vec3[](\n"
-    "    vec3(0.0, 0.0, 1.0),\n"
-    "    vec3(0.0, 1.0, 0.0),\n"
-    "    vec3(0.0, 1.0, 1.0),\n"
-    "    vec3(0.0, 0.0, 1.0),\n"
-    "    vec3(0.0, 1.0, 0.0),\n"
-    "    vec3(0.0, 1.0, 1.0),\n"
-    "    vec3(1.0, 0.0, 0.0),\n"
-    "    vec3(0.0, 0.0, 1.0),\n"
-    "    vec3(0.0, 1.0, 0.0),\n"
-    "    vec3(0.0, 1.0, 1.0),\n"
-    "    vec3(1.0, 0.0, 0.0)\n"
-    ");\n"
-    "\n"
-    "void main() {\n"
-    "    gl_Position = vec4(positions[gl_VertexIndex], 0.0, 1.0);\n"
-    "    v_fragColor = colors[gl_VertexIndex];\n"
-    "}\n";
 
-static const char *geometry_shader_source =
-    "#version 450\n"
-    "layout(triangles) in;\n"
-    "layout(triangle_strip, max_vertices = 3) out;\n"
-    "layout(location = 0) out vec3 fragColor;\n"
-    "layout(location = 0) in vec3 v_fragColor[];\n"
-    "\n"
-    "void main() {\n"
-    "    for (int i = 0; i < 3; i++) {\n"
-             // This should be just:
-             //   gl_Position = gl_in[i].gl_Position;
-             //   fragColor = v_fragColor[0];
-             // but we apply the same Nvidia bug work around from gl/gpuprops.c
-             // to be on the safe side even if the compilers involved with
-             // Vulkan are different.
-    "        gl_Position = gl_in[i].gl_Position + vec4(1.0/16384.0, 1.0/16384.0, 0.0, 0.0);\n"
-    "        precise vec3 color = v_fragColor[0]*(0.999 + gl_in[i].gl_Position.x/16384.0) + v_fragColor[1]*0.00005 + v_fragColor[2]*0.00005;\n"
-    "        fragColor = color;\n"
-    "        EmitVertex();\n"
-    "    }\n"
-    "    EndPrimitive();\n"
-    "}\n";
 
-static const char *fragment_shader_source =
-    "#version 450\n"
-    "layout(location = 0) out vec4 outColor;\n"
-    "layout(location = 0) in vec3 fragColor;\n"
-    "\n"
-    "void main() {\n"
-    "    outColor = vec4(fragColor, 1.0);\n"
-    "}\n";
+
+
+
 
 static VkPipeline create_test_pipeline(
     NV2AState *d, VkPrimitiveTopology primitive_topology,
@@ -347,12 +284,12 @@ static void render_geom_shader_triangles(NV2AState *d, int width, int height,
     VkFramebuffer framebuffer;
     VK_CHECK(vkCreateFramebuffer(r->device, &fb_info, NULL, &framebuffer));
 
-    VkShaderModule vert_shader_module = pgraph_vk_create_fixed_shader_module_from_glsl(
-        r, VK_SHADER_STAGE_VERTEX_BIT, vertex_shader_source);
-    VkShaderModule geom_shader_module = pgraph_vk_create_fixed_shader_module_from_glsl(
-        r, VK_SHADER_STAGE_GEOMETRY_BIT, geometry_shader_source);
-    VkShaderModule frag_shader_module = pgraph_vk_create_fixed_shader_module_from_glsl(
-        r, VK_SHADER_STAGE_FRAGMENT_BIT, fragment_shader_source);
+    VkShaderModule vert_shader_module = pgraph_vk_create_utility_shader_module(
+        r, SPV_UTILITY_PROPS_VERTEX);
+    VkShaderModule geom_shader_module = pgraph_vk_create_utility_shader_module(
+        r, SPV_UTILITY_PROPS_GEOMETRY);
+    VkShaderModule frag_shader_module = pgraph_vk_create_utility_shader_module(
+        r, SPV_UTILITY_PROPS_FRAGMENT);
 
     VkPipelineLayoutCreateInfo pipeline_layout_info = {
         .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,

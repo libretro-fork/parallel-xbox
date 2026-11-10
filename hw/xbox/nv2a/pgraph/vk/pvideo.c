@@ -16,41 +16,7 @@ static void pvideo_pack_rows(uint8_t *dst, const uint8_t *src,
     }
 }
 
-/* One invocation per YUY2 pair shares its read and chroma arithmetic.
- * The input belongs to this auxiliary slot until its fence retires. */
-static const char *pvideo_convert_glsl =
-    "#version 450\n"
-    "layout(local_size_x=64) in;\n"
-    "layout(binding=0, std430) readonly buffer Input { uint yuy2[]; };\n"
-    "layout(binding=1, rgba8) uniform writeonly image2D rgba;\n"
-    "layout(push_constant, std430) uniform Args { uint src; uint stride; uint width; uint height; };\n"
-    "void main() {\n"
-    "    uint i = gl_GlobalInvocationID.x;\n"
-    "    uint pairs = (width + 1u) / 2u;\n"
-    "    if (i >= pairs * height) return;\n"
-    "    uint x = (i % pairs) * 2u;\n"
-    "    uint y = i / pairs;\n"
-    "    uint row = stride == 0u ? pairs : stride;\n"
-    "    uint pair = yuy2[src + y * row + i % pairs];\n"
-    "    int d = int((pair >> 8u) & 255u) - 128;\n"
-    "    int e = int(pair >> 24u) - 128;\n"
-    "    int cr = 409 * e + 128;\n"
-    "    int cg = -100 * d - 208 * e + 128;\n"
-    "    int cb = 516 * d + 128;\n"
-    "    int c = 298 * (int(pair & 255u) - 16);\n"
-    "    int r = clamp((c + cr) >> 8, 0, 255);\n"
-    "    int g = clamp((c + cg) >> 8, 0, 255);\n"
-    "    int b = clamp((c + cb) >> 8, 0, 255);\n"
-    "    imageStore(rgba, ivec2(x, y), vec4(r, g, b, 255) / 255.0);\n"
-    "    if (x + 1u < width) {\n"
-    "        c = 298 * (int((pair >> 16u) & 255u) - 16);\n"
-    "        r = clamp((c + cr) >> 8, 0, 255);\n"
-    "        g = clamp((c + cg) >> 8, 0, 255);\n"
-    "        b = clamp((c + cb) >> 8, 0, 255);\n"
-    "        imageStore(rgba, ivec2(x + 1u, y), vec4(r, g, b, 255) / 255.0);\n"
-    "    }\n"
-    "}\n";
-
+/* The input belongs to this auxiliary slot until its fence retires. */
 static void pvideo_convert_bind_source(PGRAPHVkState *r, VkBuffer source,
                                        VkDeviceSize offset, VkDeviceSize range)
 {
@@ -130,8 +96,8 @@ void pgraph_vk_pvideo_init(PGRAPHState *pg)
             .pushConstantRangeCount = 1, .pPushConstantRanges = &push,
         };
         VK_CHECK(vkCreatePipelineLayout(r->device, &pl, NULL, &c->layout));
-        VkShaderModule module = pgraph_vk_create_fixed_shader_module_from_glsl(
-            r, VK_SHADER_STAGE_COMPUTE_BIT, pvideo_convert_glsl);
+        VkShaderModule module = pgraph_vk_create_utility_shader_module(
+            r, SPV_UTILITY_PVIDEO);
         VkComputePipelineCreateInfo pipeline = {
             .sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO,
             .layout = c->layout,

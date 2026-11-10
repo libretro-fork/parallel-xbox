@@ -1,27 +1,5 @@
 /* SPDX-License-Identifier: GPL-2.0-or-later */
-#include "hw/xbox/nv2a/pgraph/s3tc-decode-glsl.h"
 
-#define S3TC_VK_PREFIX \
-    "#version 450\n" \
-    "layout(local_size_x=8,local_size_y=8) in;\n" \
-    "layout(binding=0,std430) readonly buffer Blocks { uint words[]; };\n" \
-    "layout(push_constant) uniform Args { uvec4 shape; uvec4 output_shape; uint src; };\n"
-#define S3TC_VK_MAIN \
-    S3TC_DECODE_GLSL \
-    "void main() {\n" \
-    " uvec3 p=gl_GlobalInvocationID;\n" \
-    " if(p.x>=output_shape.x || p.y>=output_shape.y || p.z>=shape.z) return;\n" \
-    " uvec3 input_pos=p+uvec3(output_shape.zw,0u);\n" \
-    " imageStore(output_image,ivec3(p),vec4(decode_s3tc(input_pos,shape,src))/255.0);\n" \
-    "}\n"
-static const char s3tc_vk_array_glsl[] = S3TC_VK_PREFIX
-    "layout(binding=1,rgba8) uniform writeonly image2DArray output_image;\n"
-    S3TC_VK_MAIN;
-static const char s3tc_vk_volume_glsl[] = S3TC_VK_PREFIX
-    "layout(binding=1,rgba8) uniform writeonly image3D output_image;\n"
-    S3TC_VK_MAIN;
-#undef S3TC_VK_PREFIX
-#undef S3TC_VK_MAIN
 
 typedef struct S3TCUploadLevel {
     VkDeviceSize source, size, packed;
@@ -118,8 +96,8 @@ static void s3tc_decode_pipeline(PGRAPHVkState *r, unsigned volume)
         VK_CHECK(vkCreatePipelineLayout(r->device, &li, NULL, &r->s3tc_decode.layout));
     }
     if (!r->s3tc_decode.pipelines[volume]) {
-        VkShaderModule module = pgraph_vk_create_fixed_shader_module_from_glsl(r,
-            VK_SHADER_STAGE_COMPUTE_BIT, volume ? s3tc_vk_volume_glsl : s3tc_vk_array_glsl);
+        VkShaderModule module = pgraph_vk_create_utility_shader_module(r,
+            volume ? SPV_UTILITY_S3TC_VOLUME : SPV_UTILITY_S3TC_ARRAY);
         VkComputePipelineCreateInfo pi = { .sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO,
             .layout = r->s3tc_decode.layout, .stage = {
                 .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,

@@ -2,7 +2,9 @@
 
 ## Unreleased
 
-- x86-64 hard-FPU ordered x87 comparisons use integer ordering for normal values and signed zero, and ordered SoftFloat for exceptional inputs. Preserve guest exception flags, including invalid for quiet NaNs, without altering host FP control state. Gameplay performance remains unmeasured.
+- x86-64 hard-FPU comparison helpers use integer ordering for normal values and signed zero, and the correct ordered/quiet SoftFloat fallback for exceptional inputs. Merge comparison exception flags into the guest x87 status, including invalid for ordered quiet-NaN comparisons, while preserving host FP control state. Gameplay performance remains unmeasured.
+
+- Vulkan uses immutable SPIR-V words for its six fixed PVIDEO, GPU-property and S3TC utility programs, removing their GLSL compilation and temporary word allocations. Preserve exact reference words, existing pipeline creation and retirement, and synchronous borrowed word lifetimes. Make reference compiler member-ID allocation order explicit so ARM64 and x86 produce the same words.
 
 - After-access CPU watchpoints during interrupt or exception frame construction let delivery complete before requesting a debugger stop. Preserve acknowledged interrupts instead of retrying them as translated instructions; normal instruction watchpoints and stop-before behavior stay intact.
 
