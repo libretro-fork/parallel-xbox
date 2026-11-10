@@ -28,6 +28,8 @@ jobs:
         run: python3 libretro/tests/test-tb-lookup-state.py . cc
       - name: Quiet x87 integer comparisons match SoftFloat
         run: python3 libretro/tests/test-x87-quiet-compare.py . cc
+      - name: OHCI publishes completion queues before frame interrupts
+        run: python3 libretro/tests/test-ohci-hcca.py . cc
       - name: Software FCMOV preserves exact 80-bit images
         run: python3 libretro/tests/test-soft-fcmov.py . cc
       - name: TCG single-block invalidation protects JIT writes
