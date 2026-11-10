@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Emit dynamic fixed-function light modes directly as Vulkan SPIR-V through one counted shader loop. Preserve directional/local/spot selection, range and cone guards, material colors and live back-light control using existing uniforms and final allocation owners. No payload copies, new bindings or retained lends; dynamic CSV0_C still uses the GLSL path.
+
 - Extend direct Vulkan SPIR-V emission to static local and spot lighting, including inclusive distance ranges, polynomial attenuation, cooked-cone falloff and front/back specular. Reuse existing uniform groups and final allocation owners without new copies or retained lends. Dynamic lighting and live material-source selection retain the GLSL path.
 
 - Emit fixed-function material shading and all eight static directional-light slots directly as Vulkan SPIR-V. Preserve front/back material sources, viewer-dependent half vectors, coefficient specular guards and separate/combined colors. Share the transformed normal with texgen and append only consumed existing uniform groups, without new allocations, payload clones, bindings or retained pointers. Preserve prior modules/layouts; local, spot and dynamic lights retain GLSL fallback pending native support.

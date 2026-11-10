@@ -68,12 +68,12 @@ may bypass translation; a warm driver cache is a separate compilation milestone.
 
 ## Regression coverage and qualification
 
-- `test-spv-vsh.py`: 26,768 deterministic SPIR-V modules, final-owner allocation
+- `test-spv-vsh.py`: 30,864 deterministic SPIR-V modules, final-owner allocation
   counts, poisoned source keys, thirty-nine allocation-free unsupported paths, UBSan and
   spirv-val. Both SPIR-V 1.5 and 1.6 targets are covered. Extracted native device
   setup is checked across 512 API/property/generation cases, including stale
   target reset and zero queries on older APIs.
-- `test-spv-vsh-gpu.py`: 28,176 programs / 45,983,232 scalar outputs compared with
+- `test-spv-vsh-gpu.py`: 32,272 programs / 52,667,904 scalar outputs compared with
   the production GLSL generator/compiler using Vulkan transform feedback. It
   captures all user outputs, position and point size before clipping; numerical
   differences fail (NaN payload identity is not required). It exercises opcode
@@ -123,10 +123,10 @@ requires forced invalidation. Legacy non-point modules retain their prior words.
 ## Unlit fixed-function subset
 
 The direct subset requires static CSV0_C. It supports material/base shading and
-static directional, local and spot lights, as detailed below.
+static and dynamic directional, local and spot lights, as detailed below.
 It supports static/live texture matrices and coordinate-generation modes, all
 skinning modes and register/attenuated points as detailed below. Unsupported
-states, including dynamic lighting and dynamic CSV0_C, retain the GLSL path. The existing FP32 property gate applies;
+states, including dynamic CSV0_C, retain the GLSL path. The existing FP32 property gate applies;
 no new device query is added.
 
 The composite matrix already contains model-view when skinning is off. Emit
@@ -463,3 +463,56 @@ without installed validation layers. Failed probes remain retained. All 22,672
 prior CPU fixture modules/layouts remain byte-identical to the parent. These are
 correctness/work-count results; driver caches remain uncontrolled and cold-play
 and draw-path PSO recovery remain open.
+
+## Dynamic light modes
+
+With static CSV0_C, the direct path also consumes live light modes and counts
+from the existing `lightMode` uniform. One counted shader loop covers the eight
+slots; it does not unroll eight copies of the lighting body. Uniform production
+bounds the count to the highest active slot (zero through eight), while the
+shader retains the reference low-four-bit count mask and ignores higher bits.
+Disabled slots and slots beyond the count leave the carried colors unchanged.
+
+A mode branch chooses directional or local geometry, and the local path applies
+the cooked spotlight curve only for spot mode. The dynamic reference skips a
+local light only for `distance > range`; its NaN behavior differs from the
+static inclusive range branch and is preserved. Range-rejected terms do not
+reach accumulation. Geometry results and all four colors flow through structured
+SSA merges and loop-carried values. These CPU-side temporaries contain only
+32-bit IR IDs, with no vertex, matrix, uniform or immutable-key snapshots.
+
+The material sources, viewer, normal normalization and specular settings remain
+static in this stage. Two-sided shaders consume the existing live back-light bit
+from `csv0cCtl` for per-light back contributions, as the reference does. Shaders
+that ultimately pass back colors through omit these unused contributions and
+the control group. Dynamic CSV0_C remains a correct GLSL fallback.
+
+Only consumed existing uniform groups are appended to the final metadata owner.
+The same immutable module-cache/worker key is lent synchronously through count
+and write passes, and no pointer escapes. Final word/layout owners, allocation
+counts, module adoption, cancellation and last-consumer retirement are unchanged.
+No intermediate text/AST, payload clone, new binding, file I/O or draw-side
+bookkeeping is introduced. All 26,768 previous CPU modules/layouts remain
+byte-identical to the parent.
+
+The extra 4,096 fixtures exercise runtime mode patterns and counts zero through
+eight, disabled holes, poisoned bits outside the count and upper control bits,
+front/back flags, all viewers and skinning modes, points, fog and texgen. They
+retain local/spot exceptional coefficients, NaN/zero/negative ranges and cooked
+hard-edge cones. CPU checks poison the unused static mode array between emissions,
+validate loop structure and existing final allocation counts, and retain failure
+fallbacks and capability/generation checks. Full GPU and gameplay qualification is recorded below; this does not establish
+cold-play or draw-path PSO recovery.
+
+Physical-GPU probes exposed a divide/subtract contraction boundary for the local
+viewer. The GLSL reference has a pre-loop homogeneous divide shared with its eye
+vector; that rounding remains observable even when disabled specular makes the
+eye-vector result dead. Native emission pins the local-viewer light-position
+subtraction with one NoContraction annotation. Its ID is recorded by the count
+pass and emitted directly into final words, with no module patch buffer or extra
+allocation. Applying the control to every viewer changed other previously
+matching cases and was rejected; those failed logs remain retained. The final full corpus matched 52,667,904 scalar outputs per device on software
+Vulkan with validation and the RTX 5090 without installed validation layers.
+The rebuilt core completed 26 OpenGL/Vulkan game checks, four lifecycle cases
+and five exact image pairs. Driver caches and timings remain unqualified;
+cold-play and draw-path PSO recovery remain open.

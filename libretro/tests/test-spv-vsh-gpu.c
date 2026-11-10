@@ -105,8 +105,8 @@ static void pack(uint8_t *dst,const GlslcLayout *layout,const VshUniformValues *
 static void release(GlslcResult *r){glslc_result_free_words(r);free(r->uniforms.members);free(r->push_constants.members);}
 int main(int argc, char **argv) {
  assert(argc==1 || argc==3);
- unsigned first=argc==3?strtoul(argv[1],NULL,10):0, limit=argc==3?strtoul(argv[2],NULL,10):28176;
- assert(first<limit && limit<=28176);
+ unsigned first=argc==3?strtoul(argv[1],NULL,10):0, limit=argc==3?strtoul(argv[2],NULL,10):32272;
+ assert(first<limit && limit<=32272);
  printf("Fixture range [%u, %u)\n",first,limit);
  const bool validated=getenv("NO_VALIDATION")==NULL;
  const char *layer="VK_LAYER_KHRONOS_validation",*debug=VK_EXT_DEBUG_UTILS_EXTENSION_NAME;
@@ -316,6 +316,12 @@ int main(int argc, char **argv) {
     state.fixed_function.light[l]=mode;
    }
   }
+  if(test>=28176){
+   unsigned f=test-28176;state.fixed_function.light_dynamic=true;
+   state.fixed_function.two_sided=!!(f&256);state.fixed_function.local_eye=!!(f&512);
+   state.specular_enable=!!(f&1024);state.separate_specular=!!(f&2048);
+   for(unsigned l=0;l<8;l++)state.fixed_function.light[l]=LIGHT_OFF;
+  }
   for(unsigned a=0;a<16;a++)attrs[a].format=state.compressed_attrs&(1u<<a)?VK_FORMAT_R32_SINT:VK_FORMAT_R32G32B32A32_SFLOAT;
   opts.preserve_float32=fp.shaderSignedZeroInfNanPreserveFloat32;
   VshState excluded=state;excluded.point_params_enable=true;
@@ -325,6 +331,10 @@ int main(int argc, char **argv) {
   MString *text=pgraph_glsl_gen_vsh(&state,(GenVshGlslOptions){.vulkan=true,.use_push_constants_for_uniform_attrs=opts.push_constants});
   GlslcOptions glopts={.emit_layout=true};if(!glslc_compile(GLSLC_STAGE_VERTEX,mstring_get_str(text),&glopts,&modules[0])){fprintf(stderr,"%s\n",modules[0].error);abort();}mstring_unref(text);reference_ticks+=clock()-before;reference_words+=modules[0].num_words;
   VshUniformValues values={0};values.clipRange[0][1]=65535;values.surfaceSize[0][0]=720;values.surfaceSize[0][1]=480;values.pointSizeReg[0]=1;values.pointScale[0]=1;values.texgenMode[0]=(test*37u & 4095u) | (test&8?4096u:0u);values.fogCtl[0]=1|((test%8)<<1);values.fogParam[0][0]=1.5f;values.fogParam[0][1]=-.01f;
+  if(test>=28176){
+   unsigned f=test-28176;values.lightMode[0]=((f*40503u)&65535u) | ((f%9)<<16) | 0xa5f00000u;
+   values.csv0cCtl[0]=(f&128?32768u:0u) | 0x5a000000u;
+  }
   if(state.fixed_function.texgen_dynamic){
    unsigned f=test-14096;
    values.texMatEnable[0]=(f&15u) | 0xffff0000u;
