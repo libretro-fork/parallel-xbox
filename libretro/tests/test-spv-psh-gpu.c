@@ -180,24 +180,63 @@ int main(int argc,char **argv){
    state.combiner_control=0;state.final_inputs_0=state.final_inputs_1=0;
    memset(state.rgb_inputs,0xa5,sizeof(state.rgb_inputs));memset(state.alpha_inputs,0x5a,sizeof(state.alpha_inputs));
   }
+  if(test>=16896){
+   unsigned f=test-16896,n=f,unit=n%4;n/=4;bool rect=n%2;n/=2;bool border=n%2;n/=2;unsigned key=n%4;n/=4;unsigned kernel=n%3;n/=3;unsigned alpha=n%4;n/=4;bool live=n%2;
+   memset(&state,0,sizeof(state));memset(&values,0,sizeof(values));state.smooth_shading=!!(f&1);state.combiner_dynamic=live;state.alpha_dynamic=!!(alpha&1);state.depth_format=DEPTH_FORMAT_D24;
+   state.shader_stage_program=PS_TEXTUREMODES_PROJECT2D<<(unit*5);state.dim_tex[unit]=2;state.rect_tex[unit]=rect;state.border_adjust[unit]=border;state.colorkey_mode[unit]=key;
+   state.conv_tex[unit]=kernel==0?CONVOLUTION_FILTER_DISABLED:kernel==1?CONVOLUTION_FILTER_GAUSSIAN:CONVOLUTION_FILTER_QUINCUNX;state.alphakill[unit]=!!(alpha&2);
+   state.point_sprite=unit==3 && !rect && !!(f&128);data[7][3]=(f&1)?2:6;if(state.point_sprite)data[7][3]=-data[7][3];
+   values.clipRange[0][1]=values.clipRange[0][3]=16777215;values.surfaceScale[0][0]=values.surfaceScale[0][1]=1;values.alphaKillMask[0]=1u<<unit;
+   for(unsigned j=0;j<8;j++){values.clipRegion[j][2]=4;values.clipRegion[j][3]=4;}
+   for(unsigned j=0;j<4;j++){
+    values.texScale[j]=.5f+(j%3)*.5f;values.colorKey[j]=(f&32)?0x80200000u:0x00200000u;
+    const uint32_t masks[]={0,0xff000000u,0x00ffffffu,0xffffffffu};values.colorKeyMask[j]=masks[(f/64+j)%4];
+    for(unsigned k=0;k<3;k++){values.borderLogicalSize[j][k]=4.0f+j*.5f;values.borderInvRealSize[j][k]=1.0f/(12+j*2);}
+    VkDescriptorImageInfo info={samplers[(f/16+j)%16],texture.view,VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL};VkWriteDescriptorSet w={.sType=VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,.dstSet=set,.dstBinding=2+j,.descriptorCount=1,.descriptorType=VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,.pImageInfo=&info};vkUpdateDescriptorSets(device,1,&w,0,NULL);
+   }
+   uint32_t reg=PS_REGISTER_T0+unit;unsigned stages=(f/64)%9;
+   state.combiner_control=stages;values.combCtl[0]=stages|0x100;
+   for(unsigned j=0;j<8;j++){
+    state.rgb_inputs[j]=(reg<<24)|0x00200000u;state.alpha_inputs[j]=((reg|16u)<<24)|0x00200000u;
+    state.rgb_outputs[j]=12<<4;state.alpha_outputs[j]=12<<4;
+    values.combRgbIn[j]=state.rgb_inputs[j];values.combAlphaIn[j]=state.alpha_inputs[j];values.combRgbOut[j]=state.rgb_outputs[j];values.combAlphaOut[j]=state.alpha_outputs[j];
+   }
+   if(stages)reg=PS_REGISTER_R0;state.final_inputs_0=0x20000000u|(reg<<16);state.final_inputs_1=(reg|16u)<<8;
+   if(f>=1536){
+    state.combiner_dynamic=!!(f&2);state.alpha_dynamic=!!(f&1);state.point_sprite=!!(f&4);data[7][3]=state.point_sprite?-2:2;
+    state.shader_stage_program=0;state.combiner_control=2;values.combCtl[0]=2|0x100;
+    for(unsigned j=0;j<4;j++){
+     state.shader_stage_program|=PS_TEXTUREMODES_PROJECT2D<<(j*5);state.dim_tex[j]=2;state.rect_tex[j]=!!(f&(1u<<j)) && !(j==3 && state.point_sprite);state.border_adjust[j]=!!(f&(1u<<(j+4)));state.colorkey_mode[j]=(f+j)%4;state.conv_tex[j]=((f+j)%3)==0?CONVOLUTION_FILTER_DISABLED:((f+j)%3)==1?CONVOLUTION_FILTER_GAUSSIAN:CONVOLUTION_FILTER_QUINCUNX;
+    }
+    for(unsigned j=0;j<2;j++){
+     state.rgb_inputs[j]=((8+j*2)<<24)|((9+j*2)<<16);state.rgb_outputs[j]=(12+j)<<4;state.alpha_inputs[j]=0x18200000;state.alpha_outputs[j]=12<<4;
+     values.combRgbIn[j]=state.rgb_inputs[j];values.combRgbOut[j]=state.rgb_outputs[j];values.combAlphaIn[j]=state.alpha_inputs[j];values.combAlphaOut[j]=state.alpha_outputs[j];
+    }
+    state.final_inputs_0=0x200c000d;state.final_inputs_1=0x1c00;
+   }
+   values.combFinal0[0]=state.final_inputs_0;values.combFinal1[0]=state.final_inputs_1;
+   if(state.combiner_dynamic){state.combiner_control=0;state.final_inputs_0=state.final_inputs_1=0;}
+   float plane[3][4]={{0,0,100,1},{4,0,200,1},{0,4,300,1}};memcpy(data[4],plane,sizeof(plane));data[7][1]=0;
+  }
   GlslcResult modules[2];SpvPshOptions opts={.spirv_1_6=!!(test&256),.ubo_binding=1,.tex_binding=2};assert(pgraph_spv_psh(&state,opts,&modules[1]));MString *source=pgraph_glsl_gen_psh(&state,(GenPshGlslOptions){.vulkan=true,.locations=true,.ubo_binding=1,.tex_binding=2});GlslcOptions go={.spirv_1_6=opts.spirv_1_6,.emit_layout=true};if(!glslc_compile(GLSLC_STAGE_FRAGMENT,mstring_get_str(source),&go,&modules[0])){fprintf(stderr,"fragment %u %d %s\n",test,modules[0].error_line,modules[0].error);abort();}reference_source_bytes+=strlen(mstring_get_str(source));mstring_unref(source);
   words[0]+=modules[0].num_words;words[1]+=modules[1].num_words;
   uint32_t expected[80];uint64_t build_ns[2]={0},draw_ns[2]={0};
   for(unsigned path=0;path<2;path++){
    assert(modules[path].uniforms.size<=2048);memset(uniform.mapped,0,2048);pack(uniform.mapped,&modules[path].uniforms,&values);VkShaderModule frag=module(&modules[path]);
    VkPipelineShaderStageCreateInfo stages[2]={{.sType=VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,.stage=VK_SHADER_STAGE_VERTEX_BIT,.module=vertices[state.smooth_shading],.pName="main"},{.sType=VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,.stage=VK_SHADER_STAGE_FRAGMENT_BIT,.module=frag,.pName="main"}};
-   VkPipelineVertexInputStateCreateInfo vi={.sType=VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO};VkPipelineInputAssemblyStateCreateInfo ia={.sType=VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,.topology=(test>=8192 && (test<10240 || (test>=14336 && test<16384)))?VK_PRIMITIVE_TOPOLOGY_POINT_LIST:VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST};VkViewport viewport={0,0,4,4,0,1};VkRect2D scissor={{0,0},{4,4}};VkPipelineViewportStateCreateInfo vp={.sType=VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO,.viewportCount=1,.pViewports=&viewport,.scissorCount=1,.pScissors=&scissor};VkPipelineRasterizationStateCreateInfo rs={.sType=VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO,.polygonMode=VK_POLYGON_MODE_FILL,.cullMode=VK_CULL_MODE_NONE,.frontFace=VK_FRONT_FACE_CLOCKWISE,.lineWidth=1};VkPipelineMultisampleStateCreateInfo ms={.sType=VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO,.rasterizationSamples=VK_SAMPLE_COUNT_1_BIT};VkPipelineDepthStencilStateCreateInfo ds={.sType=VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO,.depthTestEnable=VK_TRUE,.depthWriteEnable=VK_TRUE,.depthCompareOp=VK_COMPARE_OP_ALWAYS};VkPipelineColorBlendAttachmentState blend={.colorWriteMask=15};VkPipelineColorBlendStateCreateInfo cb={.sType=VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO,.attachmentCount=1,.pAttachments=&blend};VkGraphicsPipelineCreateInfo gp={.sType=VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,.stageCount=2,.pStages=stages,.pVertexInputState=&vi,.pInputAssemblyState=&ia,.pViewportState=&vp,.pRasterizationState=&rs,.pMultisampleState=&ms,.pDepthStencilState=&ds,.pColorBlendState=&cb,.layout=layout,.renderPass=pass};VkPipeline pipeline;uint64_t build_start=timings?wall_ns():0;CHECK(vkCreateGraphicsPipelines(device,VK_NULL_HANDLE,1,&gp,NULL,&pipeline));if(timings)build_ns[path]=wall_ns()-build_start;
-   CHECK(vkResetCommandBuffer(cmd,0));VkCommandBufferBeginInfo begin={.sType=VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};CHECK(vkBeginCommandBuffer(cmd,&begin));VkClearValue clear[2]={{{{-2,3,5,7}}}, {.depthStencil={1,0}}};VkRenderPassBeginInfo rp={.sType=VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,.renderPass=pass,.framebuffer=fb,.renderArea={{0,0},{4,4}},.clearValueCount=2,.pClearValues=clear};vkCmdBeginRenderPass(cmd,&rp,VK_SUBPASS_CONTENTS_INLINE);vkCmdBindPipeline(cmd,VK_PIPELINE_BIND_POINT_GRAPHICS,pipeline);vkCmdBindDescriptorSets(cmd,VK_PIPELINE_BIND_POINT_GRAPHICS,layout,0,1,&set,0,NULL);vkCmdPushConstants(cmd,layout,VK_SHADER_STAGE_VERTEX_BIT,0,128,data);vkCmdDraw(cmd,(test>=8192 && (test<10240 || (test>=14336 && test<16384)))?1:3,1,0,0);vkCmdEndRenderPass(cmd);
+   VkPipelineVertexInputStateCreateInfo vi={.sType=VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO};VkPipelineInputAssemblyStateCreateInfo ia={.sType=VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,.topology=state.point_sprite?VK_PRIMITIVE_TOPOLOGY_POINT_LIST:VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST};VkViewport viewport={0,0,4,4,0,1};VkRect2D scissor={{0,0},{4,4}};VkPipelineViewportStateCreateInfo vp={.sType=VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO,.viewportCount=1,.pViewports=&viewport,.scissorCount=1,.pScissors=&scissor};VkPipelineRasterizationStateCreateInfo rs={.sType=VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO,.polygonMode=VK_POLYGON_MODE_FILL,.cullMode=VK_CULL_MODE_NONE,.frontFace=VK_FRONT_FACE_CLOCKWISE,.lineWidth=1};VkPipelineMultisampleStateCreateInfo ms={.sType=VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO,.rasterizationSamples=VK_SAMPLE_COUNT_1_BIT};VkPipelineDepthStencilStateCreateInfo ds={.sType=VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO,.depthTestEnable=VK_TRUE,.depthWriteEnable=VK_TRUE,.depthCompareOp=VK_COMPARE_OP_ALWAYS};VkPipelineColorBlendAttachmentState blend={.colorWriteMask=15};VkPipelineColorBlendStateCreateInfo cb={.sType=VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO,.attachmentCount=1,.pAttachments=&blend};VkGraphicsPipelineCreateInfo gp={.sType=VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,.stageCount=2,.pStages=stages,.pVertexInputState=&vi,.pInputAssemblyState=&ia,.pViewportState=&vp,.pRasterizationState=&rs,.pMultisampleState=&ms,.pDepthStencilState=&ds,.pColorBlendState=&cb,.layout=layout,.renderPass=pass};VkPipeline pipeline;uint64_t build_start=timings?wall_ns():0;CHECK(vkCreateGraphicsPipelines(device,VK_NULL_HANDLE,1,&gp,NULL,&pipeline));if(timings)build_ns[path]=wall_ns()-build_start;
+   CHECK(vkResetCommandBuffer(cmd,0));VkCommandBufferBeginInfo begin={.sType=VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};CHECK(vkBeginCommandBuffer(cmd,&begin));VkClearValue clear[2]={{{{-2,3,5,7}}}, {.depthStencil={1,0}}};VkRenderPassBeginInfo rp={.sType=VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,.renderPass=pass,.framebuffer=fb,.renderArea={{0,0},{4,4}},.clearValueCount=2,.pClearValues=clear};vkCmdBeginRenderPass(cmd,&rp,VK_SUBPASS_CONTENTS_INLINE);vkCmdBindPipeline(cmd,VK_PIPELINE_BIND_POINT_GRAPHICS,pipeline);vkCmdBindDescriptorSets(cmd,VK_PIPELINE_BIND_POINT_GRAPHICS,layout,0,1,&set,0,NULL);vkCmdPushConstants(cmd,layout,VK_SHADER_STAGE_VERTEX_BIT,0,128,data);vkCmdDraw(cmd,state.point_sprite?1:3,1,0,0);vkCmdEndRenderPass(cmd);
    VkBufferImageCopy copies[2]={{.imageSubresource={VK_IMAGE_ASPECT_COLOR_BIT,0,0,1},.imageExtent={4,4,1}},{.bufferOffset=256,.imageSubresource={VK_IMAGE_ASPECT_DEPTH_BIT,0,0,1},.imageExtent={4,4,1}}};vkCmdCopyImageToBuffer(cmd,color.image,VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,readback.handle,1,copies);vkCmdCopyImageToBuffer(cmd,depth.image,VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,readback.handle,1,copies+1);CHECK(vkEndCommandBuffer(cmd));VkSubmitInfo submit={.sType=VK_STRUCTURE_TYPE_SUBMIT_INFO,.commandBufferCount=1,.pCommandBuffers=&cmd};uint64_t draw_start=timings?wall_ns():0;CHECK(vkQueueSubmit(queue,1,&submit,fence));CHECK(vkWaitForFences(device,1,&fence,VK_TRUE,10000000000ull));CHECK(vkResetFences(device,1,&fence));if(timings)draw_ns[path]=wall_ns()-draw_start;
    if(!path)memcpy(expected,readback.mapped,320);else for(unsigned j=0;j<80;j++){uint32_t got;float x,y;memcpy(&got,readback.mapped+j*4,4);memcpy(&x,&expected[j],4);memcpy(&y,&got,4);compared++;if(got!=expected[j] && !(isnan(x)&&isnan(y))){if(failures++<25)fprintf(stderr,"case %u output %u: %08x (%g) != %08x (%g)\n",test,j,expected[j],x,got,y);}}
    vkDestroyPipeline(device,pipeline,NULL);vkDestroyShaderModule(device,frag,NULL);
   }
   if(timings)fprintf(stderr,"PSH timing case=%u ref_build_ns=%llu native_build_ns=%llu ref_submit_fence_ns=%llu native_submit_fence_ns=%llu UNQUALIFIED\n",test,(unsigned long long)build_ns[0],(unsigned long long)build_ns[1],(unsigned long long)draw_ns[0],(unsigned long long)draw_ns[1]);
   bool sampled=false;for(unsigned j=0;j<4;j++)sampled|=((state.shader_stage_program>>(j*5))&31)==PS_TEXTUREMODES_PROJECT2D;
-  for(unsigned j=0;j<16;j++){if(expected[j*4]==0xc0000000u)discarded++;else{written++;sample_pixels+=sampled;point_pixels+=(test>=8192 && (test<10240 || (test>=14336 && test<16384)));}}
+  for(unsigned j=0;j<16;j++){if(expected[j*4]==0xc0000000u)discarded++;else{written++;sample_pixels+=sampled;point_pixels+=state.point_sprite;}}
   release(&modules[0]);release(&modules[1]);
  }
  printf("Fragment GPU: %u scalar color/depth/discard results, %u differences, %u validation errors; validation=%s\n",compared,failures,errors,validated?"enabled":"DISABLED");
+ if(first>=16896)assert(written && sample_pixels);
  if(first>=4096 && (first<10240 || (first>=14336 && first<16384)))assert(written && discarded && sample_pixels);
  if(first>=8192 && (first<10240 || (first>=14336 && first<16384)))assert(point_pixels);
  printf("Fragment coverage: written_pixels=%u discarded_pixels=%u sampled_pixels=%u point_pixels=%u\n",written,discarded,sample_pixels,point_pixels);

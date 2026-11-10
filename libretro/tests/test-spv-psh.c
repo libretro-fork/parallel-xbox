@@ -87,12 +87,36 @@ int main(int argc,char **argv)
         memset(&s,0xa5,sizeof(s));char path[4096];snprintf(path,sizeof(path),"%s/dynamic-%u.spv",argv[1],i);FILE *f=fopen(path,"wb");assert(f);assert(fwrite(a.words,4,a.num_words,f)==a.num_words);fclose(f);
         glslc_result_free_words(&a);free(a.uniforms.members);glslc_result_free_words(&b);free(b.uniforms.members);
     }
+    for(unsigned i=0;i<4096;i++){
+        PshState s={.final_inputs_0=0x20080000,.final_inputs_1=0x1800};s.combiner_dynamic=!!(i&1024);s.alpha_dynamic=!!(i&512);s.point_sprite=!!(i&2048);
+        unsigned rects=0,borders=0,keys=0,kernels=0;
+        for(unsigned j=0;j<4;j++){
+            s.shader_stage_program|=PS_TEXTUREMODES_PROJECT2D<<(j*5);s.dim_tex[j]=2;s.rect_tex[j]=!!(i&(1u<<(j+4))) && !(j==3 && s.point_sprite);s.border_adjust[j]=!!(i&(1u<<j));s.colorkey_mode[j]=(i>>(j+3))&3;
+            unsigned k=(i>>(j+7))%3;s.conv_tex[j]=k==0?CONVOLUTION_FILTER_DISABLED:k==1?CONVOLUTION_FILTER_GAUSSIAN:CONVOLUTION_FILTER_QUINCUNX;
+            rects+=s.rect_tex[j];borders+=s.border_adjust[j];keys+=s.colorkey_mode[j]!=COLOR_KEY_NONE;kernels+=k!=0;
+        }
+        SpvPshOptions opts={.spirv_1_6=!!(i&256),.ubo_binding=1,.tex_binding=2};GlslcResult a,b;allocations=0;
+        assert(pgraph_spv_psh(&s,opts,&a) && allocations==2);unsigned loops=0,samples=0,queries=0;
+        for(size_t k=5;k<a.num_words;k+=a.words[k]>>16){unsigned op=a.words[k]&65535;loops+=op==246;samples+=op==87;queries+=op==103;}
+        assert(loops==1+s.combiner_dynamic+kernels && samples==4 && queries==rects+kernels);
+        unsigned expected=11+!!rects+s.alpha_dynamic+(s.combiner_dynamic?7:0)+(borders?2:0)+(keys?2:0);assert(a.uniforms.count==expected);
+        expected=(rects?(s.alpha_dynamic?576:560):s.alpha_dynamic?512:496)+(s.combiner_dynamic?528:0)+(borders?128:0)+(keys?128:0);assert(a.uniforms.size==expected && a.uniforms.size<=1360);
+        for(size_t j=0;j<a.uniforms.count;j++){
+            const GlslcUniform *u=a.uniforms.members+j;assert(u->offset+u->stride*(u->dim_a-1)+u->dim_v*4<=a.uniforms.size);
+            if(!strncmp(u->name,"border",6))assert(u->dim_v==3 && u->dim_a==4 && u->stride==16);
+            if(!strncmp(u->name,"colorKey",8))assert(u->dim_v==1 && u->dim_a==4 && u->stride==16);
+        }
+        memset(s.compare_mode,1,sizeof(s.compare_mode));memset(s.rgb_inputs,0x5a,sizeof(s.rgb_inputs));memset(s.alpha_inputs,0xa5,sizeof(s.alpha_inputs));s.surface_zeta_format=0xf00d;
+        assert(pgraph_spv_psh(&s,opts,&b) && allocations==4);assert(a.num_words==b.num_words && !memcmp(a.words,b.words,a.num_words*4));
+        memset(&s,0xa5,sizeof(s));char path[4096];snprintf(path,sizeof(path),"%s/texture-ops-%u.spv",argv[1],i);FILE *f=fopen(path,"wb");assert(f);assert(fwrite(a.words,4,a.num_words,f)==a.num_words);fclose(f);
+        glslc_result_free_words(&a);free(a.uniforms.members);glslc_result_free_words(&b);free(b.uniforms.members);
+    }
     for(unsigned i=0;i<9;i++){
         PshState s={.final_inputs_0=0x20080000,.final_inputs_1=0x1800,.shader_stage_program=PS_TEXTUREMODES_PROJECT2D};s.dim_tex[0]=2;
         SpvPshOptions opts={.ubo_binding=1,.tex_binding=2};GlslcResult a;
-        if(i==0)s.border_adjust[0]=true;
-        if(i==1)s.conv_tex[0]=CONVOLUTION_FILTER_QUINCUNX;
-        if(i==2)s.colorkey_mode[0]=COLOR_KEY_DISCARD;
+        if(i==0)s.colorkey_mode[0]=-1;
+        if(i==1)s.conv_tex[0]=3;
+        if(i==2)s.colorkey_mode[0]=4;
         if(i==3)s.dim_tex[0]=3;
         if(i==4)s.tex_cubemap[0]=true;
         if(i==5)opts.tex_binding=29;
@@ -121,5 +145,5 @@ int main(int argc,char **argv)
         if(i==15){s.combiner_control=1;s.rgb_inputs[0]=0x0f000000;}
         allocations=0;GlslcResult a;memset(&a,0xa5,sizeof(a));assert(!pgraph_spv_psh(&s,opts,&a));assert(!allocations && !a.words && !a.uniforms.members && !a.push_constants.members);
     }
-    puts("Direct PSH: 12288 deterministic/final-allocation/ignored-key/owned-layout modules and twenty-five allocation-free unsupported cases PASS");return 0;
+    puts("Direct PSH: 16384 deterministic/final-allocation/ignored-key/owned-layout modules and twenty-five allocation-free unsupported cases PASS");return 0;
 }

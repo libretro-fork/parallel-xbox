@@ -102,9 +102,10 @@ sampler, uniform or descriptor pointer escapes count/write. Existing native
 references, texture owners and descriptor/command retirement cover all last
 consumers; no new resource creation or file I/O is introduced.
 
-Cubemaps, 3D/dependent/bump/dot/shadow sampling, special signed/integer formats,
-convolution, border adjustment and color key still use the correct compiler
-path. Bindings that would overlap the UBO or exceed the bounded four-unit range
+Cubemaps, 3D/dependent/bump/dot/shadow sampling and special signed/integer
+formats still use the correct compiler path. Border adjustment, color key and
+the existing convolution path are native. Bindings that would overlap the UBO
+or exceed the bounded four-unit range
 reject allocation-free. Full practical direct fragment coverage remains open.
 
 CPU coverage expands to 8,192 modules and twenty-five unsupported cases. The
@@ -194,3 +195,60 @@ does not record presentation latency or GPU timestamps, and never weakens the
 output/coverage checks. Its 512-case physical attribution probe passed; timings
 remain unqualified because driver caches are warmed/uncontrolled and CPU/software
 correctness checks overlap. No latency baseline or recovery claim follows.
+
+
+## Border adjustment, color key and convolution
+
+PROJECT2D stages can now use their existing border-adjustment flag, all four
+color-key modes and both existing convolution flags with static or live
+combiners. New instructions reference the same per-unit combined samplers and
+views. No new descriptor, texture/buffer allocation, host API call or resource
+retirement path is introduced.
+
+Border adjustment follows `(coord.xyz * logicalSize + vec3(4)) * invRealSize`
+before rectangle normalization/projection, leaving Q unchanged. Only sampled
+border stages append the existing borderLogicalSize/borderInvRealSize arrays.
+Color key uses the reference float-to-uint rounding, ARGB packing and mask
+comparison. It supports no change, alpha kill, color/alpha kill and discard.
+Texture alpha kill executes before key mutation; killing alpha through the key
+does not incorrectly trigger a second texture alpha-kill test.
+
+The convolution path preserves one counted nine-tap loop per affected unit,
+row-major offsets and sequential weighted accumulation. It divides by raw Q,
+as the reference convolution does, then adds offsets measured in base-level
+texels. This is deliberately distinct from ordinary PROJECT2D's positive-Q
+clamp. The immutable offset/weight arrays contain shader constants and share
+one declaration across all units. Gaussian and quincunx flags retain the
+current GLSL generator's same 3x3 Gaussian kernel; this does not fix its existing
+quincunx FIXME or claim a different hardware filter.
+
+Border arrays are vec3[4], each with std140 stride 16 and a 64-byte extent.
+Color-key/mask arrays are uint[4] with the same stride/extent. Consumed pairs
+append after the existing layout, up to 256 extra bytes and a 1360-byte final
+extent. Array names/metadata remain in the same single final allocation, with
+no new host allocation count. Private convolution tables, the shader register
+bank and bounded emission records contain SSA IDs/constants, not retained guest
+pointers, texture/uniform snapshots or copied shader payloads. Existing source,
+module, texture and descriptor owners still cover each last consumer.
+
+CPU coverage expands to 16,384 modules, with exact two-allocation checks,
+appended layouts/bounds, one sample instruction per unit and one nine-tap loop
+per convolution unit. All 12,288 earlier modules are byte-identical to the
+parent. Added GPU fixtures exercise all units, static/live combiners, rectangle
+scaling, non-binary border coefficients, key masks/matches/misses, alpha-kill
+ordering, point sprites and mixed four-unit filtering. Mask scheduling is
+independent of key mode so discard is visibly exercised. Output comparison,
+watchdog and coverage requirements are unchanged.
+
+Other sampler dimensions/modes, special signed/integer formats and shadow
+sampling remain on the correct compiler path. Full practical direct coverage,
+cold-play smoothness and draw-critical PSO compilation remain open.
+
+The completed 18,944-case matrix matched 1,515,520 scalar results per device on
+llvmpipe with validation and RTX 5090 without installed validation layers.
+Aggregate fixture output used 101,864,648 native words versus 133,667,676
+reference words and avoided 162,456,309 GLSL source bytes. All 49 contract
+suites, 26 OpenGL/Vulkan game checks, four lifecycle cases and five exact image
+pairs passed. These correctness/work counts do not establish GPU execution or
+cold-play latency improvements; driver-cache and timing qualification remain
+open.
