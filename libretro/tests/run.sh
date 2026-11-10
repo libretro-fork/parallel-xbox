@@ -600,6 +600,9 @@ nasm -f bin -I"$here/rom/" -o "$work/sysshuf/xemu/Complex_4627v1.03.bin" "$here/
 mkdir -p "$work/sysft0/xemu"
 cp "$work/sys/xemu/mcpx_1.0.bin" "$work/sysft0/xemu/"
 nasm -f bin -I"$here/rom/" -o "$work/sysft0/xemu/Complex_4627v1.03.bin" "$here/rom/x87-scratch.asm"
+mkdir -p "$work/systbcache/xemu"
+cp "$work/sys/xemu/mcpx_1.0.bin" "$work/systbcache/xemu/"
+nasm -f bin -I"$here/rom/" -o "$work/systbcache/xemu/Complex_4627v1.03.bin" "$here/rom/tb-cache-stress.asm"
 mkdir -p "$work/sysmmx/xemu"
 cp "$work/sys/xemu/mcpx_1.0.bin" "$work/sysmmx/xemu/"
 nasm -f bin -I"$here/rom/" -o "$work/sysmmx/xemu/Complex_4627v1.03.bin" "$here/rom/mmx-tags.asm"
@@ -803,6 +806,20 @@ for hard in enabled disabled; do
         echo "FAIL: x87 scratch ($hard/$boost)"; exit 1;
       }
     done
+  done
+done
+
+# Execute many distinct RAM translations, then revisit them across cache reuse.
+for boost in enabled disabled; do
+  t "TCG cache stress, CPU Boost $boost" $h "$(path "$core")" "$(path "$work/systbcache")" $vp \
+    --opt "xemu_cpu_boost=$boost" --frames 60 --strict \
+    --peek 0x300000 --peek 0x300004 >"$work/tb-cache-$boost.txt" || {
+      cat "$work/tb-cache-$boost.txt"; exit 1;
+    }
+  for want in "peek_0x300000=0x4b4f4254" "peek_0x300004=0x00000000"; do
+    grep -q "^$want$" "$work/tb-cache-$boost.txt" || {
+      cat "$work/tb-cache-$boost.txt"; exit 1;
+    }
   done
 done
 

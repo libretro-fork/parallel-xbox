@@ -98,4 +98,12 @@ typedef enum {
  */
 #define TCG_TARGET_TLB_MEMO 1
 
+/* x86-64 body-to-stub and pool references use rel32 within a chunk.
+ * Keep the split local; short label branches remain within the body. */
+#if TCG_TARGET_REG_BITS == 64
+#define TCG_TARGET_COLD_CODE 1
+#define TCG_COLD_CHUNK_SIZE (1 << 20)
+#define TCG_COLD_HOT_DIVISOR 2
+#endif
+
 #endif

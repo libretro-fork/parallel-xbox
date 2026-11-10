@@ -69,16 +69,16 @@ static uint8_t *encode_sleb128(uint8_t *p, int64_t val)
 static int64_t decode_sleb128(const uint8_t **pp)
 {
     const uint8_t *p = *pp;
-    int64_t val = 0;
+    uint64_t val = 0;
     int byte, shift = 0;
 
     do {
         byte = *p++;
-        val |= (int64_t)(byte & 0x7f) << shift;
+        val |= (uint64_t)(byte & 0x7f) << shift;
         shift += 7;
     } while (byte & 0x80);
     if (shift < 64 && (byte & 0x40)) {
-        val |= -(int64_t)1 << shift;
+        val |= UINT64_MAX << shift;
     }
 
     *pp = p;
@@ -99,7 +99,11 @@ static int64_t decode_sleb128(const uint8_t **pp)
 
 static int encode_search(TranslationBlock *tb, uint8_t *block)
 {
+#ifdef TCG_TARGET_COLD_CODE
+    uint8_t *highwater = tcg_ctx->code_gen_cold_highwater;
+#else
     uint8_t *highwater = tcg_ctx->code_gen_highwater;
+#endif
     uint64_t *insn_data = tcg_ctx->gen_insn_data;
     uint16_t *insn_end_off = tcg_ctx->gen_insn_end_off;
     uint8_t *p = block;
@@ -137,7 +141,7 @@ static int cpu_unwind_data_from_tb(TranslationBlock *tb, uintptr_t host_pc,
                                    uint64_t *data)
 {
     uintptr_t iter_pc = (uintptr_t)tb->tc.ptr;
-    const uint8_t *p = tb->tc.ptr + tb->tc.size;
+    const uint8_t *p = tb->xemu_cold.ptr + tb->xemu_cold.size;
     int i, j, num_insns = tb->icount;
 
     host_pc -= GETPC_ADJ;
@@ -287,6 +291,7 @@ TranslationBlock *tb_gen_code(CPUState *cpu, TCGTBCPUState s)
     TranslationBlock *tb, *existing_tb;
     tb_page_addr_t phys_pc, phys_p2;
     tcg_insn_unit *gen_code_buf;
+    uint8_t *search_data;
     int gen_code_size, search_size, max_insns;
     int64_t ti;
     void *host_pc;
@@ -426,10 +431,15 @@ TranslationBlock *tb_gen_code(CPUState *cpu, TCGTBCPUState s)
     }
     tcg_ctx->gen_tb = NULL;
 
-    search_size = encode_search(tb, (void *)gen_code_buf + gen_code_size);
+    /* The search data follows the cold code (tcg_gen_code). */
+    search_data = tcg_splitwx_to_rw(tb->xemu_cold.ptr) + tb->xemu_cold.size;
+    search_size = encode_search(tb, search_data);
     if (unlikely(search_size < 0)) {
         trace_tb_gen_code_buffer_overflow("encode_search");
         tb_unlock_pages(tb);
+#ifdef TCG_TARGET_COLD_CODE
+        tcg_code_gen_chunk_full(tcg_ctx);
+#endif
         goto buffer_overflow;
     }
     tb->tc.size = gen_code_size;
@@ -441,10 +451,15 @@ TranslationBlock *tb_gen_code(CPUState *cpu, TCGTBCPUState s)
 
 
 
-    /* only the vCPU thread, the one TCG context, moves it */
+#ifdef TCG_TARGET_COLD_CODE
     tcg_ctx->code_gen_ptr = (void *)
-        ROUND_UP((uintptr_t)gen_code_buf + gen_code_size + search_size,
-                 CODE_GEN_ALIGN);
+        ROUND_UP((uintptr_t)gen_code_buf + gen_code_size, CODE_GEN_ALIGN);
+    tcg_ctx->code_gen_cold_ptr = (void *)
+        ROUND_UP((uintptr_t)search_data + search_size, CODE_GEN_ALIGN);
+#else
+    tcg_ctx->code_gen_ptr = (void *)
+        ROUND_UP((uintptr_t)search_data + search_size, CODE_GEN_ALIGN);
+#endif
 
     /* init jump list */
     qemu_spin_init(&tb->jmp_lock);
@@ -500,10 +515,16 @@ recycle_tb:
     /* if the TB already exists, discard what we just translated */
     if (unlikely(existing_tb != tb)) {
         if (!recycled) {
+#ifdef TCG_TARGET_COLD_CODE
+            /* Both parts: the body, and from the TranslationBlock on. */
+            tcg_ctx->code_gen_ptr = gen_code_buf;
+            tcg_ctx->code_gen_cold_ptr = (void *)tb;
+#else
             uintptr_t orig_aligned = (uintptr_t)gen_code_buf;
 
             orig_aligned -= ROUND_UP(sizeof(*tb), qemu_icache_linesize);
             tcg_ctx->code_gen_ptr = (void *)orig_aligned;
+#endif
         }
         tcg_tb_remove(tb);
         return existing_tb;

@@ -304,6 +304,56 @@ static void tcg_region_bounds(size_t curr_region, void **pstart, void **pend)
     *pend = end;
 }
 
+#ifdef TCG_TARGET_COLD_CODE
+/*
+ * Hot/cold TB layout. A region is cut into chunks of TCG_COLD_CHUNK_SIZE,
+ * each a backend-selected hot part followed by a cold part. A TB's body
+ * (tb->tc) goes to the hot part, back to back with the bodies before it;
+ * its TranslationBlock, then its qemu_ld/st slow paths, backend stubs and
+ * constant pool (tb->xemu_cold), then its search data, go to the cold
+ * part. Each part fills upward under its own highwater
+ * mark; when either runs out, both move to the next chunk
+ * (tcg_region_next_chunk; a TB that overflowed starts over there). The
+ * region's tail short of a whole chunk is one more, shorter chunk, split
+ * the same way, unless it is under a quarter chunk (with -accel
+ * tcg,tb-size=2 the tail is most of the buffer). A chunk spans at most
+ * 1 MiB, so every reference between the two parts of a TB, all in one
+ * chunk, is within reach of B.cond, CBZ/CBNZ, ADR and LDR (literal).
+ */
+static bool tcg_region_chunk_init(TCGContext *s, void *start)
+{
+    void *end = s->code_gen_buffer + s->code_gen_buffer_size;
+    size_t size = MIN(TCG_COLD_CHUNK_SIZE, end - start);
+    size_t hot = QEMU_ALIGN_DOWN(size / TCG_COLD_HOT_DIVISOR, 128);
+
+    if (size < TCG_COLD_CHUNK_SIZE / 4 && start != s->code_gen_buffer) {
+        return false;
+    }
+    if (hot <= TCG_HIGHWATER || size - hot <= TCG_HIGHWATER) {
+        return false;
+    }
+    s->code_gen_hot_start = start;
+    s->code_gen_ptr = start;
+    s->code_gen_highwater = start + hot - TCG_HIGHWATER;
+    s->code_gen_cold_ptr = start + hot;
+    s->code_gen_cold_highwater = start + size - TCG_HIGHWATER;
+    s->code_gen_chunk_end = start + size;
+    return true;
+}
+
+/*
+ * Move both cursors to the next chunk once either part of this one
+ * filled up. Returns true if the whole buffer is full.
+ */
+bool tcg_region_next_chunk(TCGContext *s)
+{
+    if (tcg_region_chunk_init(s, s->code_gen_chunk_end)) {
+        return false;
+    }
+    return tcg_region_alloc(s);
+}
+#endif
+
 static void tcg_region_assign(TCGContext *s, size_t curr_region)
 {
     void *start, *end;
@@ -314,6 +364,11 @@ static void tcg_region_assign(TCGContext *s, size_t curr_region)
     s->code_gen_ptr = start;
     s->code_gen_buffer_size = end - start;
     s->code_gen_highwater = end - TCG_HIGHWATER;
+#ifdef TCG_TARGET_COLD_CODE
+    bool chunk_ok = tcg_region_chunk_init(s, start);
+    g_assert(chunk_ok);
+    (void)chunk_ok;
+#endif
 }
 
 static bool tcg_region_assign_next(TCGContext *s)
@@ -628,6 +683,14 @@ void tcg_region_init(size_t tb_size, int splitwx, unsigned max_threads)
     int have_prot, need_prot;
 
     g_assert(max_threads == 1);
+
+    /* Private regression builds force exhaustion and split-WX ownership. */
+#ifdef LIBRETRO_TCG_TEST_BUFFER_SIZE
+    tb_size = LIBRETRO_TCG_TEST_BUFFER_SIZE;
+#endif
+#ifdef LIBRETRO_TCG_TEST_SPLITWX
+    splitwx = LIBRETRO_TCG_TEST_SPLITWX;
+#endif
 
     /* Size the buffer.  */
     if (tb_size == 0) {
