@@ -44,6 +44,12 @@ static const struct {const char *name;unsigned width,count,offset;bool integer;}
 };
 static unsigned texture_mode(const PshState *s,unsigned stage)
 { return (s->shader_stage_program>>(stage*5))&31; }
+/* These comparisons produce a texture-stage result without reading an image. */
+static bool constant_shadow(const PshState *s,unsigned stage)
+{
+    unsigned mode=texture_mode(s,stage);
+    return (mode==PS_TEXTUREMODES_PROJECT2D || mode==PS_TEXTUREMODES_PROJECT3D) && s->shadow_map[stage] && (s->shadow_depth_func==SHADOW_DEPTH_FUNC_NEVER || s->shadow_depth_func==SHADOW_DEPTH_FUNC_ALWAYS);
+}
 static bool dot_mode(unsigned mode)
 { return mode==PS_TEXTUREMODES_DOTPRODUCT || mode==PS_TEXTUREMODES_DOT_ST || mode==PS_TEXTUREMODES_DOT_ZW || mode==PS_TEXTUREMODES_DOT_RFLCT_DIFF || mode==PS_TEXTUREMODES_DOT_RFLCT_SPEC || mode==PS_TEXTUREMODES_DOT_STR_3D || mode==PS_TEXTUREMODES_DOT_STR_CUBE; }
 static bool cube_stage(const PshState *s,unsigned stage)
@@ -67,8 +73,10 @@ static bool has_bump(const PshState *s)
 { for(unsigned j=0;j<4;j++)if(bump_stage(s,j))return true;return false; }
 static bool has_bump_luma(const PshState *s)
 { for(unsigned j=0;j<4;j++)if(texture_mode(s,j)==PS_TEXTUREMODES_BUMPENVMAP_LUM)return true;return false; }
-static bool sample_stage(const PshState *s,unsigned stage)
+static bool texture_result_stage(const PshState *s,unsigned stage)
 { unsigned mode=texture_mode(s,stage);return mode==PS_TEXTUREMODES_PROJECT2D || mode==PS_TEXTUREMODES_PROJECT3D || mode==PS_TEXTUREMODES_CUBEMAP || dependent_stage(s,stage) || (dot_mode(mode) && mode!=PS_TEXTUREMODES_DOTPRODUCT && mode!=PS_TEXTUREMODES_DOT_ZW); }
+static bool sample_stage(const PshState *s,unsigned stage)
+{ return texture_result_stage(s,stage) && !constant_shadow(s,stage); }
 /* Same descriptor slot; only its SPIR-V sampler dimension varies. */
 static unsigned sampler_kind(const PshState *s,unsigned stage)
 {
@@ -79,14 +87,14 @@ static unsigned sampler_kind(const PshState *s,unsigned stage)
 }
 static bool has_sampler_kind(const PshState *s,unsigned kind)
 { for(unsigned j=0;j<4;j++)if(sample_stage(s,j) && sampler_kind(s,j)==kind)return true;return false; }
-static bool has_samples(const PshState *s)
-{ for(unsigned j=0;j<4;j++)if(sample_stage(s,j))return true;return false; }
+static bool has_texture_results(const PshState *s)
+{ for(unsigned j=0;j<4;j++)if(texture_result_stage(s,j))return true;return false; }
 static bool has_rect_samples(const PshState *s)
 { for(unsigned j=0;j<4;j++)if(sample_stage(s,j) && !cube_stage(s,j) && s->rect_tex[j])return true;return false; }
 static bool has_border_samples(const PshState *s)
-{ for(unsigned j=0;j<4;j++)if((texture_mode(s,j)==PS_TEXTUREMODES_PROJECT2D || texture_mode(s,j)==PS_TEXTUREMODES_PROJECT3D || (dot_mode(texture_mode(s,j)) && sample_stage(s,j))) && s->border_adjust[j])return true;return false; }
+{ for(unsigned j=0;j<4;j++)if(sample_stage(s,j) && (texture_mode(s,j)==PS_TEXTUREMODES_PROJECT2D || texture_mode(s,j)==PS_TEXTUREMODES_PROJECT3D || dot_mode(texture_mode(s,j))) && s->border_adjust[j])return true;return false; }
 static bool has_color_key(const PshState *s)
-{ for(unsigned j=0;j<4;j++)if(sample_stage(s,j) && s->colorkey_mode[j]!=COLOR_KEY_NONE)return true;return false; }
+{ for(unsigned j=0;j<4;j++)if(texture_result_stage(s,j) && s->colorkey_mode[j]!=COLOR_KEY_NONE)return true;return false; }
 static bool convolution_stage(const PshState *s,unsigned stage)
 { return texture_mode(s,stage)==PS_TEXTUREMODES_PROJECT2D && s->conv_tex[stage]!=CONVOLUTION_FILTER_DISABLED; }
 static bool has_convolution(const PshState *s)
@@ -95,14 +103,14 @@ static bool uniform_enabled(const PshState *s,unsigned which)
 {
     if(which>=BUMP_MAT)return which==BUMP_MAT?has_bump(s):has_bump_luma(s);
     if(which>=BORDER_LOGICAL)return which<=BORDER_INV?has_border_samples(s):has_color_key(s);
-    return which<BASE_UNIFORMS || (which>=COMB_CTL?s->combiner_dynamic:which==TEX_SCALE?has_rect_samples(s):s->alpha_dynamic && has_samples(s));
+    return which<BASE_UNIFORMS || (which>=COMB_CTL?s->combiner_dynamic:which==TEX_SCALE?has_rect_samples(s):s->alpha_dynamic && has_texture_results(s));
 }
 static unsigned uniform_member(const PshState *s,unsigned which)
 { unsigned n=0;for(unsigned j=0;j<which;j++)n+=uniform_enabled(s,j);return n; }
 static unsigned uniform_count(const PshState *s)
 { return uniform_member(s,UNIFORMS); }
 static unsigned texture_uniform_size(const PshState *s)
-{ return has_rect_samples(s)?(s->alpha_dynamic?576:560):(s->alpha_dynamic && has_samples(s)?512:496); }
+{ return has_rect_samples(s)?(s->alpha_dynamic?576:560):(s->alpha_dynamic && has_texture_results(s)?512:496); }
 static unsigned uniform_offset(const PshState *s,unsigned which)
 {
     if(which>=BUMP_MAT){unsigned base=texture_uniform_size(s)+(s->combiner_dynamic?528:0)+(has_border_samples(s)?128:0)+(has_color_key(s)?128:0);return which==BUMP_MAT?base:base+128+(which-BUMP_SCALE)*64;}
@@ -245,12 +253,14 @@ bool pgraph_spv_psh_supported(const PshState *s,SpvPshOptions opts)
             }
             dots[j]=true;
         }
-        if(s->g8b8_signed[j] || s->tex_x8y24[j] || s->shadow_map[j])return false;
+        if(s->g8b8_signed[j] || ((s->tex_x8y24[j] || s->shadow_map[j]) && !constant_shadow(s,j)))return false;
         if(dependent_stage(s,j)){
             if(!j || texture_input(s,j)>=j)return false;
             if(!bump_stage(s,j) && (s->dim_tex[j]!=2 || s->rect_tex[j] || s->border_adjust[j]))return false;
         }
-        if(sample_stage(s,j)){
+        if(constant_shadow(s,j)){
+            if(s->dim_tex[j]!=2 || s->colorkey_mode[j]<COLOR_KEY_NONE || s->colorkey_mode[j]>COLOR_KEY_DISCARD)return false;
+        }else if(sample_stage(s,j)){
             if(opts.tex_binding>=29 || (opts.ubo_binding>=opts.tex_binding && opts.ubo_binding<opts.tex_binding+4) || s->colorkey_mode[j]<COLOR_KEY_NONE || s->colorkey_mode[j]>COLOR_KEY_DISCARD)return false;
             if(cube_stage(s,j)){if(s->dim_tex[j]!=2)return false;}
             else{
@@ -350,10 +360,22 @@ static void stage_store(Context *c,Stage s)
 #include "psh-texture.inc"
 #include "psh-dot.inc"
 
+static void texture_finish(Context *c,uint32_t color,unsigned j)
+{
+    c->r[PS_REGISTER_T0+j]=color;
+    if(c->state->alpha_dynamic || c->state->alphakill[j]){
+        uint32_t kill=binary(c,SpvOpFOrdEqual,c->b,extract(c,color,3),c->cf[F_ZERO]);
+        if(c->state->alpha_dynamic){uint32_t mask=unif(c,ALPHA_KILL,0);mask=binary(c,SpvOpBitwiseAnd,c->u,mask,c->ui32[1u<<j]);kill=binary(c,SpvOpLogicalAnd,c->b,binary(c,SpvOpINotEqual,c->b,mask,c->ui32[0]),kill);}discard_if(c,kill);
+    }
+    c->r[PS_REGISTER_T0+j]=texture_color_key(c,color,j);
+}
 static void texture_stages(Context *c)
 {
     for(unsigned j=0;j<4;j++){
         unsigned mode=texture_mode(c->state,j);if(mode==PS_TEXTUREMODES_NONE)continue;
+        if(constant_shadow(c->state,j)){
+            uint32_t color=splat(c,c->v4,c->cf[c->state->shadow_depth_func==SHADOW_DEPTH_FUNC_ALWAYS?F_ONE:F_ZERO],4);texture_finish(c,color,j);continue;
+        }
         uint32_t coord;
         if(j==3 && c->state->point_sprite){
             uint32_t point=unary(c,SpvOpLoad,c->v2,c->point_coord);
@@ -396,12 +418,7 @@ static void texture_stages(Context *c)
                 uv=binary(c,SpvOpFDiv,c->v2,uv,splat(c,c->v2,q,2));
                 color=val(c->w,SpvOpImageSampleImplicitLod,c->v4,2,sample,uv);
             }
-            c->r[PS_REGISTER_T0+j]=color;
-            if(c->state->alpha_dynamic || c->state->alphakill[j]){
-                uint32_t kill=binary(c,SpvOpFOrdEqual,c->b,extract(c,color,3),c->cf[F_ZERO]);
-                if(c->state->alpha_dynamic){uint32_t mask=unif(c,ALPHA_KILL,0);mask=binary(c,SpvOpBitwiseAnd,c->u,mask,c->ui32[1u<<j]);kill=binary(c,SpvOpLogicalAnd,c->b,binary(c,SpvOpINotEqual,c->b,mask,c->ui32[0]),kill);}discard_if(c,kill);
-            }
-            c->r[PS_REGISTER_T0+j]=texture_color_key(c,color,j);
+            texture_finish(c,color,j);
         }
     }
     /* GLSL initializes R0 alpha from T0 when the first stage is active. */
@@ -469,7 +486,7 @@ static void allocate(Context *c)
     c->u127=id(c->w);c->u313=id(c->w);c->yes=id(c->w);c->no=id(c->w);
     for(unsigned j=0;j<9;j++)c->inputs[j]=id(c->w);
     c->frag_coord=id(c->w);c->front=id(c->w);c->color=id(c->w);c->depth=id(c->w);c->ubo=id(c->w);c->entry=id(c->w);c->ext=id(c->w);
-    for(unsigned j=0;j<4;j++)if(texture_mode(c->state,j)!=PS_TEXTUREMODES_NONE || (j==3 && texture_mode(c->state,2)==PS_TEXTUREMODES_DOT_RFLCT_DIFF)){
+    for(unsigned j=0;j<4;j++)if((texture_mode(c->state,j)!=PS_TEXTUREMODES_NONE && !constant_shadow(c->state,j)) || (j==3 && texture_mode(c->state,2)==PS_TEXTUREMODES_DOT_RFLCT_DIFF)){
         if(j==3 && c->state->point_sprite){c->point_coord=id(c->w);c->in_v2=id(c->w);}else c->tex_inputs[j]=id(c->w);
         if(sample_stage(c->state,j))c->samplers[j]=id(c->w);
     }

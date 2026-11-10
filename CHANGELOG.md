@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Emit constant NEVER/ALWAYS depth-texture comparison results directly as Vulkan SPIR-V. Preserve alpha kill, color keys and dependent reads while omitting unused sampler interfaces, texture coordinates, queries and texture/border uniforms. Reuse existing resource owners and two final allocations; general depth comparisons retain the compiler.
+
 - Translate dot-product texture chains, 2D/volume/cube lookups, reflection and depth replacement directly to Vulkan SPIR-V. Share sign/mapping helpers, read existing varying and texture results, and defer depth clipping until replacement. Preserve sampler/uniform owners and two final allocations; unsupported recipes retain the compiler and first-use PSO readiness remains open.
 
 - Emit dependent AR/GB texture reads, bump environment maps and bump luminance directly as Vulkan SPIR-V. Read processed predecessor results, reuse existing padded matrix columns and texture resources, and retain alpha/key ordering. Keep two final allocations and prior modules byte-identical, without intermediate GLSL, texture copies or retained lends; unsupported recipes retain the compiler.

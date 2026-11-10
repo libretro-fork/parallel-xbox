@@ -403,3 +403,45 @@ mismatches and remain rejected diagnostic variants. The mapping-specific zero
 bias preserves implicit derivatives and sampler filtering; regression coverage
 checks its exact zero operand and keeps other dot mappings operand-free. All
 failed probes remain retained; this is not a tolerance or coverage relaxation.
+
+
+## Constant depth-texture comparisons
+
+For 2D PROJECT2D/PROJECT3D shadow stages, NEVER and ALWAYS return zero/one
+before any image access in the reference. The native path now emits that
+result directly and runs the same alpha-kill and color-key processing before
+later stages consume it. A result-bearing texture stage is distinguished from
+an actual image-sampling stage. Constant-only units have no sampler, texture
+coordinate, image/query instructions or texture/border uniforms. Other units
+retain their original bindings, owners, sampling and uniform uploads; no
+texture conversion, payload snapshot, geometry copy or retained lend is added.
+The frontend may still perform its existing texture binding work; absence of
+shader access is not a claim that all resource work or PSO creation disappears.
+
+The final word and metadata owners still require two allocations. Keys are
+borrowed synchronously through count/write. Constant format, rectangle and
+border fields are proven unused without removing them from persistent keys.
+Color-key and live alpha/combiner uniforms remain present when consumed. A
+following varying needed by diffuse reflection is declared even when its own
+texture result is constant. Other comparisons, signed formats, unsupported
+sampler dimensions and malformed states keep allocation-free rejection and
+compiler fallback; no cache schema or default is changed.
+
+CPU coverage adds 4096 final-owner recipes and sixteen rejection controls:
+32768 modules and sixty-five rejects overall. The new constant-only recipes
+check exact allocation counts, no image/sample/query IR, no texture/border
+uniforms, layout bounds and result ownership after recipe erasure. GPU tests
+add 4096 constant cases plus 2048 mixed bump/luminance/dependent-read chains,
+including packed/F16 flags, rectangles, all key modes, static/live alpha kill,
+point sprites and static/live combiners. A further 512 cases read the following varying for diffuse reflection while
+that following unit produces a constant depth result, including point
+coordinates and every dot mapping. The full matrix has 37888 recipes.
+
+Read-only mapped inspection of completed private corpus seeds found native
+recipe acceptance rising from 174 to 182 of 186 for NGB, 30 to 34 of 41 for
+DOA3, 112 to 120 of 120 for JSRF and 271 to 279 of 279 for CT3. These are
+recorded/seeded recipes, not draw frequencies, pipeline readiness or frame-time
+measurements. NGB's four remaining packed-depth recipes and DOA3's seven UI
+clamp recipes still require further native coverage. General fixed/packed/F16
+shadow sampling and signed/mip formats remain open work. Cold play and
+draw-critical pipeline compilation remain BAD/OPEN and unqualified.

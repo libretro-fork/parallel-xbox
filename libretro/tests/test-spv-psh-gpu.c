@@ -346,6 +346,68 @@ int main(int argc,char **argv){
    state.combiner_dynamic=!!(f&512);if(state.combiner_dynamic){state.combiner_control=0;state.final_inputs_0=state.final_inputs_1=0;}
    float plane[3][4]={{0,0,100,1},{4,0,200,1},{0,4,300,1}};memcpy(data[4],plane,sizeof(plane));data[7][1]=.125f;data[7][3]=(float)(128+f%128);if(state.point_sprite)data[7][3]=-data[7][3];
   }
+  if(test>=31232){
+   unsigned f=test-31232,unit=f%4;
+   memset(&state,0,sizeof(state));memset(&values,0,sizeof(values));state.shader_stage_program=((f&4)?PS_TEXTUREMODES_PROJECT3D:PS_TEXTUREMODES_PROJECT2D)<<(unit*5);state.dim_tex[unit]=2;state.rect_tex[unit]=!!(f&8);state.shadow_map[unit]=(f&32)?19:1;state.tex_x8y24[unit]=!!(f&64);
+   state.shadow_depth_func=(f&16)?SHADOW_DEPTH_FUNC_ALWAYS:SHADOW_DEPTH_FUNC_NEVER;state.colorkey_mode[unit]=(f/128)%4;state.alphakill[unit]=!!(f&256);state.alpha_dynamic=!!(f&512);state.smooth_shading=!!(f&1024);state.depth_format=DEPTH_FORMAT_D24;
+   state.point_sprite=!!(f&2048) && !state.rect_tex[3];state.border_adjust[unit]=!!(f&32);
+   values.surfaceScale[0][0]=values.surfaceScale[0][1]=1;values.clipRange[0][1]=values.clipRange[0][3]=16777215;values.alphaKillMask[0]=(f/32)%16;
+   for(unsigned j=0;j<8;j++){values.clipRegion[j][2]=4;values.clipRegion[j][3]=4;}
+   for(unsigned j=0;j<4;j++){values.texScale[j]=(f&32)?-1:1;values.colorKeyMask[j]=(f&64)?0xff000000u:0;values.colorKey[j]=0x80000000u;}
+   unsigned stages=(f/16)%9,reg=PS_REGISTER_T0+unit;state.combiner_control=stages;values.combCtl[0]=stages|0x100;
+   for(unsigned j=0;j<8;j++){
+    state.rgb_inputs[j]=(reg<<24)|0x00200000u;state.alpha_inputs[j]=((reg|16u)<<24)|0x00200000u;state.rgb_outputs[j]=12<<4;state.alpha_outputs[j]=12<<4;
+    values.combRgbIn[j]=state.rgb_inputs[j];values.combAlphaIn[j]=state.alpha_inputs[j];values.combRgbOut[j]=state.rgb_outputs[j];values.combAlphaOut[j]=state.alpha_outputs[j];
+   }
+   if(stages)reg=PS_REGISTER_R0;
+   state.final_inputs_0=0x20000000u|(reg<<16);state.final_inputs_1=(reg|16u)<<8;values.combFinal0[0]=state.final_inputs_0;values.combFinal1[0]=state.final_inputs_1;
+   state.combiner_dynamic=!!(f&1024);if(state.combiner_dynamic){state.combiner_control=0;state.final_inputs_0=state.final_inputs_1=0;}
+   float plane[3][4]={{0,0,100,1},{4,0,200,1},{0,4,300,1}};memcpy(data[4],plane,sizeof(plane));data[7][1]=0;data[7][3]=state.point_sprite?-128:128;
+  }
+  if(test>=35328){
+   unsigned f=test-35328,unit=f%3,consumer=unit+1,choice=(f/3)%4;const unsigned modes[]={PS_TEXTUREMODES_BUMPENVMAP,PS_TEXTUREMODES_BUMPENVMAP_LUM,PS_TEXTUREMODES_DPNDNT_AR,PS_TEXTUREMODES_DPNDNT_GB};
+   memset(&state,0,sizeof(state));memset(&values,0,sizeof(values));state.depth_format=(f/8)%4;state.smooth_shading=!!(f&4);state.alpha_dynamic=!!(f&16);state.point_sprite=!!(f&512);
+   state.shader_stage_program=(((f&4)?PS_TEXTUREMODES_PROJECT3D:PS_TEXTUREMODES_PROJECT2D)<<(unit*5)) | (modes[choice]<<(consumer*5));state.dim_tex[unit]=2;state.shadow_map[unit]=(f&32)?19:1;state.shadow_depth_func=(f&64)?SHADOW_DEPTH_FUNC_ALWAYS:SHADOW_DEPTH_FUNC_NEVER;state.rect_tex[unit]=!!(f&8);state.tex_x8y24[unit]=!!(f&32);state.border_adjust[unit]=!!(f&256);
+   state.colorkey_mode[unit]=(f/32)%4;state.colorkey_mode[consumer]=(f/128)%4;state.alphakill[unit]=!!(f&256);state.alphakill[consumer]=!!(f&64);
+   bool volume_sample=choice<2 && !!(f&128);state.dim_tex[consumer]=volume_sample?3:2;state.rect_tex[consumer]=choice<2 && !volume_sample && !!(f&256) && !(consumer==3 && state.point_sprite);
+   if(consumer>=2)state.other_stage_input=unit<<(16+(consumer-2)*4);
+   values.surfaceScale[0][0]=values.surfaceScale[0][1]=1;values.clipRange[0][1]=values.clipRange[0][3]=16777215;values.alphaKillMask[0]=(f/8)%16;
+   for(unsigned j=0;j<8;j++){values.clipRegion[j][2]=4;values.clipRegion[j][3]=4;}
+   for(unsigned j=0;j<4;j++){
+    values.texScale[j]=j==unit && (f&32)?-1:1;values.colorKeyMask[j]=(f&128)?0xff000000u:0;values.colorKey[j]=0x80000000u;
+    values.bumpMat[j][0]=.125f;values.bumpMat[j][1]=-.0625f;values.bumpMat[j][2]=.0625f;values.bumpMat[j][3]=.25f;values.bumpScale[j]=.125f;values.bumpOffset[j]=.75f;
+    unsigned kind=fixture_kind(&state,j);VkDescriptorImageInfo info={samplers[(f/16+j)%16],kind==1?volume.view:kind==2?cube.view:texture.view,VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL};VkWriteDescriptorSet w={.sType=VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,.dstSet=set,.dstBinding=2+j,.descriptorCount=1,.descriptorType=VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,.pImageInfo=&info};vkUpdateDescriptorSets(device,1,&w,0,NULL);
+   }
+   unsigned stages=(f/64)%9,reg=PS_REGISTER_T0+consumer;state.combiner_control=stages;values.combCtl[0]=stages|0x100;
+   for(unsigned j=0;j<8;j++){
+    state.rgb_inputs[j]=(reg<<24)|0x00200000u;state.alpha_inputs[j]=((reg|16u)<<24)|0x00200000u;state.rgb_outputs[j]=12<<4;state.alpha_outputs[j]=12<<4;
+    values.combRgbIn[j]=state.rgb_inputs[j];values.combAlphaIn[j]=state.alpha_inputs[j];values.combRgbOut[j]=state.rgb_outputs[j];values.combAlphaOut[j]=state.alpha_outputs[j];
+   }
+   if(stages)reg=PS_REGISTER_R0;
+   state.final_inputs_0=0x20000000u|(reg<<16);state.final_inputs_1=(reg|16u)<<8;values.combFinal0[0]=state.final_inputs_0;values.combFinal1[0]=state.final_inputs_1;
+   state.combiner_dynamic=!!(f&1024);if(state.combiner_dynamic){state.combiner_control=0;state.final_inputs_0=state.final_inputs_1=0;}
+   float plane[3][4]={{0,0,100,1},{4,0,200,1},{0,4,300,1}};memcpy(data[4],plane,sizeof(plane));data[7][1]=0;data[7][3]=(float)(128+f%128);if(state.point_sprite)data[7][3]=-data[7][3];
+  }
+  if(test>=37376){
+   unsigned f=test-37376;memset(&state,0,sizeof(state));memset(&values,0,sizeof(values));state.depth_format=DEPTH_FORMAT_D24;state.smooth_shading=!!(f&1);state.alpha_dynamic=!!(f&4);state.point_sprite=!!(f&128);
+   state.shader_stage_program=PS_TEXTUREMODES_PROJECT2D | (PS_TEXTUREMODES_DOTPRODUCT<<5) | (PS_TEXTUREMODES_DOT_RFLCT_DIFF<<10) | (((f&2)?PS_TEXTUREMODES_PROJECT3D:PS_TEXTUREMODES_PROJECT2D)<<15);
+   state.dim_tex[0]=state.dim_tex[2]=state.dim_tex[3]=2;state.tex_cubemap[2]=!!(f&8);state.shadow_map[3]=(f&32)?19:1;state.shadow_depth_func=(f&16)?SHADOW_DEPTH_FUNC_ALWAYS:SHADOW_DEPTH_FUNC_NEVER;state.tex_x8y24[3]=!!(f&64);state.rect_tex[3]=!!(f&16) && !state.point_sprite;
+   state.other_stage_input=(f%8) | (((f/8)%8)<<4) | (((f/64)%8)<<8) | (((f/16)%2)<<16) | (((f/32)%2)<<20);state.alphakill[3]=!!(f&32);values.alphaKillMask[0]=(f/8)%16;
+   values.surfaceScale[0][0]=values.surfaceScale[0][1]=1;values.clipRange[0][1]=values.clipRange[0][3]=16777215;
+   for(unsigned j=0;j<8;j++){values.clipRegion[j][2]=4;values.clipRegion[j][3]=4;}
+   for(unsigned j=0;j<4;j++){
+    values.texScale[j]=j==3 && (f&32)?-1:1;unsigned kind=fixture_kind(&state,j);VkDescriptorImageInfo info={samplers[(f/16+j)%16],kind==1?volume.view:kind==2?cube.view:texture.view,VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL};VkWriteDescriptorSet w={.sType=VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,.dstSet=set,.dstBinding=2+j,.descriptorCount=1,.descriptorType=VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,.pImageInfo=&info};vkUpdateDescriptorSets(device,1,&w,0,NULL);
+   }
+   unsigned stages=(f/16)%9,reg=PS_REGISTER_T0+2;state.combiner_control=stages;values.combCtl[0]=stages|0x100;
+   for(unsigned j=0;j<8;j++){
+    state.rgb_inputs[j]=(reg<<24)|0x00200000u;state.alpha_inputs[j]=((reg|16u)<<24)|0x00200000u;state.rgb_outputs[j]=12<<4;state.alpha_outputs[j]=12<<4;
+    values.combRgbIn[j]=state.rgb_inputs[j];values.combAlphaIn[j]=state.alpha_inputs[j];values.combRgbOut[j]=state.rgb_outputs[j];values.combAlphaOut[j]=state.alpha_outputs[j];
+   }
+   if(stages)reg=PS_REGISTER_R0;
+   state.final_inputs_0=0x20000000u|(reg<<16);state.final_inputs_1=(reg|16u)<<8;values.combFinal0[0]=state.final_inputs_0;values.combFinal1[0]=state.final_inputs_1;
+   state.combiner_dynamic=!!(f&256);if(state.combiner_dynamic){state.combiner_control=0;state.final_inputs_0=state.final_inputs_1=0;}
+   float plane[3][4]={{0,0,100,1},{4,0,200,1},{0,4,300,1}};memcpy(data[4],plane,sizeof(plane));data[7][1]=0;data[7][3]=(float)(128+f%128);if(state.point_sprite)data[7][3]=-data[7][3];
+  }
   GlslcResult modules[2];SpvPshOptions opts={.spirv_1_6=!!(test&256),.ubo_binding=1,.tex_binding=2};assert(pgraph_spv_psh(&state,opts,&modules[1]));MString *source=pgraph_glsl_gen_psh(&state,(GenPshGlslOptions){.vulkan=true,.locations=true,.ubo_binding=1,.tex_binding=2});GlslcOptions go={.spirv_1_6=opts.spirv_1_6,.emit_layout=true};if(!glslc_compile(GLSLC_STAGE_FRAGMENT,mstring_get_str(source),&go,&modules[0])){fprintf(stderr,"fragment %u %d %s\n",test,modules[0].error_line,modules[0].error);abort();}reference_source_bytes+=strlen(mstring_get_str(source));mstring_unref(source);
   words[0]+=modules[0].num_words;words[1]+=modules[1].num_words;
   uint32_t expected[80];uint64_t build_ns[2]={0},draw_ns[2]={0};
