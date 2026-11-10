@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- CPU translation on x86-64: reuse checked TLB translations for nearby loads and stores within straight-line code. Recheck store permissions and dirty tracking in every mode, invalidate across helpers and block boundaries, and preserve the frontend instruction budget and both host calling conventions. Gameplay performance remains unmeasured.
+- CPU translation on x86-64: reuse checked TLB translations for nearby loads and stores within straight-line code. Recheck store permissions and dirty tracking in every mode, invalidate across helpers and block boundaries, and preserve the frontend instruction budget and both host calling conventions. Regression coverage includes constant and memory-backed helper arguments. Gameplay performance remains unmeasured.
 
 - DSP startup initializes its 40 KiB RAM power-on pattern directly, avoiding a redundant zero-initialization request. Complete-state regression coverage checks both DSP roles and C/JIT backends.
 

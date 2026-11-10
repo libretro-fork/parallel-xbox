@@ -172,15 +172,26 @@ static void check_call_abi(void *env)
         TCGHelperInfo info = {.func = sum_args, .flags = TCG_CALL_NO_RWG,
                               .nr_in = 7, .nr_out = 1, .out_kind = TCG_CALL_RET_NORMAL};
         op->opc = INDEX_op_call; TCGOP_CALLI(op) = 7; TCGOP_CALLO(op) = 1;
-        s->temps[0] = (TCGTemp){.kind = TEMP_EBB, .type = TCG_TYPE_I64,
+        s->nb_globals = 1; s->nb_temps = 9;
+        s->temps[0] = (TCGTemp){.kind = TEMP_FIXED, .type = TCG_TYPE_PTR,
+            .base_type = TCG_TYPE_PTR, .val_type = TEMP_VAL_REG, .reg = TCG_AREG0};
+        s->reg_to_temp[TCG_AREG0] = &s->temps[0];
+        s->temps[1] = (TCGTemp){.kind = TEMP_EBB, .type = TCG_TYPE_I64,
                                 .base_type = TCG_TYPE_I64, .val_type = TEMP_VAL_DEAD};
-        op->args[0] = temp_arg(&s->temps[0]);
+        op->args[0] = temp_arg(&s->temps[1]);
         uint64_t args[7];
         for (unsigned i = 0; i < 7; ++i) {
             args[i] = UINT64_C(0x1234567887654321) * (trial + i + 1);
-            s->temps[i + 1] = (TCGTemp){.kind = TEMP_CONST, .type = TCG_TYPE_I64,
+            s->temps[i + 2] = (TCGTemp){.kind = TEMP_CONST, .type = TCG_TYPE_I64,
                 .base_type = TCG_TYPE_I64, .val_type = TEMP_VAL_CONST, .val = args[i]};
-            op->args[i + 1] = temp_arg(&s->temps[i + 1]);
+            if (trial & 1) {
+                TCGTemp *temp = &s->temps[i + 2];
+                temp->kind = TEMP_EBB; temp->val_type = TEMP_VAL_MEM;
+                temp->mem_base = &s->temps[0]; temp->mem_offset = i * 8;
+                temp->mem_allocated = temp->mem_coherent = true;
+                memcpy((unsigned char *)env + i * 8, &args[i], 8);
+            }
+            op->args[i + 1] = temp_arg(&s->temps[i + 2]);
             info.in[i].kind = TCG_CALL_ARG_NORMAL; info.in[i].arg_slot = i;
         }
         op->args[8] = (uintptr_t)sum_args; op->args[9] = (uintptr_t)&info;
@@ -195,7 +206,7 @@ static void check_call_abi(void *env)
         uint64_t actual = ((CallProbe)code)(env);
         assert(actual == sum_args(args[0], args[1], args[2], args[3], args[4], args[5], args[6]));
     }
-    puts("TLB memo helper ABI: 128 actual seven-argument calls, reserved R8/R9 reuse, stack arguments and budget synchronization PASS");
+    puts("TLB memo helper ABI: 128 actual seven-argument calls, constant/memory inputs, R8/R9 reuse, stack arguments and budget synchronization PASS");
 }
 int main(void)
 {
