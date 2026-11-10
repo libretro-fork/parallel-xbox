@@ -22,6 +22,7 @@ typedef struct Writer {
     size_t count, capacity;
     uint32_t precise_mul[4];
     unsigned precise_count;
+    uint32_t block;
 } Writer;
 
 static uint32_t id(Writer *w) { return w->next++; }
@@ -38,7 +39,11 @@ static void op(Writer *w, SpvOp code, unsigned n, ...)
     word(w, ((n + 1) << 16) | code);
     va_list args;
     va_start(args, n);
-    for (unsigned i = 0; i < n; i++) { word(w, va_arg(args, uint32_t)); }
+    for (unsigned i = 0; i < n; i++) {
+        uint32_t operand = va_arg(args, uint32_t);
+        if (code == SpvOpLabel && i == 0) { w->block = operand; }
+        word(w, operand);
+    }
     va_end(args);
 }
 static uint32_t value(Writer *w, SpvOp code, uint32_t type, unsigned n, ...)
@@ -112,7 +117,7 @@ bool pgraph_spv_vsh_supported(const VshState *s, SpvVshOptions opts)
             if (ff->light_dynamic || (unsigned)ff->ambient_src > 2 || (unsigned)ff->emission_src > 2 ||
                 (unsigned)ff->diffuse_src > 2 || (unsigned)ff->specular_src > 2) { return false; }
             for (unsigned i = 0; i < NV2A_MAX_LIGHTS; i++) {
-                if (ff->light[i] != LIGHT_OFF && ff->light[i] != LIGHT_INFINITE) { return false; }
+                if ((unsigned)ff->light[i] > LIGHT_SPOT) { return false; }
             }
         }
         for (unsigned t = 0; !ff->texgen_dynamic && t < 4; t++) {
@@ -163,12 +168,13 @@ bool pgraph_spv_vsh_supported(const VshState *s, SpvVshOptions opts)
 }
 
 enum LightingUniform { L_CONTEXT, L_ALPHA, L_BACK_ALPHA, L_COLORS, L_DIRECTION, L_HALF,
-                       L_SPECULAR, L_BACK_SPECULAR, L_COUNT };
+                       L_SPECULAR, L_BACK_SPECULAR, L_RANGE, L_ATTENUATION, L_POSITION, L_COUNT };
 typedef struct LightingInfo { const char *name; unsigned width, count; } LightingInfo;
 static const LightingInfo lighting_info[L_COUNT] = {
     {"ltctxa",4,NV2A_LTCTXA_COUNT}, {"material_alpha",1,1}, {"back_material_alpha",1,1},
     {"ltctxb",4,NV2A_LTCTXB_COUNT}, {"lightInfiniteDirection",3,NV2A_MAX_LIGHTS},
     {"lightInfiniteHalfVector",3,NV2A_MAX_LIGHTS}, {"specularParams",3,1}, {"specularParamsBack",3,1},
+    {"ltc1",4,NV2A_LTC1_COUNT}, {"lightLocalAttenuation",3,NV2A_MAX_LIGHTS}, {"lightLocalPosition",3,NV2A_MAX_LIGHTS},
 };
 /* Select existing uniform groups; unused groups need no final-block upload. */
 static unsigned lighting_profile(const VshState *s)
@@ -178,14 +184,20 @@ static unsigned lighting_profile(const VshState *s)
     unsigned mask = 1u << L_CONTEXT;
     if (f->diffuse_src == MATERIAL_COLOR_SRC_MATERIAL) { mask |= 1u << L_ALPHA; }
     if (f->two_sided) { mask |= 1u << L_BACK_ALPHA; }
-    bool active = false;
-    for (unsigned i = 0; i < NV2A_MAX_LIGHTS; i++) { active |= f->light[i] != LIGHT_OFF; }
+    bool active = false, infinite = false, local = false;
+    for (unsigned i = 0; i < NV2A_MAX_LIGHTS; i++) {
+        active |= f->light[i] != LIGHT_OFF;
+        infinite |= f->light[i] == LIGHT_INFINITE;
+        local |= f->light[i] == LIGHT_LOCAL || f->light[i] == LIGHT_SPOT;
+    }
+    if (infinite) { mask |= 1u << L_DIRECTION; }
+    if (local) { mask |= (1u << L_RANGE) | (1u << L_ATTENUATION) | (1u << L_POSITION); }
     if (active) {
-        mask |= (1u << L_COLORS) | (1u << L_DIRECTION);
+        mask |= 1u << L_COLORS;
         if (s->specular_enable) {
             mask |= 1u << L_SPECULAR;
             if (f->two_sided) { mask |= 1u << L_BACK_SPECULAR; }
-            if (!f->local_eye) { mask |= 1u << L_HALF; }
+            if (infinite && !f->local_eye) { mask |= 1u << L_HALF; }
         }
     }
     return mask;
@@ -237,7 +249,7 @@ typedef struct Context {
     uint32_t main, ext, mat4, texgen_array, viewer_mask, point_array, point_limit, texgen_half, texgen_shift9, texgen_bit8;
     uint32_t r[12], o[13], a0, input_values[16], skin_weights[4], fog_control, fog_distance, normal_value;
     unsigned lighting_mask, lighting_members[L_COUNT];
-    uint32_t lighting_arrays[3], uniform_v3, specular_max;
+    uint32_t lighting_arrays[4], uniform_v3, specular_max;
 } Context;
 
 static uint32_t unary(Context *c, SpvOp code, uint32_t type, uint32_t a)
@@ -456,7 +468,44 @@ static uint32_t specular_factor(Context *c, uint32_t light_dot, uint32_t half_do
     op(c->w,SpvOpLabel,1,merge);
     return value(c->w,SpvOpPhi,c->f,4,result,inner,c->cf[F_ZERO],no);
 }
-static void directional_lighting(Context *c, uint32_t *eye_position)
+/* Bounded host recursion emits the reference's five lazy cutoff branches. */
+static uint32_t spot_stage(Context *c, unsigned stage, uint32_t ramp, uint32_t coefficients, uint32_t numerator, uint32_t denominator)
+{
+    if (stage == 2) { numerator = add(c, ramp, extract(c, coefficients, 0)); }
+    if (stage == 3) { denominator = add(c, mul(c, extract(c, coefficients, 1), ramp), extract(c, coefficients, 2)); }
+    if (stage == 5) { return clamp(c, c->f, divf(c, numerator, denominator), c->cf[F_ZERO], c->cf[F_ONE]); }
+    uint32_t test, yes_value = c->cf[F_ZERO];
+    if (stage == 0) { test = binary(c, SpvOpFOrdLessThanEqual, c->b, ramp, c->cf[F_ZERO]); }
+    else if (stage == 1) { test = binary(c, SpvOpFOrdGreaterThanEqual, c->b, ramp, c->cf[F_ONE]); yes_value = c->cf[F_ONE]; }
+    else if (stage == 2) { test = binary(c, SpvOpFOrdLessThanEqual, c->b, numerator, c->cf[F_ZERO]); }
+    else if (stage == 3) { test = binary(c, SpvOpFOrdEqual, c->b, denominator, c->cf[F_ZERO]); yes_value = c->cf[F_ONE]; }
+    else { test = binary(c, SpvOpFOrdLessThan, c->b, denominator, c->cf[F_ZERO]); }
+    uint32_t yes = id(c->w), no = id(c->w), merge = id(c->w);
+    op(c->w, SpvOpSelectionMerge, 2, merge, 0u); op(c->w, SpvOpBranchConditional, 3, test, yes, no);
+    op(c->w, SpvOpLabel, 1, yes); op(c->w, SpvOpBranch, 1, merge);
+    op(c->w, SpvOpLabel, 1, no);
+    uint32_t next = spot_stage(c, stage + 1, ramp, coefficients, numerator, denominator);
+    uint32_t last = c->w->block;
+    op(c->w, SpvOpBranch, 1, merge); op(c->w, SpvOpLabel, 1, merge);
+    return value(c->w, SpvOpPhi, c->f, 4, yes_value, yes, next, last);
+}
+static uint32_t spotlight_attenuation(Context *c, unsigned light, uint32_t direction, uint32_t attenuation)
+{
+    uint32_t spot = lighting_uniform(c, L_CONTEXT, NV_IGRAPH_XF_LTCTXA_L0_SPT + light * 2);
+    uint32_t k = lighting_uniform(c, L_CONTEXT, NV_IGRAPH_XF_LTCTXA_L0_K + light * 2);
+    uint32_t ramp = add(c, binary(c, SpvOpDot, c->f, xyz(c, spot), direction), extract(c, spot, 3));
+    uint32_t factor = spot_stage(c, 0, ramp, k, 0, 0);
+    /* A cutoff selects zero; 0 * infinite attenuation would leak a NaN. */
+    uint32_t zero = binary(c, SpvOpFOrdEqual, c->b, factor, c->cf[F_ZERO]);
+    uint32_t yes = id(c->w), no = id(c->w), merge = id(c->w);
+    op(c->w, SpvOpSelectionMerge, 2, merge, 0u); op(c->w, SpvOpBranchConditional, 3, zero, yes, no);
+    op(c->w, SpvOpLabel, 1, yes); op(c->w, SpvOpBranch, 1, merge);
+    op(c->w, SpvOpLabel, 1, no); uint32_t result = mul(c, attenuation, factor);
+    op(c->w, SpvOpBranch, 1, merge); op(c->w, SpvOpLabel, 1, merge);
+    return value(c->w, SpvOpPhi, c->f, 4, c->cf[F_ZERO], yes, result, no);
+}
+
+static void static_lighting(Context *c, uint32_t *eye_position)
 {
     const FixedFunctionVshState *f=&c->state->fixed_function;
     uint32_t diffuse=input(c,3), specular=input(c,4), back_diffuse=input(c,7), back_specular=input(c,8);
@@ -480,8 +529,8 @@ static void directional_lighting(Context *c, uint32_t *eye_position)
         c->o[7]=make_v4(c,extract(c,back,0),extract(c,back,1),extract(c,back,2),lighting_uniform(c,L_BACK_ALPHA,0));
         c->o[8]=make_v4(c,c->cf[F_ZERO],c->cf[F_ZERO],c->cf[F_ZERO],extract(c,back_specular,3));
     }
-    bool active=!!(c->lighting_mask&(1u<<L_DIRECTION));
-    uint32_t normal=0, eye=0, params=0, back_params=0;
+    bool active=!!(c->lighting_mask&(1u<<L_COLORS));
+    uint32_t normal=0, eye=0, params=0, back_params=0, position_view=0;
     if(active){
         normal=transformed_normal(c);
         if(c->state->specular_enable){
@@ -495,45 +544,83 @@ static void directional_lighting(Context *c, uint32_t *eye_position)
                 uint32_t pv=value(c->w,SpvOpCompositeConstruct,c->v3,3,pw,pw,pw);
                 uint32_t ep=binary(c,SpvOpFDiv,c->v3,xyz(c,e),ev);
                 uint32_t p=binary(c,SpvOpFDiv,c->v3,xyz(c,*eye_position),pv);
+                position_view=p;
                 eye=ext1(c,GLSLstd450Normalize,c->v3,binary(c,SpvOpFSub,c->v3,ep,p));
             }
         }
     }
     for(unsigned i=0;i<NV2A_MAX_LIGHTS;i++){
         if(f->light[i]==LIGHT_OFF)continue;
-        uint32_t direction=ext1(c,GLSLstd450Normalize,c->v3,lighting_uniform(c,L_DIRECTION,i));
+        bool local=f->light[i]==LIGHT_LOCAL || f->light[i]==LIGHT_SPOT;
+        uint32_t before[4]={c->o[3],c->o[4],c->o[7],c->o[8]};
+        uint32_t range_merge=0, outside=0, direction, attenuation=c->cf[F_ONE];
+        if(local){
+            /* Keep the homogeneous divide at the first local-light use,
+             * after preceding infinite lights, as in the reference generator. */
+            if(!position_view){
+                if(!*eye_position)*eye_position=transform(c,input(c,0),NV_IGRAPH_XF_XFCTX_MMAT0);
+                uint32_t w=extract(c,*eye_position,3);
+                uint32_t divisor=value(c->w,SpvOpCompositeConstruct,c->v3,3,w,w,w);
+                position_view=binary(c,SpvOpFDiv,c->v3,xyz(c,*eye_position),divisor);
+            }
+            uint32_t delta=binary(c,SpvOpFSub,c->v3,lighting_uniform(c,L_POSITION,i),position_view);
+            uint32_t distance=ext1(c,GLSLstd450Length,c->f,delta);
+            uint32_t range=extract(c,lighting_uniform(c,L_RANGE,NV_IGRAPH_XF_LTC1_r0+i),0);
+            uint32_t within=binary(c,SpvOpFOrdLessThanEqual,c->b,distance,range);
+            uint32_t inside=id(c->w);outside=id(c->w);range_merge=id(c->w);
+            op(c->w,SpvOpSelectionMerge,2,range_merge,0u);op(c->w,SpvOpBranchConditional,3,within,inside,outside);
+            op(c->w,SpvOpLabel,1,inside);
+            direction=ext1(c,GLSLstd450Normalize,c->v3,delta);
+            uint32_t a=lighting_uniform(c,L_ATTENUATION,i);
+            uint32_t polynomial=add(c,add(c,extract(c,a,0),mul(c,extract(c,a,1),distance)),mul(c,mul(c,extract(c,a,2),distance),distance));
+            attenuation=divf(c,c->cf[F_ONE],polynomial);
+        }else{
+            direction=ext1(c,GLSLstd450Normalize,c->v3,lighting_uniform(c,L_DIRECTION,i));
+        }
         uint32_t raw=binary(c,SpvOpDot,c->f,normal,direction);
         uint32_t dot=ext2(c,GLSLstd450FMax,c->f,c->cf[F_ZERO],raw), half_raw=0, pf=0;
         if(c->state->specular_enable){
             /* Infinite half vectors are programmed values, not normalized here. */
-            uint32_t half=f->local_eye?ext1(c,GLSLstd450Normalize,c->v3,binary(c,SpvOpFAdd,c->v3,direction,eye)):lighting_uniform(c,L_HALF,i);
+            uint32_t half;
+            if(local || f->local_eye){
+                uint32_t other=eye;
+                if(!f->local_eye)other=value(c->w,SpvOpCompositeConstruct,c->v3,3,c->cf[F_ZERO],c->cf[F_ZERO],c->cf[F_ZERO]);
+                half=ext1(c,GLSLstd450Normalize,c->v3,binary(c,SpvOpFAdd,c->v3,direction,other));
+            }else{half=lighting_uniform(c,L_HALF,i);}
             half_raw=binary(c,SpvOpDot,c->f,normal,half);
             pf=specular_factor(c,dot,ext2(c,GLSLstd450FMax,c->f,c->cf[F_ZERO],half_raw),params);
         }
-        uint32_t ambient=binary(c,SpvOpVectorTimesScalar,c->v3,light_color(c,i,NV_IGRAPH_XF_LTCTXB_L0_AMB),c->cf[F_ONE]);
-        uint32_t lit_diffuse=binary(c,SpvOpVectorTimesScalar,c->v3,binary(c,SpvOpVectorTimesScalar,c->v3,light_color(c,i,NV_IGRAPH_XF_LTCTXB_L0_DIF),c->cf[F_ONE]),dot);
+        if(f->light[i]==LIGHT_SPOT)attenuation=spotlight_attenuation(c,i,direction,attenuation);
+        uint32_t ambient=binary(c,SpvOpVectorTimesScalar,c->v3,light_color(c,i,NV_IGRAPH_XF_LTCTXB_L0_AMB),attenuation);
+        uint32_t lit_diffuse=binary(c,SpvOpVectorTimesScalar,c->v3,binary(c,SpvOpVectorTimesScalar,c->v3,light_color(c,i,NV_IGRAPH_XF_LTCTXB_L0_DIF),attenuation),dot);
         if(f->ambient_src!=MATERIAL_COLOR_SRC_MATERIAL)ambient=binary(c,SpvOpFMul,c->v3,ambient,f->ambient_src==MATERIAL_COLOR_SRC_SPECULAR?s:d);
         c->o[3]=with_xyz(c,c->o[3],binary(c,SpvOpFAdd,c->v3,xyz(c,c->o[3]),ambient));
         if(f->two_sided){
             /* Back registers do not use the front material-source multipliers. */
             uint32_t bd=ext2(c,GLSLstd450FMax,c->f,c->cf[F_ZERO],unary(c,SpvOpFNegate,c->f,raw));
-            uint32_t a=binary(c,SpvOpVectorTimesScalar,c->v3,light_color(c,i,NV_IGRAPH_XF_LTCTXB_L0_BAMB),c->cf[F_ONE]);
+            uint32_t a=binary(c,SpvOpVectorTimesScalar,c->v3,light_color(c,i,NV_IGRAPH_XF_LTCTXB_L0_BAMB),attenuation);
             c->o[7]=with_xyz(c,c->o[7],binary(c,SpvOpFAdd,c->v3,xyz(c,c->o[7]),a));
-            uint32_t dd=binary(c,SpvOpVectorTimesScalar,c->v3,binary(c,SpvOpVectorTimesScalar,c->v3,light_color(c,i,NV_IGRAPH_XF_LTCTXB_L0_BDIF),c->cf[F_ONE]),bd);
+            uint32_t dd=binary(c,SpvOpVectorTimesScalar,c->v3,binary(c,SpvOpVectorTimesScalar,c->v3,light_color(c,i,NV_IGRAPH_XF_LTCTXB_L0_BDIF),attenuation),bd);
             c->o[7]=with_xyz(c,c->o[7],binary(c,SpvOpFAdd,c->v3,xyz(c,c->o[7]),dd));
             if(c->state->specular_enable){
                 uint32_t bh=ext2(c,GLSLstd450FMax,c->f,c->cf[F_ZERO],unary(c,SpvOpFNegate,c->f,half_raw));
                 uint32_t bpf=specular_factor(c,bd,bh,back_params);
-                uint32_t sp=binary(c,SpvOpVectorTimesScalar,c->v3,binary(c,SpvOpVectorTimesScalar,c->v3,light_color(c,i,NV_IGRAPH_XF_LTCTXB_L0_BSPC),c->cf[F_ONE]),bpf);
+                uint32_t sp=binary(c,SpvOpVectorTimesScalar,c->v3,binary(c,SpvOpVectorTimesScalar,c->v3,light_color(c,i,NV_IGRAPH_XF_LTCTXB_L0_BSPC),attenuation),bpf);
                 c->o[8]=with_xyz(c,c->o[8],binary(c,SpvOpFAdd,c->v3,xyz(c,c->o[8]),sp));
             }
         }
         if(f->diffuse_src!=MATERIAL_COLOR_SRC_MATERIAL)lit_diffuse=binary(c,SpvOpFMul,c->v3,f->diffuse_src==MATERIAL_COLOR_SRC_SPECULAR?s:d,lit_diffuse);
         c->o[3]=with_xyz(c,c->o[3],binary(c,SpvOpFAdd,c->v3,xyz(c,c->o[3]),lit_diffuse));
         if(c->state->specular_enable){
-            uint32_t sp=binary(c,SpvOpVectorTimesScalar,c->v3,binary(c,SpvOpVectorTimesScalar,c->v3,light_color(c,i,NV_IGRAPH_XF_LTCTXB_L0_SPC),c->cf[F_ONE]),pf);
+            uint32_t sp=binary(c,SpvOpVectorTimesScalar,c->v3,binary(c,SpvOpVectorTimesScalar,c->v3,light_color(c,i,NV_IGRAPH_XF_LTCTXB_L0_SPC),attenuation),pf);
             if(f->specular_src!=MATERIAL_COLOR_SRC_MATERIAL)sp=binary(c,SpvOpFMul,c->v3,f->specular_src==MATERIAL_COLOR_SRC_SPECULAR?s:d,sp);
             c->o[4]=with_xyz(c,c->o[4],binary(c,SpvOpFAdd,c->v3,xyz(c,c->o[4]),sp));
+        }
+        if(local){
+            uint32_t last=c->w->block;
+            op(c->w,SpvOpBranch,1,range_merge);op(c->w,SpvOpLabel,1,outside);op(c->w,SpvOpBranch,1,range_merge);op(c->w,SpvOpLabel,1,range_merge);
+            static const unsigned color_regs[]={3,4,7,8};
+            for(unsigned j=0;j<4;j++)if(c->o[color_regs[j]]!=before[j])c->o[color_regs[j]]=value(c->w,SpvOpPhi,c->v4,4,c->o[color_regs[j]],last,before[j],outside);
         }
     }
     if(c->state->specular_enable && !c->state->separate_specular){
@@ -779,7 +866,7 @@ static void fixed_function(Context *c)
             c->o[9 + t] = v;
         }
     }
-    if (c->state->fixed_function.lighting) { directional_lighting(c, &eye_position); }
+    if (c->state->fixed_function.lighting) { static_lighting(c, &eye_position); }
     if (c->state->point_params_enable) {
         uint32_t point_position = eye_position;
         if (!point_position || c->state->fixed_function.skinning != SKINNING_OFF) {
@@ -1160,6 +1247,7 @@ static void allocate_ids(Context *c)
     if (c->lighting_mask) {
         c->lighting_arrays[0]=id(w);c->lighting_arrays[1]=id(w);c->lighting_arrays[2]=id(w);
         c->uniform_v3=id(w);c->specular_max=id(w);
+        if(c->lighting_mask&(1u<<L_RANGE))c->lighting_arrays[3]=id(w);
     }
 }
 static void emit(Writer *w, const VshState *state, SpvVshOptions opts)
@@ -1226,7 +1314,7 @@ static void emit(Writer *w, const VshState *state, SpvVshOptions opts)
             c.lighting_members[i]=member;
             op(w,SpvOpMemberDecorate,4,c.ubo_t,member++,(uint32_t)SpvDecorationOffset,(uint32_t)offsets[i]);
         }
-        for(unsigned i=0;i<3;i++)op(w,SpvOpDecorate,3,c.lighting_arrays[i],(uint32_t)SpvDecorationArrayStride,16u);
+        for(unsigned i=0;i<4;i++)if(c.lighting_arrays[i])op(w,SpvOpDecorate,3,c.lighting_arrays[i],(uint32_t)SpvDecorationArrayStride,16u);
     }
     op(w, SpvOpDecorate, 3, c.c_array, (uint32_t)SpvDecorationArrayStride, 16u);
     op(w, SpvOpDecorate, 3, c.inline_array, (uint32_t)SpvDecorationArrayStride, 16u);
@@ -1263,11 +1351,11 @@ static void emit(Writer *w, const VshState *state, SpvVshOptions opts)
         if(c.lighting_mask){
             used[NV2A_LTCTXA_COUNT]=true;used[NV2A_LTCTXB_COUNT]=true;
             for(unsigned i=0;i<NV2A_MAX_LIGHTS*6;i++)used[i]=true;
-            if((c.lighting_mask&(1u<<L_DIRECTION)) && state->specular_enable && state->fixed_function.local_eye)used[NV_IGRAPH_XF_XFCTX_EYEP]=true;
+            if((c.lighting_mask&(1u<<L_COLORS)) && state->specular_enable && state->fixed_function.local_eye)used[NV_IGRAPH_XF_XFCTX_EYEP]=true;
         }
         if (state->fog_dynamic) { used[NV_IGRAPH_XF_XFCTX_FOG] = true; }
         unsigned bones = skin_matrices(state->fixed_function.skinning);
-        if(c.lighting_mask&(1u<<L_DIRECTION))for(unsigned b=0;b<(bones?bones:1);b++)for(unsigned j=0;j<4;j++)used[NV_IGRAPH_XF_XFCTX_IMMAT0+b*8+j]=true;
+        if(c.lighting_mask&(1u<<L_COLORS))for(unsigned b=0;b<(bones?bones:1);b++)for(unsigned j=0;j<4;j++)used[NV_IGRAPH_XF_XFCTX_IMMAT0+b*8+j]=true;
         for (unsigned b = 0; b < bones; b++) {
             for (unsigned j = 0; j < 4; j++) { used[NV_IGRAPH_XF_XFCTX_MMAT0 + b * 8 + j] = true; }
         }
@@ -1341,6 +1429,7 @@ static void emit(Writer *w, const VshState *state, SpvVshOptions opts)
         op(w,SpvOpTypeArray,3,c.lighting_arrays[1],c.v4,c.ci[NV2A_LTCTXB_COUNT]);
         op(w,SpvOpTypeArray,3,c.lighting_arrays[2],c.v3,c.ci[NV2A_MAX_LIGHTS]);
         op(w,SpvOpConstant,3,c.f,c.specular_max,0x461c4000u);
+        if(c.lighting_mask&(1u<<L_RANGE))op(w,SpvOpTypeArray,3,c.lighting_arrays[3],c.v4,c.ci[NV2A_LTC1_COUNT]);
     }
     word(w, ((9 + inline_ubo + viewer + points + dynamic + __builtin_popcount(c.lighting_mask)) << 16) | SpvOpTypeStruct);
     word(w, c.ubo_t); word(w, c.c_array); word(w, c.v4); word(w, c.u); word(w, c.v2);
@@ -1350,7 +1439,7 @@ static void emit(Writer *w, const VshState *state, SpvVshOptions opts)
     if (points) { word(w, c.point_array); }
     if (dynamic) { word(w, c.u); }
     for(unsigned i=0;i<L_COUNT;i++)if(c.lighting_mask&(1u<<i)){
-        uint32_t type=lighting_info[i].count>1?(i==L_CONTEXT?c.lighting_arrays[0]:i==L_COLORS?c.lighting_arrays[1]:c.lighting_arrays[2]):lighting_info[i].width==3?c.v3:c.f;
+        uint32_t type=lighting_info[i].count>1?(i==L_CONTEXT?c.lighting_arrays[0]:i==L_COLORS?c.lighting_arrays[1]:i==L_RANGE?c.lighting_arrays[3]:c.lighting_arrays[2]):lighting_info[i].width==3?c.v3:c.f;
         word(w,type);
     }
     if (pc) {

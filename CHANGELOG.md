@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Extend direct Vulkan SPIR-V emission to static local and spot lighting, including inclusive distance ranges, polynomial attenuation, cooked-cone falloff and front/back specular. Reuse existing uniform groups and final allocation owners without new copies or retained lends. Dynamic lighting and live material-source selection retain the GLSL path.
+
 - Emit fixed-function material shading and all eight static directional-light slots directly as Vulkan SPIR-V. Preserve front/back material sources, viewer-dependent half vectors, coefficient specular guards and separate/combined colors. Share the transformed normal with texgen and append only consumed existing uniform groups, without new allocations, payload clones, bindings or retained pointers. Preserve prior modules/layouts; local, spot and dynamic lights retain GLSL fallback pending native support.
 
 - Emit unlit dynamic fixed-function fog directly as Vulkan SPIR-V, sharing one live control read and model-view result with existing texgen/point work. Pin four quadratic products to reference order after physical-GPU tests isolated a reassociation difference, recovering the six previously excluded static transformed-distance quadratic combinations. Write annotations directly through the count/write passes, without module patch buffers, new allocations or retained lends; prior accepted modules/layouts stay byte-identical.

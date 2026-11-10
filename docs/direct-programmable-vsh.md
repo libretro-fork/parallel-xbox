@@ -68,12 +68,12 @@ may bypass translation; a warm driver cache is a separate compilation milestone.
 
 ## Regression coverage and qualification
 
-- `test-spv-vsh.py`: 22,672 deterministic SPIR-V modules, final-owner allocation
+- `test-spv-vsh.py`: 26,768 deterministic SPIR-V modules, final-owner allocation
   counts, poisoned source keys, thirty-nine allocation-free unsupported paths, UBSan and
   spirv-val. Both SPIR-V 1.5 and 1.6 targets are covered. Extracted native device
   setup is checked across 512 API/property/generation cases, including stale
   target reset and zero queries on older APIs.
-- `test-spv-vsh-gpu.py`: 24,080 programs / 39,298,560 scalar outputs compared with
+- `test-spv-vsh-gpu.py`: 28,176 programs / 45,983,232 scalar outputs compared with
   the production GLSL generator/compiler using Vulkan transform feedback. It
   captures all user outputs, position and point size before clipping; numerical
   differences fail (NaN payload identity is not required). It exercises opcode
@@ -123,10 +123,10 @@ requires forced invalidation. Legacy non-point modules retain their prior words.
 ## Unlit fixed-function subset
 
 The direct subset requires static CSV0_C. It supports material/base shading and
-static directional lights, as detailed below.
+static directional, local and spot lights, as detailed below.
 It supports static/live texture matrices and coordinate-generation modes, all
 skinning modes and register/attenuated points as detailed below. Unsupported
-states, including local/spot/dynamic lighting and dynamic CSV0_C, retain the GLSL path. The existing FP32 property gate applies;
+states, including dynamic lighting and dynamic CSV0_C, retain the GLSL path. The existing FP32 property gate applies;
 no new device query is added.
 
 The composite matrix already contains model-view when skinning is off. Emit
@@ -426,3 +426,40 @@ and material-source values. The growing GPU corpus retains every case across
 five bounded batches with the same per-process watchdog. This is a foundation
 for the remaining light modes, not completion of direct lighting or cold-play
 PSO recovery.
+
+## Local and spot lighting
+
+Static local and spot lights use the same eight slots, front/back colors,
+material-source rules and coefficient specular model as directional lights.
+Existing LTC1 ranges, local positions and attenuation coefficients are appended
+only when consumed. The range test is inclusive and rejects NaN distances/ranges;
+out-of-range lights preserve the incoming colors through structured merge values.
+The homogeneous view-position divide is emitted at the first local-light use,
+after preceding infinite lights, matching the reference evaluation order.
+
+Distance attenuation preserves the reference polynomial order and reciprocal.
+Local half vectors retain the second normalization even for an infinite viewer.
+Spotlights consume the cooked context vector directly, with the existing rational
+falloff cutoffs, denominator guards and final clamp. A zero factor selects zero
+instead of multiplying zero by infinite attenuation. Branches prevent evaluation
+of invalid guarded divisions. No geometry, constants, matrices or keys are cloned;
+new groups use the existing final uniform metadata/word allocations and ownership.
+
+The extra 4,096 fixtures exercise isolated local/spot slots and mixed light types,
+all skinning modes, both viewers, front/back and separate/combined specular states.
+Inputs include inclusive ranges, invalid/NaN ranges, polynomial coefficient edge
+cases, hard-edge cooked cones and NaN/zero/negative falloff denominators. Existing
+GPU cases remain in the corpus. Dynamic lighting and dynamic CSV0_C remain GLSL
+fallbacks. Earlier sections describe the coverage available at their milestones.
+
+The first physical-GPU run found two one-ULP back-color differences in case
+27472, while software Vulkan matched. Diagnostic contraction and intermediate-
+output probes localized this to evaluation around the homogeneous view-position
+subtraction. Broad explicit FMA changed other results and was rejected. Moving
+the divide to its first local-light use matches the reference evaluation order
+without new precision decorations. The final full corpus matched 45,983,232
+scalar outputs on each of software Vulkan with validation and the RTX 5090
+without installed validation layers. Failed probes remain retained. All 22,672
+prior CPU fixture modules/layouts remain byte-identical to the parent. These are
+correctness/work-count results; driver caches remain uncontrolled and cold-play
+and draw-path PSO recovery remain open.

@@ -105,8 +105,8 @@ static void pack(uint8_t *dst,const GlslcLayout *layout,const VshUniformValues *
 static void release(GlslcResult *r){glslc_result_free_words(r);free(r->uniforms.members);free(r->push_constants.members);}
 int main(int argc, char **argv) {
  assert(argc==1 || argc==3);
- unsigned first=argc==3?strtoul(argv[1],NULL,10):0, limit=argc==3?strtoul(argv[2],NULL,10):24080;
- assert(first<limit && limit<=24080);
+ unsigned first=argc==3?strtoul(argv[1],NULL,10):0, limit=argc==3?strtoul(argv[2],NULL,10):28176;
+ assert(first<limit && limit<=28176);
  printf("Fixture range [%u, %u)\n",first,limit);
  const bool validated=getenv("NO_VALIDATION")==NULL;
  const char *layer="VK_LAYER_KHRONOS_validation",*debug=VK_EXT_DEBUG_UTILS_EXTENSION_NAME;
@@ -304,6 +304,18 @@ int main(int argc, char **argv) {
    state.fixed_function.specular_src=material;
    for(unsigned l=0;l<8;l++)state.fixed_function.light[l]=f&(1u<<l)?LIGHT_INFINITE:LIGHT_OFF;
   }
+  if(test>=24080){
+   unsigned f=test-24080, pattern=f&255;
+   state.fixed_function.two_sided=!!(f&256);state.fixed_function.local_eye=!!(f&512);
+   state.specular_enable=!!(f&1024);state.separate_specular=!!(f&2048);
+   state.fixed_function.skinning=(f/16)%7;
+   for(unsigned l=0;l<8;l++){
+    unsigned mode=(pattern>>((l%4)*2))&3;
+    if(l>=4)mode=(mode+1)&3;
+    if(pattern<16)mode=l==pattern%8?(pattern<8?LIGHT_LOCAL:LIGHT_SPOT):LIGHT_OFF;
+    state.fixed_function.light[l]=mode;
+   }
+  }
   for(unsigned a=0;a<16;a++)attrs[a].format=state.compressed_attrs&(1u<<a)?VK_FORMAT_R32_SINT:VK_FORMAT_R32G32B32A32_SFLOAT;
   opts.preserve_float32=fp.shaderSignedZeroInfNanPreserveFloat32;
   VshState excluded=state;excluded.point_params_enable=true;
@@ -409,6 +421,35 @@ int main(int argc, char **argv) {
    for(unsigned k=0;k<3;k++){values.specularParams[0][k]=coefficients[(f/64)%8][k];values.specularParamsBack[0][k]=coefficients[(f/128+3)%8][k];}
    values.c[NV_IGRAPH_XF_XFCTX_EYEP][0]=.125f;values.c[NV_IGRAPH_XF_XFCTX_EYEP][1]=-.5f;values.c[NV_IGRAPH_XF_XFCTX_EYEP][2]=1.75f;values.c[NV_IGRAPH_XF_XFCTX_EYEP][3]=f&16?1:2;
   }
+  if(test>=24080){
+   unsigned f=test-24080;
+   static const float identity[4][4]={{1,0,0,0},{0,1,0,0},{0,0,1,0},{0,0,0,1}};
+   for(unsigned b=0;b<4;b++){
+    memcpy(values.c+NV_IGRAPH_XF_XFCTX_MMAT0+b*8,identity,sizeof(identity));
+    memcpy(values.c+NV_IGRAPH_XF_XFCTX_IMMAT0+b*8,identity,sizeof(identity));
+   }
+   const float ranges[]={0,1,0x1.fffffep-1f,2,INFINITY,-1,NAN,1000000};
+   static const float attenuation[8][3]={{1,0,0},{.5f,.125f,0},{.25f,.125f,.0625f},{0,0,0},{-1,0,0},{INFINITY,0,0},{1,NAN,0},{1,0,0x1p-100f}};
+   for(unsigned l=0;l<8;l++){
+    unsigned range_style=(f/256+l)%8, style=(f/512+l)%8;
+    values.ltc1[NV_IGRAPH_XF_LTC1_r0+l][0]=ranges[range_style];
+    unsigned attenuation_style=range_style;
+    if(f&128){if(range_style==4)attenuation_style=6;if(range_style==7)attenuation_style=5;}
+    for(unsigned k=0;k<3;k++)values.lightLocalAttenuation[l][k]=attenuation[attenuation_style][k];
+    values.lightLocalPosition[l][0]=40.125f+l*.25f;values.lightLocalPosition[l][1]=40-l*.125f;values.lightLocalPosition[l][2]=101+l*.0625f;
+    float *spot=values.ltctxa[NV_IGRAPH_XF_LTCTXA_L0_SPT+l*2], *coeff=values.ltctxa[NV_IGRAPH_XF_LTCTXA_L0_K+l*2];
+    spot[0]=spot[1]=0;spot[2]=1;spot[3]=0;
+    coeff[0]=0;coeff[1]=1;coeff[2]=0;
+    if(style==1)spot[3]=-1;
+    if(style==2){spot[3]=-.5f;coeff[0]=.125f;coeff[1]=.5f;coeff[2]=.75f;}
+    if(style==3){spot[2]=2e19f;spot[3]=-1e19f;}
+    if(style>=4){spot[2]=0;spot[3]=.5f;}
+    if(style==4 && (f&64))coeff[1]=NAN;
+    if(style==5)coeff[0]=-.75f;
+    if(style==6)coeff[1]=0;
+    if(style==7){coeff[1]=0;coeff[2]=-1;}
+   }
+  }
   unsigned packed=0;for(unsigned a=0;a<16;a++)if(state.uniform_attrs&(1u<<a)) {
    for(unsigned k=0;k<4;k++)values.inlineValue[packed][k]=a==0?(k==3?1:k==2?100:40):(a==15?2:((int)(a+k)%7-3)*.5f);
    if(state.is_fixed_function && state.fixed_function.skinning!=SKINNING_OFF && a==1)for(unsigned k=0;k<4;k++)values.inlineValue[packed][k]=skin_weights[(test/16)%7][k];
@@ -417,6 +458,7 @@ int main(int argc, char **argv) {
   const float samples[]={0,-0.0f,1,-1,2,-2,.5f,-.5f,4,8,16,-32,INFINITY,-INFINITY,NAN,0x1p-100f};
   for(unsigned v=0;v<VERTICES;v++)for(unsigned a=0;a<16;a++)for(unsigned k=0;k<4;k++) {
    float f=samples[(v+a*3+k*5)%16];if(a==0 && !(state.is_fixed_function && (test&512)))f=k==3?1:k==2?100:(float)(v*3+40);if(a==15)f=(float)(v%8);
+   if(test>=24080 && a==0 && !(state.compressed_attrs&1) && v%8<7)f=k==3?1:k==2?100:k==1?40:40+v*.125f;
    if(state.is_fixed_function && state.fixed_function.skinning!=SKINNING_OFF && a==1 && !(state.compressed_attrs&2) && v%8<7)f=skin_weights[v%8][k];
    memcpy(input.mapped+v*256+a*16+k*4,&f,4);
   }
