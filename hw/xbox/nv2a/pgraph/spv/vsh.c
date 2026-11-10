@@ -156,7 +156,8 @@ bool pgraph_spv_vsh_supported(const VshState *s, SpvVshOptions opts)
                 unsigned source = mux(t, a);
                 if (!source || ((used & (1u << a)) &&
                     ((source == PARAM_R && reg(t, a) > 12) ||
-                     (source == PARAM_C && field(t[1], 13, 8) >=
+                     /* Relative selectors are offsets, not final indices. */
+                     (source == PARAM_C && !(t[3] & 2) && field(t[1], 13, 8) >=
                                               NV2A_VERTEXSHADER_CONSTANTS)))) {
                     return false;
                 }

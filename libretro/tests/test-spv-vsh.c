@@ -424,6 +424,26 @@ int main(int argc, char **argv)
         char path[4096];snprintf(path,sizeof(path),"%s/unselected-%u.spv",argv[1],i);FILE *f=fopen(path,"wb");assert(f&&fwrite(b.words,4,b.num_words,f)==b.num_words);fclose(f);
         glslc_result_free_words(&a);free(a.uniforms.members);free(a.push_constants.members);glslc_result_free_words(&b);free(b.uniforms.members);free(b.push_constants.members);total++;
     }
+    for(unsigned i=0;i<1024;i++){
+        unsigned arg=(i/64)%3,base=192+i%64;
+        VshState state={0};state.programmable.program_length=2;
+        token(state.programmable.program_data[0],MAC_ARL,0,15,0,false,false);
+        uint32_t *t=state.programmable.program_data[1];token(t,arg==2?0:arg==1?MAC_MUL:MAC_MOV,arg==2?ILU_MOV:0,1,9,arg==2,true);
+        t[1]=(t[1]&~(255u<<13))|(base<<13);t[2]=(t[2]&~(3u<<11))|(PARAM_V<<11);
+        if(arg==0)t[2]=(t[2]&~(3u<<26))|(PARAM_C<<26);else if(arg==1)t[2]=(t[2]&~(3u<<11))|(PARAM_C<<11);else t[3]=(t[3]&~(3u<<28))|(PARAM_C<<28);t[3]|=2;
+        state.uniform_attrs=i&32?0x8003:0;SpvVshOptions opts={.preserve_float32=true,.spirv_1_6=!!(i&64),.push_constants=!!(i&128)};
+        GlslcResult a,b;allocations=0;unsigned expected=2u+(unsigned)(opts.push_constants&&state.uniform_attrs);
+        assert(pgraph_spv_vsh(&state,opts,&a)&&allocations==expected);
+        assert(pgraph_spv_vsh(&state,opts,&b)&&allocations==expected*2);
+        assert(a.num_words==b.num_words&&!memcmp(a.words,b.words,a.num_words*4));
+        assert(a.uniforms.size==b.uniforms.size&&a.uniforms.count==b.uniforms.count&&a.push_constants.size==b.push_constants.size&&a.push_constants.count==b.push_constants.count);
+        t[3]&=~2u;GlslcResult rejected;unsigned before=allocations;
+        assert(!pgraph_spv_vsh(&state,opts,&rejected)&&allocations==before);
+        assert(!rejected.words&&!rejected.uniforms.members&&!rejected.push_constants.members);
+        memset(&state,0xa5,sizeof(state));assert(!strcmp(a.uniforms.members[0].name,"c")&&!strcmp(b.uniforms.members[0].name,"c"));
+        char path[4096];snprintf(path,sizeof(path),"%s/relative-%u.spv",argv[1],i);FILE *f=fopen(path,"wb");assert(f&&fwrite(b.words,4,b.num_words,f)==b.num_words);fclose(f);
+        glslc_result_free_words(&a);free(a.uniforms.members);free(a.push_constants.members);glslc_result_free_words(&b);free(b.uniforms.members);free(b.push_constants.members);total++;
+    }
     for(unsigned i=0;i<16;i++){
         VshState state={0};state.programmable.program_length=1;uint32_t *t=state.programmable.program_data[0];unsigned m=i==1||i==2||i==15?3:i==3||i==4?4:i==7||i==8||i==14?0:i==10||i==12?2:i==13?13:1;
         unsigned l=i==5?1:i==6?2:i==7?3:i==8?4:i==14?7:0;token(t,m,l,0,0,!!l,true);t[2]=(t[2]&~(3u<<11))|(PARAM_V<<11);
@@ -478,6 +498,6 @@ int main(int argc, char **argv)
         assert(!pgraph_spv_vsh(&s, opts, &result));
         assert(!allocations && !result.words && !result.uniforms.members && !result.push_constants.members);
     }
-    printf("Direct VSH: %u deterministic native-module/owned-layout/poisoned-key cases; 3137 allocation-free unsupported paths; 512 device-capability/generation checks PASS\n", total);
+    printf("Direct VSH: %u deterministic native-module/owned-layout/poisoned-key cases; 4161 allocation-free unsupported paths; 512 device-capability/generation checks PASS\n", total);
     return 0;
 }

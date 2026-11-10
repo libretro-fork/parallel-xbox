@@ -43,3 +43,23 @@ words, allocation counts and layout bounds, then poison the borrowed key. Each
 case flips the mux to the active pipe and requires allocation-free rejection.
 The GPU cases compare the production reference with both MAC and ILU active
 in the non-selected pipe, including ARL followed by relative constant use.
+
+## Relative constant selectors
+
+For an A0-relative constant source, the eight-bit selector is an offset;
+A0 + selector is the effective array index. Selectors 192 through 255 can
+therefore address valid constants when A0 is negative. Native eligibility
+accepts those offsets using the existing signed-add/index emission. Consumed
+non-relative selectors outside 0..191 still reject. This does not add bounds
+clamping or define out-of-bounds GPU accesses. Eager mux and temporary-register
+validation are unchanged, as are immutable worker-key lends and final owners.
+
+The 1,024 new CPU cases require deterministic words/layouts, unchanged final
+allocation counts and poisoned-key owner survival, then clear relative addressing
+and require allocation-free rejection. GPU recipes cover A, B and C sources,
+array and uniform attribute 15, inline UBO/push constants and both shading modes.
+Array A0 values are -96..-65 and effective indices are 96..190; uniform A0 values
+are also bounded and checked before expected-value reads. Both modules must
+match 180,224 independent expected constant values for MOV cases, alongside
+1,671,168 full reference/native scalar comparisons per device. No payload
+snapshot or additional allocation is introduced by this eligibility change.
