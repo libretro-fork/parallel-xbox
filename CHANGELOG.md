@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Fragment-family CI crosses convolution, color-key and point-sprite profiles with the existing texture/shadow shape matrix: 67,008 reference/native pairs and 134,016 validated modules. Validate final owned words synchronously in-process instead of creating a module file and validator process for each case. Keep the original base cases and CLI validation path; CI requires the expanded mode. No runtime changes or GPU-performance claim.
+
 - Vulkan fragment translation computes uniform routing once per compile and borrows the 28-byte stack table through count, write and layout emission. Remove repeated prefix/profile scans at each uniform read without changing generated shader bytes, layouts, cache keys or allocation counts. Compiler work reduction does not establish frame-time or PSO-readiness improvement.
 
 - Shader CI checks the actual bundled Vulkan seed dictionary for direct-stage eligibility after migration, including all current 9,334 state entries. Fail obsolete key migrations, stale record layouts, missing coverage and malformed streams before they can silently weaken prewarming. Map compressed input and decode directly into one bounded final owner per game; no runtime code changes.
