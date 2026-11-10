@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Vulkan keeps float bump, dependent and cube texture lookups on the direct SPIR-V path when packed-format metadata is ignored by the reference shader. Reuse the existing views and module owners without extra copies or allocations.
+
 - CPU code-page writes clear the jump cache once per page invalidation instead of once per removed position-independent block. Preserve precise self-modifying-code restarts, immediate single-block invalidation and CPU Boost behavior. Gameplay performance remains unmeasured.
 
 - Vulkan handles three-dot coordinate lookups from integer textures directly as SPIR-V. Preserve numeric unsigned colors, border/rectangle handling and ignored shadow metadata using existing views and final owners, without texel copies or new GPU resources.

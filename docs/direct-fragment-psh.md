@@ -716,7 +716,23 @@ controls (59392 CPU modules, 145 rejected shapes), plus 4096 GPU recipes. They
 exercise all dot mappings, integer/float views, ignored shadow/compare/filter
 metadata, border/rectangle reads, points, keys, alpha kill and static/live
 combiners. Final constant banks are populated explicitly; a signal assertion
-requires a nontrivial scaled integer result. The public GPU matrix contains
-74752 recipes. Work reductions and reference equality do not establish GPU
+requires a nontrivial scaled integer result. This stage brought the public GPU matrix to
+74752 recipes; the metadata extension below adds further coverage. Work reductions and reference equality do not establish GPU
 execution speed, draw-path PSO readiness or cold-play smoothness. Driver caches
 remain uncontrolled and the cold-play regression remains BAD/OPEN.
+
+## Float sampler metadata
+
+The production generator ignores the packed-color flag for bump, dependent,
+cube, two-dot, diffuse-reflection, specular-reflection and three-dot cube modes.
+Native eligibility now follows that sampler precedence. Shadow flags remain
+unsupported for these modes, and all coordinate, dependency and resource-shape
+checks remain in place. No key is rewritten, resource is copied or lend retained.
+The final words and uniform layouts use the same two allocations.
+
+The current totals are 60928 CPU modules, 145 rejected shapes and 76288 GPU
+recipes. 1536 paired CPU cases require exact native words and owned layouts with the
+flag off/on, then poison the source key. The GPU matrix adds the same families
+against production GLSL, including volume bump, cube/2D views, rectangles and
+borders. Translation coverage does not establish PSO readiness or cold-play
+recovery; driver-cache qualification remains open.

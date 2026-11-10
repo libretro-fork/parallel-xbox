@@ -186,7 +186,7 @@ int main(int argc,char **argv){
  }
  Image volume=dimensional_texture(1,cmd,queue,fence),cube=dimensional_texture(2,cmd,queue,fence);
  Image signed_gb={0};if(limit>54272)signed_gb=signed_gb_texture(cmd,queue,fence);Image encoded_f16={0};if(limit>48128)encoded_f16=encoded_f16_texture(cmd,queue,fence);VkImageView depth_views[3]={0};Image packed_depth={0};if(limit>37888){for(unsigned j=0;j<3;j++)depth_views[j]=depth_marker_view(texture,j);packed_depth=packed_depth_texture(cmd,queue,fence);}
- VkShaderModule vertices[4][2]={{vertex(false,0),vertex(true,0)},{vertex(false,1),vertex(true,1)},{0,0}};if(limit>37888){vertices[2][0]=vertex(false,2);vertices[2][1]=vertex(true,2);}if(limit>52224){vertices[3][0]=vertex(false,3);vertices[3][1]=vertex(true,3);}unsigned failures=0,compared=0,written=0,discarded=0,sample_pixels=0,point_pixels=0;uint64_t words[2]={0},reference_source_bytes=0;bool timings=getenv("PSH_COMPILER_TIMINGS")!=NULL;
+ VkShaderModule vertices[4][2]={{vertex(false,0),vertex(true,0)},{vertex(false,1),vertex(true,1)},{0,0}};if(limit>37888){vertices[2][0]=vertex(false,2);vertices[2][1]=vertex(true,2);}if(limit>52224){vertices[3][0]=vertex(false,3);vertices[3][1]=vertex(true,3);}unsigned failures=0,compared=0,written=0,discarded=0,sample_pixels=0,point_pixels=0,metadata_signal=0;uint64_t words[2]={0},reference_source_bytes=0;bool timings=getenv("PSH_COMPILER_TIMINGS")!=NULL;
  for(unsigned test=first;test<limit;test++){
   PshState state={.final_inputs_0=0x04200000,.final_inputs_1=0x1400};state.smooth_shading=!!(test&1);state.z_perspective=!!(test&2);state.depth_clipping=!!(test&4);state.window_clip_exclusive=!!(test&8);state.alpha_test=!!(test&16);state.alpha_dynamic=!!(test&32);state.depth_format=(test/64)%4;
   if(test>=512){
@@ -706,7 +706,34 @@ int main(int argc,char **argv){
    state.combiner_dynamic=!!(f&1024);if(state.combiner_dynamic)state.final_inputs_0=state.final_inputs_1=0;
    float plane[3][4]={{0,0,100,1},{4,0,200,1},{0,4,300,1}};memcpy(data[4],plane,sizeof(plane));data[7][0]=.5f;data[7][2]=1;data[7][3]=(float)(1+(f/17)%64);if(state.point_sprite)data[7][3]=-data[7][3];
   }
-  GlslcResult modules[2];SpvPshOptions opts={.spirv_1_6=!!(test&256),.ubo_binding=1,.tex_binding=2};assert(pgraph_spv_psh(&state,opts,&modules[1]));MString *source=pgraph_glsl_gen_psh(&state,(GenPshGlslOptions){.vulkan=true,.locations=true,.ubo_binding=1,.tex_binding=2});GlslcOptions go={.spirv_1_6=opts.spirv_1_6,.emit_layout=true};if(!glslc_compile(GLSLC_STAGE_FRAGMENT,mstring_get_str(source),&go,&modules[0])){fprintf(stderr,"fragment %u %d %s\n",test,modules[0].error_line,modules[0].error);abort();}reference_source_bytes+=strlen(mstring_get_str(source));mstring_unref(source);
+  if(test>=74752){
+   unsigned i=test-74752;
+   memset(&state,0,sizeof(state));memset(&values,0,sizeof(values));memset(data,0,sizeof(data));
+   unsigned family=i%9,unit=family==2||family==4?2:family==5||family==6?3:family==3?0:1;
+  const unsigned modes[]={PS_TEXTUREMODES_BUMPENVMAP,PS_TEXTUREMODES_BUMPENVMAP_LUM,PS_TEXTUREMODES_DOT_ST,PS_TEXTUREMODES_CUBEMAP,PS_TEXTUREMODES_DOT_RFLCT_DIFF,PS_TEXTUREMODES_DOT_RFLCT_SPEC,PS_TEXTUREMODES_DOT_STR_CUBE,PS_TEXTUREMODES_DPNDNT_AR,PS_TEXTUREMODES_DPNDNT_GB};
+  for(unsigned j=0;j<4;j++)state.dim_tex[j]=2;
+  state.shader_stage_program=modes[family]<<(unit*5);if(unit)state.shader_stage_program|=PS_TEXTUREMODES_PASSTHRU;
+  if(family==2||family==4||family==5||family==6)state.shader_stage_program|=PS_TEXTUREMODES_DOTPRODUCT<<5;
+  if(family==5||family==6)state.shader_stage_program|=PS_TEXTUREMODES_DOTPRODUCT<<10;
+  state.tex_cubemap[unit]=(family==3||family==4||family==5||family==6)&&!!(i&16);
+  state.dim_tex[unit]=(family<2 && (i&32))?3:2;
+  state.rect_tex[unit]=(family<2||family==3||family==5||family==6) && state.dim_tex[unit]==2 && !!(i&64);
+  state.border_adjust[unit]=(family<2||family==3||family==4||family==5||family==6)&&!!(i&128);
+  unsigned reg=PS_REGISTER_T0+unit;state.final_inputs_0=0x20000000u|(reg<<16);state.final_inputs_1=(reg|16u)<<8;
+  state.smooth_shading=!!(i&256);state.combiner_dynamic=!!(i&512);state.alpha_dynamic=!!(i&1024);state.depth_format=DEPTH_FORMAT_D24;
+   state.tex_x8y24[unit]=true;
+   values.combFinal0[0]=state.final_inputs_0;values.combFinal1[0]=state.final_inputs_1;
+   if(state.combiner_dynamic)state.final_inputs_0=state.final_inputs_1=0;
+   values.surfaceScale[0][0]=values.surfaceScale[0][1]=1;values.clipRange[0][1]=values.clipRange[0][3]=16777215;
+   for(unsigned j=0;j<8;j++){values.clipRegion[j][2]=4;values.clipRegion[j][3]=4;}
+   for(unsigned j=0;j<4;j++){
+    values.texScale[j]=.5f+(j%3)*.5f;values.bumpMat[j][0]=.0625f;values.bumpMat[j][3]=.125f;values.bumpScale[j]=.0625f;values.bumpOffset[j]=.75f;
+    for(unsigned k=0;k<3;k++){values.borderLogicalSize[j][k]=2;values.borderInvRealSize[j][k]=.125f;}
+    unsigned kind=fixture_kind(&state,j);VkDescriptorImageInfo info={samplers[(i/16+j)%16],kind==1?volume.view:kind==2?cube.view:texture.view,VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL};VkWriteDescriptorSet w={.sType=VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,.dstSet=set,.dstBinding=2+j,.descriptorCount=1,.descriptorType=VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,.pImageInfo=&info};vkUpdateDescriptorSets(device,1,&w,0,NULL);
+   }
+   float plane[3][4]={{0,0,100,1},{4,0,200,1},{0,4,300,1}};memcpy(data[4],plane,sizeof(plane));data[7][0]=.5f;data[7][2]=1;data[7][3]=(float)(1+(i/17)%64);
+  }
+  GlslcResult modules[2];SpvPshOptions opts={.spirv_1_6=!!(test&256),.ubo_binding=1,.tex_binding=2};assert(pgraph_spv_psh(&state,opts,&modules[1]));MString *source=pgraph_glsl_gen_psh(&state,(GenPshGlslOptions){.vulkan=true,.locations=true,.ubo_binding=1,.tex_binding=2});GlslcOptions go={.spirv_1_6=opts.spirv_1_6,.emit_layout=true};if(!glslc_compile(GLSLC_STAGE_FRAGMENT,mstring_get_str(source),&go,&modules[0])){fprintf(stderr,"fragment %u %d %s\n",test,modules[0].error_line,modules[0].error);abort();}if(test>=74752){PshState canonical=state;for(unsigned j=0;j<4;j++)canonical.tex_x8y24[j]=false;MString *other=pgraph_glsl_gen_psh(&canonical,(GenPshGlslOptions){.vulkan=true,.locations=true,.ubo_binding=1,.tex_binding=2});assert(!strcmp(mstring_get_str(source),mstring_get_str(other)));mstring_unref(other);}reference_source_bytes+=strlen(mstring_get_str(source));mstring_unref(source);
   words[0]+=modules[0].num_words;words[1]+=modules[1].num_words;
   uint32_t expected[80];uint64_t build_ns[2]={0},draw_ns[2]={0};
   for(unsigned path=0;path<2;path++){
@@ -723,10 +750,12 @@ int main(int argc,char **argv){
   if(test==54272){float red;memcpy(&red,expected,4);assert(isfinite(red) && red>0.0f && red<1.0f);printf("Signed fixture signal: first_red=%.9g; final constant bank active\n",red);}
   if(test==60416){float red;memcpy(&red,expected,4);assert(isfinite(red) && red>0.0f && red<1.0f);printf("Raw integer fixture signal: first_red=%.9g; numeric conversion and final constant bank active\n",red);}
   if(test==70656){unsigned signal=0;for(unsigned p=0;p<16;p++){float red;memcpy(&red,expected+p*4,4);signal+=isfinite(red)&&red>=.125f&&red<=.5f;}assert(signal);printf("Integer dot fixture signal: %u nontrivial scaled integer pixels\n",signal);}
+  if(test>=74752)for(unsigned p=0;p<16;p++){float red;memcpy(&red,expected+p*4,4);metadata_signal+=isfinite(red)&&red>0.0f&&red<1.0f;}
   for(unsigned j=0;j<16;j++){if(expected[j*4]==0xc0000000u)discarded++;else{written++;sample_pixels+=sampled;point_pixels+=state.point_sprite;}}
   release(&modules[0]);release(&modules[1]);
  }
  printf("Fragment GPU: %u scalar color/depth/discard results, %u differences, %u validation errors; validation=%s\n",compared,failures,errors,validated?"enabled":"DISABLED");
+ if(first>=74752){assert(metadata_signal);printf("Float metadata fixture: %u nontrivial pixels; production GLSL identical with packed flag off/on\n",metadata_signal);}
  if(first>=16896)assert(written && sample_pixels);
  if(first>=4096 && (first<10240 || (first>=14336 && first<16384)))assert(written && discarded && sample_pixels);
  if(first>=8192 && (first<10240 || (first>=14336 && first<16384)))assert(point_pixels);

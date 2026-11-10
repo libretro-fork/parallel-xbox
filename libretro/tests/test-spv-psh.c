@@ -456,7 +456,7 @@ int main(int argc,char **argv)
         if(i==5){s.conv_tex[0]=CONVOLUTION_FILTER_GAUSSIAN;s.dim_tex[0]=3;}
         if(i==6){s.dim_tex[0]=3;s.rect_tex[0]=true;}
         if(i==7)s.g8b8_signed[0]=1;
-        if(i==8)s.shader_stage_program=PS_TEXTUREMODES_CUBEMAP;
+        if(i==8){s.shader_stage_program=PS_TEXTUREMODES_CUBEMAP;s.shadow_map[0]=1;}
         if(i==9)s.shader_stage_program=PS_TEXTUREMODES_DOT_STR_3D;
         if(i==10)s.shadow_map[0]=2;
         if(i==11)s.shadow_map[0]=3;
@@ -549,5 +549,31 @@ int main(int argc,char **argv)
   allocations=0;assert(!pgraph_spv_psh(&state,opts,&result));assert(!allocations&&!result.words&&!result.uniforms.members);
  }
 
-    puts("Direct PSH: 59392 deterministic/final-allocation/ignored-key/owned-layout modules and one hundred forty-five allocation-free unsupported cases PASS");return 0;
+ for(unsigned i=0;i<1536;i++){
+  PshState state={0};
+  unsigned family=i%9,unit=family==2||family==4?2:family==5||family==6?3:family==3?0:1;
+  const unsigned modes[]={PS_TEXTUREMODES_BUMPENVMAP,PS_TEXTUREMODES_BUMPENVMAP_LUM,PS_TEXTUREMODES_DOT_ST,PS_TEXTUREMODES_CUBEMAP,PS_TEXTUREMODES_DOT_RFLCT_DIFF,PS_TEXTUREMODES_DOT_RFLCT_SPEC,PS_TEXTUREMODES_DOT_STR_CUBE,PS_TEXTUREMODES_DPNDNT_AR,PS_TEXTUREMODES_DPNDNT_GB};
+  for(unsigned j=0;j<4;j++)state.dim_tex[j]=2;
+  state.shader_stage_program=modes[family]<<(unit*5);if(unit)state.shader_stage_program|=PS_TEXTUREMODES_PASSTHRU;
+  if(family==2||family==4||family==5||family==6)state.shader_stage_program|=PS_TEXTUREMODES_DOTPRODUCT<<5;
+  if(family==5||family==6)state.shader_stage_program|=PS_TEXTUREMODES_DOTPRODUCT<<10;
+  state.tex_cubemap[unit]=(family==3||family==4||family==5||family==6)&&!!(i&16);
+  state.dim_tex[unit]=(family<2 && (i&32))?3:2;
+  state.rect_tex[unit]=(family<2||family==3||family==5||family==6) && state.dim_tex[unit]==2 && !!(i&64);
+  state.border_adjust[unit]=(family<2||family==3||family==4||family==5||family==6)&&!!(i&128);
+  unsigned reg=PS_REGISTER_T0+unit;state.final_inputs_0=0x20000000u|(reg<<16);state.final_inputs_1=(reg|16u)<<8;
+  state.smooth_shading=!!(i&256);state.combiner_dynamic=!!(i&512);state.alpha_dynamic=!!(i&1024);state.depth_format=DEPTH_FORMAT_D24;
+  SpvPshOptions opts={.ubo_binding=1,.tex_binding=2,.spirv_1_6=!!(i&256)};GlslcResult a,b;allocations=0;
+  assert(pgraph_spv_psh(&state,opts,&a) && allocations==2);
+  state.tex_x8y24[unit]=true;
+  assert(pgraph_spv_psh(&state,opts,&b) && allocations==4);
+  assert(a.num_words==b.num_words && !memcmp(a.words,b.words,a.num_words*4));
+  assert(a.uniforms.count==b.uniforms.count && a.uniforms.size==b.uniforms.size);
+  for(unsigned j=0;j<a.uniforms.count;j++){const GlslcUniform *x=a.uniforms.members+j,*y=b.uniforms.members+j;assert(!strcmp(x->name,y->name)&&x->offset==y->offset&&x->dim_v==y->dim_v&&x->dim_a==y->dim_a&&x->stride==y->stride);}
+  memset(&state,0xa5,sizeof(state));assert(b.uniforms.members[0].name[0] && !b.allocation && b.allocation_words==b.num_words);
+  char path[4096];snprintf(path,sizeof(path),"%s/float-metadata-%u.spv",argv[1],i);FILE *f=fopen(path,"wb");assert(f&&fwrite(b.words,4,b.num_words,f)==b.num_words);fclose(f);
+  glslc_result_free_words(&a);free(a.uniforms.members);glslc_result_free_words(&b);free(b.uniforms.members);
+ }
+
+    puts("Direct PSH: 60928 deterministic/final-allocation/ignored-key/owned-layout modules and one hundred forty-five allocation-free unsupported cases PASS");return 0;
 }
