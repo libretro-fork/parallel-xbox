@@ -707,6 +707,16 @@ static inline bool tcg_op_buf_full(TCGContext *s)
     return s->nb_ops >= 4000;
 }
 
+/* End a TB before another instruction is likely to exhaust the temp array.
+ * Overflow still retries translation for an unusually expensive instruction;
+ * this headroom is a heuristic, not an instruction's allocation limit. */
+#define TCG_TEMPS_MARGIN 170
+
+static inline bool tcg_temps_nearly_full(TCGContext *s)
+{
+    return s->nb_temps > TCG_MAX_TEMPS - TCG_TEMPS_MARGIN;
+}
+
 /* pool based memory allocation */
 
 /* user-mode: mmap_lock must be held for tcg_malloc_internal. */

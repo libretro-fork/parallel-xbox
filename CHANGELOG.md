@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- CPU translation: finish temporary-heavy blocks before the next instruction is likely to exhaust translation storage, reducing discarded translations and retries. Unusually large instructions retain the existing overflow retry. Performance and cold/warm gameplay qualification remain pending.
+
+- Regression checks: restore the historical Vulkan binding/hash fixture after pending-worker retries were added, keeping unexpected retries fatal and real retry coverage separate; update flip-retirement checks for the seed service's renderer argument. Run the TCG allocator/headroom checks in build CI.
+
 - Vulkan emits UI rectangle geometry directly as SPIR-V, preserving fractional pixel bounds, winding and quad-strip behavior without intermediate shader text or geometry copies.
 
 - Keep shaders on the direct Vulkan SPIR-V path when they carry unused signed-mip metadata or format flags on samplerless stages. Preserve the original key and emitted program/layout, without new allocations, copies or retained lends; live format and invalid-shape checks remain in place.
