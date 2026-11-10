@@ -104,6 +104,16 @@ void cpu_check_watchpoint(CPUState *cpu, vaddr addr, vaddr len,
             }
             cpu->watchpoint_hit = wp;
 
+            /* Interrupt/exception delivery has no translated instruction to
+             * retry. Let its frame finish before stopping at the handler;
+             * unwinding here could discard an already-acknowledged IRQ. */
+            if (!ra && cpu->neg.can_do_io &&
+                !(wp->flags & BP_STOP_BEFORE_ACCESS)) {
+                BQL_LOCK_GUARD();
+                cpu_interrupt(cpu, CPU_INTERRUPT_DEBUG);
+                return;
+            }
+
             /* This call also restores vCPU state */
             tb_check_watchpoint(cpu, ra);
             if (wp->flags & BP_STOP_BEFORE_ACCESS) {
