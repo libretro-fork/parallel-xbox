@@ -154,7 +154,7 @@ int main(void) {
  VkPipelineMultisampleStateCreateInfo ms={.sType=VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO,.rasterizationSamples=VK_SAMPLE_COUNT_1_BIT};
  uint32_t reference[VERTICES*60];unsigned compared=0,failures=0;
  clock_t reference_ticks=0,direct_ticks=0;size_t reference_words=0,direct_words=0;
- for(unsigned test=0;test<9488;test++) {
+ for(unsigned test=0;test<11536;test++) {
   VshState state={0};state.smooth_shading=test&1;state.fog_dynamic=true;state.specular_enable=test&2;state.ignore_specular_alpha=test&4;
   unsigned variant=(test%1568)/112,m=test%14,l=(test%112)/14;state.programmable.program_length=5;
   token(state.programmable.program_data[0],MAC_MOV,ILU_NOP,0,0,false,false);
@@ -241,6 +241,18 @@ int main(void) {
    }
    if(state.compressed_attrs)state.compressed_attrs|=1u<<2;
   }
+  if(test>=9488){
+   unsigned f=test-9488, pattern=f/16;
+   for(unsigned t=0;t<4;t++){
+    state.fixed_function.texture_matrix_enable[t]=!!(f&(1u<<t));
+    unsigned n=(pattern+t*43)%128;
+    state.fixed_function.texgen[t][0]=n%6;
+    state.fixed_function.texgen[t][1]=(n/6+t)%6;
+    static const enum VshTexgen rmode[]={TEXGEN_DISABLE,TEXGEN_EYE_LINEAR,TEXGEN_OBJECT_LINEAR,TEXGEN_NORMAL_MAP,TEXGEN_REFLECTION_MAP};
+    state.fixed_function.texgen[t][2]=rmode[(n/11+t)%5];
+    state.fixed_function.texgen[t][3]=(n/7+t)%3;
+   }
+  }
   for(unsigned a=0;a<16;a++)attrs[a].format=state.compressed_attrs&(1u<<a)?VK_FORMAT_R32_SINT:VK_FORMAT_R32G32B32A32_SFLOAT;
   opts.preserve_float32=fp.shaderSignedZeroInfNanPreserveFloat32;
   VshState excluded=state;excluded.point_params_enable=true;
@@ -249,7 +261,7 @@ int main(void) {
   GlslcResult modules[2];clock_t before=clock();assert(pgraph_spv_vsh(&state,opts,&modules[1]));direct_ticks+=clock()-before;direct_words+=modules[1].num_words;before=clock();
   MString *text=pgraph_glsl_gen_vsh(&state,(GenVshGlslOptions){.vulkan=true,.use_push_constants_for_uniform_attrs=opts.push_constants});
   GlslcOptions glopts={.emit_layout=true};if(!glslc_compile(GLSLC_STAGE_VERTEX,mstring_get_str(text),&glopts,&modules[0])){fprintf(stderr,"%s\n",modules[0].error);abort();}mstring_unref(text);reference_ticks+=clock()-before;reference_words+=modules[0].num_words;
-  VshUniformValues values={0};values.clipRange[0][1]=65535;values.surfaceSize[0][0]=720;values.surfaceSize[0][1]=480;values.pointSizeReg[0]=1;values.pointScale[0]=1;values.fogCtl[0]=1|((test%8)<<1);values.fogParam[0][0]=1.5f;values.fogParam[0][1]=-.01f;
+  VshUniformValues values={0};values.clipRange[0][1]=65535;values.surfaceSize[0][0]=720;values.surfaceSize[0][1]=480;values.pointSizeReg[0]=1;values.pointScale[0]=1;values.texgenMode[0]=(test*37u & 4095u) | (test&8?4096u:0u);values.fogCtl[0]=1|((test%8)<<1);values.fogParam[0][0]=1.5f;values.fogParam[0][1]=-.01f;
   if(state.point_params_enable){
    const float scales[]={0.0f,-0.0f,1.0f,2.0f,-1.0f,.5f,INFINITY,NAN};
    values.pointScale[0]=scales[(test/14)%8];

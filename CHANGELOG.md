@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Translate static unlit Vulkan sphere-map S/T and reflection-map S/T/R texgen directly to SPIR-V. Honor the live viewer bit through the existing texgenMode uniform, share the eye/normal/reflection and sphere scale across coordinates, and preserve the reference viewer branch after physical-GPU tests rejected eager selection. Extend only affected final layouts; add no allocations, payload clones, retained pointers or CPU matrix snapshots. Prior modules remain byte-identical and unsupported states retain GLSL fallback.
+
 - Extend direct Vulkan unlit fixed-function translation to static normal-map S/T/R texgen, mixed with passthrough and linear coordinates. Share one inverse-model-view normal transform and optional normalization across stages, using existing inputs/constants without new allocations, matrix snapshots or retained pointers. Keep normal-map Q, sphere/reflection, dynamic texgen and known fog exceptions on GLSL; prior direct modules remain byte-identical.
 
 - Extend direct Vulkan unlit fixed-function translation to mixed disabled, eye-linear and object-linear texgen coordinates, including projective Q and post-generation texture matrices. Read planes from existing constants and share one model-view result with fog/other eye-linear coordinates; add no matrix snapshots, layouts or allocations. Keep nonlinear/dynamic texgen and the six known quadratic-fog exceptions on GLSL. Prior direct modules remain byte-identical.

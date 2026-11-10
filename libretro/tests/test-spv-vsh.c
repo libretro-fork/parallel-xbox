@@ -70,7 +70,7 @@ int main(int argc, char **argv)
 {
     assert(argc == 2);check_caps();
     unsigned total = 0;
-    for (unsigned i = 0; i < 8080; i++) {
+    for (unsigned i = 0; i < 10128; i++) {
         VshState state;
         unsigned base=i%1120;
         make_case(&state, base);
@@ -113,6 +113,18 @@ int main(int argc, char **argv)
                 state.fixed_function.texgen[t][3]=pattern;
             }
         }
+  if(i>=8080){
+   unsigned f=i-8080, pattern=f/16;
+   for(unsigned t=0;t<4;t++){
+    state.fixed_function.texture_matrix_enable[t]=!!(f&(1u<<t));
+    unsigned n=(pattern+t*43)%128;
+    state.fixed_function.texgen[t][0]=n%6;
+    state.fixed_function.texgen[t][1]=(n/6+t)%6;
+    static const enum VshTexgen rmode[]={TEXGEN_DISABLE,TEXGEN_EYE_LINEAR,TEXGEN_OBJECT_LINEAR,TEXGEN_NORMAL_MAP,TEXGEN_REFLECTION_MAP};
+    state.fixed_function.texgen[t][2]=rmode[(n/11+t)%5];
+    state.fixed_function.texgen[t][3]=(n/7+t)%3;
+   }
+  }
         SpvVshOptions opts = { .spirv_1_6 = !!(i & 1),
                               .push_constants = !!(i & 4), .ubo_binding = i % 3,
                               .preserve_float32 = i>=1120 || !!(i&8) };
@@ -125,7 +137,7 @@ int main(int argc, char **argv)
             memset(state.programmable.program_data,0xa5,sizeof(state.programmable.program_data));
             state.programmable.program_length=-42;
             bool consumes_normal=false;
-            for(unsigned t=0;t<4;t++)for(unsigned a=0;a<3;a++)consumes_normal|=state.fixed_function.texgen[t][a]==TEXGEN_NORMAL_MAP;
+            for(unsigned t=0;t<4;t++)for(unsigned a=0;a<3;a++)consumes_normal|=state.fixed_function.texgen[t][a]>=TEXGEN_SPHERE_MAP;
             if(!consumes_normal)state.fixed_function.normalization=!state.fixed_function.normalization;
             state.fixed_function.light_dynamic=!state.fixed_function.light_dynamic;
             state.fixed_function.two_sided=!state.fixed_function.two_sided;
@@ -134,20 +146,30 @@ int main(int argc, char **argv)
         assert(pgraph_spv_vsh(&state, opts, &b));
         assert(a.num_words == b.num_words && !memcmp(a.words, b.words, a.num_words * 4));
         assert(a.allocation == NULL && a.allocation_words == a.num_words);
-        assert(a.uniforms.count == 7u + (!opts.push_constants && state.uniform_attrs != 0));
+        bool viewer=false;
+        if(state.is_fixed_function)for(unsigned t=0;t<4;t++)for(unsigned k=0;k<3;k++){enum VshTexgen m=state.fixed_function.texgen[t][k];viewer|=m==TEXGEN_SPHERE_MAP || m==TEXGEN_REFLECTION_MAP;}
+        assert(a.uniforms.count == 7u + (!opts.push_constants && state.uniform_attrs != 0) + viewer);
+        if(viewer){
+            const GlslcUniform *u=&a.uniforms.members[a.uniforms.count-1];
+            assert(!strcmp(u->name,"texgenMode") && u->dim_v==1 && u->dim_a==4 && u->stride==16);
+            assert(u->offset==3120u+(!opts.push_constants && state.uniform_attrs!=0)*256u);
+            assert(a.uniforms.size==u->offset+64);
+        }
         assert(a.uniforms.members[0].dim_a == 192 && a.uniforms.members[0].stride == 16);
         assert(a.uniforms.members[6].offset == 3112 && a.uniforms.members[6].dim_v == 2);
         assert(a.push_constants.count == (size_t)(opts.push_constants && state.uniform_attrs));
         if (a.push_constants.count) {
             assert(a.push_constants.members[0].dim_a == (size_t)__builtin_popcount(state.uniform_attrs));
         }
-        unsigned switches=0, unsigned_type=0, control_pointer=0, control_reads=0, preserve_modes=0, preserve_caps=0, matrices=0, transforms=0, normalizations=0;
+        unsigned switches=0, unsigned_type=0, control_pointer=0, control_reads=0, preserve_modes=0, preserve_caps=0, matrices=0, transforms=0, normalizations=0, reflections=0, branches=0;
         for(size_t w=5;w<a.num_words;w+=a.words[w]>>16){
             unsigned op=a.words[w]&65535;
             if(op==SpvOpSwitch)switches++;
+            if(op==SpvOpBranchConditional)branches++;
             if(op==SpvOpTypeMatrix)matrices++;
             if(op==SpvOpVectorTimesMatrix)transforms++;
             if(op==SpvOpExtInst && a.words[w+4]==69)normalizations++;
+            if(op==SpvOpExtInst && a.words[w+4]==71)reflections++;
             if(op==SpvOpExecutionMode && a.words[w+2]==SpvExecutionModeSignedZeroInfNanPreserve){assert(a.words[w+3]==32);preserve_modes++;}
             if(op==SpvOpCapability && a.words[w+1]==SpvCapabilitySignedZeroInfNanPreserve)preserve_caps++;
             if(op==SpvOpTypeInt && a.words[w+2]==32 && !a.words[w+3])unsigned_type=a.words[w+1];
@@ -158,16 +180,21 @@ int main(int argc, char **argv)
             if((a.words[w]&65535)==SpvOpAccessChain && a.words[w+1]==control_pointer)control_reads++;
         assert(preserve_modes==(unsigned)(state.point_params_enable || state.is_fixed_function) && preserve_caps==preserve_modes);
         assert(switches==(unsigned)state.fog_dynamic);
-        assert(control_reads==(unsigned)state.fog_dynamic);
+        assert(control_reads==(unsigned)state.fog_dynamic + (unsigned)viewer);
         unsigned expected_transforms=state.is_fixed_function;
         if(state.is_fixed_function)for(unsigned t=0;t<4;t++)expected_transforms+=state.fixed_function.texture_matrix_enable[t];
         bool needs_eye=state.is_fixed_function && state.fog_enable && state.fixed_function.foggen>=FOGGEN_RADIAL && state.fixed_function.foggen<=FOGGEN_ABS_PLANAR;
         if(state.is_fixed_function)for(unsigned t=0;t<4;t++)for(unsigned a=0;a<4;a++)needs_eye|=state.fixed_function.texgen[t][a]==TEXGEN_EYE_LINEAR;
+        needs_eye|=viewer;
         expected_transforms+=needs_eye;
         bool needs_normal=false;
-        if(state.is_fixed_function)for(unsigned t=0;t<4;t++)for(unsigned a=0;a<3;a++)needs_normal|=state.fixed_function.texgen[t][a]==TEXGEN_NORMAL_MAP;
+        if(state.is_fixed_function)for(unsigned t=0;t<4;t++)for(unsigned a=0;a<3;a++)needs_normal|=state.fixed_function.texgen[t][a]>=TEXGEN_SPHERE_MAP;
         expected_transforms+=needs_normal;
-        assert(normalizations==(unsigned)(needs_normal && state.fixed_function.normalization));
+        /* One existing homogeneous-w guard, plus the lazy viewer choice.
+         * Eager Normalize/Select regressed physical-GPU reflection rounding. */
+        if(state.is_fixed_function)assert(branches==1u+(unsigned)viewer);
+        assert(reflections==(unsigned)viewer);
+        assert(normalizations==(unsigned)(needs_normal && state.fixed_function.normalization)+(unsigned)viewer);
         assert(matrices==(unsigned)state.is_fixed_function && transforms==expected_transforms);
         memset(&state, 0xa5, sizeof(state));
         assert(!strcmp(a.uniforms.members[0].name, "c"));
@@ -208,7 +235,7 @@ int main(int argc, char **argv)
             if(i==21){s.fog_enable=true;s.fixed_function.foggen=(enum VshFoggen)-1;}
             if(i>=22 && i<28){s.fog_enable=true;s.fog_mode=i<25?FOG_MODE_EXP2:FOG_MODE_EXP2_ABS;s.fixed_function.foggen=FOGGEN_RADIAL+(i-22)%3;}
         }
-        if(i>=28){s.is_fixed_function=true;opts.preserve_float32=true;s.fixed_function.texgen[0][0]=i==28?(enum VshTexgen)-1:i==29?TEXGEN_SPHERE_MAP:TEXGEN_REFLECTION_MAP;}
+        if(i>=28){s.is_fixed_function=true;opts.preserve_float32=true;s.fixed_function.texgen[0][i==28?0:i==29?2:3]=i==28?(enum VshTexgen)-1:i==29?TEXGEN_SPHERE_MAP:TEXGEN_REFLECTION_MAP;}
         GlslcResult result; memset(&result, 0xa5, sizeof(result)); allocations = 0;
         assert(!pgraph_spv_vsh(&s, opts, &result));
         assert(!allocations && !result.words && !result.uniforms.members && !result.push_constants.members);
