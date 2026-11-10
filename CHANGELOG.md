@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Software-FPU x87 conditional moves select the exact 80-bit register image with integer operations instead of branching around a helper call. Preserve NaN payloads, extended exponents, flags and tags, while retaining the cached hard-FPU path. Gameplay performance remains unmeasured.
+
 - Apple Silicon CPU JIT opens write access when watchpoints or I/O recompilation invalidate a single translated block, then restores execute mode before returning. Protect both block metadata and jump patches in the JIT allocation. Physical Mac qualification remains unmeasured.
 
 - Streaming APU voices wait silently for SSL entries with no published samples instead of aborting. Retry the entry without advancing source position or reporting completion, and preserve valid samples stored at RAM address zero.

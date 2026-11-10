@@ -1949,6 +1949,37 @@ static void gen_fmov_STN_ST0(DisasContext *s, int st_index)
     fp_wrapper(gen_fmov_STN_ST0)(s, st_index);
 }
 
+/* The software path stores exact 80-bit images in env. Select those bits
+ * without an internal branch or helper; never eagerly convert the source.
+ * The hard path can have live FP-register cache entries and keeps its
+ * existing move/flush behavior. The condition, as at the old branch, means
+ * keep ST0 when true and move ST(i) when false. */
+static bool gen_fcmov_soft(DisasContext *s, int b, int st_index)
+{
+    if (g_use_hard_fpu) {
+        return false;
+    }
+    TCGv condition = tcg_temp_new();
+    TCGv_i64 c64 = tcg_temp_new_i64();
+    TCGv_i32 c32 = tcg_temp_new_i32();
+    TCGv_i64 lo0 = tcg_temp_new_i64(), loi = tcg_temp_new_i64();
+    TCGv_i32 hi0 = tcg_temp_new_i32(), hii = tcg_temp_new_i32();
+
+    gen_setcc(s, b, condition);
+    tcg_gen_extu_tl_i64(c64, condition);
+    tcg_gen_trunc_tl_i32(c32, condition);
+    TCGv_ptr p0 = gen_stn_ptr(0), pi = gen_stn_ptr(st_index);
+    tcg_gen_ld_i64(lo0, p0, offsetof(floatx80, low));
+    tcg_gen_ld16u_i32(hi0, p0, offsetof(floatx80, high));
+    tcg_gen_ld_i64(loi, pi, offsetof(floatx80, low));
+    tcg_gen_ld16u_i32(hii, pi, offsetof(floatx80, high));
+    tcg_gen_movcond_i64(TCG_COND_NE, lo0, c64, tcg_constant_i64(0), lo0, loi);
+    tcg_gen_movcond_i32(TCG_COND_NE, hi0, c32, tcg_constant_i32(0), hi0, hii);
+    tcg_gen_st_i64(lo0, p0, offsetof(floatx80, low));
+    tcg_gen_st16_i32(hi0, p0, offsetof(floatx80, high));
+    return true;
+}
+
 static void gen_fxchg_ST0_STN(DisasContext *s, int st_index)
 {
     GEN_HELPER_FALLBACK_v_i(fxchg_ST0_STN, st_index);
@@ -3704,6 +3735,9 @@ static void gen_x87(DisasContext *s, X86DecodedInsn *decode)
                     goto illegal_op;
                 }
                 op1 = fcmov_cc[op & 3] | (((op >> 3) & 1) ^ 1);
+                if (gen_fcmov_soft(s, op1, opreg)) {
+                    break;
+                }
                 l1 = gen_new_label();
                 gen_jcc_noeob(s, op1, l1);
                 gen_fmov_ST0_STN(s, opreg);
