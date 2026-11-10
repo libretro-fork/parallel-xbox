@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Vulkan allocates shader source and immutable layout headers together, removing one allocation/free pair for each layout-bearing source. Words still retire independently; module-held layouts retain the bounded source-header storage until their last reference, without payload copies.
+
 - MMX MOVD writes its zero-extended value with one full-width store, avoiding the previous zero store followed by a low-half write. Keep SSE/AVX clearing behavior and guest memory loads unchanged. Gameplay performance remains unmeasured.
 
 - CPU translation enters MMX with inline state stores once per uninterrupted MMX sequence in a block. Publish pending x87 state first and re-enter after x87 instructions, EMMS/FEMMS or state restoration; preserve decode rollback and memory-fault ordering. Correct FXRSTOR/XRSTOR's declared effects on the cached x87 TOP value. Gameplay performance remains unmeasured.

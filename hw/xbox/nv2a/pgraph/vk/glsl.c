@@ -99,9 +99,17 @@ void pgraph_vk_shader_layouts_unref(ShaderLayouts *layouts)
 void pgraph_vk_shader_source_unref(ShaderSource *source)
 {
     if (source && retro_atomic_fetch_sub_int(&source->refs, 1) == 1) {
+        bool layouts_own_source = source->layouts_own_source;
         free(source->words_allocation ? source->words_allocation : source->words);
+        /* An inline header can survive with module-held layout references.
+         * Its word lend has ended; keep no stale payload pointers in it. */
+        source->words = NULL;
+        source->words_allocation = NULL;
+        source->num_words = 0;
         pgraph_vk_shader_layouts_unref(source->layouts);
-        g_free(source);
+        if (!layouts_own_source) {
+            g_free(source);
+        }
     }
 }
 
@@ -109,16 +117,28 @@ void pgraph_vk_shader_source_unref(ShaderSource *source)
  * There is no payload copy; the caller's emptied result owns nothing. */
 ShaderSource *pgraph_vk_shader_source_take(GlslcResult *result)
 {
-    ShaderSource *source = pgraph_vk_shader_source_new(result->words,
-                                                      result->num_words);
-    source->words_allocation = result->allocation;
-    source->len = sizeof(*source) + result->allocation_words * sizeof(*result->words);
     if (!result->uniforms.count && !result->push_constants.count) {
+        ShaderSource *source = pgraph_vk_shader_source_new(result->words,
+                                                          result->num_words);
+        source->words_allocation = result->allocation;
+        source->len = sizeof(*source) + result->allocation_words * sizeof(*result->words);
         memset(result, 0, sizeof(*result));
         return source;
     }
-    source->layouts = g_malloc0(sizeof(*source->layouts));
-    retro_atomic_int_init(&source->layouts->refs, 1);
+    /* Layouts own this allocation through the last module consumer. The
+     * adjacent source header has independent refs and releases words first. */
+    _Static_assert(sizeof(ShaderLayouts) % _Alignof(ShaderSource) == 0,
+                   "source header must stay aligned after layouts");
+    ShaderLayouts *layout_owner = g_malloc0(sizeof(*layout_owner) + sizeof(ShaderSource));
+    ShaderSource *source = (ShaderSource *)(layout_owner + 1);
+    retro_atomic_int_init(&source->refs, 1);
+    source->layouts_own_source = true;
+    source->words = result->words;
+    source->num_words = result->num_words;
+    source->words_allocation = result->allocation;
+    source->len = sizeof(*source) + result->allocation_words * sizeof(*result->words);
+    source->layouts = layout_owner;
+    retro_atomic_int_init(&layout_owner->refs, 1);
     source->layouts->uniforms = result->uniforms;
     source->layouts->push_constants = result->push_constants;
     source->len += sizeof(*source->layouts);

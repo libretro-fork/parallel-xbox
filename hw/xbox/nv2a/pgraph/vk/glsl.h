@@ -36,6 +36,7 @@ typedef struct ShaderLayouts {
 
 typedef struct ShaderSource {
     retro_atomic_int_t refs;
+    bool layouts_own_source; /* source header follows its layout allocation */
     uint32_t *words;
     size_t num_words, len; /* len includes retained layout allocations */
     ShaderLayouts *layouts; /* independent lifetime from the shader words */

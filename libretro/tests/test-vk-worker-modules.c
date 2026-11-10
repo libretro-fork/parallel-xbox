@@ -13,8 +13,8 @@
 #define ARRAY_SIZE(a) (sizeof(a)/sizeof((a)[0]))
 #include "hw/xbox/nv2a/pgraph/spv/glslc.h"
 /* SOURCE TYPES */
-static retro_atomic_int_t live_sources;
-static void *tracked_source_alloc(size_t n) { void *p=calloc(1,n); assert(p); retro_atomic_fetch_add_int(&live_sources,1); return p; }
+static retro_atomic_int_t live_sources, source_allocations;
+static void *tracked_source_alloc(size_t n) { void *p=calloc(1,n); assert(p); retro_atomic_fetch_add_int(&live_sources,1); retro_atomic_fetch_add_int(&source_allocations,1); return p; }
 #define g_malloc0 tracked_source_alloc
 static void g_free(void *p) { if(p) { free(p); retro_atomic_fetch_sub_int(&live_sources,1); } }
 /* SOURCE FUNCTIONS */
@@ -45,14 +45,12 @@ static ShaderSource *pgraph_vk_compile_shader(unsigned kind,const char *str)
 {
  const ShaderModuleCacheKey *key=(const void *)str;assert(kind==key->kind);compiles++;
  uint32_t *data=malloc((key->len+3)/4*4);assert(data);memset(data,payload_byte(key),(key->len+3)/4*4);
- ShaderSource *source=pgraph_vk_shader_source_new(data,(key->len+3)/4);
- source->layouts=tracked_source_alloc(sizeof(*source->layouts));source->layouts->refs=1;
- source->layouts->uniforms.count=1;source->layouts->uniforms.size=16;
- source->layouts->uniforms.members=calloc(1,sizeof(GlslcUniform)+6);assert(source->layouts->uniforms.members);
- char *name=(char *)(source->layouts->uniforms.members+1);memcpy(name,"value",6);
- source->layouts->uniforms.members[0]=(GlslcUniform){.name=name,.dim_v=4,.dim_a=1};
- source->len+=sizeof(*source->layouts)+sizeof(GlslcUniform)+6;
- return source;
+ GlslcResult result={.words=data,.num_words=(key->len+3)/4,.allocation_words=(key->len+3)/4};
+ result.uniforms.count=1;result.uniforms.size=16;
+ result.uniforms.members=calloc(1,sizeof(GlslcUniform)+6);assert(result.uniforms.members);
+ char *name=(char *)(result.uniforms.members+1);memcpy(name,"value",6);
+ result.uniforms.members[0]=(GlslcUniform){.name=name,.dim_v=4,.dim_a=1};
+ return pgraph_vk_shader_source_take(&result);
 }
 static ShaderSource *vk_module_spirv(const ShaderModuleCacheKey *key)
 {MString *code=vk_module_glsl(key);ShaderSource *spv=pgraph_vk_compile_shader(key->kind,mstring_get_str(code));mstring_unref(code);return spv;}
@@ -82,9 +80,20 @@ static ShaderSource *compile_for_test(const ShaderModuleCacheKey *key)
 static uint32_t seed=19;
 static uint32_t rnd(void){seed^=seed<<13;seed^=seed>>17;seed^=seed<<5;return seed;}
 static void *consumer(void *arg){ShaderSource *a=arg;for(unsigned i=0;i<200000;i++){ShaderSource *b=pgraph_vk_shader_source_ref(a);assert(b==a&&b->num_words==16);assert(!strcmp(b->layouts->uniforms.members[0].name,"value"));pgraph_vk_shader_source_unref(b);}return NULL;}
+typedef struct {ShaderSource *source;ShaderLayouts *layouts;pthread_mutex_t lock;pthread_cond_t cond;unsigned arrived;} LastOwners;
+typedef struct {LastOwners *owners;bool source;} LastRelease;
+static void *release_last_owner(void *arg){
+ LastRelease *release=arg;LastOwners *o=release->owners;
+ assert(!pthread_mutex_lock(&o->lock));o->arrived++;
+ if(o->arrived==2)assert(!pthread_cond_broadcast(&o->cond));
+ while(o->arrived!=2)assert(!pthread_cond_wait(&o->cond,&o->lock));
+ assert(!pthread_mutex_unlock(&o->lock));
+ if(release->source)pgraph_vk_shader_source_unref(o->source);else pgraph_vk_shader_layouts_unref(o->layouts);
+ return NULL;
+}
 int main(void)
 {
- retro_atomic_int_init(&live_sources,0);
+ retro_atomic_int_init(&live_sources,0);retro_atomic_int_init(&source_allocations,0);
  /* Direct and compiler results move the exact owners, including prefix views.
   * Metadata stays alive independently after the last source-word consumer. */
  for(unsigned i=0;i<1024;i++) {
@@ -100,7 +109,11 @@ int main(void)
    blocks[b]->members[0]=(GlslcUniform){.name=name,.dim_v=4,.dim_a=1};
   }
   GlslcUniform *u=result.uniforms.members,*pc=result.push_constants.members;
+  int before=retro_atomic_load_relaxed_int(&source_allocations);
   ShaderSource *taken=pgraph_vk_shader_source_take(&result);
+  assert(retro_atomic_load_relaxed_int(&source_allocations)==before+1);
+  assert(taken->layouts_own_source==!!(u||pc));
+  if(u||pc)assert(taken==(ShaderSource *)(taken->layouts+1));
   assert(taken->words==base+prefix && taken->words_allocation==(prefix?base:NULL));
   assert(!result.words&&!result.allocation&&!result.uniforms.members&&!result.push_constants.members);
   size_t bytes=sizeof(*taken)+(16+prefix)*4;
@@ -110,6 +123,7 @@ int main(void)
    retro_atomic_fetch_add_int(&taken->layouts->refs,1);
    ShaderLayouts *retained=taken->layouts;
    assert(taken->len==bytes);pgraph_vk_shader_source_unref(taken);
+   assert(!taken->words&&!taken->words_allocation&&!taken->num_words);
    if(u)assert(!strcmp(retained->uniforms.members[0].name,"value"));
    if(pc)assert(!strcmp(retained->push_constants.members[0].name,"value"));
    pgraph_vk_shader_layouts_unref(retained);
@@ -117,6 +131,11 @@ int main(void)
   assert(!retro_atomic_load_relaxed_int(&live_sources));
  }
 
+ /* Legacy standalone source/layout owners still free independently. */
+ ShaderSource *separate=pgraph_vk_shader_source_new(malloc(4),1);
+ separate->layouts=tracked_source_alloc(sizeof(*separate->layouts));retro_atomic_int_init(&separate->layouts->refs,1);
+ assert(!separate->layouts_own_source);pgraph_vk_shader_source_unref(separate);assert(!retro_atomic_load_relaxed_int(&live_sources));
+ printf("Source ownership: 1024 direct/compiler/prefix/empty moves use one header allocation each; retained source header=%zu bytes; no retained word pointers\n",sizeof(ShaderSource));
  /* Interior module views retain and release the allocation base. */
  uint32_t *view_base=malloc(20*sizeof(*view_base));assert(view_base);
  ShaderSource *view=pgraph_vk_shader_source_new(view_base+4,16);
@@ -190,6 +209,24 @@ int main(void)
  assert(!strcmp(two->uniforms.uniforms[0].name,"value"));
  pgraph_vk_destroy_shader_module(&renderer,two);
  assert(!retro_atomic_load_relaxed_int(&live_sources));
+ /* Module layouts may retire while a memo still owns the words. */
+ a=compile_for_test(&k);expected_words=a->words;
+ one=pgraph_vk_create_shader_module_from_spirv(&renderer,pgraph_vk_shader_source_ref(a));
+ pgraph_vk_destroy_shader_module(&renderer,one);assert(a->words==expected_words&&!strcmp(a->layouts->uniforms.members[0].name,"value"));
+ pgraph_vk_shader_source_unref(a);vk_spec_modules_clear();assert(!retro_atomic_load_relaxed_int(&live_sources));
+ /* Race the final word owner against the last independent layout consumer. */
+ for(unsigned i=0;i<512;i++){
+  GlslcResult result={.words=malloc(64),.num_words=16,.allocation_words=16};assert(result.words);
+  result.uniforms.count=1;result.uniforms.size=16;result.uniforms.members=calloc(1,sizeof(GlslcUniform)+6);assert(result.uniforms.members);
+  char *name=(char *)(result.uniforms.members+1);memcpy(name,"value",6);result.uniforms.members[0]=(GlslcUniform){.name=name,.dim_v=4,.dim_a=1};
+  LastOwners owners={.source=pgraph_vk_shader_source_take(&result)};owners.layouts=owners.source->layouts;retro_atomic_fetch_add_int(&owners.layouts->refs,1);
+  assert(!pthread_mutex_init(&owners.lock,NULL));assert(!pthread_cond_init(&owners.cond,NULL));
+  LastRelease release[2]={{&owners,!!(i&1)},{&owners,!(i&1)}};pthread_t last[2];
+  for(unsigned j=0;j<2;j++)assert(!pthread_create(last+j,NULL,release_last_owner,release+j));
+  for(unsigned j=0;j<2;j++)assert(!pthread_join(last[j],NULL));
+  assert(!pthread_cond_destroy(&owners.cond));assert(!pthread_mutex_destroy(&owners.lock));assert(!retro_atomic_load_relaxed_int(&live_sources));
+ }
+ puts("Source retirement: module-first release and 512 synchronized final source/layout races PASS");
  assert(reservations>0);
  puts("PASS: immutable module sharing, exact keys/collisions, SPIR-V versions, byte cap, oversize bypass, eviction, queue drops, state markers, adoption and 800000 concurrent ref/unref pairs; no leaked sources/layouts; shared layouts outlive words and module destruction");
 }
