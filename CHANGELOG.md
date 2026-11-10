@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Shader CI checks the actual bundled Vulkan seed dictionary for direct-stage eligibility after migration, including all current 9,334 state entries. Fail obsolete key migrations, stale record layouts, missing coverage and malformed streams before they can silently weaken prewarming. Map compressed input and decode directly into one bounded final owner per game; no runtime code changes.
+
 - OpenGL and Vulkan migrate old convolution tags when loading shader seeds, so prewarming targets the current projected-convolution shader keys. Update only already-owned seed metadata before hashing or queue publication, without new allocations, file scans, retained pointers or draw-path work. Keep current shader/cache keys and unknown tags unchanged; cold-play recovery remains unqualified.
 
 - Vulkan vertex layouts borrow immutable core-owned uniform names instead of scanning and copying them into every layout. Keep layout records independently owned, preserve shader bytes and allocation counts, and reduce allocated metadata bytes. Module-held layouts retain valid names through their last consumer; frame-time improvement remains unmeasured.
