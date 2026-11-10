@@ -1350,6 +1350,30 @@ int main(void)
         assert(tcg_op_buf_full(&context) == (context.nb_ops >= 4000));
     }
     puts("TCG operation limit: supplied owners and 3999/4000/4001 boundaries PASS");
+    /* Exercise the real allocator through the stop boundary, with a TLS
+     * context that would give the opposite answer. The reserved slots must
+     * remain usable for the final instruction and the TB epilogue. */
+    {
+        int saved_temps = context.nb_temps;
+        int saved_other_temps = other.nb_temps;
+        other.nb_temps = 0;
+        context.nb_temps = TCG_MAX_TEMPS;
+        while (!tcg_temps_nearly_full(&other)) {
+            tcg_temp_alloc(&other);
+        }
+        assert(other.nb_temps == TCG_MAX_TEMPS - TCG_TEMPS_MARGIN + 1);
+        assert(context.nb_temps == TCG_MAX_TEMPS);
+        for (int i = 1; i < TCG_TEMPS_MARGIN; ++i) {
+            tcg_temp_alloc(&other);
+        }
+        assert(other.nb_temps == TCG_MAX_TEMPS);
+        assert(tcg_temps_nearly_full(&other));
+        context.nb_temps = 0;
+        assert(!tcg_temps_nearly_full(&context));
+        context.nb_temps = saved_temps;
+        other.nb_temps = saved_other_temps;
+    }
+    puts("TCG temp headroom: explicit owner, stop boundary and final slots PASS");
     /* Existing callers without a local owner retain their TLS-based API. */
     context.pool_end = current_cursor + 8;
     unsigned calls = refill_calls;

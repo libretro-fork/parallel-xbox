@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- CPU translation: finish temporary-heavy blocks before the next instruction is likely to exhaust translation storage, reducing discarded translations and retries. Unusually large instructions retain the existing overflow retry. Performance and cold/warm gameplay qualification remain pending.
+
 - DSP DMA: read each seven-word descriptor through one backend operation, with a stable snapshot before payload writes. Preserve ordered reads across memory aliases and callback-only backends, strict program-memory checks, and program-write invalidation; add boundary, overlap and linked-node regressions.
 
 - Read unsigned integer color textures directly as Vulkan SPIR-V, including projected/rectangle reads and nine-tap convolution. Convert numeric texels to floats before filtering without shadow-depth decoding, reuse existing unsigned views and preserve alpha/key processing. Keep two final allocations without texel copies or retained lends; unsupported shapes retain the compiler.

@@ -11,6 +11,13 @@ import tempfile
 r = Path(sys.argv[1]).resolve()
 cc = shlex.split(sys.argv[2] if len(sys.argv) > 2 else 'cc')
 source = (r / 'tcg/tcg.c').read_text()
+translator = (r / 'accel/tcg/translator.c').read_text()
+# The headroom check ends an instruction normally, before tb_stop emits the
+# epilogue; it must not replace the allocator's overflow fallback.
+loop = translator[translator.index('void translator_loop('):]
+assert loop.index('ops->translate_insn(') < loop.index('tcg_temps_nearly_full(s)')
+assert loop.index('tcg_temps_nearly_full(s)') < loop.index('ops->tb_stop(')
+assert 'tcg_raise_tb_overflow(s);' in source
 
 
 def function(key, source=source):
