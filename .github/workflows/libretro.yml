@@ -155,6 +155,16 @@ jobs:
         run: python3 libretro/tests/test-memory-poll.py . cc
       - name: TCG owners, temp headroom and allocator boundaries
         run: python3 libretro/tests/test-tcg-global-layout.py . cc
+      - name: TCG reachability and liveness match the pre-port passes
+        env:
+          TCG_LIVENESS_NEGATIVE: 1
+          TCG_LIVENESS_CFLAGS: -fsanitize=address,undefined -fno-omit-frame-pointer
+        run: python3 libretro/tests/test-tcg-liveness.py . cc
+      - name: TCG optimizer copy and generation handling match the pre-port passes
+        env:
+          TCG_COPY_NEGATIVE: 1
+          TCG_COPY_CFLAGS: -fsanitize=address,undefined -fno-omit-frame-pointer
+        run: python3 libretro/tests/test-tcg-optimizer-copy.py . cc
       - name: Native register budgets must preserve helper accounting and request halves
         run: python3 libretro/tests/test-tcg-budget-register.py . cc
       - name: Early wait nominations must preserve prepaid instructions and interrupt requests

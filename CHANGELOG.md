@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- CPU translation: track active temporary state during liveness analysis, combine reachability and temporary-lifetime discovery, and initialize/copy-propagate optimizer operands in one pass. Preserve explicit context owners and generated liveness decisions; synthetic differential checks cover the prior passes. Gameplay performance remains unmeasured.
+
 - CPU translation: finish temporary-heavy blocks before the next instruction is likely to exhaust translation storage, reducing discarded translations and retries. Unusually large instructions retain the existing overflow retry. Performance and cold/warm gameplay qualification remain pending.
 
 - Regression checks: restore the historical Vulkan binding/hash fixture after pending-worker retries were added, keeping unexpected retries fatal and real retry coverage separate; update flip-retirement checks for the seed service's renderer argument. Run the TCG allocator/headroom checks in build CI.

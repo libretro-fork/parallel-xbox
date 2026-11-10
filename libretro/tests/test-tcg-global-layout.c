@@ -1144,7 +1144,7 @@ static void check_optimizer_temps(TCGContext *current, TCGContext *other)
         assert(info && info->z_mask == (uint64_t)expected && info->o_mask == (uint64_t)expected);
         assert(info->s_mask == (uint64_t)(INT64_MIN >> clrsb64(expected)));
         assert(info->next_copy == ct && info->prev_copy == ct && QSIMPLEQ_EMPTY(&info->mem_copy));
-        assert(test_bit(temp_idx_context(owner, ct), opt.temps_used.l));
+        assert(info->ebb == opt.ebb);
         int used = owner->nb_temps;
         uintptr_t cursor = owner->pool_cur;
         assert(arg_new_constant(&opt, values[vi]) == constant);
@@ -1155,16 +1155,16 @@ static void check_optimizer_temps(TCGContext *current, TCGContext *other)
         info = temp->state_ptr;
         assert(info && info->z_mask == UINT64_MAX && !info->o_mask && !info->s_mask);
         assert(info->next_copy == temp && info->prev_copy == temp && QSIMPLEQ_EMPTY(&info->mem_copy));
-        assert(test_bit(temp_idx_context(owner, temp), opt.temps_used.l));
+        assert(info->ebb == opt.ebb);
         tcg_temp_free_context(owner, temp);
         used = owner->nb_temps;
         cursor = owner->pool_cur;
-        memset(&opt.temps_used, 0, sizeof(opt.temps_used));
+        ++opt.ebb;
         info->z_mask = 0; info->o_mask = 42; info->s_mask = 42;
         assert(arg_temp(arg_new_temp(&opt)) == temp);
         assert(owner->nb_temps == used && owner->pool_cur == cursor && temp->state_ptr == info);
         assert(info->z_mask == UINT64_MAX && !info->o_mask && !info->s_mask);
-        assert(temp->temp_allocated && test_bit(temp_idx_context(owner, temp), opt.temps_used.l));
+        assert(temp->temp_allocated && info->ebb == opt.ebb);
         assert(untouched->nb_temps == other_temps && untouched->pool_cur == other_pool);
         ++cases;
     }
