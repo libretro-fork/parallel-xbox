@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- x86-64 hard-FPU ordered x87 comparisons use integer ordering for normal values and signed zero, and ordered SoftFloat for exceptional inputs. Preserve guest exception flags, including invalid for quiet NaNs, without altering host FP control state. Gameplay performance remains unmeasured.
+
 - After-access CPU watchpoints during interrupt or exception frame construction let delivery complete before requesting a debugger stop. Preserve acknowledged interrupts instead of retrying them as translated instructions; normal instruction watchpoints and stop-before behavior stay intact.
 
 - Vulkan packs index uploads as 16-bit values for native points, lines and triangles when every index is below 65535. Keep emulated topologies and larger indices on the 32-bit path, and pad uploads to preserve alignment. Gameplay performance remains unmeasured.

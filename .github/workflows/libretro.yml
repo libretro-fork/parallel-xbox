@@ -26,7 +26,7 @@ jobs:
       - uses: actions/checkout@v4
       - name: Carry specialization rejects the DOA3 throughput regression
         run: python3 libretro/tests/test-tb-lookup-state.py . cc
-      - name: Quiet x87 integer comparisons match SoftFloat
+      - name: Ordered and quiet x87 integer comparisons match SoftFloat
         run: python3 libretro/tests/test-x87-quiet-compare.py . cc
       - name: OHCI publishes completion queues before frame interrupts
         run: python3 libretro/tests/test-ohci-hcca.py . cc

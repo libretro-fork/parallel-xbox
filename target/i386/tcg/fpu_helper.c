@@ -116,15 +116,6 @@ floatx80 floatx80_div__hard(floatx80 a, floatx80 b, float_status *status)
 }
 
 static inline
-FloatRelation floatx80_compare__hard(floatx80 a, floatx80 b, float_status *status)
-{
-    if (a.fval < b.fval) return float_relation_less;
-    if (a.fval > b.fval) return float_relation_greater;
-    if (a.fval == b.fval) return float_relation_equal;
-    return float_relation_unordered;
-}
-
-static inline
 floatx80 float32_to_floatx80__hard(float32 val, float_status *status)
 {
     return (floatx80){ .fval = *(float *)&val };
@@ -207,6 +198,19 @@ floatx80_compare_quiet__hard(floatx80 a, floatx80 b, float_status *status)
         return ((ka < kb) ^ sa) ? float_relation_less : float_relation_greater;
     }
     return floatx80_compare_quiet(a, b, status);
+}
+
+/* Ordered and quiet comparisons agree on this ordinary-value domain.
+ * Exceptional inputs must use the ordered SoftFloat entry point: FCOM
+ * raises invalid for quiet NaNs too, unlike FUCOM. Avoid host FP state. */
+static inline FloatRelation
+floatx80_compare__hard(floatx80 a, floatx80 b, float_status *status)
+{
+    if (likely(floatx80_is_normal_or_zero__hard(a) &&
+               floatx80_is_normal_or_zero__hard(b))) {
+        return floatx80_compare_quiet__hard(a, b, status);
+    }
+    return floatx80_compare(a, b, status);
 }
 
 #define floatx80_compare_quiet floatx80_compare_quiet__hard
