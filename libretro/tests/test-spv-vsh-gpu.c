@@ -105,8 +105,8 @@ static void pack(uint8_t *dst,const GlslcLayout *layout,const VshUniformValues *
 static void release(GlslcResult *r){glslc_result_free_words(r);free(r->uniforms.members);free(r->push_constants.members);}
 int main(int argc, char **argv) {
  assert(argc==1 || argc==3);
- unsigned first=argc==3?strtoul(argv[1],NULL,10):0, limit=argc==3?strtoul(argv[2],NULL,10):15120;
- assert(first<limit && limit<=15120);
+ unsigned first=argc==3?strtoul(argv[1],NULL,10):0, limit=argc==3?strtoul(argv[2],NULL,10):19984;
+ assert(first<limit && limit<=19984);
  printf("Fixture range [%u, %u)\n",first,limit);
  const bool validated=getenv("NO_VALIDATION")==NULL;
  const char *layer="VK_LAYER_KHRONOS_validation",*debug=VK_EXT_DEBUG_UTILS_EXTENSION_NAME;
@@ -270,6 +270,28 @@ int main(int argc, char **argv) {
    state.fixed_function.normalization=!!(f&256);
    memset(state.fixed_function.texgen,0xa5,sizeof(state.fixed_function.texgen));
   }
+  if(test>=15120){
+   unsigned f=test-15120;state.fog_dynamic=true;
+   state.fog_enable=!(f&1024);state.fog_mode=(enum VshFogMode)-1;
+   state.fixed_function.foggen=(enum VshFoggen)-1;
+   state.fixed_function.texgen_dynamic=!!(f&1);
+   state.fixed_function.skinning=(f/16)%7;
+   state.point_params_enable=!!(f&8);state.fixed_function.normalization=!!(f&2);
+   for(unsigned t=0;t<4;t++){
+    state.fixed_function.texture_matrix_enable[t]=!!(f&(1u<<t));
+    state.fixed_function.texgen[t][0]=(f/16+t)%6;
+    state.fixed_function.texgen[t][1]=(f/32+t)%6;
+    state.fixed_function.texgen[t][2]=TEXGEN_NORMAL_MAP;
+    state.fixed_function.texgen[t][3]=TEXGEN_OBJECT_LINEAR;
+   }
+  }
+  if(test>=19216){
+   unsigned f=test-19216, combo=f/128;
+   state.fog_dynamic=false;state.fog_enable=true;
+   state.fog_mode=combo<3?FOG_MODE_EXP2:FOG_MODE_EXP2_ABS;
+   state.fixed_function.foggen=FOGGEN_RADIAL+combo%3;
+   state.fixed_function.texgen_dynamic=!!(f&64);state.point_params_enable=!!(f&32);
+  }
   for(unsigned a=0;a<16;a++)attrs[a].format=state.compressed_attrs&(1u<<a)?VK_FORMAT_R32_SINT:VK_FORMAT_R32G32B32A32_SFLOAT;
   opts.preserve_float32=fp.shaderSignedZeroInfNanPreserveFloat32;
   VshState excluded=state;excluded.point_params_enable=true;
@@ -337,6 +359,26 @@ int main(int argc, char **argv) {
    {.1f,.2f,.3f,.4f},{1,0,0,0},{0,1,0,0},{0,0,1,0},{0,0,0,1},
    {-.25f,1.5f,-2,4},{.5f,.5f,0,0}
   };
+  if(test>=15120){
+   unsigned f=test-15120;
+   values.fogCtl[0]=((f>>10)&1u) | (((f>>4)&7u)<<1) | (((f>>7)&7u)<<4) | 0xa5a50000u;
+   values.texMatEnable[0]=(f&15u)|0xffff0000u;
+   values.c[NV_IGRAPH_XF_XFCTX_FOG][0]=.25f;
+   values.c[NV_IGRAPH_XF_XFCTX_FOG][1]=-.5f;
+   values.c[NV_IGRAPH_XF_XFCTX_FOG][2]=.125f;
+   values.c[NV_IGRAPH_XF_XFCTX_FOG][3]=.5f;
+   if(f&2048){
+    const float params[]={-.01f,0.0f,-0.0f,.5f,INFINITY,-INFINITY,NAN,0x1p-100f};
+    values.fogParam[0][0]=params[(f>>7)&7];values.fogParam[0][1]=params[(f>>4)&7];
+    values.c[NV_IGRAPH_XF_XFCTX_FOG][3]=params[(f>>7)&7];
+   }else{values.fogParam[0][0]=1.25f;values.fogParam[0][1]=-.01f;}
+  }
+  if(test>=19216){
+   unsigned f=test-19216;
+   const float params[]={-.01f,0.0f,-0.0f,.5f,INFINITY,-INFINITY,NAN,0x1p-100f};
+   values.fogParam[0][0]=1.25f;values.fogParam[0][1]=params[(f/16)%8];
+   values.c[NV_IGRAPH_XF_XFCTX_FOG][3]=params[(f/16+3)%8];
+  }
   unsigned packed=0;for(unsigned a=0;a<16;a++)if(state.uniform_attrs&(1u<<a)) {
    for(unsigned k=0;k<4;k++)values.inlineValue[packed][k]=a==0?(k==3?1:k==2?100:40):(a==15?2:((int)(a+k)%7-3)*.5f);
    if(state.is_fixed_function && state.fixed_function.skinning!=SKINNING_OFF && a==1)for(unsigned k=0;k<4;k++)values.inlineValue[packed][k]=skin_weights[(test/16)%7][k];

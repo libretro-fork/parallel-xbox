@@ -20,6 +20,8 @@ _Static_assert(NV2A_VERTEXSHADER_ATTRIBUTES == 16, "review direct input layout")
 typedef struct Writer {
     uint32_t *words, next;
     size_t count, capacity;
+    uint32_t precise_mul[4];
+    unsigned precise_count;
 } Writer;
 
 static uint32_t id(Writer *w) { return w->next++; }
@@ -100,16 +102,10 @@ bool pgraph_spv_vsh_supported(const VshState *s, SpvVshOptions opts)
     }
     if (s->is_fixed_function) {
         const FixedFunctionVshState *ff = &s->fixed_function;
-        if (!opts.preserve_float32 || s->fog_dynamic ||
-            (s->fog_enable && (unsigned)ff->foggen > FOGGEN_FOG_X) ||
+        if (!opts.preserve_float32 ||
+            (s->fog_enable && !s->fog_dynamic && (unsigned)ff->foggen > FOGGEN_FOG_X) ||
             ff->lighting || ff->csv0c_dynamic ||
             (unsigned)ff->skinning > SKINNING_4WEIGHTS4MATRICES) {
-            return false;
-        }
-        /* Quadratic curves fed by transformed distances still differ by one
-         * ULP on physical-GPU comparisons. Preserve the reference route. */
-        if (s->fog_enable && (s->fog_mode == FOG_MODE_EXP2 || s->fog_mode == FOG_MODE_EXP2_ABS) &&
-            ff->foggen >= FOGGEN_RADIAL && ff->foggen <= FOGGEN_ABS_PLANAR) {
             return false;
         }
         for (unsigned t = 0; !ff->texgen_dynamic && t < 4; t++) {
@@ -159,6 +155,13 @@ bool pgraph_spv_vsh_supported(const VshState *s, SpvVshOptions opts)
     return false;
 }
 
+static bool needs_precise_fog(const VshState *s)
+{
+    return s->is_fixed_function && (s->fog_dynamic ||
+        (s->fog_enable && (s->fog_mode == FOG_MODE_EXP2 || s->fog_mode == FOG_MODE_EXP2_ABS) &&
+         s->fixed_function.foggen >= FOGGEN_RADIAL && s->fixed_function.foggen <= FOGGEN_ABS_PLANAR));
+}
+
 /* The existing texgenMode uniform carries TEXGEN_REF even for static modes. */
 static bool needs_texgen_viewer(const VshState *s)
 {
@@ -184,7 +187,7 @@ typedef struct Context {
     uint32_t ci[256], cu[8], cf[F_COUNT], zero4, initial4;
     uint32_t inputs[16], outputs[13], position, point_size, ubo, pc;
     uint32_t main, ext, mat4, texgen_array, viewer_mask, point_array, point_limit, texgen_half, texgen_shift9, texgen_bit8;
-    uint32_t r[12], o[13], a0, input_values[16], skin_weights[4];
+    uint32_t r[12], o[13], a0, input_values[16], skin_weights[4], fog_control, fog_distance;
 } Context;
 
 static uint32_t unary(Context *c, SpvOp code, uint32_t type, uint32_t a)
@@ -212,6 +215,24 @@ static uint32_t sub(Context *c, uint32_t a, uint32_t b)
 { return binary(c, SpvOpFSub, c->f, a, b); }
 static uint32_t divf(Context *c, uint32_t a, uint32_t b)
 { return binary(c, SpvOpFDiv, c->f, a, b); }
+static uint32_t squared_fog(Context *c, uint32_t distance, uint32_t density)
+{
+    uint32_t products[4];
+    products[0] = mul(c, unary(c, SpvOpFNegate, c->f, distance), distance);
+    products[1] = mul(c, products[0], density);
+    products[2] = mul(c, products[1], density);
+    products[3] = mul(c, products[2], c->cf[F_THIRTYTWO]);
+    if (needs_precise_fog(c->state)) {
+        for (unsigned i = 0; i < 4; i++) {
+            if (c->w->precise_count >= 4) { abort(); }
+            unsigned index = c->w->precise_count++;
+            if (c->w->words && c->w->precise_mul[index] != products[i]) { abort(); }
+            c->w->precise_mul[index] = products[i];
+        }
+    }
+    return products[3];
+}
+
 static uint32_t load_uniform(Context *c, unsigned member, uint32_t type, uint32_t ptr)
 {
     uint32_t p = value(c->w, SpvOpAccessChain, ptr, 2, c->ubo, c->ci[member]);
@@ -438,6 +459,40 @@ static void dynamic_texgen(Context *c, uint32_t *eye_position)
     }
 }
 
+static uint32_t dynamic_fog_distance(Context *c, uint32_t *eye_position)
+{
+    if (!*eye_position) { *eye_position = transform(c, input(c, 0), NV_IGRAPH_XF_XFCTX_MMAT0); }
+    /* Preload shared input IDs in the dominating block. */
+    uint32_t specular = input(c, 4), coordinate = input(c, 5);
+    c->fog_control = load_uniform(c, 2, c->u, c->uniform_u);
+    uint32_t gen = binary(c, SpvOpShiftRightLogical, c->u, c->fog_control, c->cu[4]);
+    gen = binary(c, SpvOpBitwiseAnd, c->u, gen, c->cu[7]);
+    uint32_t spec = id(c->w), radial = id(c->w), explicit = id(c->w);
+    uint32_t planar = id(c->w), merge = id(c->w);
+    op(c->w, SpvOpSelectionMerge, 2, merge, 0u);
+    op(c->w, SpvOpSwitch, 8, gen, planar, 0u, spec, 1u, radial, 4u, explicit);
+    op(c->w, SpvOpLabel, 1, spec);
+    uint32_t alpha = clamp(c, c->f, extract(c, specular, 3), c->cf[F_ZERO], c->cf[F_ONE]);
+    op(c->w, SpvOpBranch, 1, merge);
+    op(c->w, SpvOpLabel, 1, radial);
+    uint32_t xyz = value(c->w, SpvOpVectorShuffle, c->v3, 5, *eye_position, *eye_position, 0u, 1u, 2u);
+    uint32_t length = ext1(c, GLSLstd450Length, c->f, xyz);
+    op(c->w, SpvOpBranch, 1, merge);
+    op(c->w, SpvOpLabel, 1, explicit);
+    uint32_t fog_x = extract(c, coordinate, 0);
+    op(c->w, SpvOpBranch, 1, merge);
+    op(c->w, SpvOpLabel, 1, planar);
+    xyz = value(c->w, SpvOpVectorShuffle, c->v3, 5, *eye_position, *eye_position, 0u, 1u, 2u);
+    uint32_t plane = constant(c, NV_IGRAPH_XF_XFCTX_FOG);
+    uint32_t normal = value(c->w, SpvOpVectorShuffle, c->v3, 5, plane, plane, 0u, 1u, 2u);
+    uint32_t distance = add(c, binary(c, SpvOpDot, c->f, normal, xyz), extract(c, plane, 3));
+    uint32_t absolute = binary(c, SpvOpIEqual, c->b, gen, c->cu[3]);
+    distance = choose(c, c->f, absolute, ext1(c, GLSLstd450FAbs, c->f, distance), distance);
+    op(c->w, SpvOpBranch, 1, merge);
+    op(c->w, SpvOpLabel, 1, merge);
+    return value(c->w, SpvOpPhi, c->f, 8, alpha, spec, length, radial, fog_x, explicit, distance, planar);
+}
+
 static void unlit(Context *c)
 {
     static const unsigned tex_matrix[] = {
@@ -457,7 +512,9 @@ static void unlit(Context *c)
     c->o[0] = transform(c, position, NV_IGRAPH_XF_XFCTX_CMAT0);
     c->o[3] = input(c, 3); c->o[4] = input(c, 4);
     c->o[7] = input(c, 7); c->o[8] = input(c, 8);
-    if (c->state->fog_enable) {
+    if (c->state->fog_dynamic) {
+        c->fog_distance = dynamic_fog_distance(c, &eye_position);
+    } else if (c->state->fog_enable) {
         uint32_t distance;
         enum VshFoggen gen = c->state->fixed_function.foggen;
         if (gen == FOGGEN_SPEC_ALPHA) {
@@ -824,13 +881,13 @@ static void finish(Context *c)
     op(c->w, SpvOpStore, 2, c->outputs[3], b1);
     uint32_t fog = c->cf[F_ONE];
     if (c->state->fog_dynamic) {
-        uint32_t ctl = load_uniform(c, 2, c->u, c->uniform_u);
+        uint32_t ctl = c->fog_control ? c->fog_control : load_uniform(c, 2, c->u, c->uniform_u);
         uint32_t mode = binary(c, SpvOpBitwiseAnd, c->u,
                               binary(c, SpvOpShiftRightLogical, c->u, ctl, c->cu[1]), c->cu[7]);
         uint32_t param = load_uniform(c, 3, c->v2, c->uniform_v2);
         uint32_t px = value(c->w, SpvOpCompositeExtract, c->f, 2, param, 0u);
         uint32_t py = value(c->w, SpvOpCompositeExtract, c->f, 2, param, 1u);
-        uint32_t distance = extract(c, c->o[5], 0);
+        uint32_t distance = c->fog_distance ? c->fog_distance : extract(c, c->o[5], 0);
         uint32_t kind = binary(c, SpvOpBitwiseAnd, c->u, mode, c->cu[3]);
         uint32_t lin_label = id(c->w), exp_label = id(c->w);
         uint32_t sq_label = id(c->w), merge = id(c->w);
@@ -844,8 +901,7 @@ static void finish(Context *c)
                                   mul(c, mul(c, distance, py), c->cf[F_SIXTEEN]))), c->cf[F_ONEHALF]);
         op(c->w, SpvOpBranch, 1, merge);
         op(c->w, SpvOpLabel, 1, sq_label);
-        uint32_t squared = mul(c, unary(c, SpvOpFNegate, c->f, distance), distance);
-        squared = mul(c, mul(c, mul(c, squared, py), py), c->cf[F_THIRTYTWO]);
+        uint32_t squared = squared_fog(c, distance, py);
         squared = sub(c, add(c, px, ext1(c, GLSLstd450Exp2, c->f, squared)), c->cf[F_ONEHALF]);
         op(c->w, SpvOpBranch, 1, merge);
         op(c->w, SpvOpLabel, 1, merge);
@@ -876,8 +932,7 @@ static void finish(Context *c)
             fog = sub(c, add(c, px, ext1(c, GLSLstd450Exp2, c->f,
                 mul(c, mul(c, distance, py), c->cf[F_SIXTEEN]))), c->cf[F_ONEHALF]);
         } else {
-            uint32_t squared = mul(c, unary(c, SpvOpFNegate, c->f, distance), distance);
-            squared = mul(c, mul(c, mul(c, squared, py), py), c->cf[F_THIRTYTWO]);
+            uint32_t squared = squared_fog(c, distance, py);
             fog = sub(c, add(c, px, ext1(c, GLSLstd450Exp2, c->f, squared)), c->cf[F_ONEHALF]);
         }
         if (mode >= 4) { fog = ext1(c, GLSLstd450FAbs, c->f, fog); }
@@ -983,6 +1038,13 @@ static void emit(Writer *w, const VshState *state, SpvVshOptions opts)
         op(w, SpvOpDecorate, 2, c.pc_t, (uint32_t)SpvDecorationBlock);
         op(w, SpvOpMemberDecorate, 4, c.pc_t, 0u, (uint32_t)SpvDecorationOffset, 0u);
     }
+    /* The count pass records the four result IDs. Annotations consume no IDs,
+     * so the write pass can emit them directly before types/functions. */
+    if (needs_precise_fog(state)) {
+        for (unsigned i = 0; i < 4; i++) {
+            op(w, SpvOpDecorate, 2, w->precise_mul[i], (uint32_t)SpvDecorationNoContraction);
+        }
+    }
     op(w, SpvOpTypeVoid, 1, c.void_t);
     op(w, SpvOpTypeFunction, 2, c.fn_t, c.void_t);
     op(w, SpvOpTypeFloat, 2, c.f, 32u);
@@ -999,6 +1061,7 @@ static void emit(Writer *w, const VshState *state, SpvVshOptions opts)
     used[NV2A_VERTEXSHADER_CONSTANTS] = true;
     if (state->is_fixed_function) {
         used[NV_IGRAPH_XF_XFCTX_VPOFF] = true;
+        if (state->fog_dynamic) { used[NV_IGRAPH_XF_XFCTX_FOG] = true; }
         unsigned bones = skin_matrices(state->fixed_function.skinning);
         for (unsigned b = 0; b < bones; b++) {
             for (unsigned j = 0; j < 4; j++) { used[NV_IGRAPH_XF_XFCTX_MMAT0 + b * 8 + j] = true; }
@@ -1157,11 +1220,13 @@ bool pgraph_spv_vsh(const VshState *state, SpvVshOptions opts, GlslcResult *out)
     if (!pgraph_spv_vsh_supported(state, opts)) { return false; }
     Writer count = { .next = 1 };
     emit(&count, state, opts);
+    if (count.precise_count != (needs_precise_fog(state) ? 4u : 0u)) { abort(); }
     uint32_t *words = malloc(count.count * sizeof(*words));
     if (!words) { abort(); }
-    Writer output = { .words = words, .capacity = count.count, .next = 1 };
+    Writer output = { .words = words, .capacity = count.count, .next = 1,
+                      .precise_mul = {count.precise_mul[0], count.precise_mul[1], count.precise_mul[2], count.precise_mul[3]} };
     emit(&output, state, opts);
-    if (output.count != count.count || output.next != count.next) { abort(); }
+    if (output.count != count.count || output.next != count.next || output.precise_count != count.precise_count) { abort(); }
     out->words = words;
     out->num_words = out->allocation_words = output.count;
     out->uniforms = layout(false, !opts.push_constants && state->uniform_attrs, 0, needs_texgen_viewer(state), state->is_fixed_function && state->point_params_enable, state->is_fixed_function && state->fixed_function.texgen_dynamic);

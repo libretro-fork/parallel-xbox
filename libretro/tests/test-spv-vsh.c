@@ -70,7 +70,7 @@ int main(int argc, char **argv)
 {
     assert(argc == 2);check_caps();
     unsigned total = 0;
-    for (unsigned i = 0; i < 13712; i++) {
+    for (unsigned i = 0; i < 18576; i++) {
         VshState state;
         unsigned base=i%1120;
         make_case(&state, base);
@@ -137,6 +137,28 @@ int main(int argc, char **argv)
    state.fixed_function.normalization=!!(f&256);
             memset(state.fixed_function.texgen,0xff,sizeof(state.fixed_function.texgen));
         }
+  if(i>=13712){
+   unsigned f=i-13712;state.fog_dynamic=true;
+   state.fog_enable=!(f&1024);state.fog_mode=(enum VshFogMode)-1;
+   state.fixed_function.foggen=(enum VshFoggen)-1;
+   state.fixed_function.texgen_dynamic=!!(f&1);
+   state.fixed_function.skinning=(f/16)%7;
+   state.point_params_enable=!!(f&8);state.fixed_function.normalization=!!(f&2);
+   for(unsigned t=0;t<4;t++){
+    state.fixed_function.texture_matrix_enable[t]=!!(f&(1u<<t));
+    state.fixed_function.texgen[t][0]=(f/16+t)%6;
+    state.fixed_function.texgen[t][1]=(f/32+t)%6;
+    state.fixed_function.texgen[t][2]=TEXGEN_NORMAL_MAP;
+    state.fixed_function.texgen[t][3]=TEXGEN_OBJECT_LINEAR;
+   }
+  }
+  if(i>=17808){
+   unsigned f=i-17808, combo=f/128;
+   state.fog_dynamic=false;state.fog_enable=true;
+   state.fog_mode=combo<3?FOG_MODE_EXP2:FOG_MODE_EXP2_ABS;
+   state.fixed_function.foggen=FOGGEN_RADIAL+combo%3;
+   state.fixed_function.texgen_dynamic=!!(f&64);state.point_params_enable=!!(f&32);
+  }
         SpvVshOptions opts = { .spirv_1_6 = !!(i & 1),
                               .push_constants = !!(i & 4), .ubo_binding = i % 3,
                               .preserve_float32 = i>=1120 || !!(i&8) };
@@ -154,6 +176,7 @@ int main(int argc, char **argv)
             state.fixed_function.light_dynamic=!state.fixed_function.light_dynamic;
             state.fixed_function.two_sided=!state.fixed_function.two_sided;
             if(!state.fog_enable)state.fixed_function.foggen=(enum VshFoggen)-1;
+            if(state.fog_dynamic){state.fog_enable=!state.fog_enable;state.fog_mode=(enum VshFogMode)8;state.fixed_function.foggen=(enum VshFoggen)8;}
             if(state.fixed_function.texgen_dynamic){
                 memset(state.fixed_function.texgen,0xa5,sizeof(state.fixed_function.texgen));
                 for(unsigned t=0;t<4;t++)state.fixed_function.texture_matrix_enable[t]=!state.fixed_function.texture_matrix_enable[t];
@@ -190,10 +213,11 @@ int main(int argc, char **argv)
         if (a.push_constants.count) {
             assert(a.push_constants.members[0].dim_a == (size_t)__builtin_popcount(state.uniform_attrs));
         }
-        unsigned switches=0, unsigned_type=0, control_pointer=0, control_reads=0, preserve_modes=0, preserve_caps=0, matrices=0, transforms=0, normalizations=0, reflections=0, branches=0;
+        unsigned switches=0, unsigned_type=0, control_pointer=0, control_reads=0, preserve_modes=0, preserve_caps=0, matrices=0, transforms=0, normalizations=0, reflections=0, branches=0, contractions=0;
         for(size_t w=5;w<a.num_words;w+=a.words[w]>>16){
             unsigned op=a.words[w]&65535;
             if(op==SpvOpSwitch)switches++;
+            if(op==SpvOpDecorate && a.words[w+2]==SpvDecorationNoContraction)contractions++;
             if(op==SpvOpBranchConditional)branches++;
             if(op==SpvOpTypeMatrix)matrices++;
             if(op==SpvOpVectorTimesMatrix)transforms++;
@@ -207,15 +231,17 @@ int main(int argc, char **argv)
             if((a.words[w]&65535)==SpvOpTypePointer && a.words[w+2]==SpvStorageClassUniform && a.words[w+3]==unsigned_type)control_pointer=a.words[w+1];
         for(size_t w=5;w<a.num_words;w+=a.words[w]>>16)
             if((a.words[w]&65535)==SpvOpAccessChain && a.words[w+1]==control_pointer)control_reads++;
+        bool precise_fog=state.is_fixed_function && (state.fog_dynamic || (state.fog_enable && (state.fog_mode==FOG_MODE_EXP2 || state.fog_mode==FOG_MODE_EXP2_ABS) && state.fixed_function.foggen>=FOGGEN_RADIAL && state.fixed_function.foggen<=FOGGEN_ABS_PLANAR));
+        assert(contractions==(precise_fog?4u:0u));
         assert(preserve_modes==(unsigned)(state.point_params_enable || state.is_fixed_function) && preserve_caps==preserve_modes);
-        assert(switches==(unsigned)state.fog_dynamic+dynamic*16u);
+        assert(switches==(unsigned)state.fog_dynamic*(state.is_fixed_function?2u:1u)+dynamic*16u);
         assert(control_reads==(unsigned)state.fog_dynamic + (dynamic?5u:(unsigned)viewer));
         unsigned expected_transforms=state.is_fixed_function;
         if(dynamic)expected_transforms+=4;
         else if(state.is_fixed_function)for(unsigned t=0;t<4;t++)expected_transforms+=state.fixed_function.texture_matrix_enable[t];
         bool needs_eye=state.is_fixed_function && state.fog_enable && state.fixed_function.foggen>=FOGGEN_RADIAL && state.fixed_function.foggen<=FOGGEN_ABS_PLANAR;
         if(state.is_fixed_function)for(unsigned t=0;t<4;t++)for(unsigned a=0;a<4;a++)needs_eye|=state.fixed_function.texgen[t][a]==TEXGEN_EYE_LINEAR;
-        needs_eye|=viewer || (state.is_fixed_function && state.point_params_enable);
+        needs_eye|=(state.is_fixed_function && state.fog_dynamic) || viewer || (state.is_fixed_function && state.point_params_enable);
         unsigned bones=0;
         if(state.is_fixed_function){static const unsigned counts[]={0,2,2,3,3,4,4};bones=counts[state.fixed_function.skinning];}
         expected_transforms+=bones?bones:needs_eye;
@@ -260,13 +286,13 @@ int main(int argc, char **argv)
             if(i==13)s.fixed_function.csv0c_dynamic=true;
             if(i==14){s.fixed_function.texgen_dynamic=true;opts.ubo_binding=32;}
             if(i==15)s.fixed_function.skinning=(enum VshSkinning)-1;
-            if(i==16)s.fog_dynamic=true;
+            if(i==16){s.fog_dynamic=true;s.fixed_function.lighting=true;}
             if(i==17){s.fog_enable=true;s.fixed_function.foggen=(enum VshFoggen)5;}
             if(i==18){s.point_params_enable=true;opts.preserve_float32=false;}
             if(i==19)s.fixed_function.texgen[1][3]=TEXGEN_NORMAL_MAP;
             if(i==20)s.compressed_attrs=s.swizzle_attrs=2;
             if(i==21){s.fog_enable=true;s.fixed_function.foggen=(enum VshFoggen)-1;}
-            if(i>=22 && i<28){s.fog_enable=true;s.fog_mode=i<25?FOG_MODE_EXP2:FOG_MODE_EXP2_ABS;s.fixed_function.foggen=FOGGEN_RADIAL+(i-22)%3;}
+            if(i>=22 && i<28){opts.preserve_float32=false;s.fog_enable=true;s.fog_mode=i<25?FOG_MODE_EXP2:FOG_MODE_EXP2_ABS;s.fixed_function.foggen=FOGGEN_RADIAL+(i-22)%3;}
         }
         if(i>=28){s.is_fixed_function=true;opts.preserve_float32=true;s.fixed_function.texgen[0][i==28?0:i==29?2:3]=i==28?(enum VshTexgen)-1:i==29?TEXGEN_SPHERE_MAP:TEXGEN_REFLECTION_MAP;}
         if(i==31){s.fixed_function.texgen[0][3]=TEXGEN_DISABLE;s.fixed_function.skinning=(enum VshSkinning)7;}

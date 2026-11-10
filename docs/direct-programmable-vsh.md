@@ -68,12 +68,12 @@ may bypass translation; a warm driver cache is a separate compilation milestone.
 
 ## Regression coverage and qualification
 
-- `test-spv-vsh.py`: 13,712 deterministic SPIR-V modules, final-owner allocation
+- `test-spv-vsh.py`: 18,576 deterministic SPIR-V modules, final-owner allocation
   counts, poisoned source keys, thirty-two allocation-free unsupported paths, UBSan and
   spirv-val. Both SPIR-V 1.5 and 1.6 targets are covered. Extracted native device
   setup is checked across 512 API/property/generation cases, including stale
   target reset and zero queries on older APIs.
-- `test-spv-vsh-gpu.py`: 15,120 programs / 24,675,840 scalar outputs compared with
+- `test-spv-vsh-gpu.py`: 19,984 programs / 32,613,888 scalar outputs compared with
   the production GLSL generator/compiler using Vulkan transform feedback. It
   captures all user outputs, position and point size before clipping; numerical
   differences fail (NaN payload identity is not required). It exercises opcode
@@ -122,11 +122,10 @@ requires forced invalidation. Legacy non-point modules retain their prior words.
 
 ## Unlit fixed-function subset
 
-The direct subset requires lighting off and static CSV0_C and fog.
+The direct subset requires lighting off and static CSV0_C.
 It supports static/live texture matrices and coordinate-generation modes, all
 skinning modes and register/attenuated points as detailed below. Unsupported
-states, including dynamic lighting/fog and six known quadratic-fog
-combinations, retain the GLSL path. The existing FP32 property gate applies;
+states, including lighting and dynamic CSV0_C, retain the GLSL path. The existing FP32 property gate applies;
 no new device query is added.
 
 The composite matrix already contains model-view when skinning is off. Emit
@@ -151,21 +150,20 @@ This is new direct-translation coverage, not a cold-play recovery claim.
 
 ## Static fixed-function fog
 
-Twenty-four combinations are direct: specular-alpha and explicit fog-coordinate
-sources with all six static curves; radial, planar and absolute-planar sources
-with linear/exponential curves and their absolute variants. Distance is computed
-before projection from the original attribute or the existing model-view matrix.
-Planar distance uses dot(fogPlane.xyz, modelViewPosition.xyz) + fogPlane.w,
-not a homogeneous dot product. The shared static fog postlude applies the curve,
-exceptional-value result and bounds. No runtime fogCtl/foggen switch is emitted.
+All thirty valid static source/curve combinations are direct. Distance comes
+from specular alpha, explicit fog coordinate, or radial/planar/absolute-planar
+model-view position, with all six static curves. Planar distance uses
+ dot(fogPlane.xyz, modelViewPosition.xyz) + fogPlane.w, not a homogeneous dot.
+The shared postlude applies exceptional-value rules and bounds; no runtime
+fogCtl/foggen switch is emitted for static modes.
 
-The first 30-combination physical-GPU run exposed eight one-ULP fog differences
-for transformed-distance quadratic curves. Software Vulkan matched that run.
-The cause is unresolved; no tolerance was relaxed and the failed logs remain.
-All six radial/planar/absolute-planar plus quadratic/absolute-quadratic combinations
-therefore stay on GLSL for every device. Invalid positive and negative foggen
-values are allocation-free misses; an unused foggen value remains ignored when
-fog is disabled. Tests cover this exclusion alongside the supported combinations.
+Initial physical-GPU comparisons found eight one-ULP differences and kept the
+six transformed-distance quadratic combinations on GLSL. The later dynamic-fog
+probe reproduced this class of failure and isolated equal input distances but
+different products before exp2. Explicit multiplication-order controls now
+recover those six combinations. Failed logs remain retained, and no tolerance
+was relaxed. Invalid positive/negative static foggen values remain allocation-
+free misses; unused values are ignored with static fog disabled.
 
 Model-view and fog-plane values are loaded from the existing constant array;
 there is no new uniform member, matrix snapshot, buffer or retained lend. The
@@ -195,8 +193,8 @@ Tests add 1,296 fixtures covering all 81 four-coordinate ternary patterns per
 stage and all sixteen texture-matrix masks, plus supported fog combinations,
 input formats and exceptional inputs. Matrix-operation counts verify that the
 model-view result is shared. All 3,712 earlier fixtures retain byte-identical
-modules. Negative/unknown modes, invalid sphere/reflection components, dynamic texgen,
-lighting and previously recorded fog exceptions retain GLSL fallback.
+modules. Negative/unknown modes, invalid static sphere/reflection components,
+lighting and dynamic CSV0_C retain GLSL fallback.
 No key schema or driver-cache defaults change, and this does not establish
 cold-play recovery.
 
@@ -207,7 +205,7 @@ and R independently, mixed with disabled and linear coordinates. Transform
 vec4(normal.xyz, 0) by the existing inverse-model-view matrix, take xyz, and
 normalize only when the programmed normalization flag requires it. Share this
 result across all stages and generated components before texture matrices.
-Normal-map Q and dynamic texgen remain unsupported; sphere/reflection cases use
+Static normal-map Q remains unsupported; dynamic and sphere/reflection cases use
 the viewer-aware path below.
 
 The shader reads input/constant owners already used by the renderer. No CPU
@@ -252,7 +250,7 @@ There are still two or three final-owner allocations per supported translation;
 only final metadata size and shader words change. No intermediate module clone,
 CPU matrix snapshot, retained lend or file I/O is added. Sphere R/Q and
 normal/reflection Q retain allocation-free fallback, along with existing
-lighting, dynamic-state and quadratic-fog exclusions. This is expanded
+lighting and dynamic CSV0_C exclusions. This is expanded
 translation coverage, not proof that cold-play PSO stutter has recovered.
 
 ## Fixed-function point attenuation
@@ -279,8 +277,7 @@ fog/texgen, both viewer settings, input formats and normalized/raw normals with
 point attenuation. GPU inputs vary every parameter across zero, signed zero,
 positive/negative finite, Infinity, NaN and tiny values, including unused 4/5;
 point scales/registers are independently varied. Hardware FP32 preservation
-remains required, and lighting, dynamic-state and recorded quadratic-
-fog exclusions retain GLSL fallback. No cache schema or file-I/O path changes.
+remains required, and lighting and dynamic CSV0_C retain GLSL fallback. No cache schema or file-I/O path changes.
 These checks establish translation equivalence, not cold-play recovery.
 
 ## Fixed-function skinning
@@ -309,10 +306,10 @@ An additional 1,536 fixtures span all six modes, all sixteen texture-matrix
 masks, static fog/texgen, viewer settings, normalized/raw/compressed inputs and
 point attenuation enabled/disabled. GPU weights include basis vectors, decimal
 fractions, negative/above-one sums and exceptional values, in vertex and inline
-storage. The GPU driver runs the full 14,096-fixture corpus in two bounded
+storage. The GPU driver runs the full 19,984-fixture corpus in three bounded
 batches, preserving every case while retaining a separate 300-second watchdog
 per batch. Work counts and CPU-clock totals remain separate from gameplay
-latency evidence; dynamic states, lighting and known fog exclusions remain open.
+latency evidence; lighting and dynamic CSV0_C remain open.
 
 ## Dynamic fixed-function texgen
 
@@ -347,6 +344,43 @@ inline inputs, exceptional values and unrelated high-bit noise. CPU contracts
 verify ignored static state, five control reads, sixteen selections, four guarded
 matrix operations and shared transforms. All 12,688 earlier module words and
 uniform members remain identical despite sharing the normal/reflection emitters.
-Dynamic CSV0_C/lighting/fog and known transformed-distance quadratic-fog
-exclusions still use GLSL. Expanding direct translation does not establish
+Dynamic CSV0_C and lighting still use GLSL. Expanding direct translation does not establish
 cold-play PSO recovery.
+
+## Dynamic fixed-function fog and quadratic precision
+
+Live fogCtl selects all eight source values, all eight curve values and enable
+state. Source 0 clamps raw specular alpha, 1 uses radial position, 4 reads the
+fog coordinate, and remaining sources use planar distance (absolute only for 3),
+matching the reference defaults. Share the skinned/unskinned model-view result
+with texgen and cache one uniform read for both source and curve selection.
+Pass the scalar distance directly to the postlude, avoiding an intermediate
+vec4 construction/extraction. No layout, buffer or resource owner is added.
+
+The initial physical probe reported 64 differing fog outputs; software matched.
+Extra test-only captures preserved the original failures while locating equal
+distances and a one-ULP difference in the pre-exp2 argument. For example,
+distance c237ce66 and density -.01 produced reference argument c0d838e9 versus
+native c0d838e8; the latter matches a regrouped density square. This is consistent
+with permitted reassociation, not evidence of a driver defect. Four
+NoContraction annotations pin the quadratic products to the reference order
+alongside the already required FP32 SignedZeroInfNanPreserve mode. The
+[Vulkan floating-point rules](https://docs.vulkan.org/spec/latest/appendices/spirvenv.html)
+describe these operation-order controls.
+
+The count pass records exactly four result IDs in bounded stack storage. The
+write pass emits their annotations directly in the final buffer before types,
+checks that those IDs repeat, and writes every word once. There is no
+post-construction module patch, intermediate word buffer or payload clone.
+Previously accepted modules receive no annotations and stay byte-identical.
+Allocation counts, immutable-key lends, uniform owners, native publication and
+retirement remain unchanged. This constrains arithmetic optimization where
+precision requires it; it is not an isolated GPU-speed or stutter claim.
+
+New coverage includes 4,096 dynamic source/curve/enable/matrix-mask fixtures
+with finite and exceptional parameters, plus 768 recovered static quadratic
+fixtures. Skinning, texgen, points and input formats vary across them. CPU
+contracts require four precision annotations only on affected shaders, one
+shared control read, ignored static fog fields and shared transforms. All
+13,712 prior modules/layout members remain identical. The regression retains
+initial failures and strict comparisons; cold-play PSO recovery remains open.
