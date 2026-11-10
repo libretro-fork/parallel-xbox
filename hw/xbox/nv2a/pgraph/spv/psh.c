@@ -310,7 +310,9 @@ bool pgraph_spv_psh_supported(const PshState *s,SpvPshOptions opts)
             dots[j]=true;
         }
         if(s->g8b8_signed[j] && (!(s->g8b8_signed[j]&15) || (s->g8b8_signed[j]&~255u) || mode!=PS_TEXTUREMODES_PROJECT2D || s->dim_tex[j]!=2 || s->tex_cubemap[j] || s->shadow_map[j] || s->tex_x8y24[j] || s->border_adjust[j]))return false;
-        if(sample_stage(s,j) && (s->tex_x8y24[j] || s->shadow_map[j]) && !constant_shadow(s,j) && !sampled_shadow(s,j) && !raw_color(s,j) && !(mode==PS_TEXTUREMODES_DOT_STR_3D && s->dim_tex[j]==2) && !(mode==PS_TEXTUREMODES_PROJECT2D && s->dim_tex[j]==3 && !s->shadow_map[j]))return false;
+        /* Only projective and three-dot modes consume the packed-color flag.
+         * Bump, dependent and cube modes keep their ordinary float sampler. */
+        if(sample_stage(s,j) && (s->shadow_map[j] || (s->tex_x8y24[j] && (mode==PS_TEXTUREMODES_PROJECT2D || mode==PS_TEXTUREMODES_PROJECT3D || mode==PS_TEXTUREMODES_DOT_STR_3D))) && !constant_shadow(s,j) && !sampled_shadow(s,j) && !raw_color(s,j) && !(mode==PS_TEXTUREMODES_DOT_STR_3D && s->dim_tex[j]==2) && !(mode==PS_TEXTUREMODES_PROJECT2D && s->dim_tex[j]==3 && !s->shadow_map[j]))return false;
         if(dependent_stage(s,j)){
             if(!j || texture_input(s,j)>=j)return false;
             if(!bump_stage(s,j) && (s->dim_tex[j]!=2 || s->rect_tex[j] || s->border_adjust[j]))return false;
