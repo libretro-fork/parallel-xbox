@@ -1,0 +1,346 @@
+/* SPDX-License-Identifier: GPL-2.0-or-later */
+#include <stdarg.h>
+#include <string.h>
+#include <spirv/unified1/spirv.h>
+/* GLSL.std.450 numbers, as in the other native emitters; no extra SDK header. */
+enum { GLSLstd450Round=1, GLSLstd450FAbs=4, GLSLstd450Floor=8,
+       GLSLstd450UMin=38, GLSLstd450FMax=40, GLSLstd450FClamp=43,
+       GLSLstd450FMix=46, GLSLstd450Fma=50 };
+#include "psh.h"
+
+/* Count/write share an immutable key. Only bounded arithmetic IDs are
+ * recorded on the stack and lent to the final write; no word-buffer clone. */
+typedef struct Writer {
+    uint32_t *words, next, block;
+    size_t count, capacity;
+    uint32_t *precise;
+    unsigned recorded, annotations;
+} Writer;
+static uint32_t id(Writer *w) { return w->next++; }
+static void word(Writer *w,uint32_t x) { if(w->words){if(w->count>=w->capacity)abort();w->words[w->count]=x;}w->count++; }
+static void op(Writer *w,SpvOp code,unsigned n,...)
+{
+    word(w,((n+1)<<16)|code);va_list a;va_start(a,n);
+    for(unsigned j=0;j<n;j++){uint32_t x=va_arg(a,uint32_t);if(code==SpvOpLabel && !j)w->block=x;word(w,x);}va_end(a);
+}
+static uint32_t val(Writer *w,SpvOp code,uint32_t type,unsigned n,...)
+{
+    uint32_t result=id(w);word(w,((n+3)<<16)|code);word(w,type);word(w,result);va_list a;va_start(a,n);
+    for(unsigned j=0;j<n;j++){word(w,va_arg(a,uint32_t));}va_end(a);return result;
+}
+enum Uniform { CLIP, REGION, CONSTANTS, FACTOR, OFFSET, FOG, SCALE, SIDE, ALPHA_REF, ALPHA_FUNC, ALPHA_ENABLE, UNIFORMS };
+static const struct {const char *name;unsigned width,count,offset;bool integer;} uniforms[UNIFORMS]={
+    {"clipRange",4,1,0,false},{"clipRegion",4,8,16,true},{"consts",4,18,144,false},
+    {"depthFactor",1,1,432,false},{"depthOffset",1,1,436,false},{"fogColor",4,1,448,false},
+    {"surfaceScale",2,1,464,true},{"twoSideSel",1,1,472,true},{"alphaRef",1,1,476,true},
+    {"alphaFunc",1,1,480,true},{"alphaTestEnable",1,1,484,true}
+};
+enum Floats { F_ZERO, F_HALF, F_ONE, F_TWO, F_FOUR, F_BYTE_MAX, F_D16_MAX, F_D24_SCALE, F_FLOAT_MAX, FLOATS };
+typedef struct Context {
+    Writer *w;const PshState *state;SpvPshOptions opts;
+    uint32_t void_t,fn,f,v2,v3,v4,i,u,b,iv2,iv4,in_f,in_v4,in_b,out_f,out_v4,uf,uv4,uiv2,uiv4,ui,uu;
+    uint32_t region_array,const_array,ubo_type,ubo_ptr,ubo,entry,ext;
+    uint32_t si[32],ui32[32],cf[FLOATS],u127,u313,yes,no;
+    uint32_t inputs[9],frag_coord,front,color,depth;
+    uint32_t r[16],ef,z,positions[3],coord,clip;
+    bool precise;
+} Context;
+static uint32_t unary(Context *c,SpvOp code,uint32_t type,uint32_t a){return val(c->w,code,type,1,a);}
+static uint32_t binary(Context *c,SpvOp code,uint32_t type,uint32_t a,uint32_t b){return val(c->w,code,type,2,a,b);}
+static uint32_t pin(Context *c,uint32_t result)
+{
+    if(c->precise){unsigned n=c->w->recorded++;if(n>=128)abort();if(c->w->words){if(c->w->precise[n]!=result)abort();}else c->w->precise[n]=result;}return result;
+}
+static uint32_t math(Context *c,SpvOp code,uint32_t type,uint32_t a,uint32_t b){return pin(c,binary(c,code,type,a,b));}
+static uint32_t ext1(Context *c,unsigned code,uint32_t type,uint32_t a){return pin(c,val(c->w,SpvOpExtInst,type,3,c->ext,code,a));}
+static uint32_t ext2(Context *c,unsigned code,uint32_t type,uint32_t a,uint32_t b){return pin(c,val(c->w,SpvOpExtInst,type,4,c->ext,code,a,b));}
+static uint32_t ext3(Context *c,unsigned code,uint32_t type,uint32_t a,uint32_t b,uint32_t d){return pin(c,val(c->w,SpvOpExtInst,type,5,c->ext,code,a,b,d));}
+static uint32_t extract(Context *c,uint32_t x,unsigned n){return val(c->w,SpvOpCompositeExtract,c->f,2,x,n);}
+static uint32_t splat(Context *c,uint32_t type,uint32_t x,unsigned n){return n==1?x:n==2?val(c->w,SpvOpCompositeConstruct,type,2,x,x):n==3?val(c->w,SpvOpCompositeConstruct,type,3,x,x,x):val(c->w,SpvOpCompositeConstruct,type,4,x,x,x,x);}
+static uint32_t v4(Context *c,uint32_t a,uint32_t b,uint32_t d,uint32_t e){return val(c->w,SpvOpCompositeConstruct,c->v4,4,a,b,d,e);}
+static uint32_t xyz(Context *c,uint32_t x){return val(c->w,SpvOpVectorShuffle,c->v3,5,x,x,0u,1u,2u);}
+static uint32_t xy(Context *c,uint32_t x){return val(c->w,SpvOpVectorShuffle,c->v2,4,x,x,0u,1u);}
+static uint32_t choose(Context *c,uint32_t type,uint32_t test,uint32_t a,uint32_t b){return val(c->w,SpvOpSelect,type,3,test,a,b);}
+static uint32_t add(Context *c,uint32_t a,uint32_t b){return math(c,SpvOpFAdd,c->f,a,b);}
+static uint32_t sub(Context *c,uint32_t a,uint32_t b){return math(c,SpvOpFSub,c->f,a,b);}
+static uint32_t mul(Context *c,uint32_t a,uint32_t b){return math(c,SpvOpFMul,c->f,a,b);}
+static uint32_t divf(Context *c,uint32_t a,uint32_t b){return math(c,SpvOpFDiv,c->f,a,b);}
+static uint32_t unif_at(Context *c,unsigned which,uint32_t index)
+{
+    const unsigned width=uniforms[which].width;bool integer=uniforms[which].integer;
+    uint32_t type=integer?(which==SIDE?c->u:width==4?c->iv4:width==2?c->iv2:c->i):width==4?c->v4:c->f;
+    uint32_t ptr=integer?(which==SIDE?c->uu:width==4?c->uiv4:width==2?c->uiv2:c->ui):width==4?c->uv4:c->uf;
+    uint32_t p=uniforms[which].count>1?val(c->w,SpvOpAccessChain,ptr,3,c->ubo,c->si[which],index):val(c->w,SpvOpAccessChain,ptr,2,c->ubo,c->si[which]);
+    return unary(c,SpvOpLoad,type,p);
+}
+static uint32_t unif(Context *c,unsigned which,unsigned index)
+{ return unif_at(c,which,c->si[index]); }
+static void discard_if(Context *c,uint32_t test)
+{
+    uint32_t yes=id(c->w),next=id(c->w);op(c->w,SpvOpSelectionMerge,2,next,0u);op(c->w,SpvOpBranchConditional,3,test,yes,next);op(c->w,SpvOpLabel,1,yes);
+    if(c->opts.spirv_1_6){op(c->w,SpvOpDemoteToHelperInvocation,0);op(c->w,SpvOpBranch,1,next);}else op(c->w,SpvOpKill,0);
+    op(c->w,SpvOpLabel,1,next);
+}
+static uint32_t area(Context *c,uint32_t sample,uint32_t b,uint32_t d)
+{
+    /* area() arguments are ordinary arithmetic; kahan_det locals are precise. */
+    c->precise=false;uint32_t a=binary(c,SpvOpFSub,c->v2,b,sample),q=binary(c,SpvOpFSub,c->v2,d,sample);
+    uint32_t ax=extract(c,a,0),ay=extract(c,a,1),bx=extract(c,q,0),by=extract(c,q,1);
+    c->precise=true;uint32_t cd=mul(c,ay,bx),negative=pin(c,unary(c,SpvOpFNegate,c->f,ay));
+    uint32_t error=ext3(c,GLSLstd450Fma,c->f,negative,bx,cd);
+    negative=pin(c,unary(c,SpvOpFNegate,c->f,cd));uint32_t result=add(c,ext3(c,GLSLstd450Fma,c->f,ax,by,negative),error);c->precise=false;return result;
+}
+static void barycentric(Context *c)
+{
+    uint32_t sample=xy(c,c->coord),scale=unary(c,SpvOpConvertSToF,c->v2,unif(c,SCALE,0));sample=binary(c,SpvOpFDiv,c->v2,sample,scale);
+    uint32_t p[3];for(unsigned j=0;j<3;j++)p[j]=xy(c,c->positions[j]);
+    uint32_t bc[3];for(unsigned j=0;j<3;j++)bc[j]=area(c,sample,p[(j+1)%3],p[(j+2)%3]);
+    c->precise=true;uint32_t probe=add(c,add(c,bc[0],bc[1]),bc[2]);c->precise=false;
+    uint32_t retry=binary(c,SpvOpLogicalOr,c->b,unary(c,SpvOpIsNan,c->b,probe),unary(c,SpvOpIsInf,c->b,probe));
+    uint32_t yes=id(c->w),no=id(c->w),merge=id(c->w);op(c->w,SpvOpSelectionMerge,2,merge,0u);op(c->w,SpvOpBranchConditional,3,retry,yes,no);op(c->w,SpvOpLabel,1,yes);
+    uint32_t maximum=ext2(c,GLSLstd450FMax,c->f,ext1(c,GLSLstd450FAbs,c->f,extract(c,p[0],0)),ext1(c,GLSLstd450FAbs,c->f,extract(c,p[0],1)));
+    for(unsigned j=1;j<4;j++){uint32_t v=j==3?sample:p[j];uint32_t m=ext2(c,GLSLstd450FMax,c->f,ext1(c,GLSLstd450FAbs,c->f,extract(c,v,0)),ext1(c,GLSLstd450FAbs,c->f,extract(c,v,1)));maximum=ext2(c,GLSLstd450FMax,c->f,maximum,m);}
+    uint32_t finite=binary(c,SpvOpLogicalAnd,c->b,binary(c,SpvOpFOrdGreaterThan,c->b,maximum,c->cf[F_ZERO]),unary(c,SpvOpLogicalNot,c->b,binary(c,SpvOpLogicalOr,c->b,unary(c,SpvOpIsInf,c->b,maximum),unary(c,SpvOpIsNan,c->b,maximum))));
+    uint32_t inner=id(c->w),skip=id(c->w),im=id(c->w);op(c->w,SpvOpSelectionMerge,2,im,0u);op(c->w,SpvOpBranchConditional,3,finite,inner,skip);op(c->w,SpvOpLabel,1,inner);
+    uint32_t bits=unary(c,SpvOpBitcast,c->u,maximum),exponent=binary(c,SpvOpShiftRightLogical,c->u,bits,c->ui32[23]);
+    uint32_t power=ext2(c,GLSLstd450UMin,c->u,c->u127,binary(c,SpvOpISub,c->u,c->u313,exponent));
+    uint32_t factor=unary(c,SpvOpBitcast,c->f,binary(c,SpvOpShiftLeftLogical,c->u,power,c->ui32[23]));
+    c->precise=true;uint32_t vs=splat(c,c->v2,factor,2),sp=math(c,SpvOpFMul,c->v2,sample,vs),scaled[3];
+    for(unsigned j=0;j<3;j++){scaled[j]=math(c,SpvOpFMul,c->v2,p[j],vs);}c->precise=false;
+    uint32_t fixed[3];for(unsigned j=0;j<3;j++)fixed[j]=area(c,sp,scaled[(j+1)%3],scaled[(j+2)%3]);
+    uint32_t last=c->w->block;op(c->w,SpvOpBranch,1,im);op(c->w,SpvOpLabel,1,skip);op(c->w,SpvOpBranch,1,im);op(c->w,SpvOpLabel,1,im);
+    for(unsigned j=0;j<3;j++)fixed[j]=val(c->w,SpvOpPhi,c->f,4,fixed[j],last,bc[j],skip);
+    last=c->w->block;op(c->w,SpvOpBranch,1,merge);op(c->w,SpvOpLabel,1,no);op(c->w,SpvOpBranch,1,merge);op(c->w,SpvOpLabel,1,merge);
+    for(unsigned j=0;j<3;j++)bc[j]=val(c->w,SpvOpPhi,c->f,4,fixed[j],last,bc[j],no);
+    c->precise=true;if(c->state->z_perspective)for(unsigned j=0;j<3;j++)bc[j]=divf(c,bc[j],extract(c,c->positions[j],3));c->precise=false;
+    uint32_t inverse=divf(c,c->cf[F_ONE],add(c,add(c,bc[0],bc[1]),bc[2]));inverse=choose(c,c->f,unary(c,SpvOpIsInf,c->b,inverse),c->cf[F_ZERO],inverse);
+    c->precise=true;bc[1]=mul(c,bc[1],inverse);bc[2]=mul(c,bc[2],inverse);
+    unsigned component=c->state->z_perspective?3:2;uint32_t z0=extract(c,c->positions[0],component),z1=extract(c,c->positions[1],component),z2=extract(c,c->positions[2],component);
+    c->z=add(c,z0,add(c,mul(c,bc[1],sub(c,z1,z0)),mul(c,bc[2],sub(c,z2,z0))));c->precise=false;
+    uint32_t offset=unif(c,OFFSET,0),fz=unif(c,FACTOR,0),slope=unary(c,SpvOpLoad,c->f,c->inputs[8]);
+    if(c->state->z_perspective){
+        uint32_t positive=binary(c,SpvOpFOrdGreaterThan,c->b,c->z,c->cf[F_ZERO]);yes=id(c->w);no=id(c->w);merge=id(c->w);
+        op(c->w,SpvOpSelectionMerge,2,merge,0u);op(c->w,SpvOpBranchConditional,3,positive,yes,no);op(c->w,SpvOpLabel,1,yes);
+        uint32_t ofs=mul(c,mul(c,mul(c,fz,slope),c->z),c->z);c->precise=true;uint32_t z=add(c,add(c,c->z,offset),ofs);c->precise=false;
+        op(c->w,SpvOpBranch,1,merge);op(c->w,SpvOpLabel,1,no);op(c->w,SpvOpBranch,1,merge);op(c->w,SpvOpLabel,1,merge);c->z=val(c->w,SpvOpPhi,c->f,4,z,yes,c->cf[F_FLOAT_MAX],no);
+        c->z=choose(c,c->f,unary(c,SpvOpIsNan,c->b,c->z),c->cf[F_FLOAT_MAX],c->z);
+    }else{c->precise=true;c->z=add(c,add(c,c->z,offset),mul(c,fz,slope));c->precise=false;}
+    uint32_t low=extract(c,c->clip,2),high=extract(c,c->clip,3);
+    if(c->state->depth_clipping)discard_if(c,binary(c,SpvOpLogicalOr,c->b,binary(c,SpvOpFOrdLessThan,c->b,c->z,low),binary(c,SpvOpFOrdLessThan,c->b,high,c->z)));
+    else{c->precise=true;c->z=ext3(c,GLSLstd450FClamp,c->f,c->z,low,high);c->precise=false;}
+}
+
+static bool source_valid(unsigned byte,bool ef)
+{ unsigned r=byte&15;return r!=6 && r!=7 && (ef || r!=PS_REGISTER_EF_PROD); }
+static bool dest_valid(unsigned r)
+{ return r==0 || r==4 || r==5 || (r>=8 && r<=13); }
+bool pgraph_spv_psh_supported(const PshState *s,SpvPshOptions opts)
+{
+    if(opts.ubo_binding>=32 || s->combiner_dynamic || (s->combiner_control&255)>8 || !(s->final_inputs_0 || s->final_inputs_1) || (s->shader_stage_program&0xfffffu) || s->g8b8_mip_flags || (s->depth_format&DEPTH_FORMAT_UI_CLAMP))return false;
+    for(unsigned j=0;j<4;j++)if(s->g8b8_signed[j] || s->tex_x8y24[j] || s->shadow_map[j])return false;
+    if(s->point_sprite && s->rect_tex[3])return false;
+    for(unsigned j=0;j<3;j++)if(((s->other_stage_input>>(j*4))&15)>7)return false;
+    bool r0=false,mux=false;
+    for(unsigned j=0;j<(s->combiner_control&255);j++)for(unsigned a=0;a<2;a++){
+        uint32_t inputs=a?s->alpha_inputs[j]:s->rgb_inputs[j],out=a?s->alpha_outputs[j]:s->rgb_outputs[j];
+        for(unsigned k=0;k<4;k++){unsigned b=(inputs>>(k*8))&255;if(!source_valid(b,false))return false;r0|=(b&15)==12 || (b&15)==14;}
+        for(unsigned k=0;k<3;k++){unsigned d=(out>>(k*4))&15;if(!dest_valid(d))return false;r0|=d==12;}
+        mux|=(out&(4u<<12)) && ((out>>8)&15);
+    }
+    for(unsigned k=0;k<7;k++){
+        unsigned b=k<4?(s->final_inputs_0>>(24-k*8))&255:(s->final_inputs_1>>(24-(k-4)*8))&255;
+        if(!source_valid(b,k<4 || k==6)){return false;}
+        r0|=(b&15)==12 || (b&15)==14;
+    }
+    return !mux || r0;
+}
+static uint32_t reg_value(Context *c,unsigned r,unsigned stage)
+{
+    if(r==PS_REGISTER_C0 || r==PS_REGISTER_C1){unsigned flags=c->state->combiner_control>>8,which=r==PS_REGISTER_C1;unsigned unique=which?PS_COMBINERCOUNT_UNIQUE_C1:PS_COMBINERCOUNT_UNIQUE_C0;return unif(c,CONSTANTS,(stage==8 || (flags&unique)?stage:0)*2+which);}
+    if(r==PS_REGISTER_EF_PROD)return v4(c,extract(c,c->ef,0),extract(c,c->ef,1),extract(c,c->ef,2),c->cf[F_ZERO]);
+    if(r==PS_REGISTER_V1R0_SUM){
+        unsigned flags=c->state->final_inputs_1&255;uint32_t a=c->r[PS_REGISTER_V1],b=c->r[PS_REGISTER_R0],one=splat(c,c->v4,c->cf[F_ONE],4);
+        if(flags&PS_FINALCOMBINERSETTING_COMPLEMENT_V1)a=binary(c,SpvOpFSub,c->v4,one,a);
+        if(flags&PS_FINALCOMBINERSETTING_COMPLEMENT_R0)b=binary(c,SpvOpFSub,c->v4,one,b);
+        uint32_t sum=binary(c,SpvOpFAdd,c->v3,xyz(c,a),xyz(c,b)),v=v4(c,extract(c,sum,0),extract(c,sum,1),extract(c,sum,2),c->cf[F_ZERO]);
+        return flags&PS_FINALCOMBINERSETTING_CLAMP_SUM?ext3(c,GLSLstd450FClamp,c->v4,v,splat(c,c->v4,c->cf[F_ZERO],4),one):v;
+    }
+    return c->r[r];
+}
+static uint32_t input_value(Context *c,unsigned byte,bool alpha,unsigned stage)
+{
+    unsigned n=alpha?1:3;uint32_t type=alpha?c->f:c->v3,reg=reg_value(c,byte&15,stage);
+    uint32_t x=alpha?extract(c,reg,byte&PS_CHANNEL_ALPHA?3:2):byte&PS_CHANNEL_ALPHA?splat(c,c->v3,extract(c,reg,3),3):xyz(c,reg);
+    unsigned mod=byte&0xe0;if(mod==PS_INPUTMAPPING_SIGNED_IDENTITY)return x;
+    if(mod==PS_INPUTMAPPING_SIGNED_NEGATE)return unary(c,SpvOpFNegate,type,x);
+    uint32_t zero=splat(c,type,c->cf[F_ZERO],n),one=splat(c,type,c->cf[F_ONE],n),half=splat(c,type,c->cf[F_HALF],n),two=splat(c,type,c->cf[F_TWO],n);
+    if(mod==PS_INPUTMAPPING_UNSIGNED_INVERT)return binary(c,SpvOpFSub,type,one,ext3(c,GLSLstd450FClamp,type,x,zero,one));
+    x=ext2(c,GLSLstd450FMax,type,x,zero);
+    if(mod==PS_INPUTMAPPING_UNSIGNED_IDENTITY)return x;
+    if(mod==PS_INPUTMAPPING_EXPAND_NORMAL)return binary(c,SpvOpFSub,type,binary(c,SpvOpFMul,type,two,x),one);
+    if(mod==PS_INPUTMAPPING_EXPAND_NEGATE)return binary(c,SpvOpFAdd,type,binary(c,SpvOpFMul,type,unary(c,SpvOpFNegate,type,two),x),one);
+    if(mod==PS_INPUTMAPPING_HALFBIAS_NORMAL)return binary(c,SpvOpFSub,type,x,half);
+    return binary(c,SpvOpFAdd,type,unary(c,SpvOpFNegate,type,x),half);
+}
+static uint32_t map_output(Context *c,uint32_t x,unsigned mapping,bool alpha)
+{
+    unsigned n=alpha?1:3;uint32_t type=alpha?c->f:c->v3;
+    if(mapping==PS_COMBINEROUTPUT_BIAS || mapping==PS_COMBINEROUTPUT_SHIFTLEFT_1_BIAS)x=binary(c,SpvOpFSub,type,x,splat(c,type,c->cf[F_HALF],n));
+    if(mapping==PS_COMBINEROUTPUT_SHIFTLEFT_1 || mapping==PS_COMBINEROUTPUT_SHIFTLEFT_1_BIAS)x=binary(c,SpvOpFMul,type,x,splat(c,type,c->cf[F_TWO],n));
+    if(mapping==PS_COMBINEROUTPUT_SHIFTLEFT_2)x=binary(c,SpvOpFMul,type,x,splat(c,type,c->cf[F_FOUR],n));
+    if(mapping==PS_COMBINEROUTPUT_SHIFTRIGHT_1){x=binary(c,SpvOpFDiv,type,x,splat(c,type,c->cf[F_TWO],n));}
+    return x;
+}
+typedef struct Stage {uint32_t ab,cd,mux;unsigned out;bool alpha;} Stage;
+static Stage stage_values(Context *c,unsigned stage,bool alpha)
+{
+    uint32_t encoded=alpha?c->state->alpha_inputs[stage]:c->state->rgb_inputs[stage],out=alpha?c->state->alpha_outputs[stage]:c->state->rgb_outputs[stage];
+    uint32_t a=input_value(c,encoded>>24,alpha,stage),b=input_value(c,(encoded>>16)&255,alpha,stage),d=input_value(c,(encoded>>8)&255,alpha,stage),e=input_value(c,encoded&255,alpha,stage);
+    unsigned flags=out>>12;uint32_t type=alpha?c->f:c->v3;
+    uint32_t ab=(!alpha && (flags&PS_COMBINEROUTPUT_AB_DOT_PRODUCT))?splat(c,type,binary(c,SpvOpDot,c->f,a,b),3):binary(c,SpvOpFMul,type,a,b);
+    uint32_t cd=(!alpha && (flags&PS_COMBINEROUTPUT_CD_DOT_PRODUCT))?splat(c,type,binary(c,SpvOpDot,c->f,d,e),3):binary(c,SpvOpFMul,type,d,e),mux=0;
+    if((out>>8)&15){
+        if(flags&PS_COMBINEROUTPUT_AB_CD_MUX){
+            uint32_t r0=extract(c,c->r[PS_REGISTER_R0],3),test;
+            if((c->state->combiner_control>>8)&PS_COMBINERCOUNT_MUX_MSB)test=binary(c,SpvOpFOrdGreaterThanEqual,c->b,r0,c->cf[F_HALF]);
+            else{uint32_t bits=unary(c,SpvOpConvertFToU,c->u,mul(c,r0,c->cf[F_BYTE_MAX]));test=binary(c,SpvOpIEqual,c->b,binary(c,SpvOpBitwiseAnd,c->u,bits,c->ui32[1]),c->ui32[1]);}
+            mux=choose(c,type,test,cd,ab);
+        }else mux=binary(c,SpvOpFAdd,type,ab,cd);
+        mux=map_output(c,mux,flags&0x38,alpha);
+    }
+    return (Stage){map_output(c,ab,flags&0x38,alpha),map_output(c,cd,flags&0x38,alpha),mux,out,alpha};
+}
+static void stage_store(Context *c,Stage s)
+{
+    uint32_t values[]={s.ab,s.cd,s.mux},type=s.alpha?c->f:c->v3;unsigned n=s.alpha?1:3;
+    uint32_t one=splat(c,type,c->cf[F_ONE],n),negative=unary(c,SpvOpFNegate,type,one);
+    for(unsigned j=0;j<3;j++){
+        unsigned r=(s.out>>(j==0?4:j==1?0:8))&15;if(!r)continue;uint32_t x=ext3(c,GLSLstd450FClamp,type,values[j],negative,one),old=c->r[r];
+        if(s.alpha)c->r[r]=v4(c,extract(c,old,0),extract(c,old,1),extract(c,old,2),x);
+        else{uint32_t a=extract(c,old,3);if(j<2 && ((s.out>>12)&(j==0?PS_COMBINEROUTPUT_AB_BLUE_TO_ALPHA:PS_COMBINEROUTPUT_CD_BLUE_TO_ALPHA)))a=extract(c,x,2);c->r[r]=v4(c,extract(c,x,0),extract(c,x,1),extract(c,x,2),a);}
+    }
+}
+static uint32_t combiners(Context *c)
+{
+    uint32_t zero=splat(c,c->v4,c->cf[F_ZERO],4);for(unsigned j=0;j<16;j++)c->r[j]=zero;
+    uint32_t use_back=binary(c,SpvOpLogicalAnd,c->b,binary(c,SpvOpINotEqual,c->b,unif(c,SIDE,0),c->ui32[0]),unary(c,SpvOpLogicalNot,c->b,unary(c,SpvOpLoad,c->b,c->front)));
+    c->r[PS_REGISTER_V0]=choose(c,c->v4,use_back,unary(c,SpvOpLoad,c->v4,c->inputs[2]),unary(c,SpvOpLoad,c->v4,c->inputs[0]));
+    c->r[PS_REGISTER_V1]=choose(c,c->v4,use_back,unary(c,SpvOpLoad,c->v4,c->inputs[3]),unary(c,SpvOpLoad,c->v4,c->inputs[1]));
+    uint32_t fog=unif(c,FOG,0),alpha=ext3(c,GLSLstd450FClamp,c->f,unary(c,SpvOpLoad,c->f,c->inputs[4]),c->cf[F_ZERO],c->cf[F_ONE]);
+    c->r[PS_REGISTER_FOG]=v4(c,extract(c,fog,0),extract(c,fog,1),extract(c,fog,2),alpha);
+    for(unsigned j=8;j<=12;j++)c->r[j]=v4(c,c->cf[F_ZERO],c->cf[F_ZERO],c->cf[F_ZERO],c->cf[F_ONE]);
+    for(unsigned j=0;j<(c->state->combiner_control&255);j++){Stage rgb=stage_values(c,j,false),a=stage_values(c,j,true);stage_store(c,rgb);stage_store(c,a);}
+    uint32_t in0=c->state->final_inputs_0,in1=c->state->final_inputs_1;
+    uint32_t e=input_value(c,in1>>24,false,8),f=input_value(c,(in1>>16)&255,false,8);c->ef=binary(c,SpvOpFMul,c->v3,e,f);
+    uint32_t a=input_value(c,in0>>24,false,8),b=input_value(c,(in0>>16)&255,false,8),d=input_value(c,(in0>>8)&255,false,8),g=input_value(c,in0&255,false,8),alpha_out=input_value(c,(in1>>8)&255,true,8);
+    uint32_t rgb=binary(c,SpvOpFAdd,c->v3,g,ext3(c,GLSLstd450FMix,c->v3,d,b,a));return v4(c,extract(c,rgb,0),extract(c,rgb,1),extract(c,rgb,2),alpha_out);
+}
+static void window_clip(Context *c)
+{
+    uint32_t x=sub(c,extract(c,c->coord,0),c->cf[F_HALF]),y=sub(c,extract(c,c->coord,1),c->cf[F_HALF]);
+    uint32_t entry=c->w->block,header=id(c->w),body=id(c->w),cont=id(c->w),merge=id(c->w),index=id(c->w),next=id(c->w);
+    op(c->w,SpvOpBranch,1,header);op(c->w,SpvOpLabel,1,header);op(c->w,SpvOpPhi,6,c->i,index,c->si[0],entry,next,cont);
+    uint32_t within=binary(c,SpvOpSLessThan,c->b,index,c->si[8]);op(c->w,SpvOpLoopMerge,3,merge,cont,0u);op(c->w,SpvOpBranchConditional,3,within,body,merge);op(c->w,SpvOpLabel,1,body);
+    uint32_t r=unary(c,SpvOpConvertSToF,c->v4,unif_at(c,REGION,index));
+    uint32_t outside=binary(c,SpvOpLogicalOr,c->b,binary(c,SpvOpFOrdLessThan,c->b,x,extract(c,r,0)),binary(c,SpvOpFOrdLessThan,c->b,y,extract(c,r,1)));
+    outside=binary(c,SpvOpLogicalOr,c->b,outside,binary(c,SpvOpFOrdGreaterThanEqual,c->b,x,extract(c,r,2)));outside=binary(c,SpvOpLogicalOr,c->b,outside,binary(c,SpvOpFOrdGreaterThanEqual,c->b,y,extract(c,r,3)));
+    uint32_t inside=unary(c,SpvOpLogicalNot,c->b,outside),found=0;
+    if(c->state->window_clip_exclusive)discard_if(c,inside);
+    else{
+        found=id(c->w);uint32_t after=id(c->w);op(c->w,SpvOpSelectionMerge,2,after,0u);op(c->w,SpvOpBranchConditional,3,inside,found,after);
+        op(c->w,SpvOpLabel,1,found);op(c->w,SpvOpBranch,1,merge);op(c->w,SpvOpLabel,1,after);
+    }
+    op(c->w,SpvOpBranch,1,cont);op(c->w,SpvOpLabel,1,cont);op(c->w,SpvOpIAdd,4,c->i,next,index,c->si[1]);op(c->w,SpvOpBranch,1,header);op(c->w,SpvOpLabel,1,merge);
+    if(!c->state->window_clip_exclusive){uint32_t contained=val(c->w,SpvOpPhi,c->b,4,c->yes,found,c->no,header);discard_if(c,unary(c,SpvOpLogicalNot,c->b,contained));}
+}
+static void alpha_test(Context *c,uint32_t color)
+{
+    if(!c->state->alpha_dynamic && !c->state->alpha_test)return;
+    uint32_t alpha_merge=0;
+    if(c->state->alpha_dynamic){
+        uint32_t enabled=binary(c,SpvOpINotEqual,c->b,unif(c,ALPHA_ENABLE,0),c->si[0]),yes=id(c->w);alpha_merge=id(c->w);
+        op(c->w,SpvOpSelectionMerge,2,alpha_merge,0u);op(c->w,SpvOpBranchConditional,3,enabled,yes,alpha_merge);op(c->w,SpvOpLabel,1,yes);
+    }
+    uint32_t a=unary(c,SpvOpConvertFToS,c->i,ext1(c,GLSLstd450Round,c->f,mul(c,extract(c,color,3),c->cf[F_BYTE_MAX]))),ref=unif(c,ALPHA_REF,0),func=unif(c,ALPHA_FUNC,0),pass=c->yes;
+    const SpvOp comparison[]={SpvOpNop,SpvOpSLessThan,SpvOpIEqual,SpvOpSLessThanEqual,SpvOpSGreaterThan,SpvOpINotEqual,SpvOpSGreaterThanEqual};
+    for(int j=6;j>=0;j--){uint32_t value=j?binary(c,comparison[j],c->b,a,ref):c->no;pass=choose(c,c->b,binary(c,SpvOpIEqual,c->b,func,c->si[j]),value,pass);}
+    uint32_t fail=unary(c,SpvOpLogicalNot,c->b,pass);
+    discard_if(c,fail);
+    if(alpha_merge){op(c->w,SpvOpBranch,1,alpha_merge);op(c->w,SpvOpLabel,1,alpha_merge);}
+}
+
+static void allocate(Context *c)
+{
+    uint32_t *types[]={&c->void_t,&c->fn,&c->f,&c->v2,&c->v3,&c->v4,&c->i,&c->u,&c->b,&c->iv2,&c->iv4,&c->in_f,&c->in_v4,&c->in_b,&c->out_f,&c->out_v4,&c->uf,&c->uv4,&c->uiv2,&c->uiv4,&c->ui,&c->uu,&c->region_array,&c->const_array,&c->ubo_type,&c->ubo_ptr};
+    for(unsigned j=0;j<sizeof(types)/sizeof(types[0]);j++)*types[j]=id(c->w);
+    for(unsigned j=0;j<32;j++){c->si[j]=id(c->w);c->ui32[j]=id(c->w);}
+    for(unsigned j=0;j<FLOATS;j++)c->cf[j]=id(c->w);
+    c->u127=id(c->w);c->u313=id(c->w);c->yes=id(c->w);c->no=id(c->w);
+    for(unsigned j=0;j<9;j++)c->inputs[j]=id(c->w);
+    c->frag_coord=id(c->w);c->front=id(c->w);c->color=id(c->w);c->depth=id(c->w);c->ubo=id(c->w);c->entry=id(c->w);c->ext=id(c->w);
+}
+static void emit(Writer *w,const PshState *state,SpvPshOptions opts)
+{
+    Context c={.w=w,.state=state,.opts=opts};allocate(&c);
+    word(w,SpvMagicNumber);word(w,opts.spirv_1_6?0x00010600u:0x00010500u);word(w,0);word(w,0);word(w,0);
+    op(w,SpvOpCapability,1,(uint32_t)SpvCapabilityShader);
+    if(opts.spirv_1_6)op(w,SpvOpCapability,1,(uint32_t)SpvCapabilityDemoteToHelperInvocation);
+    op(w,SpvOpExtInstImport,5,c.ext,0x4c534c47u,0x6474732eu,0x3035342eu,0u);
+    op(w,SpvOpMemoryModel,2,(uint32_t)SpvAddressingModelLogical,(uint32_t)SpvMemoryModelGLSL450);
+    word(w,(19u<<16)|SpvOpEntryPoint);word(w,SpvExecutionModelFragment);word(w,c.entry);word(w,0x6e69616du);word(w,0);
+    for(unsigned j=0;j<9;j++){word(w,c.inputs[j]);}word(w,c.frag_coord);word(w,c.front);word(w,c.color);word(w,c.depth);word(w,c.ubo);
+    op(w,SpvOpExecutionMode,2,c.entry,(uint32_t)SpvExecutionModeOriginUpperLeft);op(w,SpvOpExecutionMode,2,c.entry,(uint32_t)SpvExecutionModeDepthReplacing);
+    for(unsigned j=0;j<9;j++){
+        unsigned location=j<5?j:j<8?j+4:12;op(w,SpvOpDecorate,3,c.inputs[j],(uint32_t)SpvDecorationLocation,location);
+        if(j>=5 || (j<4 && !state->smooth_shading))op(w,SpvOpDecorate,2,c.inputs[j],(uint32_t)SpvDecorationFlat);
+    }
+    op(w,SpvOpDecorate,3,c.frag_coord,(uint32_t)SpvDecorationBuiltIn,(uint32_t)SpvBuiltInFragCoord);
+    op(w,SpvOpDecorate,3,c.front,(uint32_t)SpvDecorationBuiltIn,(uint32_t)SpvBuiltInFrontFacing);
+    op(w,SpvOpDecorate,3,c.depth,(uint32_t)SpvDecorationBuiltIn,(uint32_t)SpvBuiltInFragDepth);
+    op(w,SpvOpDecorate,3,c.color,(uint32_t)SpvDecorationLocation,0u);
+    op(w,SpvOpDecorate,2,c.ubo_type,(uint32_t)SpvDecorationBlock);
+    for(unsigned j=0;j<UNIFORMS;j++)op(w,SpvOpMemberDecorate,4,c.ubo_type,j,(uint32_t)SpvDecorationOffset,uniforms[j].offset);
+    op(w,SpvOpDecorate,3,c.region_array,(uint32_t)SpvDecorationArrayStride,16u);op(w,SpvOpDecorate,3,c.const_array,(uint32_t)SpvDecorationArrayStride,16u);
+    op(w,SpvOpDecorate,3,c.ubo,(uint32_t)SpvDecorationDescriptorSet,0u);op(w,SpvOpDecorate,3,c.ubo,(uint32_t)SpvDecorationBinding,opts.ubo_binding);
+    for(unsigned j=0;j<w->annotations;j++)op(w,SpvOpDecorate,2,w->precise[j],(uint32_t)SpvDecorationNoContraction);
+    op(w,SpvOpTypeVoid,1,c.void_t);op(w,SpvOpTypeFunction,2,c.fn,c.void_t);op(w,SpvOpTypeFloat,2,c.f,32u);op(w,SpvOpTypeInt,3,c.i,32u,1u);op(w,SpvOpTypeInt,3,c.u,32u,0u);op(w,SpvOpTypeBool,1,c.b);
+    op(w,SpvOpTypeVector,3,c.v2,c.f,2u);op(w,SpvOpTypeVector,3,c.v3,c.f,3u);op(w,SpvOpTypeVector,3,c.v4,c.f,4u);op(w,SpvOpTypeVector,3,c.iv2,c.i,2u);op(w,SpvOpTypeVector,3,c.iv4,c.i,4u);
+    for(unsigned j=0;j<32;j++){op(w,SpvOpConstant,3,c.i,c.si[j],j);op(w,SpvOpConstant,3,c.u,c.ui32[j],j);}
+    const float constants[]={0,.5f,1,2,4,255,65535,16777216,0x1.fffffep127f};
+    for(unsigned j=0;j<FLOATS;j++){uint32_t bits;memcpy(&bits,constants+j,4);op(w,SpvOpConstant,3,c.f,c.cf[j],bits);}
+    op(w,SpvOpConstant,3,c.u,c.u127,127u);op(w,SpvOpConstant,3,c.u,c.u313,313u);op(w,SpvOpConstantTrue,2,c.b,c.yes);op(w,SpvOpConstantFalse,2,c.b,c.no);
+    op(w,SpvOpTypeArray,3,c.region_array,c.iv4,c.ui32[8]);op(w,SpvOpTypeArray,3,c.const_array,c.v4,c.ui32[18]);
+    word(w,((2u+UNIFORMS)<<16)|SpvOpTypeStruct);word(w,c.ubo_type);
+    uint32_t fields[]={c.v4,c.region_array,c.const_array,c.f,c.f,c.v4,c.iv2,c.u,c.i,c.i,c.i};for(unsigned j=0;j<UNIFORMS;j++)word(w,fields[j]);
+    uint32_t pointers[][3]={{c.in_f,SpvStorageClassInput,c.f},{c.in_v4,SpvStorageClassInput,c.v4},{c.in_b,SpvStorageClassInput,c.b},{c.out_f,SpvStorageClassOutput,c.f},{c.out_v4,SpvStorageClassOutput,c.v4},{c.uf,SpvStorageClassUniform,c.f},{c.uv4,SpvStorageClassUniform,c.v4},{c.uiv2,SpvStorageClassUniform,c.iv2},{c.uiv4,SpvStorageClassUniform,c.iv4},{c.ui,SpvStorageClassUniform,c.i},{c.uu,SpvStorageClassUniform,c.u},{c.ubo_ptr,SpvStorageClassUniform,c.ubo_type}};
+    for(unsigned j=0;j<sizeof(pointers)/sizeof(pointers[0]);j++)op(w,SpvOpTypePointer,3,pointers[j][0],pointers[j][1],pointers[j][2]);
+    for(unsigned j=0;j<9;j++)op(w,SpvOpVariable,3,j==4||j==8?c.in_f:c.in_v4,c.inputs[j],(uint32_t)SpvStorageClassInput);
+    op(w,SpvOpVariable,3,c.in_v4,c.frag_coord,(uint32_t)SpvStorageClassInput);op(w,SpvOpVariable,3,c.in_b,c.front,(uint32_t)SpvStorageClassInput);
+    op(w,SpvOpVariable,3,c.out_v4,c.color,(uint32_t)SpvStorageClassOutput);op(w,SpvOpVariable,3,c.out_f,c.depth,(uint32_t)SpvStorageClassOutput);op(w,SpvOpVariable,3,c.ubo_ptr,c.ubo,(uint32_t)SpvStorageClassUniform);
+    op(w,SpvOpFunction,4,c.void_t,c.entry,0u,c.fn);op(w,SpvOpLabel,1,id(w));
+    c.coord=unary(&c,SpvOpLoad,c.v4,c.frag_coord);c.clip=unif(&c,CLIP,0);for(unsigned j=0;j<3;j++)c.positions[j]=unary(&c,SpvOpLoad,c.v4,c.inputs[j+5]);
+    window_clip(&c);barycentric(&c);uint32_t color=combiners(&c);alpha_test(&c,color);op(w,SpvOpStore,2,c.color,color);
+    uint32_t depth;
+    switch(state->depth_format&DEPTH_FORMAT_MASK){
+    case DEPTH_FORMAT_D16:depth=divf(&c,ext1(&c,GLSLstd450Floor,c.f,c.z),c.cf[F_D16_MAX]);break;
+    case DEPTH_FORMAT_D24:{uint32_t z=divf(&c,ext1(&c,GLSLstd450Floor,c.f,c.z),c.cf[F_D24_SCALE]);depth=unary(&c,SpvOpBitcast,c.f,binary(&c,SpvOpIAdd,c.u,unary(&c,SpvOpBitcast,c.u,z),c.ui32[1]));break;}
+    default:depth=divf(&c,c.z,extract(&c,c.clip,1));break;
+    }
+    op(w,SpvOpStore,2,c.depth,depth);op(w,SpvOpReturn,0);op(w,SpvOpFunctionEnd,0);if(w->words)w->words[3]=w->next;
+}
+static GlslcLayout layout(void)
+{
+    size_t bytes=UNIFORMS*sizeof(GlslcUniform);for(unsigned j=0;j<UNIFORMS;j++)bytes+=strlen(uniforms[j].name)+1;
+    GlslcUniform *m=malloc(bytes);if(!m)abort();char *text=(char *)(m+UNIFORMS);
+    for(unsigned j=0;j<UNIFORMS;j++){size_t n=strlen(uniforms[j].name)+1;memcpy(text,uniforms[j].name,n);m[j]=(GlslcUniform){.name=text,.dim_v=uniforms[j].width,.dim_a=uniforms[j].count,.stride=uniforms[j].count>1?16:uniforms[j].width*4,.offset=uniforms[j].offset};text+=n;}
+    return (GlslcLayout){.members=m,.count=UNIFORMS,.size=496};
+}
+bool pgraph_spv_psh(const PshState *state,SpvPshOptions opts,GlslcResult *out)
+{
+    memset(out,0,sizeof(*out));if(!pgraph_spv_psh_supported(state,opts))return false;
+    uint32_t precise[128];Writer count={.next=1,.precise=precise};emit(&count,state,opts);
+    size_t size=count.count+count.recorded*3;uint32_t *words=malloc(size*4);if(!words)abort();
+    Writer output={.words=words,.capacity=size,.next=1,.precise=precise,.annotations=count.recorded};emit(&output,state,opts);
+    if(output.count!=size || output.next!=count.next || output.recorded!=count.recorded)abort();
+    out->words=words;out->num_words=out->allocation_words=size;out->uniforms=layout();return true;
+}

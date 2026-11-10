@@ -26,6 +26,7 @@
 #include "hw/xbox/nv2a/pgraph/seed.h"
 #include "hw/xbox/nv2a/pgraph/spv/geom.h"
 #include "hw/xbox/nv2a/pgraph/spv/vsh.h"
+#include "hw/xbox/nv2a/pgraph/spv/psh.h"
 #include "hw/xbox/nv2a/pgraph/glsl/uniform-cache.h"
 #include <encodings/xxh3.h>
 #include <retro_spsc.h>
@@ -933,6 +934,18 @@ static ShaderSource *vk_module_spirv(const ShaderModuleCacheKey *key)
         /* The worker job or render-thread module owns this immutable key
          * through both emission passes. No key or temporary lend escapes. */
         if (pgraph_spv_vsh(&key->vsh.state, vertex, &result)) {
+            return pgraph_vk_shader_source_take(&result);
+        }
+    }
+    if (key->kind == VK_SHADER_STAGE_FRAGMENT_BIT && key->psh.glsl_opts.vulkan) {
+        SpvPshOptions fragment = {
+            .spirv_1_6 = pgraph_vk_spirv_1_6,
+            .ubo_binding = key->psh.glsl_opts.ubo_binding,
+        };
+        GlslcResult result;
+        /* The cache entry or worker job owns this same immutable key through
+         * count/write. Final word/layout owners move without a payload copy. */
+        if (pgraph_spv_psh(&key->psh.state, fragment, &result)) {
             return pgraph_vk_shader_source_take(&result);
         }
     }

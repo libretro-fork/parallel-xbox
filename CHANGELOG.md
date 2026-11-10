@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Translate static untextured register-combiner fragment shaders directly to Vulkan SPIR-V, including window clips, perspective/depth reconstruction, two-sided colors and alpha testing. Preserve reference arithmetic and early exits; emit into final words/layout owners with two allocations and no intermediate GLSL, payload clone or retained lend. Textured and dynamic combiners retain the existing compiler. This removes translation work; first-use PSO stalls remain open.
+
 - Emit the live CSV0_C fixed-function path directly as Vulkan SPIR-V, including lighting enable, material colors, normalization, viewer and specular controls. Reuse the counted light loop and existing uniforms, with final owners and allocation counts unchanged. Preserve shared-position lifetime across lighting-off, point and fog paths; no geometry/key copies or new bindings.
 
 - Emit dynamic fixed-function light modes directly as Vulkan SPIR-V through one counted shader loop. Preserve directional/local/spot selection, range and cone guards, material colors and live back-light control using existing uniforms and final allocation owners. No payload copies, new bindings or retained lends; dynamic CSV0_C still uses the GLSL path.
