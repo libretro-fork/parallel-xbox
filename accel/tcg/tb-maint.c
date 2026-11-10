@@ -855,6 +855,9 @@ static void tb_phys_invalidate__locked(TranslationBlock *tb, bool *flush_owed)
 static void tb_phys_invalidate_impl(TranslationBlock *tb,
                                      tb_page_addr_t page_addr, bool reusable)
 {
+    /* Watchpoints and I/O recompilation arrive from executing helpers;
+     * both TB metadata and jump instructions live in the JIT allocation. */
+    qemu_thread_jit_write();
     if (page_addr == -1 && tb_page_addr0(tb) != -1) {
         tb_lock_pages(tb);
         do_tb_phys_invalidate(tb, true, reusable, NULL);
@@ -862,6 +865,7 @@ static void tb_phys_invalidate_impl(TranslationBlock *tb,
     } else {
         do_tb_phys_invalidate(tb, false, reusable, NULL);
     }
+    qemu_thread_jit_execute();
 }
 
 void tb_phys_invalidate(TranslationBlock *tb, tb_page_addr_t page_addr)
