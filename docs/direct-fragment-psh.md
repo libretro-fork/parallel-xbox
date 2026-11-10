@@ -1,8 +1,14 @@
 # Direct Vulkan fragment translation
 
-`pgraph/spv/psh.c` translates supported static NV2A register-combiner
+`pgraph/spv/psh.c` translates supported static and live NV2A register-combiner
 recipes directly into final SPIR-V. Vulkan source preparation tries this path
 before generating GLSL. OpenGL continues to use the existing generator.
+
+Current texture coverage includes projected 2D/volume and cube reads, dependent
+and bump/luminance stages, dot/reflection/depth chains, fixed/packed/F16 depth,
+UI clamps, signed G8B8 filtering and mip reconstruction. Unsupported shapes
+retain the compiler. The sections below record each family's implementation
+and validation scope; native translation does not certify pipeline readiness.
 
 The first supported family has all four texture modes set to NONE, zero to
 eight static combiner stages, and an enabled final combiner. It includes all
@@ -35,7 +41,7 @@ buffer, key/geometry/uniform snapshot, file I/O, new binding, readback or
 per-draw bookkeeping. Existing indispensable final allocations remain an open
 allocation optimization, rather than being described as allocation-free.
 
-The final std140 UBO has eleven existing named fields and a 496-byte extent.
+The base std140 UBO has eleven existing named fields and a 496-byte extent.
 Existing uniform lookup/upload uses the emitted offsets and bounds; no changes
 to uniform values or uploads are required. Pipeline/recipe identity and cache
 schemas are unchanged: equivalent GLSL-generated modules remain valid. Native
@@ -549,3 +555,39 @@ mapped upload, fenced before release; this test-only resource is never added
 to the core. The full matrix contains 54272 cases. Work counts and recorded
 recipe acceptance are not pipeline readiness or stutter-recovery evidence.
 Uncontrolled driver caches keep cold-play qualification BAD/OPEN.
+
+
+## Signed G8B8 reconstruction
+
+Eligible 2D projected signed-byte stages reconstruct both source bytes through
+the existing sign3 helper. Single-level point and gathered linear/mixed filters
+preserve sampler addressing and decode each tap before interpolation. Mip
+reconstruction uses the reference LOD query/zero override/lower-clamp decisions,
+floor/ceil levels, explicit texel addressing, mixed point/linear selection and
+trilinear mixing. Shared and per-axis edge fields, negative-period mirrors,
+legacy lower-mip bitplanes and the existing extended minimum/address encoding
+are consumed directly from the borrowed key. The cache schema stays unchanged.
+
+Signed pairs remain separate SSA IDs while dependent bump/luminance stages
+read the original processed texture values. Signed bump axes use those pairs;
+combiner channels are clamped/remapped only after all texture stages finish,
+before R0-alpha initialization. This preserves the reference byte mappings,
+color-key/alpha order and UI-clamped original coordinates. Existing sign helpers
+are shared with bump stages. New stack fields contain at most four coordinate,
+sample and signed-pair IDs; no payload, texture, geometry or descriptor snapshot
+is made. Keys are lent synchronously through count/write. Exactly two final
+allocations and the existing image/uniform/refcount owners remain.
+
+CPU fixtures add 4096 point/gather/mip/address/extended-minimum/owner cases and
+sixteen allocation-free shape rejections, for 46080 modules and113 rejections.
+GPU fixtures add4096 single-stage and2048 two-signed-source/bump-luminance/
+cube-volume/UI cases. Both ordinary and final constant banks are populated;
+the first signed RGB sample must be finite and strictly between zero and one,
+so a missing final constant cannot turn equality checks into all-white output.
+A test-only 256-square RG8 pyramid supplies spatially
+varying boundary bytes across nine levels; its174762-byte mapped upload is
+filled directly and fenced before release. Component swizzles reuse the same
+two source bytes without RGBA payload expansion. No such resource is added to
+the core. The full matrix contains60416 cases. Value/work-count evidence does
+not establish pipeline readiness, GPU execution speed or stutter recovery;
+uncontrolled driver caches keep cold-play qualification BAD/OPEN.

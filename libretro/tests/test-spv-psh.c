@@ -4,6 +4,7 @@
 #include <string.h>
 #include <spirv/unified1/spirv.h>
 #include "hw/xbox/nv2a/pgraph/spv/psh.h"
+#include "hw/xbox/nv2a/pgraph/glsl/g8b8-lod.h"
 static unsigned allocations;
 void *psh_test_allocate(size_t n){allocations++;return malloc(n);}
 static uint32_t inputs(unsigned i)
@@ -377,6 +378,44 @@ int main(int argc,char **argv)
         allocations=0;GlslcResult a;assert(!pgraph_spv_psh(&s,opts,&a));assert(!allocations && !a.words && !a.uniforms.members);
     }
 
+ for(unsigned i=0;i<4096;i++){
+  unsigned unit=i%4,signs=(1+(i/4)%15)|(((i/60)%16)<<4);
+  PshState s={.final_inputs_0=((8u+unit)<<24)|0x00200000,.final_inputs_1=0x1800};
+  s.shader_stage_program=PS_TEXTUREMODES_PROJECT2D<<(unit*5);s.dim_tex[unit]=2;s.g8b8_signed[unit]=signs;
+  s.g8b8_mip_flags=((i&128)?1u<<unit:0)|((i&256)?1u<<(unit+4):0);s.g8b8_mip_clamp_u=(i&32)?1u<<unit:0;s.g8b8_mip_clamp_v=(i&64)?1u<<unit:0;s.g8b8_mip_mirror=(i&512)?(1u<<unit)|(1u<<(unit+4)):0;
+  if(i&2048)psh_g8b8_set_extended_lod(&s,unit,4+(i/128)%12,1+(i/16)%3,1+(i/48)%3);
+  s.depth_format=(i/128)%4;s.z_perspective=!!(i&128);s.depth_clipping=!!(i&256);s.combiner_dynamic=!!(i&512);s.smooth_shading=!!(i&1024);
+  s.rect_tex[unit]=!!(i&1024);s.point_sprite=!!(i&512) && !(unit==3 && s.rect_tex[unit]);s.alphakill[unit]=!!(i&256);s.alpha_dynamic=!!(i&128);
+  SpvPshOptions opts={.spirv_1_6=!!(i&16),.ubo_binding=1,.tex_binding=2};GlslcResult a,b;allocations=0;
+  assert(pgraph_spv_psh(&s,opts,&a) && allocations==2);
+  unsigned calls=0;for(size_t k=5;k<a.num_words;k+=a.words[k]>>16)calls+=(a.words[k]&65535)==SpvOpFunctionCall;assert(calls>=2);
+  s.surface_zeta_format=0xdead;memset(s.compare_mode,0xa5,sizeof(s.compare_mode));
+  assert(pgraph_spv_psh(&s,opts,&b) && allocations==4);assert(a.num_words==b.num_words && !memcmp(a.words,b.words,a.num_words*4));
+  memset(&s,0xa5,sizeof(s));assert(a.allocation_words==a.num_words && !a.allocation);
+  for(unsigned j=0;j<a.uniforms.count;j++){const GlslcUniform *u=a.uniforms.members+j;assert(u->offset+u->stride*(u->dim_a-1)+u->dim_v*4<=a.uniforms.size);assert((const char *)u->name>=(const char *)(a.uniforms.members+a.uniforms.count));}
+  char path[4096];snprintf(path,sizeof(path),"%s/gb-%u.spv",argv[1],i);FILE *f=fopen(path,"wb");assert(f && fwrite(a.words,4,a.num_words,f)==a.num_words);fclose(f);
+  glslc_result_free_words(&a);free(a.uniforms.members);glslc_result_free_words(&b);free(b.uniforms.members);
+ }
+
+
+    for(unsigned i=0;i<16;i++){
+        PshState s={.final_inputs_0=0x20080000,.final_inputs_1=0x1800,.shader_stage_program=PS_TEXTUREMODES_PROJECT2D,.g8b8_signed={1},.dim_tex={2}};SpvPshOptions opts={.ubo_binding=1,.tex_binding=2};
+        if(i<4)s.g8b8_signed[0]=16u<<i;
+        if(i==4)s.shader_stage_program=PS_TEXTUREMODES_PROJECT3D;
+        if(i==5)s.shader_stage_program=PS_TEXTUREMODES_NONE;
+        if(i==6)s.shader_stage_program=PS_TEXTUREMODES_PASSTHRU;
+        if(i==7)s.dim_tex[0]=3;
+        if(i==8)s.dim_tex[0]=0;
+        if(i==9)s.tex_cubemap[0]=true;
+        if(i==10)s.border_adjust[0]=true;
+        if(i==11)s.shadow_map[0]=1;
+        if(i==12)s.tex_x8y24[0]=true;
+        if(i==13)s.colorkey_mode[0]=4;
+        if(i==14)opts.ubo_binding=2;
+        if(i==15)opts.tex_binding=29;
+        allocations=0;GlslcResult a;assert(!pgraph_spv_psh(&s,opts,&a));assert(!allocations && !a.words && !a.uniforms.members);
+    }
+
     for(unsigned i=0;i<16;i++){
         PshState s={.final_inputs_0=0x04200000,.final_inputs_1=0x1400};SpvPshOptions opts={.ubo_binding=1};
         if(i==0)opts.ubo_binding=32;
@@ -397,5 +436,5 @@ int main(int argc,char **argv)
         if(i==15){s.combiner_control=1;s.rgb_inputs[0]=0x0f000000;}
         allocations=0;GlslcResult a;memset(&a,0xa5,sizeof(a));assert(!pgraph_spv_psh(&s,opts,&a));assert(!allocations && !a.words && !a.uniforms.members && !a.push_constants.members);
     }
-    puts("Direct PSH: 41984 deterministic/final-allocation/ignored-key/owned-layout modules and ninety-seven allocation-free unsupported cases PASS");return 0;
+    puts("Direct PSH: 46080 deterministic/final-allocation/ignored-key/owned-layout modules and one hundred thirteen allocation-free unsupported cases PASS");return 0;
 }

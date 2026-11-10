@@ -36,6 +36,6 @@ with tempfile.TemporaryDirectory(prefix='spv-psh-gpu-') as tmp:
  if os.name=='nt':
   sources += [r/'libretro/glib/gcontainers.c']+[r/'libretro-common'/f for f in ['compat/compat_strl.c','encodings/encoding_utf.c','encodings/encoding_base64.c','hash/lrc_hash.c','features/features_cpu.c','time/rtime.c','compat/fopen_utf8.c','string/rstrtod.c','streams/file_stream.c','vfs/vfs_implementation.c','file/file_path.c','file/file_path_io.c','compat/compat_posix_string.c','string/stdstring.c']]
  subprocess.run(flags+list(map(str,sources))+['-Wl,--gc-sections','-lm',*([str(Path(os.environ.get('WINDIR','C:/Windows'))/'System32/vulkan-1.dll')] if os.name=='nt' else ['-lvulkan']),'-o',str(exe)],check=True)
- for first in range(0,54272,512):
+ for first in range(0,60416,512):
   limit=first+512
   subprocess.run([str(exe),str(first),str(limit)],check=True,timeout=300)

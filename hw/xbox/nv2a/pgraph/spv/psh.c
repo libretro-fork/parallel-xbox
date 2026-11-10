@@ -4,9 +4,10 @@
 #include <spirv/unified1/spirv.h>
 /* GLSL.std.450 numbers, as in the other native emitters; no extra SDK header. */
 enum { GLSLstd450Round=1, GLSLstd450FAbs=4, GLSLstd450Floor=8,
-       GLSLstd450Fract=10, GLSLstd450UMin=38, GLSLstd450FMax=40, GLSLstd450FClamp=43,
+       GLSLstd450Ceil=9, GLSLstd450Fract=10, GLSLstd450UMin=38, GLSLstd450FMax=40, GLSLstd450FClamp=43,
        GLSLstd450FMix=46, GLSLstd450Fma=50, GLSLstd450Normalize=69 };
 #include "psh.h"
+#include "hw/xbox/nv2a/pgraph/glsl/g8b8-lod.h"
 
 /* Count/write share an immutable key. Only bounded arithmetic IDs are
  * recorded on the stack and lent to the final write; no word-buffer clone. */
@@ -112,6 +113,10 @@ static bool has_rect_samples(const PshState *s)
 { for(unsigned j=0;j<4;j++)if(sample_stage(s,j) && !cube_stage(s,j) && s->rect_tex[j])return true;return false; }
 static bool has_texture_scale(const PshState *s)
 { return has_rect_samples(s) || has_f16_shadow(s); }
+static bool has_signed_gb(const PshState *s)
+{ for(unsigned j=0;j<4;j++)if(s->g8b8_signed[j])return true;return false; }
+static bool has_signed_query(const PshState *s)
+{ for(unsigned j=0;j<4;j++)if(s->g8b8_signed[j] && ((s->g8b8_signed[j]&(16|64)) || ((s->g8b8_signed[j]&128) && (s->g8b8_mip_flags&(1u<<j)))))return true;return false; }
 static bool has_border_samples(const PshState *s)
 { for(unsigned j=0;j<4;j++)if(sample_stage(s,j) && !s->shadow_map[j] && (texture_mode(s,j)==PS_TEXTUREMODES_PROJECT2D || texture_mode(s,j)==PS_TEXTUREMODES_PROJECT3D || dot_mode(texture_mode(s,j))) && s->border_adjust[j])return true;return false; }
 static bool has_color_key(const PshState *s)
@@ -162,6 +167,7 @@ typedef struct Context {
     uint32_t bump_array,bump_m2,uniform_v2,sign_fn,sign_type,sign_constants[3];
     uint32_t dots[4],dot_sign[2],dot_sign_type,dot_constants[4],dot_maps[4],dot_map_type;
     uint32_t shadow_max24,shadow_max_float,f16_bvec4,f16_base;
+    uint32_t gb_coord[4],gb_sample[4],signed_gb[4];
     bool cube_body,project_cube_body;
     bool fetch_body;
     bool precise;
@@ -277,7 +283,7 @@ static bool dest_valid(unsigned r)
 { return r==0 || r==4 || r==5 || (r>=8 && r<=13); }
 bool pgraph_spv_psh_supported(const PshState *s,SpvPshOptions opts)
 {
-    if(opts.ubo_binding>=32 || (!s->combiner_dynamic && ((s->combiner_control&255)>8 || !(s->final_inputs_0 || s->final_inputs_1))) || s->g8b8_mip_flags || ((s->depth_format&DEPTH_FORMAT_UI_CLAMP) && !pgraph_glsl_ui_clamp_stage(s)))return false;
+    if(opts.ubo_binding>=32 || (!s->combiner_dynamic && ((s->combiner_control&255)>8 || !(s->final_inputs_0 || s->final_inputs_1))) || (s->g8b8_mip_flags && !has_signed_gb(s)) || ((s->depth_format&DEPTH_FORMAT_UI_CLAMP) && !pgraph_glsl_ui_clamp_stage(s)))return false;
     bool dots[4]={false};
     for(unsigned j=0;j<4;j++){
         unsigned mode=texture_mode(s,j);
@@ -292,7 +298,8 @@ bool pgraph_spv_psh_supported(const PshState *s,SpvPshOptions opts)
             }
             dots[j]=true;
         }
-        if(s->g8b8_signed[j] || ((s->tex_x8y24[j] || s->shadow_map[j]) && !constant_shadow(s,j) && !sampled_shadow(s,j)))return false;
+        if(s->g8b8_signed[j] && (!(s->g8b8_signed[j]&15) || (s->g8b8_signed[j]&~255u) || mode!=PS_TEXTUREMODES_PROJECT2D || s->dim_tex[j]!=2 || s->tex_cubemap[j] || s->shadow_map[j] || s->border_adjust[j]))return false;
+        if((s->tex_x8y24[j] || s->shadow_map[j]) && !constant_shadow(s,j) && !sampled_shadow(s,j))return false;
         if(dependent_stage(s,j)){
             if(!j || texture_input(s,j)>=j)return false;
             if(!bump_stage(s,j) && (s->dim_tex[j]!=2 || s->rect_tex[j] || s->border_adjust[j]))return false;
@@ -409,6 +416,7 @@ static uint32_t ui_clamp_coord(Context *c,uint32_t coord,unsigned unit)
 #include "psh-dot.inc"
 #include "psh-f16.inc"
 #include "psh-shadow.inc"
+#include "psh-g8b8.inc"
 
 static void texture_finish(Context *c,uint32_t color,unsigned j)
 {
@@ -418,6 +426,7 @@ static void texture_finish(Context *c,uint32_t color,unsigned j)
         if(c->state->alpha_dynamic){uint32_t mask=unif(c,ALPHA_KILL,0);mask=binary(c,SpvOpBitwiseAnd,c->u,mask,c->ui32[1u<<j]);kill=binary(c,SpvOpLogicalAnd,c->b,binary(c,SpvOpINotEqual,c->b,mask,c->ui32[0]),kill);}discard_if(c,kill);
     }
     c->r[PS_REGISTER_T0+j]=texture_color_key(c,color,j);
+    if(c->state->g8b8_signed[j])c->signed_gb[j]=gb_stage(c,c->r[PS_REGISTER_T0+j],c->gb_coord[j],c->gb_sample[j],j);
 }
 static void texture_stages(Context *c)
 {
@@ -432,6 +441,7 @@ static void texture_stages(Context *c)
             coord=v4(c,extract(c,point,0),extract(c,point,1),c->cf[F_ONE],c->cf[F_ONE]);
         }else coord=unary(c,SpvOpLoad,c->v4,c->tex_inputs[j]);
         coord=ui_clamp_coord(c,coord,j);
+        if(c->state->g8b8_signed[j])c->gb_coord[j]=coord;
         if(mode==PS_TEXTUREMODES_DOTPRODUCT || mode==PS_TEXTUREMODES_DOT_ZW){
             c->dots[j]=texture_dot(c,coord,j);c->r[PS_REGISTER_T0+j]=splat(c,c->v4,c->cf[F_ZERO],4);
             if(mode==PS_TEXTUREMODES_DOT_ZW)texture_dot_depth(c,j);
@@ -443,6 +453,7 @@ static void texture_stages(Context *c)
             unsigned kind=sampler_kind(c->state,j);
             if(!sampled_shadow(c->state,j) && !dependent_stage(c->state,j) && !dot_mode(mode) && mode!=PS_TEXTUREMODES_CUBEMAP)coord=texture_border(c,coord,j);
             uint32_t sample=unary(c,SpvOpLoad,texture_sampled_type(c,kind),c->samplers[j]),uv=xy(c,coord);
+            if(c->state->g8b8_signed[j])c->gb_sample[j]=sample;
             if(c->state->rect_tex[j] && mode!=PS_TEXTUREMODES_CUBEMAP && !sampled_shadow(c->state,j) && !dependent_stage(c->state,j) && !dot_mode(mode)){
                 uint32_t image=unary(c,SpvOpImage,texture_image_type(c,kind),sample),size=val(c->w,SpvOpImageQuerySizeLod,c->iv2,2,image,c->si[0]);
                 uint32_t scaled=binary(c,SpvOpFDiv,c->v2,unary(c,SpvOpConvertSToF,c->v2,size),splat(c,c->v2,unif(c,TEX_SCALE,j),2));
@@ -473,6 +484,7 @@ static void texture_stages(Context *c)
             texture_finish(c,color,j);
         }
     }
+    if(has_signed_gb(c->state))gb_remap(c);
     /* GLSL initializes R0 alpha from T0 when the first stage is active. */
     if(texture_mode(c->state,0)!=PS_TEXTUREMODES_NONE)c->r[PS_REGISTER_R0]=v4(c,c->cf[F_ZERO],c->cf[F_ZERO],c->cf[F_ZERO],extract(c,c->r[PS_REGISTER_T0],3));
 }
@@ -554,7 +566,7 @@ static void emit(Writer *w,const PshState *state,SpvPshOptions opts)
     unsigned interfaces=0;for(unsigned j=0;j<4;j++)interfaces+=!!c.tex_inputs[j]+!!c.samplers[j];interfaces+=!!c.point_coord;if(state->combiner_dynamic)interfaces+=5;if(has_convolution(state))interfaces+=2;
     word(w,SpvMagicNumber);word(w,opts.spirv_1_6?0x00010600u:0x00010500u);word(w,0);word(w,0);word(w,0);
     op(w,SpvOpCapability,1,(uint32_t)SpvCapabilityShader);
-    if(has_rect_samples(state) || has_convolution(state) || has_f16_shadow(state))op(w,SpvOpCapability,1,(uint32_t)SpvCapabilityImageQuery);
+    if(has_rect_samples(state) || has_convolution(state) || has_f16_shadow(state) || has_signed_query(state))op(w,SpvOpCapability,1,(uint32_t)SpvCapabilityImageQuery);
     if(opts.spirv_1_6)op(w,SpvOpCapability,1,(uint32_t)SpvCapabilityDemoteToHelperInvocation);
     op(w,SpvOpExtInstImport,5,c.ext,0x4c534c47u,0x6474732eu,0x3035342eu,0u);
     op(w,SpvOpMemoryModel,2,(uint32_t)SpvAddressingModelLogical,(uint32_t)SpvMemoryModelGLSL450);

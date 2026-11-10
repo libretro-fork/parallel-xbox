@@ -59,8 +59,9 @@ static uint32_t texture_dependent(Context *c,uint32_t coord,uint32_t sample,unsi
     if(!bump_stage(c->state,unit)){
         lookup=mode==PS_TEXTUREMODES_DPNDNT_AR?val(c->w,SpvOpVectorShuffle,c->v2,4,source,source,3u,0u):val(c->w,SpvOpVectorShuffle,c->v2,4,source,source,1u,2u);
     }else{
-        uint32_t dx=val(c->w,SpvOpFunctionCall,c->f,2,c->sign_fn,extract(c,source,2));
-        uint32_t dy=val(c->w,SpvOpFunctionCall,c->f,2,c->sign_fn,extract(c,source,1));
+        unsigned input=texture_input(c->state,unit),signs=c->state->g8b8_signed[input];
+        uint32_t dx=(signs&1)?extract(c,c->signed_gb[input],0):val(c->w,SpvOpFunctionCall,c->f,2,c->sign_fn,extract(c,source,2));
+        uint32_t dy=(signs&2)?extract(c,c->signed_gb[input],1):val(c->w,SpvOpFunctionCall,c->f,2,c->sign_fn,extract(c,source,1));
         uint32_t delta=val(c->w,SpvOpCompositeConstruct,c->v2,2,dx,dy);
         /* Existing mat2[4] layout is eight padded vec2 columns; no CPU matrix copy. */
         uint32_t matrix=val(c->w,SpvOpCompositeConstruct,c->bump_m2,2,unif(c,BUMP_MAT,unit*2),unif(c,BUMP_MAT,unit*2+1));
@@ -140,7 +141,10 @@ static void texture_allocate(Context *c)
         if(texture_mode(c->state,j)==PS_TEXTUREMODES_PROJECT2D && sampler_kind(c->state,j)==2 && !c->project_cube_fn){c->project_cube_fn=id(c->w);c->project_cube_type=id(c->w);}
     }
     if(has_bump(c->state)){
-        c->bump_array=id(c->w);c->bump_m2=id(c->w);c->uniform_v2=id(c->w);c->sign_fn=id(c->w);c->sign_type=id(c->w);
+        c->bump_array=id(c->w);c->bump_m2=id(c->w);c->uniform_v2=id(c->w);
+    }
+    if(has_bump(c->state) || has_signed_gb(c->state)){
+        c->sign_fn=id(c->w);c->sign_type=id(c->w);
         for(unsigned j=0;j<3;j++)c->sign_constants[j]=id(c->w);
     }
     if(has_border_samples(c->state)){c->border_array=id(c->w);c->uniform_v3=id(c->w);}

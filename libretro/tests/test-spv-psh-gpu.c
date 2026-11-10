@@ -11,6 +11,7 @@
 #endif
 #include <vulkan/vulkan.h>
 #include "hw/xbox/nv2a/pgraph/spv/psh.h"
+#include "hw/xbox/nv2a/pgraph/glsl/g8b8-lod.h"
 #define CHECK(x) do { VkResult result=(x); if(result) { fprintf(stderr,"Vulkan %d at %d\n",result,__LINE__);abort(); } } while(0)
 /* Test-only attribution; never linked into the core. Raw wall times are
  * not isolated GPU/driver-cold qualification or presentation measurements. */
@@ -42,12 +43,13 @@ static VKAPI_ATTR VkBool32 VKAPI_CALL validation(VkDebugUtilsMessageSeverityFlag
 }
 
 typedef struct {VkImage image;VkImageView view;VkDeviceMemory memory;} Image;
-static Image image_shape(VkFormat format,VkImageUsageFlags usage,VkImageAspectFlags aspect,unsigned levels,unsigned kind){
- Image a={0};VkImageCreateInfo ci={.sType=VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,.flags=kind==2?VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT:0,.imageType=kind==1?VK_IMAGE_TYPE_3D:VK_IMAGE_TYPE_2D,.format=format,.extent={4,4,kind==1?4:1},.mipLevels=levels,.arrayLayers=kind==2?6:1,.samples=VK_SAMPLE_COUNT_1_BIT,.tiling=VK_IMAGE_TILING_OPTIMAL,.usage=usage};
+static Image image_shape_size(VkFormat format,VkImageUsageFlags usage,VkImageAspectFlags aspect,unsigned levels,unsigned kind,unsigned side,const VkComponentMapping *channels){
+ Image a={0};VkImageCreateInfo ci={.sType=VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,.flags=kind==2?VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT:0,.imageType=kind==1?VK_IMAGE_TYPE_3D:VK_IMAGE_TYPE_2D,.format=format,.extent={side,side,kind==1?side:1},.mipLevels=levels,.arrayLayers=kind==2?6:1,.samples=VK_SAMPLE_COUNT_1_BIT,.tiling=VK_IMAGE_TILING_OPTIMAL,.usage=usage};
  CHECK(vkCreateImage(device,&ci,NULL,&a.image));VkMemoryRequirements req;vkGetImageMemoryRequirements(device,a.image,&req);unsigned type=0;while(!(req.memoryTypeBits&(1u<<type)))type++;assert(type<memory_properties.memoryTypeCount);
  VkMemoryAllocateInfo ai={.sType=VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,.allocationSize=req.size,.memoryTypeIndex=type};CHECK(vkAllocateMemory(device,&ai,NULL,&a.memory));CHECK(vkBindImageMemory(device,a.image,a.memory,0));
- VkImageViewCreateInfo vi={.sType=VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,.image=a.image,.viewType=kind==1?VK_IMAGE_VIEW_TYPE_3D:kind==2?VK_IMAGE_VIEW_TYPE_CUBE:VK_IMAGE_VIEW_TYPE_2D,.format=format,.subresourceRange={aspect,0,levels,0,kind==2?6:1}};CHECK(vkCreateImageView(device,&vi,NULL,&a.view));return a;
+ VkImageViewCreateInfo vi={.sType=VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,.image=a.image,.viewType=kind==1?VK_IMAGE_VIEW_TYPE_3D:kind==2?VK_IMAGE_VIEW_TYPE_CUBE:VK_IMAGE_VIEW_TYPE_2D,.format=format,.components=channels?*channels:(VkComponentMapping){0},.subresourceRange={aspect,0,levels,0,kind==2?6:1}};CHECK(vkCreateImageView(device,&vi,NULL,&a.view));return a;
 }
+static Image image_shape(VkFormat f,VkImageUsageFlags u,VkImageAspectFlags a,unsigned levels,unsigned kind){return image_shape_size(f,u,a,levels,kind,4,NULL);}
 static Image image_levels(VkFormat f,VkImageUsageFlags u,VkImageAspectFlags a,unsigned levels){return image_shape(f,u,a,levels,0);}
 static Image image(VkFormat f,VkImageUsageFlags u,VkImageAspectFlags a){return image_levels(f,u,a,1);}
 static void drop_image(Image a){vkDestroyImageView(device,a.view,NULL);vkDestroyImage(device,a.image,NULL);vkFreeMemory(device,a.memory,NULL);}
@@ -108,6 +110,18 @@ static Image encoded_f16_texture(VkCommandBuffer cmd,VkQueue queue,VkFence fence
  b.srcAccessMask=VK_ACCESS_TRANSFER_WRITE_BIT;b.dstAccessMask=VK_ACCESS_SHADER_READ_BIT;b.oldLayout=VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;b.newLayout=VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;vkCmdPipelineBarrier(cmd,VK_PIPELINE_STAGE_TRANSFER_BIT,VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,0,0,NULL,0,NULL,1,&b);CHECK(vkEndCommandBuffer(cmd));
  VkSubmitInfo submit={.sType=VK_STRUCTURE_TYPE_SUBMIT_INFO,.commandBufferCount=1,.pCommandBuffers=&cmd};CHECK(vkQueueSubmit(queue,1,&submit,fence));CHECK(vkWaitForFences(device,1,&fence,VK_TRUE,10000000000ull));CHECK(vkResetFences(device,1,&fence));CHECK(vkResetCommandBuffer(cmd,0));drop(staging);return a;
 }
+static Image signed_gb_texture(VkCommandBuffer cmd,VkQueue queue,VkFence fence){
+ VkComponentMapping channels={VK_COMPONENT_SWIZZLE_R,VK_COMPONENT_SWIZZLE_G,VK_COMPONENT_SWIZZLE_R,VK_COMPONENT_SWIZZLE_G};Image a=image_shape_size(VK_FORMAT_R8G8_UNORM,VK_IMAGE_USAGE_SAMPLED_BIT|VK_IMAGE_USAGE_TRANSFER_DST_BIT,VK_IMAGE_ASPECT_COLOR_BIT,9,0,256,&channels);Buffer staging=buffer(174762,VK_BUFFER_USAGE_TRANSFER_SRC_BIT);uint8_t *data=(uint8_t *)staging.mapped;unsigned texel=0;VkBufferImageCopy levels[9];
+ for(unsigned level=0;level<9;level++){
+  unsigned side=256u>>level;levels[level]=(VkBufferImageCopy){.bufferOffset=texel*2,.imageSubresource={VK_IMAGE_ASPECT_COLOR_BIT,level,0,1},.imageExtent={side,side,1}};
+  for(unsigned y=0;y<side;y++)for(unsigned x=0;x<side;x++,texel++){static const uint8_t bits[]={0,1,126,127,128,129,254,255};data[texel*2]=bits[(x*3+y*5+level)%8];data[texel*2+1]=bits[(x*5+y*3+level*2)%8];}
+ }
+ assert(texel==87381);VkCommandBufferBeginInfo begin={.sType=VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};CHECK(vkBeginCommandBuffer(cmd,&begin));
+ VkImageMemoryBarrier b={.sType=VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,.dstAccessMask=VK_ACCESS_TRANSFER_WRITE_BIT,.oldLayout=VK_IMAGE_LAYOUT_UNDEFINED,.newLayout=VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,.srcQueueFamilyIndex=VK_QUEUE_FAMILY_IGNORED,.dstQueueFamilyIndex=VK_QUEUE_FAMILY_IGNORED,.image=a.image,.subresourceRange={VK_IMAGE_ASPECT_COLOR_BIT,0,9,0,1}};
+ vkCmdPipelineBarrier(cmd,VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,VK_PIPELINE_STAGE_TRANSFER_BIT,0,0,NULL,0,NULL,1,&b);vkCmdCopyBufferToImage(cmd,staging.handle,a.image,VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,9,levels);
+ b.srcAccessMask=VK_ACCESS_TRANSFER_WRITE_BIT;b.dstAccessMask=VK_ACCESS_SHADER_READ_BIT;b.oldLayout=VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;b.newLayout=VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;vkCmdPipelineBarrier(cmd,VK_PIPELINE_STAGE_TRANSFER_BIT,VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,0,0,NULL,0,NULL,1,&b);CHECK(vkEndCommandBuffer(cmd));
+ VkSubmitInfo submit={.sType=VK_STRUCTURE_TYPE_SUBMIT_INFO,.commandBufferCount=1,.pCommandBuffers=&cmd};CHECK(vkQueueSubmit(queue,1,&submit,fence));CHECK(vkWaitForFences(device,1,&fence,VK_TRUE,10000000000ull));CHECK(vkResetFences(device,1,&fence));CHECK(vkResetCommandBuffer(cmd,0));drop(staging);return a;
+}
 static unsigned fixture_kind(const PshState *s,unsigned j){unsigned mode=(s->shader_stage_program>>(j*5))&31;if(s->shadow_map[j] && s->tex_x8y24[j])return 3;return (mode==PS_TEXTUREMODES_CUBEMAP || mode==PS_TEXTUREMODES_DOT_RFLCT_DIFF || mode==PS_TEXTUREMODES_DOT_RFLCT_SPEC || mode==PS_TEXTUREMODES_DOT_STR_CUBE)?(s->tex_cubemap[j]?2:0):s->dim_tex[j]==3?1:mode==PS_TEXTUREMODES_PROJECT2D && s->tex_cubemap[j]?2:0;}
 static void fixture_family(PshState *s,unsigned unit,unsigned family){
  unsigned mode=family<1?PS_TEXTUREMODES_PROJECT2D:family<3?PS_TEXTUREMODES_PROJECT3D:family==3?PS_TEXTUREMODES_PROJECT2D:PS_TEXTUREMODES_CUBEMAP;
@@ -160,7 +174,7 @@ int main(int argc,char **argv){
   VkSamplerCreateInfo sci={.sType=VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,.magFilter=(j&1)?VK_FILTER_LINEAR:VK_FILTER_NEAREST,.minFilter=(j&1)?VK_FILTER_LINEAR:VK_FILTER_NEAREST,.mipmapMode=(j&2)?VK_SAMPLER_MIPMAP_MODE_LINEAR:VK_SAMPLER_MIPMAP_MODE_NEAREST,.addressModeU=(VkSamplerAddressMode)(j>>2),.addressModeV=(VkSamplerAddressMode)(j>>2),.addressModeW=(VkSamplerAddressMode)(j>>2),.maxLod=2,.borderColor=VK_BORDER_COLOR_FLOAT_TRANSPARENT_BLACK};CHECK(vkCreateSampler(device,&sci,NULL,&samplers[j]));
  }
  Image volume=dimensional_texture(1,cmd,queue,fence),cube=dimensional_texture(2,cmd,queue,fence);
- Image encoded_f16={0};if(limit>48128)encoded_f16=encoded_f16_texture(cmd,queue,fence);VkImageView depth_views[3]={0};Image packed_depth={0};if(limit>37888){for(unsigned j=0;j<3;j++)depth_views[j]=depth_marker_view(texture,j);packed_depth=packed_depth_texture(cmd,queue,fence);}
+ Image signed_gb={0};if(limit>54272)signed_gb=signed_gb_texture(cmd,queue,fence);Image encoded_f16={0};if(limit>48128)encoded_f16=encoded_f16_texture(cmd,queue,fence);VkImageView depth_views[3]={0};Image packed_depth={0};if(limit>37888){for(unsigned j=0;j<3;j++)depth_views[j]=depth_marker_view(texture,j);packed_depth=packed_depth_texture(cmd,queue,fence);}
  VkShaderModule vertices[4][2]={{vertex(false,0),vertex(true,0)},{vertex(false,1),vertex(true,1)},{0,0}};if(limit>37888){vertices[2][0]=vertex(false,2);vertices[2][1]=vertex(true,2);}if(limit>52224){vertices[3][0]=vertex(false,3);vertices[3][1]=vertex(true,3);}unsigned failures=0,compared=0,written=0,discarded=0,sample_pixels=0,point_pixels=0;uint64_t words[2]={0},reference_source_bytes=0;bool timings=getenv("PSH_COMPILER_TIMINGS")!=NULL;
  for(unsigned test=first;test<limit;test++){
   PshState state={.final_inputs_0=0x04200000,.final_inputs_1=0x1400};state.smooth_shading=!!(test&1);state.z_perspective=!!(test&2);state.depth_clipping=!!(test&4);state.window_clip_exclusive=!!(test&8);state.alpha_test=!!(test&16);state.alpha_dynamic=!!(test&32);state.depth_format=(test/64)%4;
@@ -549,12 +563,57 @@ int main(int argc,char **argv){
    if(ui && rect_marker){plane[1][0]=.125f;plane[1][1]=.25f;plane[2][0]=.625f;plane[2][1]=.75f;}
    memcpy(data[4],plane,sizeof(plane));data[1][0]=rect_marker?-0.0f:0.0f;data[7][0]=.5f;data[7][1]=refs[(f/97)%8];data[7][2]=(f/7)&1?1:-1;data[7][3]=(float)(256+(f/17)%8);if(state.point_sprite)data[7][3]=-data[7][3];
   }
+
+  if(test>=54272){
+   unsigned f=test-54272,unit=f%4,signs=(1+(f/4)%15)|(((f/60)%16)<<4);
+   memset(&state,0,sizeof(state));memset(&values,0,sizeof(values));state.shader_stage_program=PS_TEXTUREMODES_PROJECT2D<<(unit*5);state.dim_tex[unit]=2;state.g8b8_signed[unit]=signs;
+   state.g8b8_mip_flags=((f&128)?1u<<unit:0)|((f&256)?1u<<(unit+4):0);state.g8b8_mip_clamp_u=(f&32)?1u<<unit:0;state.g8b8_mip_clamp_v=(f&64)?1u<<unit:0;state.g8b8_mip_mirror=(f&512)?(1u<<unit)|(1u<<(unit+4)):0;
+   if(f&2048)psh_g8b8_set_extended_lod(&state,unit,4+(f/128)%5,1+(f/16)%3,1+(f/48)%3);
+   state.depth_format=(f/128)%4;state.smooth_shading=!!(f&1024);state.rect_tex[unit]=!!(f&1024);state.point_sprite=!!(f&512) && !(unit==3 && state.rect_tex[unit]);state.alpha_dynamic=!!(f&256);state.colorkey_mode[unit]=(f&1024)?(f/512)%4:COLOR_KEY_NONE;state.alphakill[unit]=!!(f&1024);
+   values.surfaceScale[0][0]=values.surfaceScale[0][1]=1;values.clipRange[0][1]=values.clipRange[0][3]=16777215;values.alphaKillMask[0]=(f/32)%16;
+   for(unsigned j=0;j<8;j++){values.clipRegion[j][2]=4;values.clipRegion[j][3]=4;}
+   for(unsigned j=0;j<4;j++){
+    values.texScale[j]=.5f+(j%3)*.5f;values.consts[0][j]=values.consts[16][j]=.5f;values.colorKeyMask[j]=(f&128)?0xff000000u:0;values.colorKey[j]=0x80000000u;
+    VkDescriptorImageInfo info={samplers[(f/16+j)%16],j==unit?signed_gb.view:texture.view,VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL};VkWriteDescriptorSet w={.sType=VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,.dstSet=set,.dstBinding=2+j,.descriptorCount=1,.descriptorType=VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,.pImageInfo=&info};vkUpdateDescriptorSets(device,1,&w,0,NULL);
+   }
+   unsigned reg=PS_REGISTER_T0+unit;state.final_inputs_0=(PS_REGISTER_C0<<24)|((reg|0xc0u)<<16)|(0x20u<<8);state.final_inputs_1=(reg|16u)<<8;values.combFinal0[0]=state.final_inputs_0;values.combFinal1[0]=state.final_inputs_1;
+   state.combiner_dynamic=!!(f&1024);if(state.combiner_dynamic)state.final_inputs_0=state.final_inputs_1=0;
+   float plane[3][4]={{0,0,100,1},{4,0,200,1},{0,4,300,1}};memcpy(data[4],plane,sizeof(plane));data[7][0]=.5f;data[7][1]=0;data[7][2]=1;data[7][3]=(float)(1+(f/17)%64);if(state.point_sprite)data[7][3]=-data[7][3];
+  }
+
+  if(test>=58368){
+   unsigned f=test-58368,input=f%2;bool ui=!!(f&128),marked=!!(f&256),volume_sample=!!(f&64);
+   memset(&state,0,sizeof(state));memset(&values,0,sizeof(values));state.depth_format=((f/32)%4)|(ui?DEPTH_FORMAT_UI_CLAMP:0);state.z_perspective=!!(f&32);state.smooth_shading=!!(f&1);state.point_sprite=!!(f&512);
+   state.shader_stage_program=PS_TEXTUREMODES_PROJECT2D|(PS_TEXTUREMODES_PROJECT2D<<5)|(((f&4)?PS_TEXTUREMODES_BUMPENVMAP_LUM:PS_TEXTUREMODES_BUMPENVMAP)<<10)|((volume_sample?PS_TEXTUREMODES_PROJECT3D:PS_TEXTUREMODES_CUBEMAP)<<15);
+   state.other_stage_input=input<<16;state.dim_tex[0]=state.dim_tex[1]=2;state.dim_tex[2]=(f&16)?3:2;state.dim_tex[3]=volume_sample?3:2;state.tex_cubemap[3]=!volume_sample;
+   for(unsigned j=0;j<2;j++){
+    unsigned signs=(1+(f/2+j*7)%15)|(((f/30+j*3)%16)<<4);state.g8b8_signed[j]=signs;unsigned bit=1u<<j;
+    state.g8b8_mip_flags|=((f&(8u<<j))?bit:0)|((f&(32u<<j))?bit<<4:0);state.g8b8_mip_clamp_u|=(f&64)?bit:0;state.g8b8_mip_clamp_v|=(f&128)?bit:0;state.g8b8_mip_mirror|=(f&256)?bit:0;
+    if(f&1024)psh_g8b8_set_extended_lod(&state,j,4+(f/128+j)%5,1+(f/16+j)%3,1+(f/48+j)%3);
+    state.rect_tex[j]=!!(f&(16u<<j));
+   }
+   state.rect_tex[2]=state.dim_tex[2]==2 && !!(f&128);
+   values.surfaceScale[0][0]=values.surfaceScale[0][1]=1;values.clipRange[0][1]=values.clipRange[0][3]=16777215;
+   for(unsigned j=0;j<8;j++){values.clipRegion[j][2]=4;values.clipRegion[j][3]=4;}
+   for(unsigned j=0;j<4;j++){
+    values.texScale[j]=.5f+(j%3)*.5f;values.consts[0][j]=values.consts[16][j]=.5f;
+    values.bumpMat[j][0]=.125f;values.bumpMat[j][1]=-.0625f;values.bumpMat[j][2]=.0625f;values.bumpMat[j][3]=.25f;values.bumpScale[j]=.125f;values.bumpOffset[j]=.75f;
+    VkImageView view=j<2?signed_gb.view:j==2?(state.dim_tex[2]==3?volume.view:texture.view):volume_sample?volume.view:cube.view;
+    VkDescriptorImageInfo info={samplers[(f/16+j)%16],view,VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL};VkWriteDescriptorSet w={.sType=VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,.dstSet=set,.dstBinding=2+j,.descriptorCount=1,.descriptorType=VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,.pImageInfo=&info};vkUpdateDescriptorSets(device,1,&w,0,NULL);
+   }
+   state.combiner_control=1;state.rgb_inputs[0]=((PS_REGISTER_T0|0xc0u)<<24)|(PS_REGISTER_C0<<16)|((PS_REGISTER_T0+1+0xc0u)<<8)|PS_REGISTER_C0;state.rgb_outputs[0]=PS_REGISTER_R0<<8;
+   state.final_inputs_0=(PS_REGISTER_C0<<24)|((PS_REGISTER_R0|0xc0u)<<16)|((PS_REGISTER_T0+2)<<8)|PS_REGISTER_C0;state.final_inputs_1=(PS_REGISTER_T0+3+16)<<8;
+   values.combCtl[0]=1;values.combRgbIn[0]=state.rgb_inputs[0];values.combRgbOut[0]=state.rgb_outputs[0];values.combFinal0[0]=state.final_inputs_0;values.combFinal1[0]=state.final_inputs_1;
+   state.combiner_dynamic=!!(f&1024);if(state.combiner_dynamic){state.combiner_control=0;state.final_inputs_0=state.final_inputs_1=0;}
+   float plane[3][4]={{0,0,100,1},{4,0,200,1},{0,4,300,1}};if(ui && marked){plane[1][0]=.125f;plane[1][1]=.25f;plane[2][0]=.625f;plane[2][1]=.75f;}
+   memcpy(data[4],plane,sizeof(plane));data[7][0]=.5f;data[7][1]=marked?-0.0f:0.0f;data[7][2]=1;data[7][3]=(float)(1+(f/17)%64);if(state.point_sprite)data[7][3]=-data[7][3];
+  }
   GlslcResult modules[2];SpvPshOptions opts={.spirv_1_6=!!(test&256),.ubo_binding=1,.tex_binding=2};assert(pgraph_spv_psh(&state,opts,&modules[1]));MString *source=pgraph_glsl_gen_psh(&state,(GenPshGlslOptions){.vulkan=true,.locations=true,.ubo_binding=1,.tex_binding=2});GlslcOptions go={.spirv_1_6=opts.spirv_1_6,.emit_layout=true};if(!glslc_compile(GLSLC_STAGE_FRAGMENT,mstring_get_str(source),&go,&modules[0])){fprintf(stderr,"fragment %u %d %s\n",test,modules[0].error_line,modules[0].error);abort();}reference_source_bytes+=strlen(mstring_get_str(source));mstring_unref(source);
   words[0]+=modules[0].num_words;words[1]+=modules[1].num_words;
   uint32_t expected[80];uint64_t build_ns[2]={0},draw_ns[2]={0};
   for(unsigned path=0;path<2;path++){
    assert(modules[path].uniforms.size<=2048);memset(uniform.mapped,0,2048);pack(uniform.mapped,&modules[path].uniforms,&values);VkShaderModule frag=module(&modules[path]);
-   VkPipelineShaderStageCreateInfo stages[2]={{.sType=VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,.stage=VK_SHADER_STAGE_VERTEX_BIT,.module=vertices[test>=52224?3:test>=48128?2:test>=44032?0:test>=37888?2:test>=18944][state.smooth_shading],.pName="main"},{.sType=VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,.stage=VK_SHADER_STAGE_FRAGMENT_BIT,.module=frag,.pName="main"}};
+   VkPipelineShaderStageCreateInfo stages[2]={{.sType=VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,.stage=VK_SHADER_STAGE_VERTEX_BIT,.module=vertices[test>=54272?0:test>=52224?3:test>=48128?2:test>=44032?0:test>=37888?2:test>=18944][state.smooth_shading],.pName="main"},{.sType=VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,.stage=VK_SHADER_STAGE_FRAGMENT_BIT,.module=frag,.pName="main"}};
    VkPipelineVertexInputStateCreateInfo vi={.sType=VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO};VkPipelineInputAssemblyStateCreateInfo ia={.sType=VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,.topology=state.point_sprite?VK_PRIMITIVE_TOPOLOGY_POINT_LIST:VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST};VkViewport viewport={0,0,4,4,0,1};VkRect2D scissor={{0,0},{4,4}};VkPipelineViewportStateCreateInfo vp={.sType=VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO,.viewportCount=1,.pViewports=&viewport,.scissorCount=1,.pScissors=&scissor};VkPipelineRasterizationStateCreateInfo rs={.sType=VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO,.polygonMode=VK_POLYGON_MODE_FILL,.cullMode=VK_CULL_MODE_NONE,.frontFace=VK_FRONT_FACE_CLOCKWISE,.lineWidth=1};VkPipelineMultisampleStateCreateInfo ms={.sType=VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO,.rasterizationSamples=VK_SAMPLE_COUNT_1_BIT};VkPipelineDepthStencilStateCreateInfo ds={.sType=VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO,.depthTestEnable=VK_TRUE,.depthWriteEnable=VK_TRUE,.depthCompareOp=VK_COMPARE_OP_ALWAYS};VkPipelineColorBlendAttachmentState blend={.colorWriteMask=15};VkPipelineColorBlendStateCreateInfo cb={.sType=VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO,.attachmentCount=1,.pAttachments=&blend};VkGraphicsPipelineCreateInfo gp={.sType=VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,.stageCount=2,.pStages=stages,.pVertexInputState=&vi,.pInputAssemblyState=&ia,.pViewportState=&vp,.pRasterizationState=&rs,.pMultisampleState=&ms,.pDepthStencilState=&ds,.pColorBlendState=&cb,.layout=layout,.renderPass=pass};VkPipeline pipeline;uint64_t build_start=timings?wall_ns():0;CHECK(vkCreateGraphicsPipelines(device,VK_NULL_HANDLE,1,&gp,NULL,&pipeline));if(timings)build_ns[path]=wall_ns()-build_start;
    CHECK(vkResetCommandBuffer(cmd,0));VkCommandBufferBeginInfo begin={.sType=VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};CHECK(vkBeginCommandBuffer(cmd,&begin));VkClearValue clear[2]={{{{-2,3,5,7}}}, {.depthStencil={1,0}}};VkRenderPassBeginInfo rp={.sType=VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,.renderPass=pass,.framebuffer=fb,.renderArea={{0,0},{4,4}},.clearValueCount=2,.pClearValues=clear};vkCmdBeginRenderPass(cmd,&rp,VK_SUBPASS_CONTENTS_INLINE);vkCmdBindPipeline(cmd,VK_PIPELINE_BIND_POINT_GRAPHICS,pipeline);vkCmdBindDescriptorSets(cmd,VK_PIPELINE_BIND_POINT_GRAPHICS,layout,0,1,&set,0,NULL);vkCmdPushConstants(cmd,layout,VK_SHADER_STAGE_VERTEX_BIT,0,128,data);vkCmdDraw(cmd,state.point_sprite?1:3,1,0,0);vkCmdEndRenderPass(cmd);
    VkBufferImageCopy copies[2]={{.imageSubresource={VK_IMAGE_ASPECT_COLOR_BIT,0,0,1},.imageExtent={4,4,1}},{.bufferOffset=256,.imageSubresource={VK_IMAGE_ASPECT_DEPTH_BIT,0,0,1},.imageExtent={4,4,1}}};vkCmdCopyImageToBuffer(cmd,color.image,VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,readback.handle,1,copies);vkCmdCopyImageToBuffer(cmd,depth.image,VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,readback.handle,1,copies+1);CHECK(vkEndCommandBuffer(cmd));VkSubmitInfo submit={.sType=VK_STRUCTURE_TYPE_SUBMIT_INFO,.commandBufferCount=1,.pCommandBuffers=&cmd};uint64_t draw_start=timings?wall_ns():0;CHECK(vkQueueSubmit(queue,1,&submit,fence));CHECK(vkWaitForFences(device,1,&fence,VK_TRUE,10000000000ull));CHECK(vkResetFences(device,1,&fence));if(timings)draw_ns[path]=wall_ns()-draw_start;
@@ -563,6 +622,7 @@ int main(int argc,char **argv){
   }
   if(timings)fprintf(stderr,"PSH timing case=%u ref_build_ns=%llu native_build_ns=%llu ref_submit_fence_ns=%llu native_submit_fence_ns=%llu UNQUALIFIED\n",test,(unsigned long long)build_ns[0],(unsigned long long)build_ns[1],(unsigned long long)draw_ns[0],(unsigned long long)draw_ns[1]);
   bool sampled=false;for(unsigned j=0;j<4;j++)sampled|=((state.shader_stage_program>>(j*5))&31)==PS_TEXTUREMODES_PROJECT2D || ((state.shader_stage_program>>(j*5))&31)==PS_TEXTUREMODES_PROJECT3D || ((state.shader_stage_program>>(j*5))&31)==PS_TEXTUREMODES_CUBEMAP || ((state.shader_stage_program>>(j*5))&31)==PS_TEXTUREMODES_BUMPENVMAP || ((state.shader_stage_program>>(j*5))&31)==PS_TEXTUREMODES_BUMPENVMAP_LUM || ((state.shader_stage_program>>(j*5))&31)==PS_TEXTUREMODES_DPNDNT_AR || ((state.shader_stage_program>>(j*5))&31)==PS_TEXTUREMODES_DPNDNT_GB;
+  if(test==54272){float red;memcpy(&red,expected,4);assert(isfinite(red) && red>0.0f && red<1.0f);printf("Signed fixture signal: first_red=%.9g; final constant bank active\n",red);}
   for(unsigned j=0;j<16;j++){if(expected[j*4]==0xc0000000u)discarded++;else{written++;sample_pixels+=sampled;point_pixels+=state.point_sprite;}}
   release(&modules[0]);release(&modules[1]);
  }
@@ -573,5 +633,5 @@ int main(int argc,char **argv){
  printf("Fragment coverage: written_pixels=%u discarded_pixels=%u sampled_pixels=%u point_pixels=%u\n",written,discarded,sample_pixels,point_pixels);
  printf("Fragment work: reference_words=%llu native_words=%llu avoided_GLSL_bytes=%llu; work counts only, no latency/GPU execution claim\n",(unsigned long long)words[0],(unsigned long long)words[1],(unsigned long long)reference_source_bytes);
  for(unsigned j=0;j<4;j++){for(unsigned k=0;k<2;k++)if(vertices[j][k])vkDestroyShaderModule(device,vertices[j][k],NULL);}
- vkDestroyFence(device,fence,NULL);vkDestroyCommandPool(device,commands,NULL);vkDestroyDescriptorPool(device,pool,NULL);vkDestroyPipelineLayout(device,layout,NULL);vkDestroyDescriptorSetLayout(device,set_layout,NULL);vkDestroyFramebuffer(device,fb,NULL);vkDestroyRenderPass(device,pass,NULL);drop_image(color);drop_image(depth);drop(uniform);drop(readback);for(unsigned j=0;j<16;j++)vkDestroySampler(device,samplers[j],NULL);for(unsigned j=0;j<3;j++)if(depth_views[j])vkDestroyImageView(device,depth_views[j],NULL);if(encoded_f16.image)drop_image(encoded_f16);if(packed_depth.image)drop_image(packed_depth);drop_image(texture);drop_image(volume);drop_image(cube);vkDestroyDevice(device,NULL);if(validated)destroy(instance,messenger,NULL);vkDestroyInstance(instance,NULL);return failures||errors?1:0;
+ vkDestroyFence(device,fence,NULL);vkDestroyCommandPool(device,commands,NULL);vkDestroyDescriptorPool(device,pool,NULL);vkDestroyPipelineLayout(device,layout,NULL);vkDestroyDescriptorSetLayout(device,set_layout,NULL);vkDestroyFramebuffer(device,fb,NULL);vkDestroyRenderPass(device,pass,NULL);drop_image(color);drop_image(depth);drop(uniform);drop(readback);for(unsigned j=0;j<16;j++)vkDestroySampler(device,samplers[j],NULL);for(unsigned j=0;j<3;j++)if(depth_views[j])vkDestroyImageView(device,depth_views[j],NULL);if(signed_gb.image)drop_image(signed_gb);if(encoded_f16.image)drop_image(encoded_f16);if(packed_depth.image)drop_image(packed_depth);drop_image(texture);drop_image(volume);drop_image(cube);vkDestroyDevice(device,NULL);if(validated)destroy(instance,messenger,NULL);vkDestroyInstance(instance,NULL);return failures||errors?1:0;
 }

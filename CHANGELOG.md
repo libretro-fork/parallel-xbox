@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Reconstruct signed G8B8 textures directly as Vulkan SPIR-V, including point/gather filtering, mixed min/mag decisions, mip interpolation and per-axis wrap/mirror/edge addressing with lower-LOD fields. Preserve dependent bump/luminance reads before late signed-channel remapping. Reuse existing views, sign helpers and two final allocations without texel copies or retained lends; unsupported shapes retain the compiler.
+
 - Decode and filter F16 depth textures directly in Vulkan SPIR-V. Preserve encoded-RAM versus normalized-surface handling, min/mag LOD selection, gather ordering, rectangle projection and depth comparisons. Reuse existing texture-scale uniforms and image owners with two final allocations and no texel copies or retained lends; unsupported formats retain the compiler.
 
 - Translate UI rectangle sampling clamps directly to Vulkan SPIR-V. Borrow the existing geometry marker and UV bounds, preserve the non-rectangle depth path and first projected stage, and retain two final allocations without geometry copies or new resources. Unsupported recipes still use the compiler.
