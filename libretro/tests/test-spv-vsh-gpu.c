@@ -154,7 +154,7 @@ int main(void) {
  VkPipelineMultisampleStateCreateInfo ms={.sType=VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO,.rasterizationSamples=VK_SAMPLE_COUNT_1_BIT};
  uint32_t reference[VERTICES*60];unsigned compared=0,failures=0;
  clock_t reference_ticks=0,direct_ticks=0;size_t reference_words=0,direct_words=0;
- for(unsigned test=0;test<5120;test++) {
+ for(unsigned test=0;test<6416;test++) {
   VshState state={0};state.smooth_shading=test&1;state.fog_dynamic=true;state.specular_enable=test&2;state.ignore_specular_alpha=test&4;
   unsigned variant=(test%1568)/112,m=test%14,l=(test%112)/14;state.programmable.program_length=5;
   token(state.programmable.program_data[0],MAC_MOV,ILU_NOP,0,0,false,false);
@@ -221,6 +221,14 @@ int main(void) {
     unsigned fog=(test-4160)%24;state.fog_enable=true;
     if(fog<12){state.fog_mode=modes[fog%6];state.fixed_function.foggen=fog<6?FOGGEN_SPEC_ALPHA:FOGGEN_FOG_X;}
     else {static const unsigned linear_exp[]={FOG_MODE_LINEAR,FOG_MODE_EXP,FOG_MODE_LINEAR_ABS,FOG_MODE_EXP_ABS};state.fog_mode=linear_exp[(fog-12)%4];state.fixed_function.foggen=FOGGEN_RADIAL+(fog-12)/4;}
+   }
+  }
+  if(test>=5120){
+   unsigned f=test-5120;state.fog_enable=!!((f/16)&1);
+   for(unsigned t=0;t<4;t++){
+    state.fixed_function.texture_matrix_enable[t]=!!(f&(1u<<t));
+    unsigned pattern=((f/16)+t*17)%81;
+    for(unsigned a=0;a<4;a++){state.fixed_function.texgen[t][a]=pattern%3;pattern/=3;}
    }
   }
   for(unsigned a=0;a<16;a++)attrs[a].format=state.compressed_attrs&(1u<<a)?VK_FORMAT_R32_SINT:VK_FORMAT_R32G32B32A32_SFLOAT;

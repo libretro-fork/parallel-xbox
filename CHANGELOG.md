@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Extend direct Vulkan unlit fixed-function translation to mixed disabled, eye-linear and object-linear texgen coordinates, including projective Q and post-generation texture matrices. Read planes from existing constants and share one model-view result with fog/other eye-linear coordinates; add no matrix snapshots, layouts or allocations. Keep nonlinear/dynamic texgen and the six known quadratic-fog exceptions on GLSL. Prior direct modules remain byte-identical.
+
 - Extend direct Vulkan unlit fixed-function translation to 24 static fog-curve/distance-source combinations using existing constants and uniforms. Cover specular alpha and fog-coordinate inputs for all six curves, plus radial/planar/absolute-planar distances for linear and exponential curves. Keep six transformed-distance quadratic combinations on GLSL after physical-GPU tests caught one-ULP differences. Preserve allocation counts, layouts, borrowed-key lifetimes and prior direct module words.
 
 - Translate unlit, unskinned fixed-function Vulkan vertex shaders directly to SPIR-V when fog and texgen are disabled, including static texture matrices. Preserve composite transforms, viewport rounding, colors and point-register behavior using the existing constant uniforms. Require supported FP32 preservation, borrow the immutable recipe through final-buffer emission and retain GLSL fallback for other fixed-function states. No matrix snapshots, new allocations or file I/O; existing direct programmable modules remain byte-identical.

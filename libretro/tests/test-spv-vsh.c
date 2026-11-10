@@ -70,7 +70,7 @@ int main(int argc, char **argv)
 {
     assert(argc == 2);check_caps();
     unsigned total = 0;
-    for (unsigned i = 0; i < 3712; i++) {
+    for (unsigned i = 0; i < 5008; i++) {
         VshState state;
         unsigned base=i%1120;
         make_case(&state, base);
@@ -95,6 +95,14 @@ int main(int argc, char **argv)
             unsigned f=(i-2752)%24;state.fog_enable=true;
             if(f<12){state.fog_mode=modes[f%6];state.fixed_function.foggen=f<6?FOGGEN_SPEC_ALPHA:FOGGEN_FOG_X;}
             else {static const unsigned linear_exp[]={FOG_MODE_LINEAR,FOG_MODE_EXP,FOG_MODE_LINEAR_ABS,FOG_MODE_EXP_ABS};state.fog_mode=linear_exp[(f-12)%4];state.fixed_function.foggen=FOGGEN_RADIAL+(f-12)/4;}
+        }
+        if(i>=3712){
+            unsigned f=i-3712;state.fog_enable=!!((f/16)&1);
+            for(unsigned t=0;t<4;t++){
+                state.fixed_function.texture_matrix_enable[t]=!!(f&(1u<<t));
+                unsigned pattern=((f/16)+t*17)%81;
+                for(unsigned a=0;a<4;a++){state.fixed_function.texgen[t][a]=pattern%3;pattern/=3;}
+            }
         }
         SpvVshOptions opts = { .spirv_1_6 = !!(i & 1),
                               .push_constants = !!(i & 4), .ubo_binding = i % 3,
@@ -141,7 +149,9 @@ int main(int argc, char **argv)
         assert(control_reads==(unsigned)state.fog_dynamic);
         unsigned expected_transforms=state.is_fixed_function;
         if(state.is_fixed_function)for(unsigned t=0;t<4;t++)expected_transforms+=state.fixed_function.texture_matrix_enable[t];
-        if(state.is_fixed_function && state.fog_enable && state.fixed_function.foggen>=FOGGEN_RADIAL && state.fixed_function.foggen<=FOGGEN_ABS_PLANAR)expected_transforms++;
+        bool needs_eye=state.is_fixed_function && state.fog_enable && state.fixed_function.foggen>=FOGGEN_RADIAL && state.fixed_function.foggen<=FOGGEN_ABS_PLANAR;
+        if(state.is_fixed_function)for(unsigned t=0;t<4;t++)for(unsigned a=0;a<4;a++)needs_eye|=state.fixed_function.texgen[t][a]==TEXGEN_EYE_LINEAR;
+        expected_transforms+=needs_eye;
         assert(matrices==(unsigned)state.is_fixed_function && transforms==expected_transforms);
         memset(&state, 0xa5, sizeof(state));
         assert(!strcmp(a.uniforms.members[0].name, "c"));
@@ -154,7 +164,7 @@ int main(int argc, char **argv)
         glslc_result_free_words(&b); free(b.uniforms.members); free(b.push_constants.members);
         total++;
     }
-    for (unsigned i = 0; i < 28; i++) {
+    for (unsigned i = 0; i < 31; i++) {
         VshState s; make_case(&s, 0); SpvVshOptions opts = {0};
         if (i == 0) { s.is_fixed_function = true; }
         if (i == 1) { s.fog_enable = true; s.fog_dynamic = false; s.fog_mode = FOG_MODE_ERROR2; }
@@ -180,12 +190,13 @@ int main(int argc, char **argv)
             if(i==19)s.fixed_function.texgen[1][2]=TEXGEN_NORMAL_MAP;
             if(i==20)s.compressed_attrs=s.swizzle_attrs=2;
             if(i==21){s.fog_enable=true;s.fixed_function.foggen=(enum VshFoggen)-1;}
-            if(i>=22){s.fog_enable=true;s.fog_mode=i<25?FOG_MODE_EXP2:FOG_MODE_EXP2_ABS;s.fixed_function.foggen=FOGGEN_RADIAL+(i-22)%3;}
+            if(i>=22 && i<28){s.fog_enable=true;s.fog_mode=i<25?FOG_MODE_EXP2:FOG_MODE_EXP2_ABS;s.fixed_function.foggen=FOGGEN_RADIAL+(i-22)%3;}
         }
+        if(i>=28){s.is_fixed_function=true;opts.preserve_float32=true;s.fixed_function.texgen[0][0]=i==28?(enum VshTexgen)-1:i==29?TEXGEN_SPHERE_MAP:TEXGEN_REFLECTION_MAP;}
         GlslcResult result; memset(&result, 0xa5, sizeof(result)); allocations = 0;
         assert(!pgraph_spv_vsh(&s, opts, &result));
         assert(!allocations && !result.words && !result.uniforms.members && !result.push_constants.members);
     }
-    printf("Direct VSH: %u deterministic native-module/owned-layout/poisoned-key cases; twenty-eight allocation-free unsupported paths; 512 device-capability/generation checks PASS\n", total);
+    printf("Direct VSH: %u deterministic native-module/owned-layout/poisoned-key cases; thirty-one allocation-free unsupported paths; 512 device-capability/generation checks PASS\n", total);
     return 0;
 }

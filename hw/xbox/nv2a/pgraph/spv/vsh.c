@@ -114,7 +114,7 @@ bool pgraph_spv_vsh_supported(const VshState *s, SpvVshOptions opts)
         }
         for (unsigned t = 0; t < 4; t++) {
             for (unsigned a = 0; a < 4; a++) {
-                if (ff->texgen[t][a] != TEXGEN_DISABLE) { return false; }
+                if ((unsigned)ff->texgen[t][a] > TEXGEN_OBJECT_LINEAR) { return false; }
             }
         }
         return true;
@@ -269,6 +269,11 @@ static void unlit(Context *c)
         NV_IGRAPH_XF_XFCTX_T0MAT, NV_IGRAPH_XF_XFCTX_T1MAT,
         NV_IGRAPH_XF_XFCTX_T2MAT, NV_IGRAPH_XF_XFCTX_T3MAT,
     };
+    static const unsigned tex_plane[] = {
+        NV_IGRAPH_XF_XFCTX_TG0MAT, NV_IGRAPH_XF_XFCTX_TG1MAT,
+        NV_IGRAPH_XF_XFCTX_TG2MAT, NV_IGRAPH_XF_XFCTX_TG3MAT,
+    };
+    uint32_t eye_position = 0;
     c->o[0] = transform(c, input(c, 0), NV_IGRAPH_XF_XFCTX_CMAT0);
     c->o[3] = input(c, 3); c->o[4] = input(c, 4);
     c->o[7] = input(c, 7); c->o[8] = input(c, 8);
@@ -281,6 +286,7 @@ static void unlit(Context *c)
             distance = extract(c, input(c, 5), 0);
         } else {
             uint32_t position = transform(c, input(c, 0), NV_IGRAPH_XF_XFCTX_MMAT0);
+            eye_position = position;
             uint32_t xyz = value(c->w, SpvOpVectorShuffle, c->v3, 5, position, position, 0u, 1u, 2u);
             if (gen == FOGGEN_RADIAL) {
                 distance = ext1(c, GLSLstd450Length, c->f, xyz);
@@ -296,7 +302,31 @@ static void unlit(Context *c)
         c->o[5] = splat(c, distance);
     }
     for (unsigned t = 0; t < 4; t++) {
-        uint32_t v = input(c, 9 + t);
+        bool generated = false;
+        for (unsigned a = 0; a < 4; a++) { generated |= c->state->fixed_function.texgen[t][a] != TEXGEN_DISABLE; }
+        uint32_t v;
+        if (!generated) {
+            v = input(c, 9 + t);
+        } else {
+            uint32_t component[4];
+            for (unsigned a = 0; a < 4; a++) {
+                enum VshTexgen mode = c->state->fixed_function.texgen[t][a];
+                if (mode == TEXGEN_DISABLE) {
+                    component[a] = extract(c, input(c, 9 + t), a);
+                } else {
+                    uint32_t position = input(c, 0);
+                    if (mode == TEXGEN_EYE_LINEAR) {
+                        if (!eye_position) {
+                            eye_position = transform(c, position, NV_IGRAPH_XF_XFCTX_MMAT0);
+                        }
+                        position = eye_position;
+                    }
+                    component[a] = binary(c, SpvOpDot, c->f,
+                                          constant(c, tex_plane[t] + a), position);
+                }
+            }
+            v = make_v4(c, component[0], component[1], component[2], component[3]);
+        }
         if (c->state->fixed_function.texture_matrix_enable[t]) {
             v = transform(c, v, tex_matrix[t]);
         }
@@ -729,11 +759,22 @@ static void emit(Writer *w, const VshState *state, SpvVshOptions opts)
             }
         }
         for (unsigned j = 0; j < 4; j++) { used[NV_IGRAPH_XF_XFCTX_CMAT0 + j] = true; }
+        static const unsigned planes[] = {
+            NV_IGRAPH_XF_XFCTX_TG0MAT, NV_IGRAPH_XF_XFCTX_TG1MAT,
+            NV_IGRAPH_XF_XFCTX_TG2MAT, NV_IGRAPH_XF_XFCTX_TG3MAT,
+        };
         static const unsigned bases[] = {
             NV_IGRAPH_XF_XFCTX_T0MAT, NV_IGRAPH_XF_XFCTX_T1MAT,
             NV_IGRAPH_XF_XFCTX_T2MAT, NV_IGRAPH_XF_XFCTX_T3MAT,
         };
         for (unsigned t = 0; t < 4; t++) {
+            for (unsigned a = 0; a < 4; a++) {
+                enum VshTexgen mode = state->fixed_function.texgen[t][a];
+                if (mode != TEXGEN_DISABLE) { used[planes[t] + a] = true; }
+                if (mode == TEXGEN_EYE_LINEAR) {
+                    for (unsigned j = 0; j < 4; j++) { used[NV_IGRAPH_XF_XFCTX_MMAT0 + j] = true; }
+                }
+            }
             if (state->fixed_function.texture_matrix_enable[t]) {
                 for (unsigned j = 0; j < 4; j++) { used[bases[t] + j] = true; }
             }

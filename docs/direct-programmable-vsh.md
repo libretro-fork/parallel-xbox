@@ -67,12 +67,12 @@ may bypass translation; a warm driver cache is a separate compilation milestone.
 
 ## Regression coverage and qualification
 
-- `test-spv-vsh.py`: 3,712 deterministic SPIR-V modules, final-owner allocation
-  counts, poisoned source keys, twenty-eight allocation-free unsupported paths, UBSan and
+- `test-spv-vsh.py`: 5,008 deterministic SPIR-V modules, final-owner allocation
+  counts, poisoned source keys, thirty-one allocation-free unsupported paths, UBSan and
   spirv-val. Both SPIR-V 1.5 and 1.6 targets are covered. Extracted native device
   setup is checked across 512 API/property/generation cases, including stale
   target reset and zero queries on older APIs.
-- `test-spv-vsh-gpu.py`: 5,120 programs / 8,355,840 scalar outputs compared with
+- `test-spv-vsh-gpu.py`: 6,416 programs / 10,470,912 scalar outputs compared with
   the production GLSL generator/compiler using Vulkan transform feedback. It
   captures all user outputs, position and point size before clipping; numerical
   differences fail (NaN payload identity is not required). It exercises opcode
@@ -122,8 +122,8 @@ requires forced invalidation. Legacy non-point modules retain their prior words.
 ## Unlit fixed-function subset
 
 The direct subset requires lighting off, skinning off, static CSV0_C and texgen,
-all coordinate texgen modes disabled, dynamic fog off and distance-based point
-parameters off. Static fog is supported as described below. Enabled static texture matrices are supported. Other states
+coordinate texgen restricted to disabled/eye-linear/object-linear modes, dynamic
+fog off and distance-based point parameters off. Static fog is supported as described below. Enabled static texture matrices are supported. Other states
 retain the GLSL path, including dynamic lighting/texgen/fog and skinned vertices.
 The existing FP32 property gate also applies; no new device query is added.
 
@@ -173,3 +173,27 @@ include all distance sources, input formats, texture-matrix masks, asymmetric
 transforms, exceptional parameters and poisoned fogCtl values. This expands
 translation coverage without changing recipe keys, cache schemas or stutter
 qualification.
+
+## Static linear texgen
+
+Each of the sixteen coordinates can independently pass through the original
+texture attribute, use dot(plane, originalPosition), or use dot(plane,
+modelViewPosition). The model-view position is the full homogeneous vector;
+there is no normalization or perspective divide before the plane dot. Generated
+coordinates then undergo the enabled static texture matrix, including projective
+Q. Existing constant-array registers supply all planes and matrices.
+
+One model-view result is shared across eye-linear coordinates and any fog source
+that already requires it. Original texture attributes are loaded only when a
+component passes through. These are shader value/ID operations, not CPU matrix
+or vertex copies. The immutable key is borrowed through count/write emission;
+word/layout allocations and native publication/retirement remain unchanged.
+
+Tests add 1,296 fixtures covering all 81 four-coordinate ternary patterns per
+stage and all sixteen texture-matrix masks, plus supported fog combinations,
+input formats and exceptional inputs. Matrix-operation counts verify that the
+model-view result is shared. All 3,712 earlier fixtures retain byte-identical
+modules. Negative/unknown modes, sphere/normal/reflection mapping, dynamic texgen,
+lighting/skinning and previously recorded fog exceptions retain GLSL fallback.
+No key schema or driver-cache defaults change, and this does not establish
+cold-play recovery.
