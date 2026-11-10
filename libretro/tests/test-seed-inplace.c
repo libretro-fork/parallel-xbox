@@ -50,6 +50,10 @@ static unsigned reference(const ShaderState *src,ShaderState *out,unsigned count
  unsigned used=0;GHashTable *seen=pgraph_seed_hash_set_new();
  for(unsigned i=0;i<count;i++) {
   ShaderState state=src[i];
+  for(unsigned stage=0;stage<4;stage++){
+   if(state.psh.conv_tex[stage]==1)state.psh.conv_tex[stage]=(enum ConvolutionFilter)5;
+   else if(state.psh.conv_tex[stage]==2)state.psh.conv_tex[stage]=(enum ConvolutionFilter)6;
+  }
   if(pgraph_glsl_psh_canonicalize_dynamic(&state.psh) && pgraph_seed_hash_set_add(seen,fast_hash((const uint8_t *)&state,sizeof(state))))out[used++]=state;
  }
  g_hash_table_destroy(seen);return used;
@@ -69,6 +73,8 @@ int main(void) {
    size_t end=offsetof(FixedFunctionVshState,texgen);assert(end>begin);
    for(size_t p=begin;p<end;p++)((unsigned char *)&s->vsh.fixed_function)[p]=(unsigned char)(mode==1?11:mode==2?i%7:i);
    s->psh.combiner_control=i*17;s->psh.final_inputs_0=i;
+   static const unsigned kernels[]={0,1,2,5,6,3,7};
+   s->psh.conv_tex[i%4]=(enum ConvolutionFilter)kernels[i%7];
    s->psh.rgb_inputs[i%8]=i;s->psh.alpha_test=i%2;
    s->psh.combiner_dynamic=mode==0 || (mode==2 && i%3==0);
   }

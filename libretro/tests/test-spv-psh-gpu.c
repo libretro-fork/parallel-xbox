@@ -765,6 +765,15 @@ int main(int argc,char **argv){
    }
    const float refs[]={0,.125f,.5f,.75f,1,1.5f,-.25f,.0001f};float plane[3][4]={{0,0,100,1},{4,0,200,1},{0,4,300,1}};memcpy(data[4],plane,sizeof(plane));data[7][0]=.5f;data[7][1]=refs[n%8];data[7][2]=(n&4)?1:-1;data[7][3]=(float)(256+n%8);
   }
+  if(test>=16896 && test<18944){
+   PshState current=state; /* bounded test-only metadata witness */
+   for(unsigned j=0;j<4;j++){
+    if(state.conv_tex[j]==CONVOLUTION_FILTER_QUINCUNX)state.conv_tex[j]=(enum ConvolutionFilter)1;
+    else if(state.conv_tex[j]==CONVOLUTION_FILTER_GAUSSIAN)state.conv_tex[j]=(enum ConvolutionFilter)2;
+   }
+   pgraph_glsl_psh_migrate_seed(&state);
+   assert(!memcmp(&current,&state,sizeof(state)));
+  }
   GlslcResult modules[2];SpvPshOptions opts={.spirv_1_6=!!(test&256),.ubo_binding=1,.tex_binding=2};assert(pgraph_spv_psh(&state,opts,&modules[1]));MString *source=pgraph_glsl_gen_psh(&state,(GenPshGlslOptions){.vulkan=true,.locations=true,.ubo_binding=1,.tex_binding=2});GlslcOptions go={.spirv_1_6=opts.spirv_1_6,.emit_layout=true};if(!glslc_compile(GLSLC_STAGE_FRAGMENT,mstring_get_str(source),&go,&modules[0])){fprintf(stderr,"fragment %u %d %s\n",test,modules[0].error_line,modules[0].error);abort();}if(test>=74752 && test<76288){PshState canonical=state;for(unsigned j=0;j<4;j++)canonical.tex_x8y24[j]=false;MString *other=pgraph_glsl_gen_psh(&canonical,(GenPshGlslOptions){.vulkan=true,.locations=true,.ubo_binding=1,.tex_binding=2});assert(!strcmp(mstring_get_str(source),mstring_get_str(other)));mstring_unref(other);}if(test>=76288 && test<77824){PshState canonical=state;for(unsigned j=0;j<4;j++){canonical.dim_tex[j]=2;canonical.tex_cubemap[j]=false;}MString *other=pgraph_glsl_gen_psh(&canonical,(GenPshGlslOptions){.vulkan=true,.locations=true,.ubo_binding=1,.tex_binding=2});assert(!strcmp(mstring_get_str(source),mstring_get_str(other)));mstring_unref(other);}if(test>=77824 && (test-77824)%3!=2){PshState canonical=state;for(unsigned j=0;j<4;j++){canonical.dim_tex[j]=2;canonical.tex_cubemap[j]=false;}MString *other=pgraph_glsl_gen_psh(&canonical,(GenPshGlslOptions){.vulkan=true,.locations=true,.ubo_binding=1,.tex_binding=2});assert(!strcmp(mstring_get_str(source),mstring_get_str(other)));mstring_unref(other);}reference_source_bytes+=strlen(mstring_get_str(source));mstring_unref(source);
   words[0]+=modules[0].num_words;words[1]+=modules[1].num_words;
   uint32_t expected[80];uint64_t build_ns[2]={0},draw_ns[2]={0};

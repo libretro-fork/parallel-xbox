@@ -123,6 +123,21 @@ bool pgraph_glsl_psh_dynamic_pending_take(PshState *out);
 void pgraph_glsl_psh_dynamic_ready(const PshState *state);
 bool pgraph_glsl_psh_canonicalize_dynamic(PshState *state);
 
+/* Seed metadata only, before hashing or queue publication. The caller owns
+ * the decoded records; never modify mapped/dictionary or in-flight keys.
+ * Old convolution tags name the same guest kernels, before revision bit 2
+ * refreshed their generated shaders. Current and unknown tags stay intact. */
+static inline void pgraph_glsl_psh_migrate_seed(PshState *state)
+{
+    for (unsigned i = 0; i < 4; i++) {
+        if (state->conv_tex[i] == 1) {
+            state->conv_tex[i] = CONVOLUTION_FILTER_QUINCUNX;
+        } else if (state->conv_tex[i] == 2) {
+            state->conv_tex[i] = CONVOLUTION_FILTER_GAUSSIAN;
+        }
+    }
+}
+
 #define PSH_UNIFORM_DECL_X(S, DECL) \
     DECL(S, alphaRef, int, 1)       \
     DECL(S, alphaFunc, int, 1)      \

@@ -1614,6 +1614,7 @@ static void vk_seed_siblings(void)
         ShaderState *arr = src ? local : states;
         unsigned cnt = src ? n_local : n;
         for (unsigned i = 0; arr && i < cnt; i++) {
+            pgraph_glsl_psh_migrate_seed(&arr[i].psh);
             ShaderState fb = arr[i];
             if (!pgraph_glsl_psh_canonicalize_dynamic(&fb.psh)) {
                 continue;

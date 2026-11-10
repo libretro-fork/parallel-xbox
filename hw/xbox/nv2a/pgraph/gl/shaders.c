@@ -2114,6 +2114,7 @@ static unsigned seed_compact_dynamic_states(ShaderState *states, unsigned count)
     GHashTable *seen = pgraph_seed_hash_set_new();
     for (unsigned i = 0; i < count; i++) {
         ShaderState *state = &states[i];
+        pgraph_glsl_psh_migrate_seed(&state->psh);
         if (pgraph_glsl_psh_canonicalize_dynamic(&state->psh) &&
             pgraph_seed_hash_set_add(
                 seen, fast_hash((const uint8_t *)state, sizeof(*state)))) {
@@ -2154,6 +2155,12 @@ static void seed_load(PGRAPHGLState *r)
     r->seed.pipe_cursor = 0;
     r->seed.mod_keys = reads[1].items;
     r->seed.mod_n = reads[1].count;
+    for (unsigned i = 0; i < r->seed.mod_n; i++) {
+        ShaderModuleCacheKey *key = &r->seed.mod_keys[i];
+        if (key->kind == GL_FRAGMENT_SHADER) {
+            pgraph_glsl_psh_migrate_seed(&key->psh.state);
+        }
+    }
     const char *origin = reads[0].dict_count || reads[1].dict_count ?
                          "local + embedded dictionary" : "local";
     if (r->seed.pipe_states) {
