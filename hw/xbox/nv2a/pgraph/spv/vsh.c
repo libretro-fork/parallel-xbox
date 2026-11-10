@@ -103,7 +103,7 @@ bool pgraph_spv_vsh_supported(const VshState *s, SpvVshOptions opts)
         if (!opts.preserve_float32 || s->fog_dynamic ||
             (s->fog_enable && (unsigned)ff->foggen > FOGGEN_FOG_X) ||
             ff->lighting || ff->csv0c_dynamic ||
-            ff->texgen_dynamic || (unsigned)ff->skinning > SKINNING_4WEIGHTS4MATRICES) {
+            (unsigned)ff->skinning > SKINNING_4WEIGHTS4MATRICES) {
             return false;
         }
         /* Quadratic curves fed by transformed distances still differ by one
@@ -112,7 +112,7 @@ bool pgraph_spv_vsh_supported(const VshState *s, SpvVshOptions opts)
             ff->foggen >= FOGGEN_RADIAL && ff->foggen <= FOGGEN_ABS_PLANAR) {
             return false;
         }
-        for (unsigned t = 0; t < 4; t++) {
+        for (unsigned t = 0; !ff->texgen_dynamic && t < 4; t++) {
             for (unsigned a = 0; a < 4; a++) {
                 enum VshTexgen mode = ff->texgen[t][a];
                 if ((unsigned)mode > TEXGEN_OBJECT_LINEAR &&
@@ -163,6 +163,7 @@ bool pgraph_spv_vsh_supported(const VshState *s, SpvVshOptions opts)
 static bool needs_texgen_viewer(const VshState *s)
 {
     if (!s->is_fixed_function) { return false; }
+    if (s->fixed_function.texgen_dynamic) { return true; }
     for (unsigned t = 0; t < 4; t++) {
         for (unsigned a = 0; a < 3; a++) {
             enum VshTexgen mode = s->fixed_function.texgen[t][a];
@@ -182,7 +183,7 @@ typedef struct Context {
     uint32_t c_array, inline_array, push_array, ubo_t, pc_t, ubo_p, pc_p;
     uint32_t ci[256], cu[8], cf[F_COUNT], zero4, initial4;
     uint32_t inputs[16], outputs[13], position, point_size, ubo, pc;
-    uint32_t main, ext, mat4, texgen_array, viewer_mask, point_array, point_limit;
+    uint32_t main, ext, mat4, texgen_array, viewer_mask, point_array, point_limit, texgen_half, texgen_shift9, texgen_bit8;
     uint32_t r[12], o[13], a0, input_values[16], skin_weights[4];
 } Context;
 
@@ -319,6 +320,124 @@ static uint32_t skinned(Context *c, uint32_t source, bool normal)
     return sum;
 }
 
+static uint32_t transformed_normal(Context *c)
+{
+    uint32_t mapped_normal;
+    uint32_t n = input(c, 2);
+    n = make_v4(c, extract(c, n, 0), extract(c, n, 1),
+                extract(c, n, 2), c->cf[F_ZERO]);
+    if (c->state->fixed_function.skinning == SKINNING_OFF) {
+        n = transform(c, n, NV_IGRAPH_XF_XFCTX_IMMAT0);
+        mapped_normal = value(c->w, SpvOpVectorShuffle, c->v3, 5, n, n, 0u, 1u, 2u);
+    } else {
+        mapped_normal = skinned(c, n, true);
+    }
+    if (c->state->fixed_function.normalization) {
+        mapped_normal = ext1(c, GLSLstd450Normalize, c->v3, mapped_normal);
+    }
+    return mapped_normal;
+}
+
+static uint32_t texgen_reflection(Context *c, uint32_t position, uint32_t normal, uint32_t packed)
+{
+    uint32_t xyz = value(c->w, SpvOpVectorShuffle, c->v3, 5, position, position, 0u, 1u, 2u);
+    uint32_t eye;
+    uint32_t forward = value(c->w, SpvOpCompositeConstruct, c->v3, 3, c->cf[F_ZERO], c->cf[F_ZERO], c->cf[F_ONE]);
+    /* packed is an SSA ID; zero asks static callers to load the uniform. */
+    uint32_t viewer = packed;
+    if (!viewer) {
+        unsigned member = 7 + (!c->opts.push_constants && c->state->uniform_attrs != 0);
+        uint32_t ptr = value(c->w, SpvOpAccessChain, c->uniform_u, 3, c->ubo, c->ci[member], c->ci[0]);
+        viewer = unary(c, SpvOpLoad, c->u, ptr);
+    }
+    viewer = binary(c, SpvOpBitwiseAnd, c->u, viewer, c->viewer_mask);
+    viewer = binary(c, SpvOpINotEqual, c->b, viewer, c->cu[0]);
+    /* Match the reference's lazy viewer branch. Eager Normalize
+     * plus Select changed physical-GPU reflection rounding. */
+    uint32_t yes = id(c->w), no = id(c->w), merge = id(c->w);
+    op(c->w, SpvOpSelectionMerge, 2, merge, 0u);
+    op(c->w, SpvOpBranchConditional, 3, viewer, yes, no);
+    op(c->w, SpvOpLabel, 1, yes);
+    op(c->w, SpvOpBranch, 1, merge);
+    op(c->w, SpvOpLabel, 1, no);
+    uint32_t normalized = ext1(c, GLSLstd450Normalize, c->v3, xyz);
+    op(c->w, SpvOpBranch, 1, merge);
+    op(c->w, SpvOpLabel, 1, merge);
+    eye = value(c->w, SpvOpPhi, c->v3, 4, forward, yes, normalized, no);
+    uint32_t reflected = value(c->w, SpvOpExtInst, c->v3, 4, c->ext, (uint32_t)GLSLstd450Reflect, eye, normal);
+    return reflected;
+}
+
+static void dynamic_texgen(Context *c, uint32_t *eye_position)
+{
+    static const unsigned planes[] = {
+        NV_IGRAPH_XF_XFCTX_TG0MAT, NV_IGRAPH_XF_XFCTX_TG1MAT,
+        NV_IGRAPH_XF_XFCTX_TG2MAT, NV_IGRAPH_XF_XFCTX_TG3MAT,
+    };
+    static const unsigned matrices[] = {
+        NV_IGRAPH_XF_XFCTX_T0MAT, NV_IGRAPH_XF_XFCTX_T1MAT,
+        NV_IGRAPH_XF_XFCTX_T2MAT, NV_IGRAPH_XF_XFCTX_T3MAT,
+    };
+    if (!*eye_position) { *eye_position = transform(c, input(c, 0), NV_IGRAPH_XF_XFCTX_MMAT0); }
+    uint32_t normal = transformed_normal(c), modes[4];
+    unsigned mode_member = 7 + (!c->opts.push_constants && c->state->uniform_attrs != 0);
+    for (unsigned t = 0; t < 4; t++) {
+        uint32_t ptr = value(c->w, SpvOpAccessChain, c->uniform_u, 3, c->ubo, c->ci[mode_member], c->ci[t]);
+        modes[t] = unary(c, SpvOpLoad, c->u, ptr);
+    }
+    uint32_t reflected = texgen_reflection(c, *eye_position, normal, modes[0]);
+    uint32_t forward = value(c->w, SpvOpCompositeConstruct, c->v3, 3, c->cf[F_ZERO], c->cf[F_ZERO], c->cf[F_ONE]);
+    uint32_t shifted = binary(c, SpvOpFAdd, c->v3, reflected, forward);
+    uint32_t scale = divf(c, c->cf[F_ONE], mul(c, c->cf[F_TWO], ext1(c, GLSLstd450Length, c->f, shifted)));
+    uint32_t sphere = binary(c, SpvOpVectorTimesScalar, c->v3, reflected, scale);
+    uint32_t half = value(c->w, SpvOpCompositeConstruct, c->v3, 3, c->texgen_half, c->texgen_half, c->texgen_half);
+    sphere = binary(c, SpvOpFAdd, c->v3, sphere, half);
+    unsigned matrix_member = mode_member + 1 + c->state->point_params_enable;
+    uint32_t enabled = load_uniform(c, matrix_member, c->u, c->uniform_u);
+    const uint32_t shifts[] = {c->cu[0], c->cu[3], c->cu[6], c->texgen_shift9};
+    const uint32_t bits[] = {c->cu[1], c->cu[2], c->cu[4], c->texgen_bit8};
+    uint32_t original = input(c, 0);
+    for (unsigned t = 0; t < 4; t++) {
+        /* Load the shared input outside selection blocks so its cached ID
+         * dominates every consumer, including inline/compressed inputs. */
+        uint32_t texture = input(c, 9 + t), components[4];
+        for (unsigned a = 0; a < 4; a++) {
+            uint32_t mode = binary(c, SpvOpShiftRightLogical, c->u, modes[t], shifts[a]);
+            mode = binary(c, SpvOpBitwiseAnd, c->u, mode, c->cu[7]);
+            uint32_t merge = id(c->w), labels[6], selected[6];
+            for (unsigned i = 0; i < 6; i++) { labels[i] = id(c->w); }
+            op(c->w, SpvOpSelectionMerge, 2, merge, 0u);
+            op(c->w, SpvOpSwitch, 12, mode, labels[5], 0u, labels[0], 1u, labels[1], 2u, labels[2], 3u, labels[3], 4u, labels[4]);
+            for (unsigned i = 0; i < 6; i++) {
+                op(c->w, SpvOpLabel, 1, labels[i]);
+                if (i == 0) { selected[i] = extract(c, texture, a); }
+                else if (i < 3) { selected[i] = binary(c, SpvOpDot, c->f, constant(c, planes[t] + a), i == 1 ? *eye_position : original); }
+                else if (i == 3) { selected[i] = a < 2 ? extract(c, sphere, a) : c->cf[F_ZERO]; }
+                else if (i == 4) { selected[i] = a < 3 ? extract(c, normal, a) : c->cf[F_ZERO]; }
+                else { selected[i] = a < 3 ? extract(c, reflected, a) : c->cf[F_ZERO]; }
+                op(c->w, SpvOpBranch, 1, merge);
+            }
+            op(c->w, SpvOpLabel, 1, merge);
+            components[a] = value(c->w, SpvOpPhi, c->f, 12,
+                                  selected[0], labels[0], selected[1], labels[1], selected[2], labels[2],
+                                  selected[3], labels[3], selected[4], labels[4], selected[5], labels[5]);
+        }
+        uint32_t v = make_v4(c, components[0], components[1], components[2], components[3]);
+        uint32_t test = binary(c, SpvOpBitwiseAnd, c->u, enabled, bits[t]);
+        test = binary(c, SpvOpINotEqual, c->b, test, c->cu[0]);
+        uint32_t yes = id(c->w), no = id(c->w), merge = id(c->w);
+        op(c->w, SpvOpSelectionMerge, 2, merge, 0u);
+        op(c->w, SpvOpBranchConditional, 3, test, yes, no);
+        op(c->w, SpvOpLabel, 1, yes);
+        uint32_t transformed = transform(c, v, matrices[t]);
+        op(c->w, SpvOpBranch, 1, merge);
+        op(c->w, SpvOpLabel, 1, no);
+        op(c->w, SpvOpBranch, 1, merge);
+        op(c->w, SpvOpLabel, 1, merge);
+        c->o[9 + t] = value(c->w, SpvOpPhi, c->v4, 4, transformed, yes, v, no);
+    }
+}
+
 static void unlit(Context *c)
 {
     static const unsigned tex_matrix[] = {
@@ -362,90 +481,62 @@ static void unlit(Context *c)
         }
         c->o[5] = splat(c, distance);
     }
-    for (unsigned t = 0; t < 4; t++) {
-        bool generated = false;
-        for (unsigned a = 0; a < 4; a++) { generated |= c->state->fixed_function.texgen[t][a] != TEXGEN_DISABLE; }
-        uint32_t v;
-        if (!generated) {
-            v = input(c, 9 + t);
-        } else {
-            uint32_t component[4];
-            for (unsigned a = 0; a < 4; a++) {
-                enum VshTexgen mode = c->state->fixed_function.texgen[t][a];
-                if (mode == TEXGEN_DISABLE) {
-                    component[a] = extract(c, input(c, 9 + t), a);
-                } else if (mode == TEXGEN_NORMAL_MAP || mode == TEXGEN_REFLECTION_MAP || mode == TEXGEN_SPHERE_MAP) {
-                    if (!mapped_normal) {
-                        uint32_t n = input(c, 2);
-                        n = make_v4(c, extract(c, n, 0), extract(c, n, 1),
-                                    extract(c, n, 2), c->cf[F_ZERO]);
-                        if (c->state->fixed_function.skinning == SKINNING_OFF) {
-                            n = transform(c, n, NV_IGRAPH_XF_XFCTX_IMMAT0);
-                            mapped_normal = value(c->w, SpvOpVectorShuffle, c->v3, 5, n, n, 0u, 1u, 2u);
-                        } else {
-                            mapped_normal = skinned(c, n, true);
+    if (c->state->fixed_function.texgen_dynamic) { dynamic_texgen(c, &eye_position); }
+    else {
+        for (unsigned t = 0; t < 4; t++) {
+            bool generated = false;
+            for (unsigned a = 0; a < 4; a++) { generated |= c->state->fixed_function.texgen[t][a] != TEXGEN_DISABLE; }
+            uint32_t v;
+            if (!generated) {
+                v = input(c, 9 + t);
+            } else {
+                uint32_t component[4];
+                for (unsigned a = 0; a < 4; a++) {
+                    enum VshTexgen mode = c->state->fixed_function.texgen[t][a];
+                    if (mode == TEXGEN_DISABLE) {
+                        component[a] = extract(c, input(c, 9 + t), a);
+                    } else if (mode == TEXGEN_NORMAL_MAP || mode == TEXGEN_REFLECTION_MAP || mode == TEXGEN_SPHERE_MAP) {
+                        if (!mapped_normal) {
+                            mapped_normal = transformed_normal(c);
                         }
-                        if (c->state->fixed_function.normalization) {
-                            mapped_normal = ext1(c, GLSLstd450Normalize, c->v3, mapped_normal);
-                        }
-                    }
-                    uint32_t generated_normal = mapped_normal;
-                    if (mode != TEXGEN_NORMAL_MAP) {
-                        if (!reflected) {
-                            if (!eye_position) {
-                                eye_position = transform(c, input(c, 0), NV_IGRAPH_XF_XFCTX_MMAT0);
+                        uint32_t generated_normal = mapped_normal;
+                        if (mode != TEXGEN_NORMAL_MAP) {
+                            if (!reflected) {
+                                if (!eye_position) {
+                                    eye_position = transform(c, input(c, 0), NV_IGRAPH_XF_XFCTX_MMAT0);
+                                }
+                                reflected = texgen_reflection(c, eye_position, mapped_normal, 0);
                             }
-                            uint32_t xyz = value(c->w, SpvOpVectorShuffle, c->v3, 5, eye_position, eye_position, 0u, 1u, 2u);
-                            uint32_t eye;
-                            uint32_t forward = value(c->w, SpvOpCompositeConstruct, c->v3, 3, c->cf[F_ZERO], c->cf[F_ZERO], c->cf[F_ONE]);
-                            unsigned member = 7 + (!c->opts.push_constants && c->state->uniform_attrs != 0);
-                            uint32_t ptr = value(c->w, SpvOpAccessChain, c->uniform_u, 3, c->ubo, c->ci[member], c->ci[0]);
-                            uint32_t viewer = unary(c, SpvOpLoad, c->u, ptr);
-                            viewer = binary(c, SpvOpBitwiseAnd, c->u, viewer, c->viewer_mask);
-                            viewer = binary(c, SpvOpINotEqual, c->b, viewer, c->cu[0]);
-                            /* Match the reference's lazy viewer branch. Eager Normalize
-                             * plus Select changed physical-GPU reflection rounding. */
-                            uint32_t yes = id(c->w), no = id(c->w), merge = id(c->w);
-                            op(c->w, SpvOpSelectionMerge, 2, merge, 0u);
-                            op(c->w, SpvOpBranchConditional, 3, viewer, yes, no);
-                            op(c->w, SpvOpLabel, 1, yes);
-                            op(c->w, SpvOpBranch, 1, merge);
-                            op(c->w, SpvOpLabel, 1, no);
-                            uint32_t normalized = ext1(c, GLSLstd450Normalize, c->v3, xyz);
-                            op(c->w, SpvOpBranch, 1, merge);
-                            op(c->w, SpvOpLabel, 1, merge);
-                            eye = value(c->w, SpvOpPhi, c->v3, 4, forward, yes, normalized, no);
-                            reflected = value(c->w, SpvOpExtInst, c->v3, 4, c->ext, (uint32_t)GLSLstd450Reflect, eye, mapped_normal);
+                            generated_normal = reflected;
                         }
-                        generated_normal = reflected;
-                    }
-                    component[a] = extract(c, generated_normal, a);
-                    if (mode == TEXGEN_SPHERE_MAP) {
-                        if (!sphere_scale) {
-                            uint32_t forward = value(c->w, SpvOpCompositeConstruct, c->v3, 3, c->cf[F_ZERO], c->cf[F_ZERO], c->cf[F_ONE]);
-                            uint32_t shifted = binary(c, SpvOpFAdd, c->v3, reflected, forward);
-                            sphere_scale = divf(c, c->cf[F_ONE], mul(c, c->cf[F_TWO], ext1(c, GLSLstd450Length, c->f, shifted)));
+                        component[a] = extract(c, generated_normal, a);
+                        if (mode == TEXGEN_SPHERE_MAP) {
+                            if (!sphere_scale) {
+                                uint32_t forward = value(c->w, SpvOpCompositeConstruct, c->v3, 3, c->cf[F_ZERO], c->cf[F_ZERO], c->cf[F_ONE]);
+                                uint32_t shifted = binary(c, SpvOpFAdd, c->v3, reflected, forward);
+                                sphere_scale = divf(c, c->cf[F_ONE], mul(c, c->cf[F_TWO], ext1(c, GLSLstd450Length, c->f, shifted)));
+                            }
+                            component[a] = add(c, mul(c, component[a], sphere_scale), divf(c, c->cf[F_ONE], c->cf[F_TWO]));
                         }
-                        component[a] = add(c, mul(c, component[a], sphere_scale), divf(c, c->cf[F_ONE], c->cf[F_TWO]));
-                    }
-                } else {
-                    uint32_t position = input(c, 0);
-                    if (mode == TEXGEN_EYE_LINEAR) {
-                        if (!eye_position) {
-                            eye_position = transform(c, position, NV_IGRAPH_XF_XFCTX_MMAT0);
+                    } else {
+                        uint32_t position = input(c, 0);
+                        if (mode == TEXGEN_EYE_LINEAR) {
+                            if (!eye_position) {
+                                eye_position = transform(c, position, NV_IGRAPH_XF_XFCTX_MMAT0);
+                            }
+                            position = eye_position;
                         }
-                        position = eye_position;
+                        component[a] = binary(c, SpvOpDot, c->f,
+                                              constant(c, tex_plane[t] + a), position);
                     }
-                    component[a] = binary(c, SpvOpDot, c->f,
-                                          constant(c, tex_plane[t] + a), position);
                 }
+                v = make_v4(c, component[0], component[1], component[2], component[3]);
             }
-            v = make_v4(c, component[0], component[1], component[2], component[3]);
+            if (c->state->fixed_function.texture_matrix_enable[t]) {
+                v = transform(c, v, tex_matrix[t]);
+            }
+            c->o[9 + t] = v;
         }
-        if (c->state->fixed_function.texture_matrix_enable[t]) {
-            v = transform(c, v, tex_matrix[t]);
-        }
-        c->o[9 + t] = v;
     }
     if (c->state->point_params_enable) {
         uint32_t point_position = eye_position;
@@ -823,6 +914,9 @@ static void allocate_ids(Context *c)
     if (c->state->is_fixed_function && c->state->point_params_enable) {
         c->point_array = id(w); c->point_limit = id(w);
     }
+    if (c->state->is_fixed_function && c->state->fixed_function.texgen_dynamic) {
+        c->texgen_half = id(w); c->texgen_shift9 = id(w); c->texgen_bit8 = id(w);
+    }
 }
 static void emit(Writer *w, const VshState *state, SpvVshOptions opts)
 {
@@ -833,6 +927,7 @@ static void emit(Writer *w, const VshState *state, SpvVshOptions opts)
     unsigned pc_count = __builtin_popcount(state->uniform_attrs);
     bool viewer = needs_texgen_viewer(state);
     bool points = state->is_fixed_function && state->point_params_enable;
+    bool dynamic = state->is_fixed_function && state->fixed_function.texgen_dynamic;
     word(w, SpvMagicNumber); word(w, opts.spirv_1_6 ? 0x00010600u : 0x00010500u);
     word(w, 0); word(w, 0); word(w, 0);
     op(w, SpvOpCapability, 1, (uint32_t)SpvCapabilityShader);
@@ -874,6 +969,10 @@ static void emit(Writer *w, const VshState *state, SpvVshOptions opts)
         op(w, SpvOpMemberDecorate, 4, c.ubo_t, 7u + inline_ubo + viewer,
            (uint32_t)SpvDecorationOffset, 3120u + inline_ubo * 256u + viewer * 64u);
         op(w, SpvOpDecorate, 3, c.point_array, (uint32_t)SpvDecorationArrayStride, 16u);
+    }
+    if (dynamic) {
+        op(w, SpvOpMemberDecorate, 4, c.ubo_t, 7u + inline_ubo + viewer + points,
+           (uint32_t)SpvDecorationOffset, 3120u + inline_ubo * 256u + viewer * 64u + points * 128u);
     }
     op(w, SpvOpDecorate, 3, c.c_array, (uint32_t)SpvDecorationArrayStride, 16u);
     op(w, SpvOpDecorate, 3, c.inline_array, (uint32_t)SpvDecorationArrayStride, 16u);
@@ -925,17 +1024,17 @@ static void emit(Writer *w, const VshState *state, SpvVshOptions opts)
         for (unsigned t = 0; t < 4; t++) {
             for (unsigned a = 0; a < 4; a++) {
                 enum VshTexgen mode = state->fixed_function.texgen[t][a];
-                if (mode == TEXGEN_EYE_LINEAR || mode == TEXGEN_OBJECT_LINEAR) { used[planes[t] + a] = true; }
-                if (mode == TEXGEN_NORMAL_MAP || mode == TEXGEN_REFLECTION_MAP || mode == TEXGEN_SPHERE_MAP) {
+                if (dynamic || mode == TEXGEN_EYE_LINEAR || mode == TEXGEN_OBJECT_LINEAR) { used[planes[t] + a] = true; }
+                if (dynamic || mode == TEXGEN_NORMAL_MAP || mode == TEXGEN_REFLECTION_MAP || mode == TEXGEN_SPHERE_MAP) {
                     for (unsigned b = 0; b < (bones ? bones : 1); b++) {
                         for (unsigned j = 0; j < 4; j++) { used[NV_IGRAPH_XF_XFCTX_IMMAT0 + b * 8 + j] = true; }
                     }
                 }
-                if (mode == TEXGEN_EYE_LINEAR || mode == TEXGEN_REFLECTION_MAP || mode == TEXGEN_SPHERE_MAP) {
+                if (dynamic || mode == TEXGEN_EYE_LINEAR || mode == TEXGEN_REFLECTION_MAP || mode == TEXGEN_SPHERE_MAP) {
                     for (unsigned j = 0; j < 4; j++) { used[NV_IGRAPH_XF_XFCTX_MMAT0 + j] = true; }
                 }
             }
-            if (state->fixed_function.texture_matrix_enable[t]) {
+            if (dynamic || state->fixed_function.texture_matrix_enable[t]) {
                 for (unsigned j = 0; j < 4; j++) { used[bases[t] + j] = true; }
             }
         }
@@ -964,12 +1063,18 @@ static void emit(Writer *w, const VshState *state, SpvVshOptions opts)
         op(w, SpvOpConstant, 3, c.f, c.point_limit, 0x427f8000u); /* 63.875 */
         op(w, SpvOpTypeArray, 3, c.point_array, c.f, c.ci[8]);
     }
-    word(w, ((9 + inline_ubo + viewer + points) << 16) | SpvOpTypeStruct);
+    if (dynamic) {
+        op(w, SpvOpConstant, 3, c.f, c.texgen_half, 0x3f000000u);
+        op(w, SpvOpConstant, 3, c.u, c.texgen_shift9, 9u);
+        op(w, SpvOpConstant, 3, c.u, c.texgen_bit8, 8u);
+    }
+    word(w, ((9 + inline_ubo + viewer + points + dynamic) << 16) | SpvOpTypeStruct);
     word(w, c.ubo_t); word(w, c.c_array); word(w, c.v4); word(w, c.u); word(w, c.v2);
     word(w, c.f); word(w, c.f); word(w, c.v2);
     if (inline_ubo) { word(w, c.inline_array); }
     if (viewer) { word(w, c.texgen_array); }
     if (points) { word(w, c.point_array); }
+    if (dynamic) { word(w, c.u); }
     if (pc) {
         op(w, SpvOpTypeArray, 3, c.push_array, c.v4, c.ci[pc_count]);
         op(w, SpvOpTypeStruct, 2, c.pc_t, c.push_array);
@@ -1008,20 +1113,22 @@ static void emit(Writer *w, const VshState *state, SpvVshOptions opts)
     if (w->words) { w->words[3] = w->next; }
 }
 
-static GlslcLayout layout(bool push, bool inline_ubo, unsigned count, bool viewer, bool points)
+static GlslcLayout layout(bool push, bool inline_ubo, unsigned count, bool viewer, bool points, bool dynamic)
 {
     static const char *const names[] = {
-        "c", "clipRange", "fogCtl", "fogParam", "pointSizeReg", "pointScale", "surfaceSize", "inlineValue", "texgenMode", "pointParams"
+        "c", "clipRange", "fogCtl", "fogParam", "pointSizeReg", "pointScale", "surfaceSize", "inlineValue", "texgenMode", "pointParams", "texMatEnable"
     };
     const size_t offsets[] = {0, 3072, 3088, 3096, 3104, 3108, 3112, 3120,
-                             3120u + inline_ubo * 256u, 3120u + inline_ubo * 256u + viewer * 64u};
-    static const unsigned dimensions[] = {4, 4, 1, 2, 1, 1, 2, 4, 1, 1};
-    unsigned indices[10] = {0, 1, 2, 3, 4, 5, 6}, n = 7;
+                             3120u + inline_ubo * 256u, 3120u + inline_ubo * 256u + viewer * 64u,
+                             3120u + inline_ubo * 256u + viewer * 64u + points * 128u};
+    static const unsigned dimensions[] = {4, 4, 1, 2, 1, 1, 2, 4, 1, 1, 1};
+    unsigned indices[11] = {0, 1, 2, 3, 4, 5, 6}, n = 7;
     if (push) { indices[0] = 7; n = 1; }
     else {
         if (inline_ubo) { indices[n++] = 7; }
         if (viewer) { indices[n++] = 8; }
         if (points) { indices[n++] = 9; }
+        if (dynamic) { indices[n++] = 10; }
     }
     size_t bytes = n * sizeof(GlslcUniform);
     for (unsigned i = 0; i < n; i++) { bytes += strlen(names[indices[i]]) + 1; }
@@ -1035,13 +1142,13 @@ static GlslcLayout layout(bool push, bool inline_ubo, unsigned count, bool viewe
         members[i] = (GlslcUniform) {
             .name = text, .dim_v = dimensions[index],
             .dim_a = push ? count : index == 0 ? NV2A_VERTEXSHADER_CONSTANTS : index == 7 ? 16 : index == 8 ? 4 : index == 9 ? 8 : 1,
-            .stride = index >= 8 ? 16 : dimensions[index] * sizeof(float),
+            .stride = index == 8 || index == 9 ? 16 : dimensions[index] * sizeof(float),
             .offset = push ? 0 : offsets[index],
         };
         text += len;
     }
     return (GlslcLayout) { .members = members, .count = n,
-                          .size = push ? count * 16 : 3120u + inline_ubo * 256u + viewer * 64u + points * 128u };
+                          .size = push ? count * 16 : 3120u + inline_ubo * 256u + viewer * 64u + points * 128u + dynamic * 16u };
 }
 
 bool pgraph_spv_vsh(const VshState *state, SpvVshOptions opts, GlslcResult *out)
@@ -1057,9 +1164,9 @@ bool pgraph_spv_vsh(const VshState *state, SpvVshOptions opts, GlslcResult *out)
     if (output.count != count.count || output.next != count.next) { abort(); }
     out->words = words;
     out->num_words = out->allocation_words = output.count;
-    out->uniforms = layout(false, !opts.push_constants && state->uniform_attrs, 0, needs_texgen_viewer(state), state->is_fixed_function && state->point_params_enable);
+    out->uniforms = layout(false, !opts.push_constants && state->uniform_attrs, 0, needs_texgen_viewer(state), state->is_fixed_function && state->point_params_enable, state->is_fixed_function && state->fixed_function.texgen_dynamic);
     if (opts.push_constants && state->uniform_attrs) {
-        out->push_constants = layout(true, false, __builtin_popcount(state->uniform_attrs), false, false);
+        out->push_constants = layout(true, false, __builtin_popcount(state->uniform_attrs), false, false, false);
     }
     return true;
 }

@@ -68,12 +68,12 @@ may bypass translation; a warm driver cache is a separate compilation milestone.
 
 ## Regression coverage and qualification
 
-- `test-spv-vsh.py`: 12,688 deterministic SPIR-V modules, final-owner allocation
+- `test-spv-vsh.py`: 13,712 deterministic SPIR-V modules, final-owner allocation
   counts, poisoned source keys, thirty-two allocation-free unsupported paths, UBSan and
   spirv-val. Both SPIR-V 1.5 and 1.6 targets are covered. Extracted native device
   setup is checked across 512 API/property/generation cases, including stale
   target reset and zero queries on older APIs.
-- `test-spv-vsh-gpu.py`: 14,096 programs / 23,004,672 scalar outputs compared with
+- `test-spv-vsh-gpu.py`: 15,120 programs / 24,675,840 scalar outputs compared with
   the production GLSL generator/compiler using Vulkan transform feedback. It
   captures all user outputs, position and point size before clipping; numerical
   differences fail (NaN payload identity is not required). It exercises opcode
@@ -122,10 +122,10 @@ requires forced invalidation. Legacy non-point modules retain their prior words.
 
 ## Unlit fixed-function subset
 
-The direct subset requires lighting off and static CSV0_C, texgen and fog.
-It supports static texture matrices, valid coordinate-generation modes, all
+The direct subset requires lighting off and static CSV0_C and fog.
+It supports static/live texture matrices and coordinate-generation modes, all
 skinning modes and register/attenuated points as detailed below. Unsupported
-states, including dynamic lighting/texgen/fog and six known quadratic-fog
+states, including dynamic lighting/fog and six known quadratic-fog
 combinations, retain the GLSL path. The existing FP32 property gate applies;
 no new device query is added.
 
@@ -313,3 +313,40 @@ storage. The GPU driver runs the full 14,096-fixture corpus in two bounded
 batches, preserving every case while retaining a separate 300-second watchdog
 per batch. Work counts and CPU-clock totals remain separate from gameplay
 latency evidence; dynamic states, lighting and known fog exclusions remain open.
+
+## Dynamic fixed-function texgen
+
+Unlit texgen families can read all sixteen coordinate modes and the four matrix
+bits from existing texgenMode/texMatEnable uniforms. Static coordinate modes and
+matrix-enable flags are then ignored, including poisoned unused fields. The
+three-bit mode selects passthrough, eye/object linear, sphere, normal or default
+reflection (including values 6/7). Sphere R/Q and normal/reflection Q return zero
+in this dynamic path, matching the production reference; static invalid
+component/mode pairs retain their earlier fallback rules.
+
+Reuse the model-view and normal transforms across coordinates, including all
+skinning modes, plus one lazy viewer branch, reflection and sphere reciprocal.
+Each coordinate uses structured selection, and each texture matrix executes only
+when its live bit is set. Input IDs shared between branches are materialized in
+a dominating block; no pointer into a recyclable input view is retained. The
+helper's eye-position pointer is a synchronous lend of a local scalar SPIR-V ID,
+not a geometry or uniform-buffer lend.
+
+Only dynamic families add texMatEnable to the final layout (four bytes in a
+sixteen-byte std140 tail). texgenMode[4] uses the existing final member and its
+first load also supplies the viewer bit. Five uniform reads cover four mode
+words and one matrix mask. Point parameters retain their earlier member and
+offset; no new allocations, matrices/vertices copied on the CPU, payload clones
+or file I/O are introduced. The immutable job/cache key remains borrowed only
+through count/write emission, with existing native publication/retirement.
+
+An additional 1,024 fixtures cross all eight live mode values with every matrix
+mask and both viewer, normalization and point-attenuation settings, rotating
+through all skinning modes. They cover raw/compressed and
+inline inputs, exceptional values and unrelated high-bit noise. CPU contracts
+verify ignored static state, five control reads, sixteen selections, four guarded
+matrix operations and shared transforms. All 12,688 earlier module words and
+uniform members remain identical despite sharing the normal/reflection emitters.
+Dynamic CSV0_C/lighting/fog and known transformed-distance quadratic-fog
+exclusions still use GLSL. Expanding direct translation does not establish
+cold-play PSO recovery.

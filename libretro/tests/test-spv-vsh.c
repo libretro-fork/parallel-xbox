@@ -70,7 +70,7 @@ int main(int argc, char **argv)
 {
     assert(argc == 2);check_caps();
     unsigned total = 0;
-    for (unsigned i = 0; i < 12688; i++) {
+    for (unsigned i = 0; i < 13712; i++) {
         VshState state;
         unsigned base=i%1120;
         make_case(&state, base);
@@ -131,6 +131,12 @@ int main(int argc, char **argv)
    state.fixed_function.skinning=1+f/256;
    state.point_params_enable=!!(f&32);
   }
+        if(i>=12688){
+            unsigned f=i-12688;state.fixed_function.texgen_dynamic=true;
+            state.fixed_function.skinning=(f/16)%7;state.point_params_enable=!!(f&512);
+   state.fixed_function.normalization=!!(f&256);
+            memset(state.fixed_function.texgen,0xff,sizeof(state.fixed_function.texgen));
+        }
         SpvVshOptions opts = { .spirv_1_6 = !!(i & 1),
                               .push_constants = !!(i & 4), .ubo_binding = i % 3,
                               .preserve_float32 = i>=1120 || !!(i&8) };
@@ -142,30 +148,41 @@ int main(int argc, char **argv)
         if(state.is_fixed_function){
             memset(state.programmable.program_data,0xa5,sizeof(state.programmable.program_data));
             state.programmable.program_length=-42;
-            bool consumes_normal=false;
+            bool consumes_normal=state.fixed_function.texgen_dynamic;
             for(unsigned t=0;t<4;t++)for(unsigned a=0;a<3;a++)consumes_normal|=state.fixed_function.texgen[t][a]>=TEXGEN_SPHERE_MAP;
             if(!consumes_normal)state.fixed_function.normalization=!state.fixed_function.normalization;
             state.fixed_function.light_dynamic=!state.fixed_function.light_dynamic;
             state.fixed_function.two_sided=!state.fixed_function.two_sided;
             if(!state.fog_enable)state.fixed_function.foggen=(enum VshFoggen)-1;
+            if(state.fixed_function.texgen_dynamic){
+                memset(state.fixed_function.texgen,0xa5,sizeof(state.fixed_function.texgen));
+                for(unsigned t=0;t<4;t++)state.fixed_function.texture_matrix_enable[t]=!state.fixed_function.texture_matrix_enable[t];
+            }
         }
         assert(pgraph_spv_vsh(&state, opts, &b));
         assert(a.num_words == b.num_words && !memcmp(a.words, b.words, a.num_words * 4));
         assert(a.allocation == NULL && a.allocation_words == a.num_words);
-        bool viewer=false;
+        bool dynamic=state.is_fixed_function && state.fixed_function.texgen_dynamic;
+        bool viewer=dynamic;
         if(state.is_fixed_function)for(unsigned t=0;t<4;t++)for(unsigned k=0;k<3;k++){enum VshTexgen m=state.fixed_function.texgen[t][k];viewer|=m==TEXGEN_SPHERE_MAP || m==TEXGEN_REFLECTION_MAP;}
-        assert(a.uniforms.count == 7u + (!opts.push_constants && state.uniform_attrs != 0) + viewer + (state.is_fixed_function && state.point_params_enable));
+        assert(a.uniforms.count == 7u + (!opts.push_constants && state.uniform_attrs != 0) + viewer + (state.is_fixed_function && state.point_params_enable) + dynamic);
         if(viewer){
             const GlslcUniform *u=&a.uniforms.members[7u+(!opts.push_constants && state.uniform_attrs!=0)];
             assert(!strcmp(u->name,"texgenMode") && u->dim_v==1 && u->dim_a==4 && u->stride==16);
             assert(u->offset==3120u+(!opts.push_constants && state.uniform_attrs!=0)*256u);
-            assert(a.uniforms.size==u->offset+64+(state.point_params_enable?128u:0));
+            assert(a.uniforms.size==u->offset+64+(state.point_params_enable?128u:0)+dynamic*16u);
         }
         if(state.is_fixed_function && state.point_params_enable){
-            const GlslcUniform *u=&a.uniforms.members[a.uniforms.count-1];
+            const GlslcUniform *u=&a.uniforms.members[a.uniforms.count-1-dynamic];
             assert(!strcmp(u->name,"pointParams") && u->dim_v==1 && u->dim_a==8 && u->stride==16);
             assert(u->offset==3120u+(!opts.push_constants && state.uniform_attrs!=0)*256u+viewer*64u);
-            assert(a.uniforms.size==u->offset+128);
+            assert(a.uniforms.size==u->offset+128+dynamic*16u);
+        }
+        if(dynamic){
+            const GlslcUniform *u=&a.uniforms.members[a.uniforms.count-1];
+            assert(!strcmp(u->name,"texMatEnable") && u->dim_v==1 && u->dim_a==1 && u->stride==4);
+            assert(u->offset==3120u+(!opts.push_constants && state.uniform_attrs!=0)*256u+64u+state.point_params_enable*128u);
+            assert(a.uniforms.size==u->offset+16);
         }
         assert(a.uniforms.members[0].dim_a == 192 && a.uniforms.members[0].stride == 16);
         assert(a.uniforms.members[6].offset == 3112 && a.uniforms.members[6].dim_v == 2);
@@ -191,10 +208,11 @@ int main(int argc, char **argv)
         for(size_t w=5;w<a.num_words;w+=a.words[w]>>16)
             if((a.words[w]&65535)==SpvOpAccessChain && a.words[w+1]==control_pointer)control_reads++;
         assert(preserve_modes==(unsigned)(state.point_params_enable || state.is_fixed_function) && preserve_caps==preserve_modes);
-        assert(switches==(unsigned)state.fog_dynamic);
-        assert(control_reads==(unsigned)state.fog_dynamic + (unsigned)viewer);
+        assert(switches==(unsigned)state.fog_dynamic+dynamic*16u);
+        assert(control_reads==(unsigned)state.fog_dynamic + (dynamic?5u:(unsigned)viewer));
         unsigned expected_transforms=state.is_fixed_function;
-        if(state.is_fixed_function)for(unsigned t=0;t<4;t++)expected_transforms+=state.fixed_function.texture_matrix_enable[t];
+        if(dynamic)expected_transforms+=4;
+        else if(state.is_fixed_function)for(unsigned t=0;t<4;t++)expected_transforms+=state.fixed_function.texture_matrix_enable[t];
         bool needs_eye=state.is_fixed_function && state.fog_enable && state.fixed_function.foggen>=FOGGEN_RADIAL && state.fixed_function.foggen<=FOGGEN_ABS_PLANAR;
         if(state.is_fixed_function)for(unsigned t=0;t<4;t++)for(unsigned a=0;a<4;a++)needs_eye|=state.fixed_function.texgen[t][a]==TEXGEN_EYE_LINEAR;
         needs_eye|=viewer || (state.is_fixed_function && state.point_params_enable);
@@ -202,12 +220,12 @@ int main(int argc, char **argv)
         if(state.is_fixed_function){static const unsigned counts[]={0,2,2,3,3,4,4};bones=counts[state.fixed_function.skinning];}
         expected_transforms+=bones?bones:needs_eye;
         if(bones && state.point_params_enable)expected_transforms++;
-        bool needs_normal=false;
+        bool needs_normal=dynamic;
         if(state.is_fixed_function)for(unsigned t=0;t<4;t++)for(unsigned a=0;a<3;a++)needs_normal|=state.fixed_function.texgen[t][a]>=TEXGEN_SPHERE_MAP;
         expected_transforms+=needs_normal*(bones?bones:1);
         /* One existing homogeneous-w guard, plus the lazy viewer choice.
          * Eager Normalize/Select regressed physical-GPU reflection rounding. */
-        if(state.is_fixed_function)assert(branches==1u+(unsigned)viewer);
+        if(state.is_fixed_function)assert(branches==1u+(unsigned)viewer+dynamic*4u);
         assert(reflections==(unsigned)viewer);
         assert(normalizations==(unsigned)(needs_normal && state.fixed_function.normalization)+(unsigned)viewer);
         assert(matrices==(unsigned)state.is_fixed_function && transforms==expected_transforms);
@@ -240,7 +258,7 @@ int main(int argc, char **argv)
             s.is_fixed_function=true;s.fog_mode=FOG_MODE_LINEAR;opts.preserve_float32=true;
             if(i==12)s.fixed_function.lighting=true;
             if(i==13)s.fixed_function.csv0c_dynamic=true;
-            if(i==14)s.fixed_function.texgen_dynamic=true;
+            if(i==14){s.fixed_function.texgen_dynamic=true;opts.ubo_binding=32;}
             if(i==15)s.fixed_function.skinning=(enum VshSkinning)-1;
             if(i==16)s.fog_dynamic=true;
             if(i==17){s.fog_enable=true;s.fixed_function.foggen=(enum VshFoggen)5;}

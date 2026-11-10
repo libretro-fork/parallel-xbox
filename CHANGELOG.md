@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Emit unlit dynamic fixed-function texgen directly as Vulkan SPIR-V. Read live coordinate modes and matrix enables from existing uniforms; share normal/viewer/reflection work, retain lazy coordinate/matrix selection and zero unsupported dynamic R/Q components as the reference does. Reuse final owners without new allocations, geometry/matrix snapshots or payload clones. Ignore unused static fields, preserve prior words/layouts and retain GLSL for unsupported lighting/fog states.
+
 - Emit all six unlit fixed-function skinning modes directly as Vulkan SPIR-V. Share scalar weights between position and normal transforms, preserve generated-final-weight and accumulation order, and read bone matrices from existing constants without geometry/matrix snapshots or new allocations. Keep skinned fog/texgen positions separate from the original-position point distance. Preserve prior words/layouts, reject invalid modes allocation-free, and extend GPU coverage with basis, fractional, negative and exceptional weights.
 
 - Emit unlit fixed-function Vulkan point attenuation directly as SPIR-V using the existing pointParams array. Preserve homogeneous model-view distance, polynomial order, explicit square root/division, size caps and one pointScale application; share model-view work with fog/texgen. Append only affected final layouts without adding allocations, CPU matrix snapshots, copies or retained pointers. Preserve all earlier module words/layouts and existing unsupported-state fallbacks.

@@ -105,8 +105,8 @@ static void pack(uint8_t *dst,const GlslcLayout *layout,const VshUniformValues *
 static void release(GlslcResult *r){glslc_result_free_words(r);free(r->uniforms.members);free(r->push_constants.members);}
 int main(int argc, char **argv) {
  assert(argc==1 || argc==3);
- unsigned first=argc==3?strtoul(argv[1],NULL,10):0, limit=argc==3?strtoul(argv[2],NULL,10):14096;
- assert(first<limit && limit<=14096);
+ unsigned first=argc==3?strtoul(argv[1],NULL,10):0, limit=argc==3?strtoul(argv[2],NULL,10):15120;
+ assert(first<limit && limit<=15120);
  printf("Fixture range [%u, %u)\n",first,limit);
  const bool validated=getenv("NO_VALIDATION")==NULL;
  const char *layer="VK_LAYER_KHRONOS_validation",*debug=VK_EXT_DEBUG_UTILS_EXTENSION_NAME;
@@ -264,6 +264,12 @@ int main(int argc, char **argv) {
    state.point_params_enable=!!(f&32);
    if(state.compressed_attrs)state.compressed_attrs|=1u<<1;
   }
+  if(test>=14096){
+   unsigned f=test-14096;state.fixed_function.texgen_dynamic=true;
+   state.fixed_function.skinning=(f/16)%7;state.point_params_enable=!!(f&512);
+   state.fixed_function.normalization=!!(f&256);
+   memset(state.fixed_function.texgen,0xa5,sizeof(state.fixed_function.texgen));
+  }
   for(unsigned a=0;a<16;a++)attrs[a].format=state.compressed_attrs&(1u<<a)?VK_FORMAT_R32_SINT:VK_FORMAT_R32G32B32A32_SFLOAT;
   opts.preserve_float32=fp.shaderSignedZeroInfNanPreserveFloat32;
   VshState excluded=state;excluded.point_params_enable=true;
@@ -273,6 +279,15 @@ int main(int argc, char **argv) {
   MString *text=pgraph_glsl_gen_vsh(&state,(GenVshGlslOptions){.vulkan=true,.use_push_constants_for_uniform_attrs=opts.push_constants});
   GlslcOptions glopts={.emit_layout=true};if(!glslc_compile(GLSLC_STAGE_VERTEX,mstring_get_str(text),&glopts,&modules[0])){fprintf(stderr,"%s\n",modules[0].error);abort();}mstring_unref(text);reference_ticks+=clock()-before;reference_words+=modules[0].num_words;
   VshUniformValues values={0};values.clipRange[0][1]=65535;values.surfaceSize[0][0]=720;values.surfaceSize[0][1]=480;values.pointSizeReg[0]=1;values.pointScale[0]=1;values.texgenMode[0]=(test*37u & 4095u) | (test&8?4096u:0u);values.fogCtl[0]=1|((test%8)<<1);values.fogParam[0][0]=1.5f;values.fogParam[0][1]=-.01f;
+  if(state.fixed_function.texgen_dynamic){
+   unsigned f=test-14096;
+   values.texMatEnable[0]=(f&15u) | 0xffff0000u;
+   for(unsigned t=0;t<4;t++){
+    uint32_t packed=(f&128?4096u:0u) | 0xa5a50000u;
+    for(unsigned a=0;a<4;a++)packed|=(((f/16)+t*17+a*3)%8)<<(a*3);
+    values.texgenMode[t]=packed;
+   }
+  }
   if(state.point_params_enable){
    const float scales[]={0.0f,-0.0f,1.0f,2.0f,-1.0f,.5f,INFINITY,NAN};
    values.pointScale[0]=scales[(test/14)%8];
