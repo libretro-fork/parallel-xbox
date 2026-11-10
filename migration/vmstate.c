@@ -179,6 +179,31 @@ static int vmstate_load_scalar_array(QEMUFile *f, void *base, int n, int size)
     return qemu_file_get_error(f);
 }
 
+/* The libretro QEMUFile writes into its caller-owned bounded buffer. Keep
+ * endian conversion there rather than cloning an array into staging memory. */
+static void vmstate_save_scalar_array(QEMUFile *f, const void *base,
+                                      int n, int size)
+{
+    if (size == 1) {
+        qemu_put_buffer(f, base, (size_t)n);
+        return;
+    }
+    for (int i = 0; i < n; i++) {
+        const uint8_t *elem = (const uint8_t *)base + (size_t)i * size;
+        switch (size) {
+        case 2:
+            qemu_put_be16(f, lduw_he_p(elem));
+            break;
+        case 4:
+            qemu_put_be32(f, ldl_he_p(elem));
+            break;
+        case 8:
+            qemu_put_be64(f, ldq_he_p(elem));
+            break;
+        }
+    }
+}
+
 int vmstate_load_state(QEMUFile *f, const VMStateDescription *vmsd,
                        void *opaque, int version_id, Error **errp)
 {
@@ -532,6 +557,14 @@ int vmstate_save_state_v(QEMUFile *f, const VMStateDescription *vmsd,
                 assert(first_elem || !n_elems || !size);
             }
 
+            if (vmstate_scalar_array(field, n_elems, size) &&
+                (!vmdesc_loop || vmsd_can_compress(field))) {
+                vmsd_desc_field_start(vmsd, vmdesc_loop, field, 0, n_elems);
+                vmstate_save_scalar_array(f, first_elem, n_elems, size);
+                /* Compressed array descriptions describe one element. */
+                vmsd_desc_field_end(vmsd, vmdesc_loop, field, size);
+                n_elems = 0;
+            }
             for (i = 0; i < n_elems; i++) {
                 void *curr_elem = first_elem + size * i;
                 const VMStateField *inner_field;
