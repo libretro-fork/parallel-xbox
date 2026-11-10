@@ -17,6 +17,51 @@ org 0xfff00000
     mov [R+0x20],eax
     check eax,%4
 %endmacro
+%macro round_status_case 3
+    inc ebp
+    fninit
+    mov word [0x6030],%1
+    fldcw [0x6030]
+    mov dword [0x6034],%2
+    fld dword [0x6034]
+    frndint
+    fnstsw ax
+    and eax,0x21
+    check eax,0x20
+    fstp dword [0x6038]
+    check dword [0x6038],%3
+%endmacro
+%macro bcd_status_case 6
+    inc ebp
+    fninit
+    mov word [0x6030],%1
+    fldcw [0x6030]
+    mov dword [0x6034],%2
+    fld dword [0x6034]
+    mov dword [0x6040],0xdeadbeef
+    mov dword [0x6044],0xdeadbeef
+    mov word [0x6048],0xface
+    fbstp [0x6040]
+    fnstsw ax
+    and eax,0x21
+    check eax,%6
+    check dword [0x6040],%3
+    check dword [0x6044],%4
+    check word [0x6048],%5
+%endmacro
+%macro scale_status_case 3
+    inc ebp
+    fninit
+    mov dword [0x6034],%1
+    fld dword [0x6034]
+    fld1
+    fscale
+    fnstsw ax
+    and eax,0x39 ; invalid, overflow, underflow, precision
+    check eax,%3
+    fstp dword [0x6038]
+    check dword [0x6038],%2
+%endmacro
 start:
     rep_test_init
     mov eax,cr0
@@ -126,6 +171,22 @@ start:
     integer_status_case 0x0f7f,0xbfc00000,-1,0x20
     integer_status_case 0x037f,0x47000000,0x8000,1
     integer_status_case 0x037f,0x7fc00123,0x8000,1
+    round_status_case 0x037f,0x3fc00000,0x40000000
+    round_status_case 0x077f,0x3fc00000,0x3f800000
+    round_status_case 0x0b7f,0x3fc00000,0x40000000
+    round_status_case 0x0f7f,0x3fc00000,0x3f800000
+    round_status_case 0x037f,0xbfc00000,0xc0000000
+    round_status_case 0x077f,0xbfc00000,0xc0000000
+    round_status_case 0x0b7f,0xbfc00000,0xbf800000
+    round_status_case 0x0f7f,0xbfc00000,0xbf800000
+    bcd_status_case 0x037f,0x3fc00000,2,0,0,0x20
+    bcd_status_case 0x077f,0x3fc00000,1,0,0,0x20
+    bcd_status_case 0x0b7f,0xbfc00000,1,0,0x8000,0x20
+    bcd_status_case 0x0f7f,0xbfc00000,1,0,0x8000,0x20
+    bcd_status_case 0x037f,0x7fc00123,0,0xc0000000,0xffff,1
+    bcd_status_case 0x037f,0x7f800000,0,0xc0000000,0xffff,1
+    scale_status_case 0x469c4000,0x7f800000,0x28 ; 2^20000 overflows
+    scale_status_case 0xc69c4000,0,0x30 ; 2^-20000 underflows
     mov dword [R],0x4b4f5753 ; SWOK
 .halt:
     cli

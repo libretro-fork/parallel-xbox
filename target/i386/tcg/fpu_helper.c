@@ -1137,7 +1137,7 @@ void helper_fbst_ST0(CPUX86State *env, target_ulong ptr)
         access_stb(&ac, mem_ref++, 0xc0);
         access_stb(&ac, mem_ref++, 0xff);
         access_stb(&ac, mem_ref++, 0xff);
-        merge_exception_flags(env, old_flags);
+        merge_softfloat_exception_flags(env, old_flags);
         return;
     }
     mem_end = mem_ref + 9;
@@ -1159,7 +1159,7 @@ void helper_fbst_ST0(CPUX86State *env, target_ulong ptr)
     while (mem_ref < mem_end) {
         access_stb(&ac, mem_ref++, 0);
     }
-    merge_exception_flags(env, old_flags);
+    merge_softfloat_exception_flags(env, old_flags);
 }
 
 /* 128-bit significand of log(2).  */
@@ -2625,7 +2625,7 @@ void helper_frndint(CPUX86State *env)
 {
     int old_flags = save_exception_flags(env);
     ST0 = floatx80_round_to_int(ST0, &env->fp_status);
-    merge_exception_flags(env, old_flags);
+    merge_softfloat_exception_flags(env, old_flags);
 }
 
 void helper_fscale(CPUX86State *env)
@@ -2676,7 +2676,7 @@ void helper_fscale(CPUX86State *env)
         ST0 = floatx80_scalbn(ST0, n, &env->fp_status);
         env->fp_status.floatx80_rounding_precision = save;
     }
-    merge_exception_flags(env, old_flags);
+    merge_softfloat_exception_flags(env, old_flags);
 }
 
 void helper_fsin(CPUX86State *env)
