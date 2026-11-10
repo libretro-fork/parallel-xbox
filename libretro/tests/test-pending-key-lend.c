@@ -18,7 +18,7 @@ typedef struct LruNode {uint64_t hash;struct LruNode *next;} LruNode;
 typedef struct {LruNode *bins[8];} Lru;
 typedef struct {unsigned refs;} ShaderModuleInfo;
 typedef struct ShaderBinding {LruNode node;ShaderState state;struct{ShaderModuleInfo *module_info;}vsh,geom,psh;} ShaderBinding;
-typedef struct {bool full;struct{ShaderState shader_state;}key;uint64_t state_hash;} LibJob;
+typedef struct {bool compute,full;struct{ShaderState shader_state;}key;uint64_t state_hash;} LibJob;
 typedef struct PGRAPHVkState {Lru shader_cache;ShaderBinding *shader_binding;bool shader_bindings_changed,sibling_retry;unsigned sibling_ticket,sibling_generation;} PGRAPHVkState;
 struct PGRAPHState {
  PGRAPHVkState *vk_renderer_state;bool program_data_dirty,two_side_light_en;

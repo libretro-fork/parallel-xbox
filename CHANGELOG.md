@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Vulkan prepares used S3TC compute pipelines on its existing graphics worker when available. First-use and queue-pressure uploads decode directly into bounded final staging ranges, reusing auxiliary submissions without growing the ring; ready GPU decode can replace partial CPU work. Preserve shared-layout ownership through cancellation and teardown. Configurations without that worker retain their existing synchronous GPU path; cold-play recovery remains unqualified.
+
 - Savestate saving dispatches plain integer arrays directly to endian writers in frontend-owned storage, with no array staging allocation. Preserve the existing stream and compressed field descriptions; save-time improvement remains unmeasured.
 
 - Savestate loading reads plain integer arrays directly into their final storage and converts byte order in place, avoiding per-element dispatch without changing the save format or custom field handling. Load-time improvement remains unmeasured.

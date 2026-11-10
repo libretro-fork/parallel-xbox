@@ -634,6 +634,7 @@ typedef struct PGRAPHVkState {
 
     struct {
         bool enabled;
+        uint8_t pending_mask; /* render-thread only; existing handle padding */
         VkDescriptorSetLayout set_layout;
         VkPipelineLayout layout;
         VkPipeline pipelines[2]; /* 2D array layer, 3D */
@@ -1058,6 +1059,8 @@ void pgraph_vk_wait_for_aux(PGRAPHState *pg);
 /* A range of the staging ring (BUFFER_STAGING_SRC) for the open single-time
  * command buffer to read: its offset in the buffer, and the mapped pointer
  * to write it through; flushed before the submission */
+bool pgraph_vk_staging_try_alloc(PGRAPHState *pg, size_t size, size_t alignment,
+                                 VkDeviceSize *offset, uint8_t **ptr);
 VkDeviceSize pgraph_vk_staging_alloc(PGRAPHState *pg, size_t size,
                                      size_t alignment, uint8_t **ptr);
 void pgraph_vk_staging_flush(PGRAPHState *pg, VkDeviceSize offset,
@@ -1280,6 +1283,9 @@ bool pgraph_vk_seed_spv_ready_hash(uint64_t hash);
 void pgraph_vk_spec_pipeline_queued(uint64_t state_hash);
 void pgraph_vk_spec_pipeline_landed(uint64_t state_hash);
 void pgraph_vk_finalize_pipelines(PGRAPHState *pg);
+void pgraph_vk_quiesce_pipeline_worker(PGRAPHState *pg);
+bool pgraph_vk_s3tc_pipeline_ready(PGRAPHState *pg, unsigned volume);
+bool pgraph_vk_s3tc_pipeline_uncovered(PGRAPHState *pg, unsigned volume);
 void pgraph_vk_clear_surface(NV2AState *d, uint32_t parameter);
 void pgraph_vk_draw_begin(NV2AState *d);
 void pgraph_vk_draw_end(NV2AState *d);

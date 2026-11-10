@@ -28,7 +28,7 @@ code=r'''
 /* KEY */
 typedef struct { unsigned id; } ShaderModuleInfo;
 typedef struct {
-    PipelineKey key;uint64_t hash,state_hash;ShaderModuleInfo *mods[3];int nmods;bool full;
+    PipelineKey key;uint64_t hash,state_hash;ShaderModuleInfo *mods[3];int nmods;bool compute,full;
 } LibJob;
 typedef struct LruNode {struct LruNode *next_bin;uint64_t hash;} LruNode;
 typedef struct {struct {LruNode *first;} bins[4];} Lru;
@@ -134,6 +134,7 @@ int main(void) {
  pump_jobs[0]=(LibJob){.key=wanted,.hash=collision_hash,.full=true};
  assert(pipeline_ready(&renderer,collision_hash,&wanted));
  assert(pump_full_in_flight(collision_hash,&wanted));
+ pump_jobs[0].compute=true;assert(!pump_full_in_flight(collision_hash,&wanted));pump_jobs[0].compute=false;
  for(size_t byte=0;byte<sizeof(wanted);byte++) {
   ((uint8_t*)&resident.key)[byte]^=1;
   ((uint8_t*)&pump_jobs[0].key)[byte]^=1;

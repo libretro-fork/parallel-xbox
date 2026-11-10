@@ -21,7 +21,7 @@ for name in ('stage_level','decode_level_3d'):
 code=Path(__file__).with_suffix('.c').read_text().replace('/* CPU PRODUCTION */','\n'.join(parts)).replace('/* PRODUCTION */',s)
 with tempfile.TemporaryDirectory(prefix='vk-s3tc-') as tmp:
  p=Path(tmp); (p/'test.c').write_text(code)
- cmd=[sys.argv[2] if len(sys.argv)>2 else 'gcc','-O2','-std=gnu11','-Wall','-Wextra','-Werror','-Wno-sign-compare','-Wno-unused-function','-Wno-missing-field-initializers','-Wno-misleading-indentation','-I'+str(r),'-I'+str(r/'libretro/tests'),'-I'+str(r/'deps/spirv-headers/include'),str(p/'test.c'),str(r/'hw/xbox/nv2a/pgraph/s3tc.c'),str(r/'hw/xbox/nv2a/pgraph/spv/utility.c'),'-lm','-o',str(p/('test.exe' if os.name=='nt' else 'test'))]
+ cmd=[sys.argv[2] if len(sys.argv)>2 else 'gcc','-O2','-std=gnu11','-Wall','-Wextra','-Werror','-Wno-sign-compare','-Wno-unused-function','-Wno-missing-field-initializers','-Wno-misleading-indentation','-I'+str(r),'-I'+str(r/'libretro/tests'),'-I'+str(r/'hw/xbox/nv2a/pgraph/vk'),'-I'+str(r/'deps/spirv-headers/include'),str(p/'test.c'),str(r/'hw/xbox/nv2a/pgraph/s3tc.c'),str(r/'hw/xbox/nv2a/pgraph/spv/utility.c'),'-lm','-o',str(p/('test.exe' if os.name=='nt' else 'test'))]
  if os.name=='nt': cmd += ['-I'+str(r/'deps/vulkan-headers'),'-LC:/Windows/System32','-l:vulkan-1.dll','-static']
  else: cmd += ['-lvulkan',*shlex.split(os.environ.get('VK_S3TC_CFLAGS','-g' if os.environ.get('VK_S3TC_BENCH') else '-fsanitize=undefined -fno-sanitize-recover=all'))]
  env=os.environ.copy();env['PATH']=str(Path(cmd[0]).resolve().parent)+os.pathsep+env.get('PATH','')

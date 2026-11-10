@@ -10,7 +10,10 @@ def fn(name):
     while depth:depth+=(s[end]=='{')-(s[end]=='}');end+=1
     return s[m.start():end]
 job=re.search(r'typedef struct \{\n    bool frag;.*?\} LibJob;',s,re.S)[0]
+if 'S3tcPipelineJob' in job:job=re.search(r'typedef struct S3tcPipelineJob \{.*?\} S3tcPipelineJob;',(r/'hw/xbox/nv2a/pgraph/vk/s3tc-pipeline-job.h').read_text(),re.S)[0]+'\n'+job
+
 parts='\n'.join(fn(n) for n in ('gpl_key_size','pipeline_job_reset','lib_job_link','pump_slot','pump_submit','library_land','pump_drain','pgraph_vk_pre_library_ready'))
+if 's3tc_pipeline_job_land(' in parts:parts='static void s3tc_pipeline_job_land(PGRAPHVkState *r,LibJob *job){(void)r;(void)job;assert(false); }\n'+parts
 def audit(body):
     assert 'vkCreateGraphicsPipelines' not in body and 'gpl_get_pre(' not in body and 'pgraph_vk_ref_pre_state_modules(' not in body
 audit(fn('pgraph_vk_pre_library_ready'));audit(fn('pgraph_vk_prewarm_shaders'))
@@ -30,7 +33,7 @@ with tempfile.TemporaryDirectory(prefix='prewarm-library-') as d:
         ('borrowed layout destroyed',code.replace('    bool found;\n    const void *key', '    vkDestroyPipelineLayout(r->device, job->layout, NULL);\n    bool found;\n    const void *key',1)),
         ('missing vertex owner',code.replace('job->mods[job->nmods++] = vsh;','(void)vsh;',1)),
         ('missing geometry owner',code.replace('job->mods[job->nmods++] = geom;','(void)geom;',1)),
-        ('queued duplicate',code.replace('if (!pending->full && !pending->frag && pending->hash == job->hash &&', 'if (pending->full && !pending->frag && pending->hash == job->hash &&',1)),
+        ('queued duplicate',code.replace('!pending->full && !pending->frag && pending->hash == job->hash &&', 'pending->full && !pending->frag && pending->hash == job->hash &&',1)),
         ('colliding pending key dropped',re.sub(r' &&\s*!memcmp\(&pending->pre_key, &job->pre_key, gpl_key_size\(r, false\)\)', '',code,count=1)),
         ('duplicate worker result retained',code.replace('vkDestroyPipeline(r->device, job->result, NULL);','if (!job->result) vkDestroyPipeline(r->device, job->result, NULL);',1)),
         ('missing dynamic-state snapshot',code.replace('memcpy(job->dyn_states, pipeline->dynamic_states,\n           pipeline->num_dynamic * sizeof(job->dyn_states[0]));','(void)pipeline->dynamic_states;',1)),

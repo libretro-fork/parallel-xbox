@@ -6,6 +6,8 @@ import os,re,shlex,subprocess,sys,tempfile
 r=Path(sys.argv[1]).resolve();cc=sys.argv[2] if len(sys.argv)>2 else 'cc'
 s=(r/'hw/xbox/nv2a/pgraph/vk/draw.c').read_text()
 job=re.search(r'typedef struct \{\n    bool frag;.*?\} LibJob;',s,re.S).group()
+if 'S3tcPipelineJob' in job:job=re.search(r'typedef struct S3tcPipelineJob \{.*?\} S3tcPipelineJob;',(r/'hw/xbox/nv2a/pgraph/vk/s3tc-pipeline-job.h').read_text(),re.S)[0]+'\n'+job
+
 parts=[]
 for name in ['pipeline_job_reset','lib_job_link','pump_slot','pump_submit']:
     m=re.search(r'^static (?:void|LibJob \*) *'+name+r'\(.*?^\}',s,re.M|re.S);assert m,name

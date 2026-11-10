@@ -907,14 +907,12 @@ static void upload_texture_image(PGRAPHState *pg, int texture_idx,
     /* The recording first: the levels are staged in its range of the ring,
      * which it reads after flushing and auxiliary queue submission */
     VkCommandBuffer cmd = pgraph_vk_begin_single_time_commands(pg);
-    pgraph_vk_begin_debug_marker(r, cmd, RGBA_GREEN, __func__);
-
-    if (upload_s3tc_image_gpu(pg, cmd, binding, skip_layers)) {
+    if (upload_s3tc_image_gpu(pg, &cmd, binding, skip_layers)) {
         nv2a_profile_inc_counter(NV2A_PROF_QUEUE_SUBMIT_4);
-        pgraph_vk_end_debug_marker(r, cmd);
         pgraph_vk_end_single_time_commands_async(pg, cmd);
         return;
     }
+    pgraph_vk_begin_debug_marker(r, cmd, RGBA_GREEN, __func__);
 
     TextureLayout layout;
     if (binding->logo) {

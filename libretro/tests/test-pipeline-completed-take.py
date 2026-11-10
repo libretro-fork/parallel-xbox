@@ -13,7 +13,10 @@ def fn(name):
 parts='\n'.join(fn(n) for n in ('gpl_key_size','pump_take_library','pump_take_pipeline','library_land','pump_drain'))
 types='\n'.join(re.search(r'typedef struct '+n+r' \{.*?\} '+n+r';',h,re.S)[0] for n in ('RenderPassState','PipelineKey','PipelineBinding'))
 types+='\n'+'\n'.join(re.search(r'typedef struct '+n+r' \{.*?\} '+n+r';',s,re.S)[0] for n in ('GplPreKey','GplFragKey'))
-types+='\n'+re.search(r'typedef struct \{\n    bool frag;.*?\} LibJob;',s,re.S)[0]
+job=re.search(r'typedef struct \{\n    bool frag;.*?\} LibJob;',s,re.S)[0]
+if 'S3tcPipelineJob' in job:job=re.search(r'typedef struct S3tcPipelineJob \{.*?\} S3tcPipelineJob;',(r/'hw/xbox/nv2a/pgraph/vk/s3tc-pipeline-job.h').read_text(),re.S)[0]+'\n'+job
+types+='\n'+job
+if 's3tc_pipeline_job_land(' in parts:parts='static void s3tc_pipeline_job_land(PGRAPHVkState *r,LibJob *job){(void)r;(void)job;CHECK(false); }\n'+parts
 for name in ('pump_take_library','pump_take_pipeline'):
  for banned in ('vkCreate','Wait','memcpy(','g_new','malloc','realloc','pump_d++','pump_drain('):assert banned not in fn(name),(name,banned)
 for name in ('gpl_get_pre','gpl_get_frag'):
@@ -78,6 +81,17 @@ int main(void){unsigned cases=0;uint32_t random=13;
  printf("Completed pipeline take: %u native-key/publication/type/collision/owner/drain/wrap cases PASS\n",cases);
 }
 '''.replace('/* TYPES */',types).replace('/* PRODUCTION */',parts)
+if 'S3tcPipelineJob' in job:
+ extra=r"""
+ for(unsigned full=0;full<2;full++)for(unsigned frag=0;frag<2;frag++){
+  memset(pump_jobs,0,sizeof(pump_jobs));LibJob *j=&pump_jobs[0];j->compute=true;j->full=full;j->frag=frag;j->hash=9;j->result=(VkPipeline)(uintptr_t)55;
+  pump_d=0;pump_w_local=pump_r=1;pipe_started=true;PGRAPHVkState r={0};PGRAPHState pg={.vk_renderer_state=&r};PipelineBinding b={0};stores=markers=0;
+  const void *query=frag?(const void*)&j->frag_key:(const void*)&j->pre_key;
+  CHECK(!pump_take_library(&r,frag,9,query));CHECK(!pump_take_pipeline(&pg,&b,9,&j->key));
+  CHECK(j->result==(VkPipeline)(uintptr_t)55&&!b.pipeline&&!stores&&!markers&&pump_d==0);cases++;
+ }
+"""
+ code=code.replace(' printf("Completed pipeline take:',extra+' printf("Completed pipeline take:')
 with tempfile.TemporaryDirectory(prefix='pipeline-completed-') as tmp:
  d=Path(tmp);(d/'qemu').mkdir();(d/'qemu/osdep.h').write_text('#include <stdint.h>\n#include <stdbool.h>\n#include <stddef.h>\n');(d/'qemu/mstring.h').write_text('typedef struct MString MString;\n')
  c=d/'test.c';exe=d/('test.exe' if os.name=='nt' else 'test')
@@ -87,4 +101,9 @@ with tempfile.TemporaryDirectory(prefix='pipeline-completed-') as tmp:
  for name,mutant in [('wrapped result lost',code.replace('i != done','i < done',1)),('unfinished result',code.replace('retro_atomic_load_acquire_int(&pump_r)','pump_w_local',1)),('double ownership',code.replace('job->result = VK_NULL_HANDLE;','/* stale handle retained */',1)),('library hash-only match',code.replace('!memcmp(owned, key, gpl_key_size(r, frag))','((void)owned,(void)key,true)',1)),('pipeline hash-only match',code.replace('!memcmp(&job->key, key, sizeof(*key))','((void)key,true)',1))]:
   assert mutant!=code,name;c.write_text(mutant);subprocess.run(cmd,check=True,env=env)
   assert subprocess.run([str(exe)],env=env,capture_output=True).returncode!=0,name
+ if 'S3tcPipelineJob' in job:
+  for name,mutant in [('compute mistaken for library',code.replace('!job->compute && !job->full','!job->full',1)),('compute mistaken for whole graphics pipeline',code.replace('!job->compute && job->full && job->result','job->full && job->result',1))]:
+   assert mutant!=code,name;c.write_text(mutant);subprocess.run(cmd,check=True,env=env)
+   assert subprocess.run([str(exe)],env=env,capture_output=True).returncode!=0,name
+   print('Required compute-family control rejected:',name)
  print('Completed pipeline take mutations rejected')
