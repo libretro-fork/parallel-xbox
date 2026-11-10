@@ -311,3 +311,45 @@ they fail with vector-size errors, consistent with the native exclusion.
 All 49 contract suites, 26 GL/VK game checks, four lifecycle cases and five
 exact image pairs passed. Timing/driver-cache qualification remains open;
 these work counts do not establish GPU execution or cold-play recovery.
+
+
+## Dependent reads and bump environment maps
+
+Dependent AR/GB reads now consume the selected preceding stage's processed
+texture result, including alpha/key changes. Bump environment and bump
+luminance use the reference B/G sign conversion and GPU mat2 operation.
+The existing mat2[4] upload is represented by eight padded vec2 columns;
+no host matrix transpose or second matrix buffer is introduced. Rectangle
+normalization follows the bump offset. Volume bump sampling preserves the
+reference's original Z coordinate. Luminance scales all four sampled channels
+before alpha kill and color keys. One shared sign-conversion helper serves
+all bump units, with division inside the selected branch.
+
+Only consumed bump uniforms append after the existing layout: 128 bytes for
+matrix columns and, for luminance, two 64-byte scalar arrays. The maximum
+combined layout is 1616 bytes and 27 members. Existing word/layout owners,
+image views, sampler bindings, uniform uploads and retirement are unchanged.
+The immutable key is borrowed synchronously through count/write; bounded SSA
+IDs contain no payload pointers. Two final allocations remain indispensable;
+this is not allocation-free shader preparation. No geometry, texture, key or
+file payload is cloned, and no new lend outlives its existing owner.
+
+Unit zero and self/forward/out-of-range dependencies reject allocation-free.
+Dependent AR/GB rectangle, border and volume combinations retain fallback;
+bump rectangle-volume does too. Bump border flags remain ignored as in the
+reference. Signed G8B8 overrides, dot families, shadow sampling and special
+signed/integer formats remain open. Reference translation equivalence is not
+a claim to correct existing hardware-model limitations.
+
+CPU coverage adds 4096 recipes for dependent reads, static/live combiners,
+point coordinates, rectangle/volume selection, key/alpha controls, matrix
+layout, exact final allocation counts and post-key-erasure result ownership.
+Eight additional rejection controls preserve allocation-free fallback. GPU
+cases include chained dependencies, all valid predecessor selections,
+processed predecessor keys, zero/passthrough/projected/cube producers and
+bump matrices with nontrivial off-diagonal columns. The full comparison matrix
+now contains 27136 recipes against the production GLSL implementation.
+
+Existing synchronous PSO misses and uncontrolled driver-cache qualification
+remain open. Removing these GLSL intermediates does not establish draw-path
+pipeline readiness, GPU execution improvement or cold-first-play recovery.

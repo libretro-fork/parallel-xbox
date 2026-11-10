@@ -28,7 +28,7 @@ static uint32_t val(Writer *w,SpvOp code,uint32_t type,unsigned n,...)
     uint32_t result=id(w);word(w,((n+3)<<16)|code);word(w,type);word(w,result);va_list a;va_start(a,n);
     for(unsigned j=0;j<n;j++){word(w,va_arg(a,uint32_t));}va_end(a);return result;
 }
-enum Uniform { CLIP, REGION, CONSTANTS, FACTOR, OFFSET, FOG, SCALE, SIDE, ALPHA_REF, ALPHA_FUNC, ALPHA_ENABLE, BASE_UNIFORMS, TEX_SCALE=BASE_UNIFORMS, ALPHA_KILL, COMB_CTL, COMB_FINAL0, COMB_FINAL1, COMB_RGB_IN, COMB_RGB_OUT, COMB_ALPHA_IN, COMB_ALPHA_OUT, BORDER_LOGICAL, BORDER_INV, COLOR_KEY, COLOR_MASK, UNIFORMS };
+enum Uniform { CLIP, REGION, CONSTANTS, FACTOR, OFFSET, FOG, SCALE, SIDE, ALPHA_REF, ALPHA_FUNC, ALPHA_ENABLE, BASE_UNIFORMS, TEX_SCALE=BASE_UNIFORMS, ALPHA_KILL, COMB_CTL, COMB_FINAL0, COMB_FINAL1, COMB_RGB_IN, COMB_RGB_OUT, COMB_ALPHA_IN, COMB_ALPHA_OUT, BORDER_LOGICAL, BORDER_INV, COLOR_KEY, COLOR_MASK, BUMP_MAT, BUMP_SCALE, BUMP_OFFSET, UNIFORMS };
 static const struct {const char *name;unsigned width,count,offset;bool integer;} uniforms[UNIFORMS]={
     {"clipRange",4,1,0,false},{"clipRegion",4,8,16,true},{"consts",4,18,144,false},
     {"depthFactor",1,1,432,false},{"depthOffset",1,1,436,false},{"fogColor",4,1,448,false},
@@ -39,12 +39,23 @@ static const struct {const char *name;unsigned width,count,offset;bool integer;}
     {"combRgbIn",1,8,0,true},{"combRgbOut",1,8,0,true},
     {"combAlphaIn",1,8,0,true},{"combAlphaOut",1,8,0,true},
     {"borderLogicalSize",3,4,0,false},{"borderInvRealSize",3,4,0,false},
-    {"colorKey",1,4,0,true},{"colorKeyMask",1,4,0,true}
+    {"colorKey",1,4,0,true},{"colorKeyMask",1,4,0,true},
+    {"bumpMat",2,8,0,false},{"bumpScale",1,4,0,false},{"bumpOffset",1,4,0,false}
 };
 static unsigned texture_mode(const PshState *s,unsigned stage)
 { return (s->shader_stage_program>>(stage*5))&31; }
+static bool bump_stage(const PshState *s,unsigned stage)
+{ unsigned mode=texture_mode(s,stage);return mode==PS_TEXTUREMODES_BUMPENVMAP || mode==PS_TEXTUREMODES_BUMPENVMAP_LUM; }
+static bool dependent_stage(const PshState *s,unsigned stage)
+{ unsigned mode=texture_mode(s,stage);return bump_stage(s,stage) || mode==PS_TEXTUREMODES_DPNDNT_AR || mode==PS_TEXTUREMODES_DPNDNT_GB; }
+static unsigned texture_input(const PshState *s,unsigned stage)
+{ return stage<2?0:(s->other_stage_input>>(16+(stage-2)*4))&15; }
+static bool has_bump(const PshState *s)
+{ for(unsigned j=0;j<4;j++)if(bump_stage(s,j))return true;return false; }
+static bool has_bump_luma(const PshState *s)
+{ for(unsigned j=0;j<4;j++)if(texture_mode(s,j)==PS_TEXTUREMODES_BUMPENVMAP_LUM)return true;return false; }
 static bool sample_stage(const PshState *s,unsigned stage)
-{ unsigned mode=texture_mode(s,stage);return mode==PS_TEXTUREMODES_PROJECT2D || mode==PS_TEXTUREMODES_PROJECT3D || mode==PS_TEXTUREMODES_CUBEMAP; }
+{ unsigned mode=texture_mode(s,stage);return mode==PS_TEXTUREMODES_PROJECT2D || mode==PS_TEXTUREMODES_PROJECT3D || mode==PS_TEXTUREMODES_CUBEMAP || dependent_stage(s,stage); }
 /* Same descriptor slot; only its SPIR-V sampler dimension varies. */
 static unsigned sampler_kind(const PshState *s,unsigned stage)
 {
@@ -60,7 +71,7 @@ static bool has_samples(const PshState *s)
 static bool has_rect_samples(const PshState *s)
 { for(unsigned j=0;j<4;j++)if(sample_stage(s,j) && texture_mode(s,j)!=PS_TEXTUREMODES_CUBEMAP && s->rect_tex[j])return true;return false; }
 static bool has_border_samples(const PshState *s)
-{ for(unsigned j=0;j<4;j++)if(sample_stage(s,j) && texture_mode(s,j)!=PS_TEXTUREMODES_CUBEMAP && s->border_adjust[j])return true;return false; }
+{ for(unsigned j=0;j<4;j++)if((texture_mode(s,j)==PS_TEXTUREMODES_PROJECT2D || texture_mode(s,j)==PS_TEXTUREMODES_PROJECT3D) && s->border_adjust[j])return true;return false; }
 static bool has_color_key(const PshState *s)
 { for(unsigned j=0;j<4;j++)if(sample_stage(s,j) && s->colorkey_mode[j]!=COLOR_KEY_NONE)return true;return false; }
 static bool convolution_stage(const PshState *s,unsigned stage)
@@ -69,6 +80,7 @@ static bool has_convolution(const PshState *s)
 { for(unsigned j=0;j<4;j++)if(convolution_stage(s,j))return true;return false; }
 static bool uniform_enabled(const PshState *s,unsigned which)
 {
+    if(which>=BUMP_MAT)return which==BUMP_MAT?has_bump(s):has_bump_luma(s);
     if(which>=BORDER_LOGICAL)return which<=BORDER_INV?has_border_samples(s):has_color_key(s);
     return which<BASE_UNIFORMS || (which>=COMB_CTL?s->combiner_dynamic:which==TEX_SCALE?has_rect_samples(s):s->alpha_dynamic && has_samples(s));
 }
@@ -80,12 +92,13 @@ static unsigned texture_uniform_size(const PshState *s)
 { return has_rect_samples(s)?(s->alpha_dynamic?576:560):(s->alpha_dynamic && has_samples(s)?512:496); }
 static unsigned uniform_offset(const PshState *s,unsigned which)
 {
+    if(which>=BUMP_MAT){unsigned base=texture_uniform_size(s)+(s->combiner_dynamic?528:0)+(has_border_samples(s)?128:0)+(has_color_key(s)?128:0);return which==BUMP_MAT?base:base+128+(which-BUMP_SCALE)*64;}
     if(which>=BORDER_LOGICAL){unsigned base=texture_uniform_size(s)+(s->combiner_dynamic?528:0);return which<=BORDER_INV?base+(which-BORDER_LOGICAL)*64:base+(has_border_samples(s)?128:0)+(which-COLOR_KEY)*64;}
     if(which>=COMB_CTL){unsigned base=texture_uniform_size(s);return which<COMB_RGB_IN?base+(which-COMB_CTL)*4:base+16+(which-COMB_RGB_IN)*128;}
     return which==ALPHA_KILL?(has_rect_samples(s)?560:496):uniforms[which].offset;
 }
 static unsigned uniform_size(const PshState *s)
-{ return texture_uniform_size(s)+(s->combiner_dynamic?528:0)+(has_border_samples(s)?128:0)+(has_color_key(s)?128:0); }
+{ return texture_uniform_size(s)+(s->combiner_dynamic?528:0)+(has_border_samples(s)?128:0)+(has_color_key(s)?128:0)+(has_bump(s)?128:0)+(has_bump_luma(s)?128:0); }
 
 enum Floats { F_ZERO, F_HALF, F_ONE, F_TWO, F_FOUR, F_BYTE_MAX, F_D16_MAX, F_D24_SCALE, F_FLOAT_MAX, FLOATS };
 typedef struct Context {
@@ -104,6 +117,7 @@ typedef struct Context {
     uint32_t conv_array,conv_offsets_array,conv_ptr,conv_offsets_ptr,conv_element,conv_offset_element;
     uint32_t conv_weights,conv_offsets,conv_weight_init,conv_offset_init,conv_negative,conv_weight[3],conv_vec2[9];
     uint32_t cube_fn,cube_fn_type,project_cube_fn,project_cube_type;
+    uint32_t bump_array,bump_m2,uniform_v2,sign_fn,sign_type,sign_constants[3];
     bool cube_body,project_cube_body;
     bool fetch_body;
     bool precise;
@@ -131,8 +145,8 @@ static uint32_t divf(Context *c,uint32_t a,uint32_t b){return math(c,SpvOpFDiv,c
 static uint32_t unif_at(Context *c,unsigned which,uint32_t index)
 {
     const unsigned width=uniforms[which].width;bool integer=uniforms[which].integer;
-    uint32_t type=integer?((which==SIDE || which==ALPHA_KILL || which>=COMB_CTL)?c->u:width==4?c->iv4:width==2?c->iv2:c->i):width==4?c->v4:width==3?c->v3:c->f;
-    uint32_t ptr=integer?((which==SIDE || which==ALPHA_KILL || which>=COMB_CTL)?c->uu:width==4?c->uiv4:width==2?c->uiv2:c->ui):width==4?c->uv4:width==3?c->uniform_v3:c->uf;
+    uint32_t type=integer?((which==SIDE || which==ALPHA_KILL || which>=COMB_CTL)?c->u:width==4?c->iv4:width==2?c->iv2:c->i):width==4?c->v4:width==3?c->v3:width==2?c->v2:c->f;
+    uint32_t ptr=integer?((which==SIDE || which==ALPHA_KILL || which>=COMB_CTL)?c->uu:width==4?c->uiv4:width==2?c->uiv2:c->ui):width==4?c->uv4:width==3?c->uniform_v3:width==2?c->uniform_v2:c->uf;
     unsigned member=uniform_member(c->state,which);
     uint32_t p=uniforms[which].count>1?val(c->w,SpvOpAccessChain,ptr,3,c->ubo,c->si[member],index):val(c->w,SpvOpAccessChain,ptr,2,c->ubo,c->si[member]);
     return unary(c,SpvOpLoad,type,p);
@@ -204,6 +218,10 @@ bool pgraph_spv_psh_supported(const PshState *s,SpvPshOptions opts)
     for(unsigned j=0;j<4;j++){
         unsigned mode=texture_mode(s,j);
         if(s->g8b8_signed[j] || s->tex_x8y24[j] || s->shadow_map[j])return false;
+        if(dependent_stage(s,j)){
+            if(!j || texture_input(s,j)>=j)return false;
+            if(!bump_stage(s,j) && (s->dim_tex[j]!=2 || s->rect_tex[j] || s->border_adjust[j]))return false;
+        }
         if(sample_stage(s,j)){
             if(opts.tex_binding>=29 || (opts.ubo_binding>=opts.tex_binding && opts.ubo_binding<opts.tex_binding+4) || s->colorkey_mode[j]<COLOR_KEY_NONE || s->colorkey_mode[j]>COLOR_KEY_DISCARD)return false;
             if(mode==PS_TEXTUREMODES_CUBEMAP){if(s->dim_tex[j]!=2)return false;}
@@ -318,15 +336,16 @@ static void texture_stages(Context *c)
             for(unsigned k=0;k<4;k++)discard_if(c,binary(c,c->state->compare_mode[j][k]?SpvOpFOrdGreaterThanEqual:SpvOpFOrdLessThan,c->b,extract(c,coord,k),c->cf[F_ZERO]));
         }else{
             unsigned kind=sampler_kind(c->state,j);
-            if(mode!=PS_TEXTUREMODES_CUBEMAP)coord=texture_border(c,coord,j);
+            if(!dependent_stage(c->state,j) && mode!=PS_TEXTUREMODES_CUBEMAP)coord=texture_border(c,coord,j);
             uint32_t sample=unary(c,SpvOpLoad,texture_sampled_type(c,kind),c->samplers[j]),uv=xy(c,coord);
-            if(c->state->rect_tex[j] && mode!=PS_TEXTUREMODES_CUBEMAP){
+            if(c->state->rect_tex[j] && mode!=PS_TEXTUREMODES_CUBEMAP && !dependent_stage(c->state,j)){
                 uint32_t image=unary(c,SpvOpImage,texture_image_type(c,kind),sample),size=val(c->w,SpvOpImageQuerySizeLod,c->iv2,2,image,c->si[0]);
                 uint32_t scaled=binary(c,SpvOpFDiv,c->v2,unary(c,SpvOpConvertSToF,c->v2,size),splat(c,c->v2,unif(c,TEX_SCALE,j),2));
                 uv=binary(c,SpvOpFDiv,c->v2,uv,scaled);
             }
             uint32_t color;
-            if(mode==PS_TEXTUREMODES_CUBEMAP){
+            if(dependent_stage(c->state,j))color=texture_dependent(c,coord,sample,kind,j);
+            else if(mode==PS_TEXTUREMODES_CUBEMAP){
                 uint32_t lookup=kind==2?xyz(c,coord):texture_cube_to_2d(c,xyz(c,coord));
                 color=val(c->w,SpvOpImageSampleImplicitLod,c->v4,2,sample,lookup);
             }else if(mode==PS_TEXTUREMODES_PROJECT3D || kind==1){
@@ -422,7 +441,7 @@ static void allocate(Context *c)
         if(sample_stage(c->state,j))c->samplers[j]=id(c->w);
     }
     if(has_sampler_kind(c->state,0)){c->image_t=id(c->w);c->sampled_t=id(c->w);c->sampler_ptr=id(c->w);c->min_q=id(c->w);}
-    if(has_rect_samples(c->state))c->scale_array=id(c->w);
+    if(has_rect_samples(c->state) || has_bump_luma(c->state))c->scale_array=id(c->w);
     if(c->state->combiner_dynamic)dynamic_allocate(c);
     texture_allocate(c);
 }
@@ -463,6 +482,7 @@ static void emit(Writer *w,const PshState *state,SpvPshOptions opts)
     if(state->combiner_dynamic)op(w,SpvOpDecorate,3,c.comb_array,(uint32_t)SpvDecorationArrayStride,16u);
     if(c.border_array)op(w,SpvOpDecorate,3,c.border_array,(uint32_t)SpvDecorationArrayStride,16u);
     if(c.key_array)op(w,SpvOpDecorate,3,c.key_array,(uint32_t)SpvDecorationArrayStride,16u);
+    if(c.bump_array)op(w,SpvOpDecorate,3,c.bump_array,(uint32_t)SpvDecorationArrayStride,16u);
     for(unsigned j=0;j<w->annotations;j++)op(w,SpvOpDecorate,2,w->precise[j],(uint32_t)SpvDecorationNoContraction);
     op(w,SpvOpTypeVoid,1,c.void_t);op(w,SpvOpTypeFunction,2,c.fn,c.void_t);op(w,SpvOpTypeFloat,2,c.f,32u);op(w,SpvOpTypeInt,3,c.i,32u,1u);op(w,SpvOpTypeInt,3,c.u,32u,0u);op(w,SpvOpTypeBool,1,c.b);
     op(w,SpvOpTypeVector,3,c.v2,c.f,2u);op(w,SpvOpTypeVector,3,c.v3,c.f,3u);op(w,SpvOpTypeVector,3,c.v4,c.f,4u);op(w,SpvOpTypeVector,3,c.iv2,c.i,2u);op(w,SpvOpTypeVector,3,c.iv4,c.i,4u);
@@ -478,8 +498,9 @@ static void emit(Writer *w,const PshState *state,SpvPshOptions opts)
     if(state->combiner_dynamic)op(w,SpvOpTypeArray,3,c.comb_array,c.u,c.ui32[8]);
     if(c.border_array)op(w,SpvOpTypeArray,3,c.border_array,c.v3,c.ui32[4]);
     if(c.key_array)op(w,SpvOpTypeArray,3,c.key_array,c.u,c.ui32[4]);
+    if(c.bump_array)op(w,SpvOpTypeArray,3,c.bump_array,c.v2,c.ui32[8]);
     word(w,((2u+uniform_count(state))<<16)|SpvOpTypeStruct);word(w,c.ubo_type);
-    uint32_t fields[]={c.v4,c.region_array,c.const_array,c.f,c.f,c.v4,c.iv2,c.u,c.i,c.i,c.i,c.scale_array,c.u,c.u,c.u,c.u,c.comb_array,c.comb_array,c.comb_array,c.comb_array,c.border_array,c.border_array,c.key_array,c.key_array};for(unsigned j=0;j<UNIFORMS;j++)if(uniform_enabled(state,j))word(w,fields[j]);
+    uint32_t fields[]={c.v4,c.region_array,c.const_array,c.f,c.f,c.v4,c.iv2,c.u,c.i,c.i,c.i,c.scale_array,c.u,c.u,c.u,c.u,c.comb_array,c.comb_array,c.comb_array,c.comb_array,c.border_array,c.border_array,c.key_array,c.key_array,c.bump_array,c.scale_array,c.scale_array};for(unsigned j=0;j<UNIFORMS;j++)if(uniform_enabled(state,j))word(w,fields[j]);
     uint32_t pointers[][3]={{c.in_f,SpvStorageClassInput,c.f},{c.in_v4,SpvStorageClassInput,c.v4},{c.in_b,SpvStorageClassInput,c.b},{c.out_f,SpvStorageClassOutput,c.f},{c.out_v4,SpvStorageClassOutput,c.v4},{c.uf,SpvStorageClassUniform,c.f},{c.uv4,SpvStorageClassUniform,c.v4},{c.uiv2,SpvStorageClassUniform,c.iv2},{c.uiv4,SpvStorageClassUniform,c.iv4},{c.ui,SpvStorageClassUniform,c.i},{c.uu,SpvStorageClassUniform,c.u},{c.ubo_ptr,SpvStorageClassUniform,c.ubo_type}};
     for(unsigned j=0;j<sizeof(pointers)/sizeof(pointers[0]);j++)op(w,SpvOpTypePointer,3,pointers[j][0],pointers[j][1],pointers[j][2]);
     if(state->combiner_dynamic)dynamic_types(&c);

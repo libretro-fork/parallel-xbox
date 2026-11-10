@@ -45,6 +45,37 @@ static uint32_t texture_2d_to_cube(Context *c,uint32_t coord)
     uint32_t direction=val(c->w,SpvOpCompositeConstruct,c->v3,3,c->cf[F_ONE],extract(c,st,1),unary(c,SpvOpFNegate,c->f,extract(c,st,0)));
     return ext1(c,GLSLstd450Normalize,c->v3,direction);
 }
+static uint32_t texture_rect_uv(Context *c,uint32_t sample,unsigned kind,uint32_t uv,unsigned unit)
+{
+    uint32_t image=unary(c,SpvOpImage,texture_image_type(c,kind),sample);
+    uint32_t size=val(c->w,SpvOpImageQuerySizeLod,c->iv2,2,image,c->si[0]);
+    uint32_t divisor=binary(c,SpvOpFDiv,c->v2,unary(c,SpvOpConvertSToF,c->v2,size),splat(c,c->v2,unif(c,TEX_SCALE,unit),2));
+    return binary(c,SpvOpFDiv,c->v2,uv,divisor);
+}
+static uint32_t texture_dependent(Context *c,uint32_t coord,uint32_t sample,unsigned kind,unsigned unit)
+{
+    uint32_t source=c->r[PS_REGISTER_T0+texture_input(c->state,unit)];
+    unsigned mode=texture_mode(c->state,unit);uint32_t lookup;
+    if(!bump_stage(c->state,unit)){
+        lookup=mode==PS_TEXTUREMODES_DPNDNT_AR?val(c->w,SpvOpVectorShuffle,c->v2,4,source,source,3u,0u):val(c->w,SpvOpVectorShuffle,c->v2,4,source,source,1u,2u);
+    }else{
+        uint32_t dx=val(c->w,SpvOpFunctionCall,c->f,2,c->sign_fn,extract(c,source,2));
+        uint32_t dy=val(c->w,SpvOpFunctionCall,c->f,2,c->sign_fn,extract(c,source,1));
+        uint32_t delta=val(c->w,SpvOpCompositeConstruct,c->v2,2,dx,dy);
+        /* Existing mat2[4] layout is eight padded vec2 columns; no CPU matrix copy. */
+        uint32_t matrix=val(c->w,SpvOpCompositeConstruct,c->bump_m2,2,unif(c,BUMP_MAT,unit*2),unif(c,BUMP_MAT,unit*2+1));
+        delta=binary(c,SpvOpMatrixTimesVector,c->v2,matrix,delta);
+        lookup=binary(c,SpvOpFAdd,c->v2,xy(c,coord),delta);
+        if(kind==1)lookup=val(c->w,SpvOpCompositeConstruct,c->v3,3,extract(c,lookup,0),extract(c,lookup,1),extract(c,coord,2));
+        else if(c->state->rect_tex[unit])lookup=texture_rect_uv(c,sample,kind,lookup,unit);
+    }
+    uint32_t color=val(c->w,SpvOpImageSampleImplicitLod,c->v4,2,sample,lookup);
+    if(mode==PS_TEXTUREMODES_BUMPENVMAP_LUM){
+        uint32_t factor=add(c,mul(c,unif(c,BUMP_SCALE,unit),extract(c,source,0)),unif(c,BUMP_OFFSET,unit));
+        color=binary(c,SpvOpFMul,c->v4,color,splat(c,c->v4,factor,4));
+    }
+    return color;
+}
 static uint32_t texture_border(Context *c,uint32_t coord,unsigned unit)
 {
     if(!c->state->border_adjust[unit])return coord;
@@ -108,6 +139,10 @@ static void texture_allocate(Context *c)
         if(texture_mode(c->state,j)==PS_TEXTUREMODES_CUBEMAP && !c->state->tex_cubemap[j] && !c->cube_fn){c->cube_fn=id(c->w);c->cube_fn_type=id(c->w);}
         if(texture_mode(c->state,j)==PS_TEXTUREMODES_PROJECT2D && sampler_kind(c->state,j)==2 && !c->project_cube_fn){c->project_cube_fn=id(c->w);c->project_cube_type=id(c->w);}
     }
+    if(has_bump(c->state)){
+        c->bump_array=id(c->w);c->bump_m2=id(c->w);c->uniform_v2=id(c->w);c->sign_fn=id(c->w);c->sign_type=id(c->w);
+        for(unsigned j=0;j<3;j++)c->sign_constants[j]=id(c->w);
+    }
     if(has_border_samples(c->state)){c->border_array=id(c->w);c->uniform_v3=id(c->w);}
     if(has_color_key(c->state)){c->key_array=id(c->w);c->uvec4_t=id(c->w);}
     if(has_convolution(c->state)){
@@ -126,6 +161,13 @@ static void texture_types(Context *c)
         op(w,SpvOpTypeImage,8,c->image_other[kind-1],c->f,(uint32_t)(kind==1?SpvDim3D:SpvDimCube),0u,0u,0u,1u,(uint32_t)SpvImageFormatUnknown);
         op(w,SpvOpTypeSampledImage,2,c->sampled_other[kind-1],c->image_other[kind-1]);
         op(w,SpvOpTypePointer,3,c->sampler_other_ptr[kind-1],(uint32_t)SpvStorageClassUniformConstant,c->sampled_other[kind-1]);
+    }
+    if(c->sign_fn){
+        op(w,SpvOpTypeMatrix,3,c->bump_m2,c->v2,2u);
+        op(w,SpvOpTypePointer,3,c->uniform_v2,(uint32_t)SpvStorageClassUniform,c->v2);
+        op(w,SpvOpTypeFunction,3,c->sign_type,c->f,c->f);
+        const float values[]={127,128,256};
+        for(unsigned j=0;j<3;j++){uint32_t bits;memcpy(&bits,values+j,4);op(w,SpvOpConstant,3,c->f,c->sign_constants[j],bits);}
     }
     if(c->cube_fn)op(w,SpvOpTypeFunction,3,c->cube_fn_type,c->v2,c->v3);
     if(c->project_cube_fn)op(w,SpvOpTypeFunction,3,c->project_cube_type,c->v3,c->v3);
@@ -152,6 +194,19 @@ static void texture_types(Context *c)
 /* Share helpers across units instead of cloning their branches/arithmetic. */
 static void texture_helpers(Context *c)
 {
+    if(c->sign_fn){
+        op(c->w,SpvOpFunction,4,c->f,c->sign_fn,0u,c->sign_type);
+        uint32_t input=id(c->w);op(c->w,SpvOpFunctionParameter,2,c->f,input);op(c->w,SpvOpLabel,1,id(c->w));
+        uint32_t scaled=mul(c,input,c->cf[F_BYTE_MAX]);
+        uint32_t high=binary(c,SpvOpFOrdGreaterThanEqual,c->b,scaled,c->sign_constants[1]);
+        uint32_t yes=id(c->w),no=id(c->w),merge=id(c->w);
+        op(c->w,SpvOpSelectionMerge,2,merge,0u);op(c->w,SpvOpBranchConditional,3,high,yes,no);
+        op(c->w,SpvOpLabel,1,yes);uint32_t negative=divf(c,sub(c,scaled,c->sign_constants[2]),c->sign_constants[0]);
+        op(c->w,SpvOpBranch,1,merge);op(c->w,SpvOpLabel,1,no);uint32_t positive=divf(c,scaled,c->sign_constants[0]);
+        op(c->w,SpvOpBranch,1,merge);op(c->w,SpvOpLabel,1,merge);
+        uint32_t value=val(c->w,SpvOpPhi,c->f,4,negative,yes,positive,no);
+        op(c->w,SpvOpReturnValue,1,value);op(c->w,SpvOpFunctionEnd,0);
+    }
     if(c->cube_fn){
         op(c->w,SpvOpFunction,4,c->v2,c->cube_fn,0u,c->cube_fn_type);
         uint32_t coord=id(c->w);op(c->w,SpvOpFunctionParameter,2,c->v3,coord);op(c->w,SpvOpLabel,1,id(c->w));

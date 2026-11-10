@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Emit dependent AR/GB texture reads, bump environment maps and bump luminance directly as Vulkan SPIR-V. Read processed predecessor results, reuse existing padded matrix columns and texture resources, and retain alpha/key ordering. Keep two final allocations and prior modules byte-identical, without intermediate GLSL, texture copies or retained lends; unsupported recipes retain the compiler.
+
 - Emit projected 3D and cube texture stages directly as Vulkan SPIR-V with per-unit 2D/3D/cube sampler types. Share cube-coordinate helpers, preserve projective instructions, face/tie rules and existing border/key/alpha behavior, and reuse current image views, samplers and retirement. Keep two final allocations and prior module words/layouts unchanged; no texture copies, new bindings or retained lends.
 
 - Translate 2D border adjustment, masked color keys and the existing Gaussian/quincunx convolution path directly to Vulkan SPIR-V with static or live combiners. Keep alpha kill before color-key changes and convolution offsets after projection, using a counted nine-tap loop. Reuse existing samplers, texture views and uniform uploads; append only consumed border/key fields, retain two final allocations and preserve earlier modules byte-for-byte.
