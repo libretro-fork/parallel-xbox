@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- CPU code-page writes clear the jump cache once per page invalidation instead of once per removed position-independent block. Preserve precise self-modifying-code restarts, immediate single-block invalidation and CPU Boost behavior. Gameplay performance remains unmeasured.
+
 - Vulkan handles three-dot coordinate lookups from integer textures directly as SPIR-V. Preserve numeric unsigned colors, border/rectangle handling and ignored shadow metadata using existing views and final owners, without texel copies or new GPU resources.
 
 - CPU translation on x86-64: reuse checked TLB translations for nearby loads and stores within straight-line code. Recheck store permissions and dirty tracking in every mode, invalidate across helpers and block boundaries, and preserve the frontend instruction budget and both host calling conventions. Regression coverage includes constant and memory-backed helper arguments. Gameplay performance remains unmeasured.
