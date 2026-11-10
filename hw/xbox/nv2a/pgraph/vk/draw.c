@@ -1244,6 +1244,30 @@ static void gpl_store(PGRAPHVkState *r, bool frag, uint64_t hash,
     memcpy(entry->key, key, gpl_key_size(r, frag));
 }
 
+/* The worker's release publication ends its reads/writes of that slot.
+ * Borrow its immutable key here and move the handle into the native cache,
+ * and leave module references/counters to the ordinary ordered drain. */
+static VkPipeline pump_take_library(PGRAPHVkState *r, bool frag, uint64_t hash,
+                                    const void *key)
+{
+    if (!pipe_started) {
+        return VK_NULL_HANDLE;
+    }
+    unsigned done = (unsigned)retro_atomic_load_acquire_int(&pump_r);
+    for (unsigned i = pump_d; i != done; i++) {
+        LibJob *job = &pump_jobs[i % PUMP_RING];
+        const void *owned = frag ? (const void *)&job->frag_key : &job->pre_key;
+        if (!job->full && job->frag == frag && job->result &&
+            job->hash == hash && !memcmp(owned, key, gpl_key_size(r, frag))) {
+            VkPipeline result = job->result;
+            gpl_store(r, frag, hash, owned, result);
+            job->result = VK_NULL_HANDLE;
+            return result;
+        }
+    }
+    return VK_NULL_HANDLE;
+}
+
 /* Identity of a pre-rasterization library: vertex/geometry modules, render
  * pass and rasterizer/input state not set dynamically. The pass matters: a
  * linked pipeline takes its attachments from its first library, so a colour
@@ -1361,6 +1385,11 @@ static VkPipeline gpl_get_pre(PGRAPHState *pg,
         return lib;
     }
 
+    lib = pump_take_library(r, false, hash, &library_key);
+    if (lib) {
+        return lib;
+    }
+
     VkGraphicsPipelineLibraryCreateInfoEXT lib_info = {
         .sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_LIBRARY_CREATE_INFO_EXT,
         .flags = VK_GRAPHICS_PIPELINE_LIBRARY_VERTEX_INPUT_INTERFACE_BIT_EXT |
@@ -1405,6 +1434,11 @@ static VkPipeline gpl_get_frag(PGRAPHState *pg,
     bool found;
     VkPipeline lib = gpl_lookup(r, true, hash, &library_key, &found);
     if (found) {
+        return lib;
+    }
+
+    lib = pump_take_library(r, true, hash, &library_key);
+    if (lib) {
         return lib;
     }
 
@@ -1493,8 +1527,9 @@ static void pump_drain(PGRAPHState *pg)
     while (pump_d != done) {
         LibJob *job = &pump_jobs[pump_d % PUMP_RING];
         if (job->result == VK_NULL_HANDLE) {
-            /* Cancelled jobs borrow renderer-owned layouts; release only
-             * their referenced modules below. */
+            /* Cancelled or already-transferred handles leave no result to
+             * publish. Release their referenced modules below; layouts
+             * remain renderer-owned. */
         } else if (job->full) {
             pipeline_land(pg, job);
         } else {
@@ -1507,9 +1542,34 @@ static void pump_drain(PGRAPHState *pg)
     }
 }
 
-/* At the renderer's end: the jobs not started are skipped, the one under
- * way is waited for (its pipeline is of this device), then all are
- * drained. */
+/* The caller already owns the exact cache key. Transfer only a completed
+ * handle; do not drain unrelated entries while current bindings are borrowed. */
+static bool pump_take_pipeline(PGRAPHState *pg, PipelineBinding *binding,
+                                uint64_t hash, const PipelineKey *key)
+{
+    if (!pipe_started) {
+        return false;
+    }
+    unsigned done = (unsigned)retro_atomic_load_acquire_int(&pump_r);
+    for (unsigned i = pump_d; i != done; i++) {
+        LibJob *job = &pump_jobs[i % PUMP_RING];
+        if (job->full && job->result && job->hash == hash &&
+            !memcmp(&job->key, key, sizeof(*key))) {
+            binding->pipeline = job->result;
+            binding->layout = job->layout;
+            binding->render_pass = job->ci.renderPass;
+            binding->has_dynamic_line_width = job->has_dynamic_line_width;
+            binding->draw_time = pg->draw_time;
+            job->result = VK_NULL_HANDLE;
+            pgraph_vk_spec_pipeline_landed(job->state_hash);
+            return true;
+        }
+    }
+    return false;
+}
+
+/* At the renderer's end: cancel queued jobs, wait for the one underway,
+ * then release every remaining native owner through the ordinary drain. */
 static void pump_quiesce(PGRAPHState *pg)
 {
     if (!pipe_started) {
@@ -2397,6 +2457,13 @@ static void create_pipeline(PGRAPHState *pg)
     }
 
     memcpy(&snode->key, &key, sizeof(key));
+    if (pump_take_pipeline(pg, snode, hash, &snode->key)) {
+        r->sibling_retry = false;
+        r->pipeline_binding_changed = r->pipeline_binding != snode;
+        r->pipeline_binding = snode;
+        NV2A_VK_DGROUP_END();
+        return;
+    }
     if (pipeline_use_ready_sibling(pg, &key, hash)) {
         NV2A_VK_DGROUP_END();
         return;

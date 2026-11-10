@@ -55,6 +55,11 @@ static bool check_pipeline_dirty(PGRAPHState *pg){return force_dirty||pg->vk_ren
 static void pgraph_clear_dirty_reg_map(PGRAPHState *pg){(void)pg;}
 static void init_pipeline_key(PGRAPHState *pg,PipelineKey *key){*key=active_key;key->shader_state=pg->vk_renderer_state->shader_binding->state;}
 static void pipeline_ahead(PGRAPHState *pg,const PipelineKey *key){(void)pg;(void)key;}
+/* This fixture models no completed queue entries; transfer/publication and
+ * native owner release are checked by test-pipeline-completed-take.py. */
+static bool pump_take_pipeline(PGRAPHState *pg,PipelineBinding *binding,uint64_t hash,const PipelineKey *key) {
+ (void)pg;(void)binding;(void)hash;assert(key);return false;
+}
 /* PRODUCTION */
 int main(void){
  (void)pipeline_ready;(void)pump_full_in_flight;

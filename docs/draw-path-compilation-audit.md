@@ -680,3 +680,52 @@ images differ by 12,205,656 bytes and remain unqualified. The matrix began
 with another RetroArch process running; timings are unqualified, even though
 it closed later. Driver caches are uncontrolled, no performance threshold
 was relaxed, and neither latency improvement nor cold-play recovery is claimed.
+
+## Completed Vulkan results before normal draining (2026-11-10)
+
+A draw miss may encounter a worker-complete result that the ordinary queue
+service has not yet adopted. Previously only the cache was queried, so the
+draw could create a duplicate library or whole pipeline. The miss paths now
+query the worker's release-published completion frontier with acquire ordering.
+Only completed, non-null results with matching job type, hash and entire native
+key are eligible. Unfinished work is never polled, waited on or promoted.
+
+The scan is bounded by the existing 64-slot ring, including unsigned rollover.
+Keys are borrowed synchronously from immutable occupied slots. A library handle
+moves into its ordinary renderer-owned table; a whole pipeline moves into the
+already selected exact-key cache entry. The native entry's existing key copy
+is reused. The slot's result is cleared after transfer, but its module owners
+and queue counters remain untouched until the normal ordered drain. That
+service releases module references exactly once without destroying a moved
+handle. Renderer-owned layouts keep their existing quiescence lifetime.
+No unrelated full-cache draining or eviction is introduced into these queries.
+
+No shader, geometry, SPIR-V or file payload is copied. Library metadata retains
+its existing one final-owner snapshot and possible native table growth, so this
+is not an allocation-free gameplay claim. No queue, capacity, worker, key/schema,
+resource reference or explicit allocation call is added. Missing/unfinished
+states keep their correct existing synchronous creation path; this is a bounded
+readiness fix, not complete unknown-state coverage or stutter recovery.
+
+Validation covers 47 required suites (successful prefix plus resumed remainder;
+initial fixture-build errors retained) and final Windows/Linux sanitizer/mutation
+checks of 4,608 native-key/type/frontier/owner/drain cases, including full 64-slot
+rings and unsigned wraparound. The identity and ready-sibling fixtures explicitly
+model an empty completed queue; the new transfer test exercises the real helper
+bodies. The extra legacy prewarm-inputs fixture fails to build on the unchanged
+parent too, due to stale constructor/key interfaces, and remains unqualified.
+
+Thirty main matrix runs across DOA3, JSRF, Crazy Taxi 3 and NGB, six additional
+NGB GPL/8x runs, and four verified DOA3 fight restores completed. All eight strict
+lifecycle cases passed both exact RAM comparisons and reset. NGB image pairs
+match on GL, native Vulkan and GPL/8x Vulkan; verified loaded-fight DOA3 pairs
+match on both renderers. The separate cold-boot DOA3 pair differs by 12,990,068
+bytes and remains unqualified. No acceptance threshold was relaxed.
+
+The focused NGB GPL/8x trace exercised one completed whole-PSO transfer during
+warm play and no library transfers in this sample. That is one real readiness
+hit, not a stutter-recovery or general throughput result. Most first-use misses
+remain uncovered. Driver caches are uncontrolled; boundary process checks saw
+no concurrent RetroArch for these runs but do not prove continuous isolation.
+Instrumented timing comparisons remain unqualified. Diagnostic metadata uses
+bounded private storage and is absent from the clean release build.

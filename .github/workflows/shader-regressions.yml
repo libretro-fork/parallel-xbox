@@ -96,6 +96,7 @@ jobs:
           python3 driver/libretro/tests/test-gl-binding-pump.py candidate cc 2>&1 | tee results/gl-binding-pump.log
           python3 driver/libretro/tests/test-gl-ready-cover.py candidate cc 2>&1 | tee results/gl-ready-cover.log
           python3 driver/libretro/tests/test-gl-cover-projection.py candidate cc 2>&1 | tee results/gl-cover-projection.log
+          python3 driver/libretro/tests/test-pipeline-completed-take.py candidate cc 2>&1 | tee results/pipeline-completed-take.log
           python3 driver/libretro/tests/test-dirty-page-fast.py candidate cc 2>&1 | tee results/dirty-page-fast.log
           python3 driver/libretro/tests/test-vk-clear-no-pipeline.py candidate cc 2>&1 | tee results/vk-clear-no-pipeline.log
           python3 driver/libretro/tests/test-pipeline-seed-full.py candidate cc 2>&1 | tee results/pipeline-seed-full.log

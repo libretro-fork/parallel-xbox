@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Reuse exact Vulkan libraries and full pipelines that the worker has already finished when a draw misses the cache, instead of creating a duplicate before normal queue draining. Transfer only the published handle into its existing native cache owner; retain module references until ordered draining. No new queue, payload snapshot, wait or allocation call. Unfinished and unknown states retain their correct creation path; first-use stutter recovery remains open.
+
 - Avoid cloning the complete OpenGL shader state when looking up or queuing a dynamic fallback. Canonicalize only the unpublished capture's pixel-shader metadata, restoring every byte before handing off an exact recipe. Keep vertex microcode and geometry in the original capture, with no new allocation or retained lend. Add exact/canonical queue-key and padding-restoration regression controls.
 
 - Reuse an already-initialized exact-key OpenGL dynamic cover when specialized stages are adopted but their pipeline has not been built yet. Leave exact pipeline setup to the existing between-frame service without queuing another state snapshot. Probe using a reversible 264-byte PSH-only stack projection; vertex microcode and geometry remain borrowed. Retire completed scheduling markers without releasing independent worker owners. Add native-hash/LRU, projection-restoration, collision, readiness and marker-lifetime regression controls.

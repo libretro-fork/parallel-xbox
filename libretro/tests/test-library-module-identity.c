@@ -42,6 +42,11 @@ static VkResult vkCreateGraphicsPipelines(VkDevice device,VkPipelineCache cache,
     *out=(VkPipeline)(uintptr_t)(++library_calls+100);return VK_SUCCESS;
 }
 #define VK_CHECK(x) assert((x)==VK_SUCCESS)
+/* These identity/constructor fixtures model an empty completed queue.
+ * Transfer ownership and publication boundaries have their own native-key test. */
+static VkPipeline pump_take_library(PGRAPHVkState *r,bool frag,uint64_t hash,const void *key) {
+    (void)r;(void)frag;(void)hash;assert(key);return VK_NULL_HANDLE;
+}
 /* FUNCTIONS */
 /* REFERENCE */
 /* Keep the identity matrix's direct-hash calls concise while production
