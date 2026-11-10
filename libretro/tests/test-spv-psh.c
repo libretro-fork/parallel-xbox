@@ -276,7 +276,7 @@ int main(int argc,char **argv)
         PshState s={.final_inputs_0=0x20080000,.final_inputs_1=0x1800,.shader_stage_program=PS_TEXTUREMODES_PROJECT2D,.shadow_map={1},.dim_tex={2}};
         SpvPshOptions opts={.ubo_binding=1,.tex_binding=2};
         if(i<6){s.shadow_depth_func=i+1;s.shadow_map[0]=64;}
-        if(i>=6 && i<=8)s.dim_tex[0]=i==8?3:i-6;
+        if(i>=6 && i<=8){s.dim_tex[0]=i==8?3:i-6;if(i==8)s.rect_tex[0]=true;}
         if(i==9)s.g8b8_signed[0]=1;
         if(i==10){s.g8b8_mip_flags=1;s.g8b8_signed[0]=1;}
         if(i==11)s.colorkey_mode[0]=-1;
@@ -588,5 +588,21 @@ int main(int argc,char **argv)
   glslc_result_free_words(&a);free(a.uniforms.members);glslc_result_free_words(&b);free(b.uniforms.members);
  }
 
-    puts("Direct PSH: 63488 deterministic/final-allocation/ignored-key/owned-layout modules and one hundred forty-five allocation-free unsupported cases PASS");return 0;
+ for(unsigned i=0;i<1536;i++){
+  PshState state={0};
+  unsigned family=i%3,unit=(i/3)%4,n=i/12,reg=PS_REGISTER_T0+unit;
+  state.depth_format=DEPTH_FORMAT_D24;state.shader_stage_program=(family==1?PS_TEXTUREMODES_PROJECT3D:PS_TEXTUREMODES_PROJECT2D)<<(unit*5);state.dim_tex[unit]=2;
+  state.tex_x8y24[unit]=family!=2 || !!(n&4);state.shadow_map[unit]=family==1?0:family==0?1:1+n%31;state.shadow_depth_func=family==2?(n&1?SHADOW_DEPTH_FUNC_ALWAYS:SHADOW_DEPTH_FUNC_NEVER):1+n%6;
+  state.rect_tex[unit]=family!=2 && !!(n&2);state.smooth_shading=!!(n&8);state.combiner_dynamic=!!(n&16);state.alpha_dynamic=!!(n&32);
+  state.final_inputs_0=0x20000000u|(reg<<16);state.final_inputs_1=(reg|16u)<<8;
+  SpvPshOptions opts={.ubo_binding=1,.tex_binding=2,.spirv_1_6=!!(n&64)};GlslcResult a,b;allocations=0;assert(pgraph_spv_psh(&state,opts,&a)&&allocations==2);
+  state.dim_tex[unit]=family==0?2:family==1?1+n%4:3;state.tex_cubemap[unit]=!!(n&1);
+  assert(pgraph_spv_psh(&state,opts,&b)&&allocations==4);assert(a.num_words==b.num_words&&!memcmp(a.words,b.words,a.num_words*4));assert(a.uniforms.count==b.uniforms.count&&a.uniforms.size==b.uniforms.size);
+  for(unsigned j=0;j<a.uniforms.count;j++){const GlslcUniform *x=a.uniforms.members+j,*y=b.uniforms.members+j;assert(!strcmp(x->name,y->name)&&x->offset==y->offset&&x->dim_v==y->dim_v&&x->dim_a==y->dim_a&&x->stride==y->stride);}
+  memset(&state,0xa5,sizeof(state));assert(b.uniforms.members[0].name[0]&&!b.allocation&&b.allocation_words==b.num_words);
+  char path[4096];snprintf(path,sizeof(path),"%s/sampler-precedence-%u.spv",argv[1],i);FILE *f=fopen(path,"wb");assert(f&&fwrite(b.words,4,b.num_words,f)==b.num_words);fclose(f);
+  glslc_result_free_words(&a);free(a.uniforms.members);glslc_result_free_words(&b);free(b.uniforms.members);
+ }
+
+    puts("Direct PSH: 65024 deterministic/final-allocation/ignored-key/owned-layout modules and one hundred forty-five allocation-free unsupported cases PASS");return 0;
 }
