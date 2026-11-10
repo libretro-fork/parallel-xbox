@@ -2544,6 +2544,17 @@ static void gen_MOVD_to(DisasContext *s, X86DecodedInsn *decode)
     int vec_len = vector_len(s, decode);
     int lo_ofs = vector_elem_offset(&decode->op[0], ot, 0);
 
+    if (vec_len == 8 && ot == MO_32) {
+        /* MOVD to MMX zero-extends the value. One full-width store also
+         * lets a following 64-bit read forward from a single store. */
+        TCGv_i64 value = tcg_temp_new_i64();
+
+        tcg_gen_extu_tl_i64(value, s->T1);
+        tcg_gen_st_i64(value, tcg_env,
+                       vector_elem_offset(&decode->op[0], MO_64, 0));
+        return;
+    }
+
     tcg_gen_gvec_dup_imm(MO_64, decode->op[0].offset, vec_len, vec_len, 0);
 
     switch (ot) {
