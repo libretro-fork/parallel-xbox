@@ -11,7 +11,7 @@
 #define CHECK(x) do { VkResult result=(x); if(result) { fprintf(stderr,"Vulkan %d at %d\n",result,__LINE__);abort(); } } while(0)
 static VkDevice device;
 static VkPhysicalDeviceMemoryProperties memory_properties;
-static unsigned errors;
+static unsigned errors,constant_checks;
 typedef struct { VkBuffer handle;VkDeviceMemory memory;uint8_t *mapped; } Buffer;
 static Buffer buffer(VkDeviceSize size,VkBufferUsageFlags usage) {
  Buffer b={0};VkBufferCreateInfo ci={.sType=VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,.size=size,.usage=usage};
@@ -151,8 +151,8 @@ static void unselected_output(uint32_t t[4], unsigned variant, bool invalid)
 
 int main(int argc, char **argv) {
  assert(argc==1 || argc==3);
- unsigned first=argc==3?strtoul(argv[1],NULL,10):0, limit=argc==3?strtoul(argv[2],NULL,10):39440;
- assert(first<limit && limit<=39440);
+ unsigned first=argc==3?strtoul(argv[1],NULL,10):0, limit=argc==3?strtoul(argv[2],NULL,10):40464;
+ assert(first<limit && limit<=40464);
  printf("Fixture range [%u, %u)\n",first,limit);
  const bool validated=getenv("NO_VALIDATION")==NULL;
  const char *layer="VK_LAYER_KHRONOS_validation",*debug=VK_EXT_DEBUG_UTILS_EXTENSION_NAME;
@@ -400,6 +400,17 @@ int main(int argc, char **argv) {
    token(state.programmable.program_data[3],MAC_MOV,0,0,11,false,false);token(state.programmable.program_data[4],MAC_MOV,0,1,5,false,true);
    state.smooth_shading=!!(f&16);state.uniform_attrs=f&32?3:0;opts.push_constants=!!(f&64);
   }
+  if(test>=39440){
+   unsigned f=test-39440,arg=(f/64)%3,base=192+f%64;
+   memset(&state,0,sizeof(state));state.programmable.program_length=5;
+   token(state.programmable.program_data[0],MAC_MOV,0,0,0,false,false);
+   token(state.programmable.program_data[1],MAC_ARL,0,15,0,false,false);
+   uint32_t *t=state.programmable.program_data[2];token(t,arg==2?0:arg==1?MAC_MUL:MAC_MOV,arg==2?ILU_MOV:0,1,9,arg==2,false);
+   t[1]=(t[1]&~(255u<<13))|(base<<13);t[2]=(t[2]&~(3u<<11))|(PARAM_V<<11);
+   if(arg==0)t[2]=(t[2]&~(3u<<26))|(PARAM_C<<26);else if(arg==1)t[2]=(t[2]&~(3u<<11))|(PARAM_C<<11);else t[3]=(t[3]&~(3u<<28))|(PARAM_C<<28);t[3]|=2;
+   token(state.programmable.program_data[3],MAC_MOV,0,0,10,false,false);token(state.programmable.program_data[4],MAC_MOV,0,1,5,false,true);
+   state.smooth_shading=!!(f&16);state.uniform_attrs=f&32?0x8003:0;opts.push_constants=!!(f&64);
+  }
   for(unsigned a=0;a<16;a++)attrs[a].format=state.compressed_attrs&(1u<<a)?VK_FORMAT_R32_SINT:VK_FORMAT_R32G32B32A32_SFLOAT;
   opts.preserve_float32=fp.shaderSignedZeroInfNanPreserveFloat32;
   VshState excluded=state;excluded.point_params_enable=true;
@@ -549,11 +560,12 @@ int main(int argc, char **argv) {
   unsigned packed=0;for(unsigned a=0;a<16;a++)if(state.uniform_attrs&(1u<<a)) {
    for(unsigned k=0;k<4;k++)values.inlineValue[packed][k]=a==0?(k==3?1:k==2?100:40):(a==15?2:((int)(a+k)%7-3)*.5f);
    if(state.is_fixed_function && state.fixed_function.skinning!=SKINNING_OFF && a==1)for(unsigned k=0;k<4;k++)values.inlineValue[packed][k]=skin_weights[(test/16)%7][k];
+   if(test>=39440 && a==15)for(unsigned k=0;k<4;k++)values.inlineValue[packed][k]=-96.0f+((test-39440)/192)%32;
    packed++;
   }
   const float samples[]={0,-0.0f,1,-1,2,-2,.5f,-.5f,4,8,16,-32,INFINITY,-INFINITY,NAN,0x1p-100f};
   for(unsigned v=0;v<VERTICES;v++)for(unsigned a=0;a<16;a++)for(unsigned k=0;k<4;k++) {
-   float f=samples[(v+a*3+k*5)%16];if(a==0 && !(state.is_fixed_function && (test&512)))f=k==3?1:k==2?100:(float)(v*3+40);if(a==15)f=(float)(v%8);
+   float f=samples[(v+a*3+k*5)%16];if(a==0 && !(state.is_fixed_function && (test&512)))f=k==3?1:k==2?100:(float)(v*3+40);if(a==15)f=(float)(v%8);if(test>=39440 && a==15){f=-96.0f+(v%32);int effective=192+(int)((test-39440)%64)+(int)floorf(f+.001f);assert(effective>=0 && effective<192);}
    if(test>=24080 && a==0 && !(state.compressed_attrs&1) && v%8<7)f=k==3?1:k==2?100:k==1?40:40+v*.125f;
    if(state.is_fixed_function && state.fixed_function.skinning!=SKINNING_OFF && a==1 && !(state.compressed_attrs&2) && v%8<7)f=skin_weights[v%8][k];
    memcpy(input.mapped+v*256+a*16+k*4,&f,4);
@@ -575,6 +587,11 @@ int main(int argc, char **argv) {
    bind(cmd,0,1,&output.handle,&zero,NULL);begin(cmd,0,0,NULL,NULL);vkCmdDraw(cmd,VERTICES,1,0,0);end(cmd,0,0,NULL,NULL);vkCmdEndRenderPass(cmd);
    VkBufferMemoryBarrier barrier={.sType=VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,.srcAccessMask=VK_ACCESS_TRANSFORM_FEEDBACK_WRITE_BIT_EXT,.dstAccessMask=VK_ACCESS_HOST_READ_BIT,.srcQueueFamilyIndex=VK_QUEUE_FAMILY_IGNORED,.dstQueueFamilyIndex=VK_QUEUE_FAMILY_IGNORED,.buffer=output.handle,.size=VK_WHOLE_SIZE};
    vkCmdPipelineBarrier(cmd,VK_PIPELINE_STAGE_TRANSFORM_FEEDBACK_BIT_EXT,VK_PIPELINE_STAGE_HOST_BIT,0,0,NULL,1,&barrier,0,NULL);CHECK(vkEndCommandBuffer(cmd));VkFenceCreateInfo fi={.sType=VK_STRUCTURE_TYPE_FENCE_CREATE_INFO};VkFence fence;CHECK(vkCreateFence(device,&fi,NULL,&fence));VkSubmitInfo submit={.sType=VK_STRUCTURE_TYPE_SUBMIT_INFO,.commandBufferCount=1,.pCommandBuffers=&cmd};CHECK(vkQueueSubmit(queue,1,&submit,fence));CHECK(vkWaitForFences(device,1,&fence,VK_TRUE,10000000000ull));
+   if(test>=39440 && ((test-39440)/64)%3!=1)for(unsigned v=0;v<VERTICES;v++){
+    int a0=state.uniform_attrs&(1u<<15)?-96+(int)(((test-39440)/192)%32):-96+(int)(v%32);
+    int effective=192+(int)((test-39440)%64)+a0;assert(effective>=0 && effective<192);
+    for(unsigned k=0;k<4;k++){uint32_t got,expected;memcpy(&got,output.mapped+v*240+5*16+k*4,4);memcpy(&expected,&values.c[effective][k],4);assert(got==expected);constant_checks++;}
+   }
    if(!path)memcpy(reference,output.mapped,sizeof(reference));else for(unsigned v=0;v<VERTICES;v++)for(unsigned a=0;a<15;a++)for(unsigned k=0;k<(a==4||a==12||a==14?1u:4u);k++) {
     unsigned index=v*60+a*4+k;uint32_t got;memcpy(&got,output.mapped+index*4,4);float x,y;memcpy(&x,&reference[index],4);memcpy(&y,&got,4);compared++;
     if(got!=reference[index] && !(isnan(x)&&isnan(y))){if(failures++<25)fprintf(stderr,"case %u MAC %u ILU %u vertex %u output %u.%u: %08x (%g) != %08x (%g)\n",test,m,l,v,a,k,reference[index],x,got,y);}
@@ -584,6 +601,7 @@ int main(int argc, char **argv) {
   release(&modules[0]);release(&modules[1]);
  }
  drop(input);drop(output);drop(uniform);vkDestroyFramebuffer(device,framebuffer,NULL);vkDestroyRenderPass(device,pass,NULL);vkDestroyDescriptorPool(device,descriptor_pool,NULL);vkDestroyPipelineLayout(device,layout,NULL);vkDestroyDescriptorSetLayout(device,set_layout,NULL);vkDestroyCommandPool(device,pool,NULL);vkDestroyDevice(device,NULL);if(validated)destroy(instance,messenger,NULL);vkDestroyInstance(instance,NULL);
+ printf("Independent relative constants: %u exact output checks\n",constant_checks);
  printf("Translation CPU clock: GLSL %.3f ms, direct %.3f ms; emitted words GLSL=%zu direct=%zu (work counts; not frame latency)\n",1000.0*reference_ticks/CLOCKS_PER_SEC,1000.0*direct_ticks/CLOCKS_PER_SEC,reference_words,direct_words);
  printf("Direct VSH Vulkan: %u scalar results, %u differences, %u validation errors; validation=%s\n",compared,failures,errors,validated?"enabled":"DISABLED");return failures||errors?1:0;
 }
