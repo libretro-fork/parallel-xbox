@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Flat 32-bit x87 memory operands retain their instruction-owned address for the deferred data pointer, removing intermediate address copies while preserving segmented and 16-bit addressing paths. Gameplay performance remains unmeasured.
+
 - Chardev frontends returned to the main loop replace their old event context before rebuilding read watches, avoiding watches attached to a retiring context.
 
 - Network RX queue recovery avoids descriptor DMA while the VM is stopped or the NIC is disconnected, without letting backend transmit backpressure block incoming packets.
