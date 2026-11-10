@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Chardev frontends returned to the main loop replace their old event context before rebuilding read watches, avoiding watches attached to a retiring context.
+
 - Network RX queue recovery avoids descriptor DMA while the VM is stopped or the NIC is disconnected, without letting backend transmit backpressure block incoming packets.
 
 - Hard-FPU FRNDINT, packed-BCD stores and FSCALE helpers publish their existing SoftFloat exceptions to guest x87 status. Preserve rounded values, BCD bytes, scale results and sticky exceptions; complete BCD stores before publishing status.
