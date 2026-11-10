@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- PTIMER conversions and alarm scheduling tolerate unconfigured numerator, denominator or GPU clock values without dividing by zero or scheduling a non-advancing clock. Keep configured-clock rounding and interrupt-enable behavior.
+
 - Loading icount timer subsections tolerates absent local warp/adjust timers without aborting, and preserves a fixed clock shift when an incoming snapshot carries adaptive timing state. Keep existing timer bytes and runtime time publication.
 
 - Vulkan prepares used S3TC compute pipelines on its existing graphics worker when available. First-use and queue-pressure uploads decode directly into bounded final staging ranges, reusing auxiliary submissions without growing the ring; ready GPU decode can replace partial CPU work. Preserve shared-layout ownership through cancellation and teardown. Configurations without that worker retain their existing synchronous GPU path; cold-play recovery remains unqualified.

@@ -42,6 +42,8 @@ jobs:
         run: python3 libretro/tests/test-vmstate-array-load.py . cc
       - name: Icount snapshots tolerate absent optional timers
         run: python3 libretro/tests/test-icount-timer-state.py . cc
+      - name: PTIMER tolerates an unconfigured clock
+        run: python3 libretro/tests/test-ptimer-clock.py . cc
       - name: GPU reset clears stale interrupt state and lowers IRQ
         run: python3 libretro/tests/test-nv2a-reset-irq.py . cc
       - name: Vulkan packed indices preserve values and restart boundaries
