@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Vulkan directly translates vertex programs whose output mux selects a NOP pipe even when unused output fields describe an invalid register or constant destination. Keep live output validation and temporary/address-register writes unchanged.
+
 - Vulkan now directly translates vertex instructions whose invalid operand bounds are irrelevant because their writes are masked, including discarded paired MAC results. Address-register writes and live-operand fallback checks remain intact.
 
 - CPU writes retain dirty tracking on TLB entries that share a virtual address but map to different physical pages. Preserve first-write trapping for page-table updates, saved-memory tracking and code invalidation across MMU modes.
