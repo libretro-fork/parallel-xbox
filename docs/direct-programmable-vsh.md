@@ -67,12 +67,12 @@ may bypass translation; a warm driver cache is a separate compilation milestone.
 
 ## Regression coverage and qualification
 
-- `test-spv-vsh.py`: 5,008 deterministic SPIR-V modules, final-owner allocation
+- `test-spv-vsh.py`: 8,080 deterministic SPIR-V modules, final-owner allocation
   counts, poisoned source keys, thirty-one allocation-free unsupported paths, UBSan and
   spirv-val. Both SPIR-V 1.5 and 1.6 targets are covered. Extracted native device
   setup is checked across 512 API/property/generation cases, including stale
   target reset and zero queries on older APIs.
-- `test-spv-vsh-gpu.py`: 6,416 programs / 10,470,912 scalar outputs compared with
+- `test-spv-vsh-gpu.py`: 9,488 programs / 15,484,416 scalar outputs compared with
   the production GLSL generator/compiler using Vulkan transform feedback. It
   captures all user outputs, position and point size before clipping; numerical
   differences fail (NaN payload identity is not required). It exercises opcode
@@ -193,7 +193,26 @@ Tests add 1,296 fixtures covering all 81 four-coordinate ternary patterns per
 stage and all sixteen texture-matrix masks, plus supported fog combinations,
 input formats and exceptional inputs. Matrix-operation counts verify that the
 model-view result is shared. All 3,712 earlier fixtures retain byte-identical
-modules. Negative/unknown modes, sphere/normal/reflection mapping, dynamic texgen,
+modules. Negative/unknown modes, sphere/reflection mapping, dynamic texgen,
 lighting/skinning and previously recorded fog exceptions retain GLSL fallback.
 No key schema or driver-cache defaults change, and this does not establish
 cold-play recovery.
+
+## Static normal-map texgen
+
+Unlit, unskinned static texgen can also select the transformed normal for S, T
+and R independently, mixed with disabled and linear coordinates. Transform
+vec4(normal.xyz, 0) by the existing inverse-model-view matrix, take xyz, and
+normalize only when the programmed normalization flag requires it. Share this
+result across all stages and generated components before texture matrices.
+Normal-map Q remains unsupported, as do sphere/reflection and dynamic texgen.
+
+The shader reads input/constant owners already used by the renderer. No CPU
+matrix materialization, additional buffer, retained pointer, allocation or payload
+copy is introduced. Normalization is a consumed key field for these states;
+normal-free states still ignore it. All 5,008 previous fixture modules remain
+byte-identical. Additional fixtures span 192 mixed coordinate patterns and all
+sixteen texture-matrix masks, raw/normalized normals, compressed inputs and
+exceptional values. Operation-count assertions require one shared inverse-model-
+view transform and at most one normalization, regardless of coordinate count.
+This expands direct translation; it does not establish cold-play recovery.

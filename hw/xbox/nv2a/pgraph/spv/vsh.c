@@ -8,7 +8,7 @@ enum {
     GLSLstd450Trunc = 3, GLSLstd450FAbs = 4, GLSLstd450Floor = 8,
     GLSLstd450Exp2 = 29, GLSLstd450Log2 = 30, GLSLstd450InverseSqrt = 32,
     GLSLstd450FMin = 37, GLSLstd450FMax = 40, GLSLstd450FClamp = 43,
-    GLSLstd450Length = 66,
+    GLSLstd450Length = 66, GLSLstd450Normalize = 69,
 };
 #include "vsh.h"
 
@@ -114,7 +114,9 @@ bool pgraph_spv_vsh_supported(const VshState *s, SpvVshOptions opts)
         }
         for (unsigned t = 0; t < 4; t++) {
             for (unsigned a = 0; a < 4; a++) {
-                if ((unsigned)ff->texgen[t][a] > TEXGEN_OBJECT_LINEAR) { return false; }
+                enum VshTexgen mode = ff->texgen[t][a];
+                if ((unsigned)mode > TEXGEN_OBJECT_LINEAR &&
+                    !(mode == TEXGEN_NORMAL_MAP && a < 3)) { return false; }
             }
         }
         return true;
@@ -273,7 +275,7 @@ static void unlit(Context *c)
         NV_IGRAPH_XF_XFCTX_TG0MAT, NV_IGRAPH_XF_XFCTX_TG1MAT,
         NV_IGRAPH_XF_XFCTX_TG2MAT, NV_IGRAPH_XF_XFCTX_TG3MAT,
     };
-    uint32_t eye_position = 0;
+    uint32_t eye_position = 0, mapped_normal = 0;
     c->o[0] = transform(c, input(c, 0), NV_IGRAPH_XF_XFCTX_CMAT0);
     c->o[3] = input(c, 3); c->o[4] = input(c, 4);
     c->o[7] = input(c, 7); c->o[8] = input(c, 8);
@@ -313,6 +315,18 @@ static void unlit(Context *c)
                 enum VshTexgen mode = c->state->fixed_function.texgen[t][a];
                 if (mode == TEXGEN_DISABLE) {
                     component[a] = extract(c, input(c, 9 + t), a);
+                } else if (mode == TEXGEN_NORMAL_MAP) {
+                    if (!mapped_normal) {
+                        uint32_t n = input(c, 2);
+                        n = make_v4(c, extract(c, n, 0), extract(c, n, 1),
+                                    extract(c, n, 2), c->cf[F_ZERO]);
+                        n = transform(c, n, NV_IGRAPH_XF_XFCTX_IMMAT0);
+                        mapped_normal = value(c->w, SpvOpVectorShuffle, c->v3, 5, n, n, 0u, 1u, 2u);
+                        if (c->state->fixed_function.normalization) {
+                            mapped_normal = ext1(c, GLSLstd450Normalize, c->v3, mapped_normal);
+                        }
+                    }
+                    component[a] = extract(c, mapped_normal, a);
                 } else {
                     uint32_t position = input(c, 0);
                     if (mode == TEXGEN_EYE_LINEAR) {
@@ -770,7 +784,10 @@ static void emit(Writer *w, const VshState *state, SpvVshOptions opts)
         for (unsigned t = 0; t < 4; t++) {
             for (unsigned a = 0; a < 4; a++) {
                 enum VshTexgen mode = state->fixed_function.texgen[t][a];
-                if (mode != TEXGEN_DISABLE) { used[planes[t] + a] = true; }
+                if (mode == TEXGEN_EYE_LINEAR || mode == TEXGEN_OBJECT_LINEAR) { used[planes[t] + a] = true; }
+                if (mode == TEXGEN_NORMAL_MAP) {
+                    for (unsigned j = 0; j < 4; j++) { used[NV_IGRAPH_XF_XFCTX_IMMAT0 + j] = true; }
+                }
                 if (mode == TEXGEN_EYE_LINEAR) {
                     for (unsigned j = 0; j < 4; j++) { used[NV_IGRAPH_XF_XFCTX_MMAT0 + j] = true; }
                 }

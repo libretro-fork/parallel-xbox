@@ -70,7 +70,7 @@ int main(int argc, char **argv)
 {
     assert(argc == 2);check_caps();
     unsigned total = 0;
-    for (unsigned i = 0; i < 5008; i++) {
+    for (unsigned i = 0; i < 8080; i++) {
         VshState state;
         unsigned base=i%1120;
         make_case(&state, base);
@@ -104,6 +104,15 @@ int main(int argc, char **argv)
                 for(unsigned a=0;a<4;a++){state.fixed_function.texgen[t][a]=pattern%3;pattern/=3;}
             }
         }
+        if(i>=5008){
+            unsigned f=i-5008;
+            for(unsigned t=0;t<4;t++){
+                state.fixed_function.texture_matrix_enable[t]=!!(f&(1u<<t));
+                unsigned pattern=((f/16)+t*37)%192;
+                for(unsigned a=0;a<3;a++){unsigned mode=pattern%4;pattern/=4;state.fixed_function.texgen[t][a]=mode==3?TEXGEN_NORMAL_MAP:mode;}
+                state.fixed_function.texgen[t][3]=pattern;
+            }
+        }
         SpvVshOptions opts = { .spirv_1_6 = !!(i & 1),
                               .push_constants = !!(i & 4), .ubo_binding = i % 3,
                               .preserve_float32 = i>=1120 || !!(i&8) };
@@ -115,7 +124,9 @@ int main(int argc, char **argv)
         if(state.is_fixed_function){
             memset(state.programmable.program_data,0xa5,sizeof(state.programmable.program_data));
             state.programmable.program_length=-42;
-            state.fixed_function.normalization=!state.fixed_function.normalization;
+            bool consumes_normal=false;
+            for(unsigned t=0;t<4;t++)for(unsigned a=0;a<3;a++)consumes_normal|=state.fixed_function.texgen[t][a]==TEXGEN_NORMAL_MAP;
+            if(!consumes_normal)state.fixed_function.normalization=!state.fixed_function.normalization;
             state.fixed_function.light_dynamic=!state.fixed_function.light_dynamic;
             state.fixed_function.two_sided=!state.fixed_function.two_sided;
             if(!state.fog_enable)state.fixed_function.foggen=(enum VshFoggen)-1;
@@ -130,12 +141,13 @@ int main(int argc, char **argv)
         if (a.push_constants.count) {
             assert(a.push_constants.members[0].dim_a == (size_t)__builtin_popcount(state.uniform_attrs));
         }
-        unsigned switches=0, unsigned_type=0, control_pointer=0, control_reads=0, preserve_modes=0, preserve_caps=0, matrices=0, transforms=0;
+        unsigned switches=0, unsigned_type=0, control_pointer=0, control_reads=0, preserve_modes=0, preserve_caps=0, matrices=0, transforms=0, normalizations=0;
         for(size_t w=5;w<a.num_words;w+=a.words[w]>>16){
             unsigned op=a.words[w]&65535;
             if(op==SpvOpSwitch)switches++;
             if(op==SpvOpTypeMatrix)matrices++;
             if(op==SpvOpVectorTimesMatrix)transforms++;
+            if(op==SpvOpExtInst && a.words[w+4]==69)normalizations++;
             if(op==SpvOpExecutionMode && a.words[w+2]==SpvExecutionModeSignedZeroInfNanPreserve){assert(a.words[w+3]==32);preserve_modes++;}
             if(op==SpvOpCapability && a.words[w+1]==SpvCapabilitySignedZeroInfNanPreserve)preserve_caps++;
             if(op==SpvOpTypeInt && a.words[w+2]==32 && !a.words[w+3])unsigned_type=a.words[w+1];
@@ -152,6 +164,10 @@ int main(int argc, char **argv)
         bool needs_eye=state.is_fixed_function && state.fog_enable && state.fixed_function.foggen>=FOGGEN_RADIAL && state.fixed_function.foggen<=FOGGEN_ABS_PLANAR;
         if(state.is_fixed_function)for(unsigned t=0;t<4;t++)for(unsigned a=0;a<4;a++)needs_eye|=state.fixed_function.texgen[t][a]==TEXGEN_EYE_LINEAR;
         expected_transforms+=needs_eye;
+        bool needs_normal=false;
+        if(state.is_fixed_function)for(unsigned t=0;t<4;t++)for(unsigned a=0;a<3;a++)needs_normal|=state.fixed_function.texgen[t][a]==TEXGEN_NORMAL_MAP;
+        expected_transforms+=needs_normal;
+        assert(normalizations==(unsigned)(needs_normal && state.fixed_function.normalization));
         assert(matrices==(unsigned)state.is_fixed_function && transforms==expected_transforms);
         memset(&state, 0xa5, sizeof(state));
         assert(!strcmp(a.uniforms.members[0].name, "c"));
@@ -187,7 +203,7 @@ int main(int argc, char **argv)
             if(i==16)s.fog_dynamic=true;
             if(i==17){s.fog_enable=true;s.fixed_function.foggen=(enum VshFoggen)5;}
             if(i==18)s.point_params_enable=true;
-            if(i==19)s.fixed_function.texgen[1][2]=TEXGEN_NORMAL_MAP;
+            if(i==19)s.fixed_function.texgen[1][3]=TEXGEN_NORMAL_MAP;
             if(i==20)s.compressed_attrs=s.swizzle_attrs=2;
             if(i==21){s.fog_enable=true;s.fixed_function.foggen=(enum VshFoggen)-1;}
             if(i>=22 && i<28){s.fog_enable=true;s.fog_mode=i<25?FOG_MODE_EXP2:FOG_MODE_EXP2_ABS;s.fixed_function.foggen=FOGGEN_RADIAL+(i-22)%3;}

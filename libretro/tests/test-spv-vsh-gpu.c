@@ -154,7 +154,7 @@ int main(void) {
  VkPipelineMultisampleStateCreateInfo ms={.sType=VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO,.rasterizationSamples=VK_SAMPLE_COUNT_1_BIT};
  uint32_t reference[VERTICES*60];unsigned compared=0,failures=0;
  clock_t reference_ticks=0,direct_ticks=0;size_t reference_words=0,direct_words=0;
- for(unsigned test=0;test<6416;test++) {
+ for(unsigned test=0;test<9488;test++) {
   VshState state={0};state.smooth_shading=test&1;state.fog_dynamic=true;state.specular_enable=test&2;state.ignore_specular_alpha=test&4;
   unsigned variant=(test%1568)/112,m=test%14,l=(test%112)/14;state.programmable.program_length=5;
   token(state.programmable.program_data[0],MAC_MOV,ILU_NOP,0,0,false,false);
@@ -230,6 +230,16 @@ int main(void) {
     unsigned pattern=((f/16)+t*17)%81;
     for(unsigned a=0;a<4;a++){state.fixed_function.texgen[t][a]=pattern%3;pattern/=3;}
    }
+  }
+  if(test>=6416){
+   unsigned f=test-6416;
+   for(unsigned t=0;t<4;t++){
+    state.fixed_function.texture_matrix_enable[t]=!!(f&(1u<<t));
+    unsigned pattern=((f/16)+t*37)%192;
+    for(unsigned a=0;a<3;a++){unsigned mode=pattern%4;pattern/=4;state.fixed_function.texgen[t][a]=mode==3?TEXGEN_NORMAL_MAP:mode;}
+    state.fixed_function.texgen[t][3]=pattern;
+   }
+   if(state.compressed_attrs)state.compressed_attrs|=1u<<2;
   }
   for(unsigned a=0;a<16;a++)attrs[a].format=state.compressed_attrs&(1u<<a)?VK_FORMAT_R32_SINT:VK_FORMAT_R32G32B32A32_SFLOAT;
   opts.preserve_float32=fp.shaderSignedZeroInfNanPreserveFloat32;
