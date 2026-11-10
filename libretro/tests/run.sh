@@ -616,6 +616,9 @@ mkdir -p "$work/sysdvdpio/xemu"
 cp "$work/sys/xemu/mcpx_1.0.bin" "$work/sysdvdpio/xemu/"
 nasm -f bin -I"$here/rom/" -o "$work/sysdvdpio/xemu/Complex_4627v1.03.bin" "$here/rom/dvd-pio-phase.asm"
 
+mkdir -p "$work/sysfcmov80/xemu"
+cp "$work/sys/xemu/mcpx_1.0.bin" "$work/sysfcmov80/xemu/"
+nasm -f bin -I"$here/rom/" -o "$work/sysfcmov80/xemu/Complex_4627v1.03.bin" "$here/rom/fcmov-80.asm"
 mkdir -p "$work/sysfpload/xemu"
 cp "$work/sys/xemu/mcpx_1.0.bin" "$work/sysfpload/xemu/"
 nasm -f bin -I"$here/rom/" -o "$work/sysfpload/xemu/Complex_4627v1.03.bin" "$here/rom/x87-load-precision.asm"
@@ -956,6 +959,19 @@ for hard in enabled disabled; do
         echo "FAIL: MMX scalar arithmetic ($hard/$boost)"; exit 1;
       }
     done
+  done
+done
+
+# Software FCMOV preserves raw 80-bit images and every condition/flag bit.
+for boost in enabled disabled; do
+  t "software FCMOV 80-bit images, CPU Boost $boost" $h "$(path "$core")" "$(path "$work/sysfcmov80")" \
+    $vp --opt "xemu_hard_fpu=disabled" --opt "xemu_cpu_boost=$boost" --frames 60 --strict \
+    --peek 0x300000 --peek 0x300004 >"$work/fcmov80-$boost.txt"
+  for want in "peek_0x300000=0x4b4f4346" "peek_0x300004=0x00000000"; do
+    grep -q "^$want$" "$work/fcmov80-$boost.txt" || {
+      cat "$work/fcmov80-$boost.txt"
+      echo "FAIL: software FCMOV 80-bit images ($boost)"; exit 1;
+    }
   done
 done
 
