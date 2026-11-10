@@ -2,11 +2,8 @@
 
 ## Unreleased
 
-<<<<<<< HEAD
 - x86-64 hard-FPU quiet x87 comparisons order normal values and signed zero using integer fields. Keep SoftFloat for exceptional and unsupported encodings, preserving comparison results, sticky flags and host control state. Gameplay performance remains unmeasured.
-=======
 - Vulkan emits programmable vertex shaders directly when an unused C operand carries irrelevant register/constant bounds. Preserve the reference decoder mux check and all bounds on consumed operands, without copying keys or changing module owners.
->>>>>>> origin/libretro
 
 - Software-FPU x87 conditional moves select the exact 80-bit register image with integer operations instead of branching around a helper call. Preserve NaN payloads, extended exponents, flags and tags, while retaining the cached hard-FPU path. Gameplay performance remains unmeasured.
 
