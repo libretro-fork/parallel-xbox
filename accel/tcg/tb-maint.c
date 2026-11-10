@@ -664,6 +664,7 @@ void tb_flush__exclusive_or_serial(void)
     tb_remove_all();
 
     tcg_region_reset_all();
+    tb_ctx.flush_generation++;
     /* XXX: flush processor icache at this point if cache flush is expensive */
     qemu_plugin_flush_cb();
 }

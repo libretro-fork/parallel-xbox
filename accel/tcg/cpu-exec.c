@@ -844,11 +844,18 @@ cpu_exec_loop(CPUState *cpu)
 
             tb = tb_lookup(cpu, s);
             if (tb == NULL) {
+                uint64_t generation = tb_ctx.flush_generation;
                 CPUJumpCache *jc;
 
                 mmap_lock();
                 tb = tb_gen_code(cpu, s);
                 mmap_unlock();
+
+                /* Serial translation can flush a full code buffer and
+                 * continue in place. The old block may now be reused. */
+                if (unlikely(generation != tb_ctx.flush_generation)) {
+                    last_tb = NULL;
+                }
 
                 /*
                  * We add the TB in the virtual pc hash table
