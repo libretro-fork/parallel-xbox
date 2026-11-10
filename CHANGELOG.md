@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Vulkan vertex translation omits unreferenced signed-integer declarations using a stack-owned count/write usage mask. Preserve instruction IDs, arithmetic, layouts and allocation counts while shrinking generated modules; frame-time improvement remains unmeasured.
+
 - Vulkan vertex translation reuses an immutable constant-row SSA value for repeated reads in the same basic block and address-register generation. Emit fewer buffer accesses and words without changing shader arithmetic, uniform layouts, cache compatibility or allocation counts. The cache holds only 16 bytes of compiler IDs; frame-time improvement remains unmeasured.
 
 - PTIMER conversions and alarm scheduling tolerate unconfigured numerator, denominator or GPU clock values without dividing by zero or scheduling a non-advancing clock. Keep configured-clock rounding and interrupt-enable behavior.

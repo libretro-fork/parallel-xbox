@@ -24,6 +24,8 @@ typedef struct Writer {
     unsigned precise_count;
     uint32_t precise_distance;
     uint32_t block;
+    uint64_t integer_used[4];
+    const uint64_t *integer_live;
 } Writer;
 
 static uint32_t id(Writer *w) { return w->next++; }
@@ -271,6 +273,21 @@ typedef struct Context {
     uint32_t light_shift, light_mask, back_bit, true_value, false_value, light_control;
 } Context;
 
+/* Compiler IDs only: the count pass records actual reads in 32 bytes and
+ * charges each declaration once. The write pass borrows that stack-owned mask
+ * until synchronous emission ends; no mask or source pointer escapes. */
+static uint32_t integer_id(Context *c, unsigned index)
+{
+    if (index >= 256) { abort(); }
+    uint64_t bit = UINT64_C(1) << (index % 64);
+    if (!(c->w->integer_used[index / 64] & bit)) {
+        c->w->integer_used[index / 64] |= bit;
+        if (!c->w->words) { c->w->count += 4; }
+    }
+    return c->ci[index];
+}
+
+
 static uint32_t unary(Context *c, SpvOp code, uint32_t type, uint32_t a)
 { return value(c->w, code, type, 1, a); }
 static uint32_t binary(Context *c, SpvOp code, uint32_t type, uint32_t a, uint32_t b)
@@ -280,7 +297,7 @@ static bool lighting_specular(Context *c) { return csv_live(c) || c->state->spec
 static bool lighting_back(Context *c) { return csv_live(c) || c->state->fixed_function.two_sided; }
 static uint32_t csv_field(Context *c, unsigned shift, uint32_t mask)
 {
-    uint32_t bits=binary(c,SpvOpShiftRightLogical,c->u,c->light_control,c->ci[shift]);
+    uint32_t bits=binary(c,SpvOpShiftRightLogical,c->u,c->light_control,integer_id(c, shift));
     return binary(c,SpvOpBitwiseAnd,c->u,bits,mask);
 }
 static uint32_t csv_flag(Context *c, unsigned shift)
@@ -326,13 +343,13 @@ static uint32_t squared_fog(Context *c, uint32_t distance, uint32_t density)
 
 static uint32_t load_uniform(Context *c, unsigned member, uint32_t type, uint32_t ptr)
 {
-    uint32_t p = value(c->w, SpvOpAccessChain, ptr, 2, c->ubo, c->ci[member]);
+    uint32_t p = value(c->w, SpvOpAccessChain, ptr, 2, c->ubo, integer_id(c, member));
     return unary(c, SpvOpLoad, type, p);
 }
 static uint32_t point_parameter(Context *c, unsigned member, unsigned index)
 {
     uint32_t p = value(c->w, SpvOpAccessChain, c->uniform_f, 3,
-                       c->ubo, c->ci[member], c->ci[index]);
+                       c->ubo, integer_id(c, member), integer_id(c, index));
     return unary(c, SpvOpLoad, c->f, p);
 }
 static uint32_t read_reg(Context *c, unsigned n) { return n == 12 ? c->o[0] : c->r[n]; }
@@ -355,12 +372,12 @@ static uint32_t input(Context *c, unsigned index)
         if (c->opts.push_constants) {
             unsigned slot = __builtin_popcount(c->state->uniform_attrs & ((1u << index) - 1));
             uint32_t p = value(c->w, SpvOpAccessChain, c->push_v4, 3,
-                               c->pc, c->ci[0], c->ci[slot]);
+                               c->pc, integer_id(c, 0), integer_id(c, slot));
             result = unary(c, SpvOpLoad, c->v4, p);
         } else {
             unsigned slot = __builtin_popcount(c->state->uniform_attrs & ((1u << index) - 1));
             uint32_t p = value(c->w, SpvOpAccessChain, c->uniform_v4, 3,
-                               c->ubo, c->ci[7], c->ci[slot]);
+                               c->ubo, integer_id(c, 7), integer_id(c, slot));
             result = unary(c, SpvOpLoad, c->v4, p);
         }
     } else if (c->state->compressed_attrs & (1u << index)) {
@@ -368,7 +385,7 @@ static uint32_t input(Context *c, unsigned index)
         uint32_t a[3];
         for (unsigned j = 0; j < 3; j++) {
             uint32_t bits = value(c->w, SpvOpBitFieldSExtract, c->i, 3,
-                                  raw, c->ci[j * 11], c->ci[j == 2 ? 10 : 11]);
+                                  raw, integer_id(c, j * 11), integer_id(c, j == 2 ? 10 : 11));
             a[j] = divf(c, unary(c, SpvOpConvertSToF, c->f, bits),
                          c->cf[j == 2 ? F_511 : F_1023]);
         }
@@ -394,10 +411,10 @@ static uint32_t constant_read(Context *c, unsigned index, bool relative)
         c->constant_address == address && c->constant_block == c->w->block) {
         return c->constant_value;
     }
-    uint32_t row = c->ci[index];
+    uint32_t row = integer_id(c, index);
     if (relative) { row = binary(c, SpvOpIAdd, c->i, address, row); }
     uint32_t ptr = value(c->w, SpvOpAccessChain, c->uniform_v4, 3,
-                         c->ubo, c->ci[0], row);
+                         c->ubo, integer_id(c, 0), row);
     uint32_t result = unary(c, SpvOpLoad, c->v4, ptr);
     c->constant_index = index;
     c->constant_address = address;
@@ -487,12 +504,12 @@ static uint32_t lighting_uniform_at(Context *c, unsigned which, uint32_t index)
     const LightingInfo *info = &lighting_info[which];
     uint32_t type = which >= L_MODE ? c->u : info->width == 4 ? c->v4 : info->width == 3 ? c->v3 : c->f;
     uint32_t pointer = which >= L_MODE ? c->uniform_u : info->width == 4 ? c->uniform_v4 : info->width == 3 ? c->uniform_v3 : c->uniform_f;
-    uint32_t p = info->count > 1 ? value(c->w, SpvOpAccessChain, pointer, 3, c->ubo, c->ci[c->lighting_members[which]], index) :
-                                  value(c->w, SpvOpAccessChain, pointer, 2, c->ubo, c->ci[c->lighting_members[which]]);
+    uint32_t p = info->count > 1 ? value(c->w, SpvOpAccessChain, pointer, 3, c->ubo, integer_id(c, c->lighting_members[which]), index) :
+                                  value(c->w, SpvOpAccessChain, pointer, 2, c->ubo, integer_id(c, c->lighting_members[which]));
     return unary(c, SpvOpLoad, type, p);
 }
 static uint32_t lighting_uniform(Context *c, unsigned which, unsigned index)
-{ return lighting_uniform_at(c, which, c->ci[index]); }
+{ return lighting_uniform_at(c, which, integer_id(c, index)); }
 static uint32_t light_color(Context *c, unsigned light, unsigned component)
 { return xyz(c, lighting_uniform(c, L_COLORS, light * 6 + component)); }
 /* Keep the reciprocal inside the valid coefficient branch, including NaN guards. */
@@ -550,9 +567,9 @@ static uint32_t spotlight_attenuation(Context *c, unsigned light, uint32_t direc
 {
     uint32_t spot, k;
     if (dynamic) {
-        uint32_t base = binary(c, SpvOpIMul, c->i, light, c->ci[2]);
-        spot = lighting_uniform_at(c, L_CONTEXT, binary(c, SpvOpIAdd, c->i, base, c->ci[NV_IGRAPH_XF_LTCTXA_L0_SPT]));
-        k = lighting_uniform_at(c, L_CONTEXT, binary(c, SpvOpIAdd, c->i, base, c->ci[NV_IGRAPH_XF_LTCTXA_L0_K]));
+        uint32_t base = binary(c, SpvOpIMul, c->i, light, integer_id(c, 2));
+        spot = lighting_uniform_at(c, L_CONTEXT, binary(c, SpvOpIAdd, c->i, base, integer_id(c, NV_IGRAPH_XF_LTCTXA_L0_SPT)));
+        k = lighting_uniform_at(c, L_CONTEXT, binary(c, SpvOpIAdd, c->i, base, integer_id(c, NV_IGRAPH_XF_LTCTXA_L0_K)));
     } else {
         spot = lighting_uniform(c, L_CONTEXT, NV_IGRAPH_XF_LTCTXA_L0_SPT + light * 2);
         k = lighting_uniform(c, L_CONTEXT, NV_IGRAPH_XF_LTCTXA_L0_K + light * 2);
@@ -572,7 +589,7 @@ static uint32_t spotlight_attenuation(Context *c, unsigned light, uint32_t direc
 static uint32_t light_color_for(Context *c, unsigned light, bool dynamic, unsigned component)
 {
     if(!dynamic)return light_color(c,light,component);
-    uint32_t row=binary(c,SpvOpIAdd,c->i,binary(c,SpvOpIMul,c->i,light,c->ci[6]),c->ci[component]);
+    uint32_t row=binary(c,SpvOpIAdd,c->i,binary(c,SpvOpIMul,c->i,light,integer_id(c, 6)),integer_id(c, component));
     return xyz(c,lighting_uniform_at(c,L_COLORS,row));
 }
 static void accumulate_light(Context *c, unsigned i, bool dynamic, uint32_t attenuation, uint32_t raw, uint32_t dot, uint32_t half_raw, uint32_t pf, uint32_t back_params, uint32_t d, uint32_t s)
@@ -676,7 +693,7 @@ static LightTerms dynamic_light_terms(Context *c, uint32_t index, uint32_t mode,
         c->w->precise_distance=delta;
     }
     uint32_t distance=ext1(c,GLSLstd450Length,c->f,delta);
-    uint32_t range_index=binary(c,SpvOpIAdd,c->i,index,c->ci[NV_IGRAPH_XF_LTC1_r0]);
+    uint32_t range_index=binary(c,SpvOpIAdd,c->i,index,integer_id(c, NV_IGRAPH_XF_LTC1_r0));
     uint32_t range=extract(c,lighting_uniform_at(c,L_RANGE,range_index),0);
     /* Dynamic GLSL continues only for d > range: NaN must reach the body. */
     uint32_t outside=binary(c,SpvOpFOrdGreaterThan,c->b,distance,range);
@@ -723,12 +740,12 @@ static void dynamic_lights(Context *c, uint32_t normal, uint32_t eye, uint32_t p
     uint32_t initial[4],carried[4],result[4];
     for(unsigned j=0;j<4;j++){initial[j]=c->o[regs[j]];carried[j]=id(c->w);result[j]=id(c->w);}
     op(c->w,SpvOpBranch,1,header);op(c->w,SpvOpLabel,1,header);
-    op(c->w,SpvOpPhi,6,c->i,index,c->ci[0],entry,next,cont);
+    op(c->w,SpvOpPhi,6,c->i,index,integer_id(c, 0),entry,next,cont);
     for(unsigned j=0;j<4;j++){op(c->w,SpvOpPhi,6,c->v4,carried[j],initial[j],entry,result[j],cont);c->o[regs[j]]=carried[j];}
     uint32_t within=binary(c,SpvOpSLessThan,c->b,index,count);
     op(c->w,SpvOpLoopMerge,3,merge,cont,0u);op(c->w,SpvOpBranchConditional,3,within,body,merge);
     op(c->w,SpvOpLabel,1,body);
-    uint32_t shift=binary(c,SpvOpIMul,c->i,index,c->ci[2]);
+    uint32_t shift=binary(c,SpvOpIMul,c->i,index,integer_id(c, 2));
     uint32_t mode=binary(c,SpvOpBitwiseAnd,c->u,binary(c,SpvOpShiftRightLogical,c->u,modes,shift),c->cu[3]);
     uint32_t enabled=binary(c,SpvOpINotEqual,c->b,mode,c->cu[0]);
     uint32_t active=id(c->w), active_merge=id(c->w);
@@ -746,7 +763,7 @@ static void dynamic_lights(Context *c, uint32_t normal, uint32_t eye, uint32_t p
     last=c->w->block;op(c->w,SpvOpBranch,1,active_merge);op(c->w,SpvOpLabel,1,active_merge);
     for(unsigned j=0;j<4;j++)op(c->w,SpvOpPhi,6,c->v4,result[j],c->o[regs[j]],last,carried[j],body);
     op(c->w,SpvOpBranch,1,cont);op(c->w,SpvOpLabel,1,cont);
-    op(c->w,SpvOpIAdd,4,c->i,next,index,c->ci[1]);op(c->w,SpvOpBranch,1,header);op(c->w,SpvOpLabel,1,merge);
+    op(c->w,SpvOpIAdd,4,c->i,next,index,integer_id(c, 1));op(c->w,SpvOpBranch,1,header);op(c->w,SpvOpLabel,1,merge);
     for(unsigned j=0;j<4;j++)c->o[regs[j]]=carried[j];
 }
 
@@ -946,7 +963,7 @@ static uint32_t texgen_reflection(Context *c, uint32_t position, uint32_t normal
     uint32_t viewer = packed;
     if (!viewer) {
         unsigned member = 7 + (!c->opts.push_constants && c->state->uniform_attrs != 0);
-        uint32_t ptr = value(c->w, SpvOpAccessChain, c->uniform_u, 3, c->ubo, c->ci[member], c->ci[0]);
+        uint32_t ptr = value(c->w, SpvOpAccessChain, c->uniform_u, 3, c->ubo, integer_id(c, member), integer_id(c, 0));
         viewer = unary(c, SpvOpLoad, c->u, ptr);
     }
     viewer = binary(c, SpvOpBitwiseAnd, c->u, viewer, c->viewer_mask);
@@ -981,7 +998,7 @@ static void dynamic_texgen(Context *c, uint32_t *eye_position)
     uint32_t normal = transformed_normal(c), modes[4];
     unsigned mode_member = 7 + (!c->opts.push_constants && c->state->uniform_attrs != 0);
     for (unsigned t = 0; t < 4; t++) {
-        uint32_t ptr = value(c->w, SpvOpAccessChain, c->uniform_u, 3, c->ubo, c->ci[mode_member], c->ci[t]);
+        uint32_t ptr = value(c->w, SpvOpAccessChain, c->uniform_u, 3, c->ubo, integer_id(c, mode_member), integer_id(c, t));
         modes[t] = unary(c, SpvOpLoad, c->u, ptr);
     }
     uint32_t reflected = texgen_reflection(c, *eye_position, normal, modes[0]);
@@ -1650,65 +1667,15 @@ static void emit(Writer *w, const VshState *state, SpvVshOptions opts)
     op(w, SpvOpTypeVector, 3, c.b4, c.b, 4u);
     op(w, SpvOpTypeInt, 3, c.i, 32u, 1u);
     op(w, SpvOpTypeInt, 3, c.u, 32u, 0u);
-    bool used[256] = {0};
-    for (unsigned i = 0; i <= 32; i++) { used[i] = true; }
-    used[NV2A_VERTEXSHADER_CONSTANTS] = true;
-    if (state->is_fixed_function) {
-        used[NV_IGRAPH_XF_XFCTX_VPOFF] = true;
-        if(c.lighting_mask){
-            used[NV2A_LTCTXA_COUNT]=true;used[NV2A_LTCTXB_COUNT]=true;
-            for(unsigned i=0;i<NV2A_MAX_LIGHTS*6;i++)used[i]=true;
-            if((c.lighting_mask&(1u<<L_COLORS)) && (state->fixed_function.csv0c_dynamic || (state->specular_enable && state->fixed_function.local_eye)))used[NV_IGRAPH_XF_XFCTX_EYEP]=true;
-        }
-        if (state->fog_dynamic) { used[NV_IGRAPH_XF_XFCTX_FOG] = true; }
-        unsigned bones = skin_matrices(state->fixed_function.skinning);
-        if(c.lighting_mask&(1u<<L_COLORS))for(unsigned b=0;b<(bones?bones:1);b++)for(unsigned j=0;j<4;j++)used[NV_IGRAPH_XF_XFCTX_IMMAT0+b*8+j]=true;
-        for (unsigned b = 0; b < bones; b++) {
-            for (unsigned j = 0; j < 4; j++) { used[NV_IGRAPH_XF_XFCTX_MMAT0 + b * 8 + j] = true; }
-        }
-        if (state->fog_enable) {
-            enum VshFoggen gen = state->fixed_function.foggen;
-            if (gen == FOGGEN_PLANAR || gen == FOGGEN_ABS_PLANAR) {
-                used[NV_IGRAPH_XF_XFCTX_FOG] = true;
+    /* Count-pass uses are known before the write pass emits declarations.
+     * Keep reserved IDs unchanged so no semantic instruction is renumbered. */
+    if (w->words) {
+        for (unsigned i = 0; i < 256; i++) {
+            if (w->integer_live[i / 64] & (UINT64_C(1) << (i % 64))) {
+                op(w, SpvOpConstant, 3, c.i, c.ci[i], i);
             }
-            if (gen >= FOGGEN_RADIAL && gen <= FOGGEN_ABS_PLANAR) {
-                for (unsigned j = 0; j < 4; j++) { used[NV_IGRAPH_XF_XFCTX_MMAT0 + j] = true; }
-            }
-        }
-        for (unsigned j = 0; j < 4; j++) { used[NV_IGRAPH_XF_XFCTX_CMAT0 + j] = true; }
-        static const unsigned planes[] = {
-            NV_IGRAPH_XF_XFCTX_TG0MAT, NV_IGRAPH_XF_XFCTX_TG1MAT,
-            NV_IGRAPH_XF_XFCTX_TG2MAT, NV_IGRAPH_XF_XFCTX_TG3MAT,
-        };
-        static const unsigned bases[] = {
-            NV_IGRAPH_XF_XFCTX_T0MAT, NV_IGRAPH_XF_XFCTX_T1MAT,
-            NV_IGRAPH_XF_XFCTX_T2MAT, NV_IGRAPH_XF_XFCTX_T3MAT,
-        };
-        for (unsigned t = 0; t < 4; t++) {
-            for (unsigned a = 0; a < 4; a++) {
-                enum VshTexgen mode = state->fixed_function.texgen[t][a];
-                if (dynamic || mode == TEXGEN_EYE_LINEAR || mode == TEXGEN_OBJECT_LINEAR) { used[planes[t] + a] = true; }
-                if (dynamic || mode == TEXGEN_NORMAL_MAP || mode == TEXGEN_REFLECTION_MAP || mode == TEXGEN_SPHERE_MAP) {
-                    for (unsigned b = 0; b < (bones ? bones : 1); b++) {
-                        for (unsigned j = 0; j < 4; j++) { used[NV_IGRAPH_XF_XFCTX_IMMAT0 + b * 8 + j] = true; }
-                    }
-                }
-                if (dynamic || mode == TEXGEN_EYE_LINEAR || mode == TEXGEN_REFLECTION_MAP || mode == TEXGEN_SPHERE_MAP) {
-                    for (unsigned j = 0; j < 4; j++) { used[NV_IGRAPH_XF_XFCTX_MMAT0 + j] = true; }
-                }
-            }
-            if (dynamic || state->fixed_function.texture_matrix_enable[t]) {
-                for (unsigned j = 0; j < 4; j++) { used[bases[t] + j] = true; }
-            }
-        }
-    } else {
-        for (int i = 0; i < state->programmable.program_length; i++) {
-            const uint32_t *t = state->programmable.program_data[i];
-            used[field(t[1], 13, 8)] = true;
-            if (t[3] & 1) { break; }
         }
     }
-    for (unsigned i = 0; i < 256; i++) { if (used[i]) { op(w, SpvOpConstant, 3, c.i, c.ci[i], i); } }
     for (unsigned i = 0; i < 8; i++) { op(w, SpvOpConstant, 3, c.u, c.cu[i], i); }
     for (unsigned i = 0; i < F_COUNT; i++) {
         uint32_t bits; memcpy(&bits, &floats[i], sizeof(bits));
@@ -1716,15 +1683,15 @@ static void emit(Writer *w, const VshState *state, SpvVshOptions opts)
     }
     op(w, SpvOpConstantComposite, 6, c.v4, c.zero4, c.cf[F_ZERO], c.cf[F_ZERO], c.cf[F_ZERO], c.cf[F_ZERO]);
     op(w, SpvOpConstantComposite, 6, c.v4, c.initial4, c.cf[F_ZERO], c.cf[F_ZERO], c.cf[F_ZERO], c.cf[F_ONE]);
-    op(w, SpvOpTypeArray, 3, c.c_array, c.v4, c.ci[NV2A_VERTEXSHADER_CONSTANTS]);
-    op(w, SpvOpTypeArray, 3, c.inline_array, c.v4, c.ci[16]);
+    op(w, SpvOpTypeArray, 3, c.c_array, c.v4, integer_id(&c, NV2A_VERTEXSHADER_CONSTANTS));
+    op(w, SpvOpTypeArray, 3, c.inline_array, c.v4, integer_id(&c, 16));
     if (viewer) {
         op(w, SpvOpConstant, 3, c.u, c.viewer_mask, 4096u);
-        op(w, SpvOpTypeArray, 3, c.texgen_array, c.u, c.ci[4]);
+        op(w, SpvOpTypeArray, 3, c.texgen_array, c.u, integer_id(&c, 4));
     }
     if (points) {
         op(w, SpvOpConstant, 3, c.f, c.point_limit, 0x427f8000u); /* 63.875 */
-        op(w, SpvOpTypeArray, 3, c.point_array, c.f, c.ci[8]);
+        op(w, SpvOpTypeArray, 3, c.point_array, c.f, integer_id(&c, 8));
     }
     if (dynamic) {
         op(w, SpvOpConstant, 3, c.f, c.texgen_half, 0x3f000000u);
@@ -1736,11 +1703,11 @@ static void emit(Writer *w, const VshState *state, SpvVshOptions opts)
         op(w,SpvOpConstantTrue,2,c.b,c.true_value);op(w,SpvOpConstantFalse,2,c.b,c.false_value);
     }
     if(c.lighting_mask){
-        op(w,SpvOpTypeArray,3,c.lighting_arrays[0],c.v4,c.ci[NV2A_LTCTXA_COUNT]);
-        op(w,SpvOpTypeArray,3,c.lighting_arrays[1],c.v4,c.ci[NV2A_LTCTXB_COUNT]);
-        op(w,SpvOpTypeArray,3,c.lighting_arrays[2],c.v3,c.ci[NV2A_MAX_LIGHTS]);
+        op(w,SpvOpTypeArray,3,c.lighting_arrays[0],c.v4,integer_id(&c, NV2A_LTCTXA_COUNT));
+        op(w,SpvOpTypeArray,3,c.lighting_arrays[1],c.v4,integer_id(&c, NV2A_LTCTXB_COUNT));
+        op(w,SpvOpTypeArray,3,c.lighting_arrays[2],c.v3,integer_id(&c, NV2A_MAX_LIGHTS));
         op(w,SpvOpConstant,3,c.f,c.specular_max,0x461c4000u);
-        if(c.lighting_mask&(1u<<L_RANGE))op(w,SpvOpTypeArray,3,c.lighting_arrays[3],c.v4,c.ci[NV2A_LTC1_COUNT]);
+        if(c.lighting_mask&(1u<<L_RANGE))op(w,SpvOpTypeArray,3,c.lighting_arrays[3],c.v4,integer_id(&c, NV2A_LTC1_COUNT));
     }
     word(w, ((9 + inline_ubo + viewer + points + dynamic + __builtin_popcount(c.lighting_mask)) << 16) | SpvOpTypeStruct);
     word(w, c.ubo_t); word(w, c.c_array); word(w, c.v4); word(w, c.u); word(w, c.v2);
@@ -1754,7 +1721,7 @@ static void emit(Writer *w, const VshState *state, SpvVshOptions opts)
         word(w,type);
     }
     if (pc) {
-        op(w, SpvOpTypeArray, 3, c.push_array, c.v4, c.ci[pc_count]);
+        op(w, SpvOpTypeArray, 3, c.push_array, c.v4, integer_id(&c, pc_count));
         op(w, SpvOpTypeStruct, 2, c.pc_t, c.push_array);
         op(w, SpvOpTypePointer, 3, c.pc_p, (uint32_t)SpvStorageClassPushConstant, c.pc_t);
     }
@@ -1785,7 +1752,7 @@ static void emit(Writer *w, const VshState *state, SpvVshOptions opts)
     op(w, SpvOpLabel, 1, id(w));
     for (unsigned i = 0; i < 12; i++) { c.r[i] = c.zero4; }
     for (unsigned i = 0; i < 13; i++) { c.o[i] = c.initial4; }
-    c.a0 = c.ci[0];
+    c.a0 = integer_id(&c, 0);
     if (state->is_fixed_function) { fixed_function(&c); } else { program(&c); }
     finish(&c);
     op(w, SpvOpReturn, 0); op(w, SpvOpFunctionEnd, 0);
@@ -1852,9 +1819,11 @@ bool pgraph_spv_vsh(const VshState *state, SpvVshOptions opts, GlslcResult *out)
     if (!words) { abort(); }
     Writer output = { .words = words, .capacity = count.count, .next = 1,
                       .precise_mul = {count.precise_mul[0], count.precise_mul[1], count.precise_mul[2], count.precise_mul[3]},
-                      .precise_distance = count.precise_distance };
+                      .precise_distance = count.precise_distance,
+                      .integer_live = count.integer_used };
     emit(&output, state, opts);
     if (output.count != count.count || output.next != count.next || output.precise_count != count.precise_count || output.precise_distance != count.precise_distance) { abort(); }
+    if (memcmp(output.integer_used, count.integer_used, sizeof(count.integer_used))) { abort(); }
     out->words = words;
     out->num_words = out->allocation_words = output.count;
     out->uniforms = layout(false, !opts.push_constants && state->uniform_attrs, 0, needs_texgen_viewer(state), state->is_fixed_function && state->point_params_enable, state->is_fixed_function && state->fixed_function.texgen_dynamic, lighting_profile(state));

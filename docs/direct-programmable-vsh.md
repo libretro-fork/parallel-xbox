@@ -569,3 +569,19 @@ work counts, not whole-shader or frame-time percentages. Arithmetic, swizzles,
 negation, layouts and fallback eligibility are unchanged. Existing persistent
 modules remain compatible because the ABI and results are unchanged; no cache
 schema/key change or invalidation is needed.
+
+Signed-integer declaration selection uses a 256-bit mask owned by the count
+pass on the compiler stack. The synchronous write pass borrows that mask until
+emission completes and records its own mask to verify agreement. Each first
+use charges four declaration words in the count pass. Reserved IDs are kept,
+so removing declarations does not renumber arithmetic or other instructions.
+No key, payload, mask or stack pointer escapes in the result; final word/layout
+ownership and allocations are unchanged. The mask replaces the conservative
+256-entry declaration-selection table. Existing modules remain ABI-compatible.
+
+The integer-lend test covers 262,144 unique/repeated/index/generation cases and
+full two-pass emission; controls require detection of wrong declaration charges,
+mask-bit aliasing and duplicate charges. CPU parent comparisons additionally
+require identical modules after excluding signed-integer declarations, unchanged
+layouts and no word-count increase. Smaller modules do not establish PSO
+readiness, GPU execution speed or cold-play recovery.
