@@ -229,10 +229,41 @@ int main(int argc,char **argv)
         char path[4096];snprintf(path,sizeof(path),"%s/shadow-constant-%u.spv",argv[1],i);FILE *f=fopen(path,"wb");assert(f);assert(fwrite(a.words,4,a.num_words,f)==a.num_words);fclose(f);
         glslc_result_free_words(&a);free(a.uniforms.members);glslc_result_free_words(&b);free(b.uniforms.members);
     }
+    for(unsigned i=0;i<4096;i++){
+        unsigned unit=i%4,reg=PS_REGISTER_T0+unit;PshState s={.final_inputs_0=0x20000000u|(reg<<16),.final_inputs_1=(reg|16u)<<8};
+        s.shader_stage_program=((i&32)?PS_TEXTUREMODES_PROJECT3D:PS_TEXTUREMODES_PROJECT2D)<<(unit*5);s.dim_tex[unit]=2;s.shadow_map[unit]=1;s.shadow_depth_func=1+(i/4)%6;s.tex_x8y24[unit]=!!(i&64);s.rect_tex[unit]=!!(i&128);s.border_adjust[unit]=!!(i&256);s.colorkey_mode[unit]=(i/256)%4;s.alphakill[unit]=!!(i&16);s.alpha_dynamic=!!(i&512);s.combiner_dynamic=!!(i&1024);s.point_sprite=!!(i&2048) && !s.rect_tex[3];
+        SpvPshOptions opts={.spirv_1_6=!!(i&16),.ubo_binding=1,.tex_binding=2};GlslcResult a,b;allocations=0;assert(pgraph_spv_psh(&s,opts,&a) && allocations==2);
+        unsigned projections=0,queries=0,shifts=0,images=0,scalar=0,float_type=0,uint_type=0;
+        for(size_t k=5;k<a.num_words;k+=a.words[k]>>16){unsigned op=a.words[k]&65535;projections+=op==SpvOpImageSampleProjImplicitLod;queries+=op==SpvOpImageQuerySizeLod;shifts+=op==SpvOpShiftRightLogical;images+=op==SpvOpTypeImage;if(op==SpvOpTypeImage)scalar=a.words[k+2];if(op==SpvOpTypeFloat)float_type=a.words[k+1];if(op==SpvOpTypeInt && a.words[k+2]==32 && !a.words[k+3])uint_type=a.words[k+1];}
+        assert(scalar==(s.tex_x8y24[unit]?uint_type:float_type));
+        assert(projections==1 && images==1 && queries==s.rect_tex[unit]);assert(shifts>=(unsigned)s.tex_x8y24[unit]);
+        unsigned rect=s.rect_tex[unit],keys=s.colorkey_mode[unit]!=0;
+        assert(a.uniforms.count==11+rect+s.alpha_dynamic+7*s.combiner_dynamic+2*keys);
+        assert(a.uniforms.size==(rect?(s.alpha_dynamic?576:560):s.alpha_dynamic?512:496)+528*s.combiner_dynamic+128*keys);
+        for(size_t j=0;j<a.uniforms.count;j++){const GlslcUniform *u=a.uniforms.members+j;assert(u->offset+u->stride*(u->dim_a-1)+u->dim_v*4<=a.uniforms.size);assert(strncmp(u->name,"border",6));assert((const char *)u->name>=(const char *)(a.uniforms.members+a.uniforms.count));}
+        s.border_adjust[unit]=!s.border_adjust[unit];s.conv_tex[unit]=CONVOLUTION_FILTER_GAUSSIAN;s.surface_zeta_format=0xbabe;
+        assert(pgraph_spv_psh(&s,opts,&b) && allocations==4);assert(a.num_words==b.num_words && !memcmp(a.words,b.words,a.num_words*4));memset(&s,0xa5,sizeof(s));
+        char path[4096];snprintf(path,sizeof(path),"%s/shadow-sampled-%u.spv",argv[1],i);FILE *f=fopen(path,"wb");assert(f);assert(fwrite(a.words,4,a.num_words,f)==a.num_words);fclose(f);
+        glslc_result_free_words(&a);free(a.uniforms.members);glslc_result_free_words(&b);free(b.uniforms.members);
+    }
+    for(unsigned i=0;i<16;i++){
+        PshState s={.final_inputs_0=0x20080000,.final_inputs_1=0x1800,.shader_stage_program=PS_TEXTUREMODES_PROJECT3D,.shadow_map={1},.dim_tex={2},.shadow_depth_func=SHADOW_DEPTH_FUNC_LESS};SpvPshOptions opts={.ubo_binding=1,.tex_binding=2};
+        if(i<5){const unsigned flags[]={3,19,23,27,31};s.shadow_map[0]=flags[i];}
+        if(i==5)s.shadow_depth_func=-1;
+        if(i==6)s.shadow_depth_func=8;
+        if(i>=7 && i<=9)s.dim_tex[0]=i==9?3:i-7;
+        if(i==10)s.tex_cubemap[0]=true;
+        if(i==11)s.g8b8_signed[0]=1;
+        if(i==12)s.g8b8_mip_flags=1;
+        if(i==13)opts.tex_binding=29;
+        if(i==14)opts.ubo_binding=2;
+        if(i==15)s.colorkey_mode[0]=4;
+        allocations=0;GlslcResult a;assert(!pgraph_spv_psh(&s,opts,&a));assert(!allocations && !a.words && !a.uniforms.members);
+    }
     for(unsigned i=0;i<16;i++){
         PshState s={.final_inputs_0=0x20080000,.final_inputs_1=0x1800,.shader_stage_program=PS_TEXTUREMODES_PROJECT3D,.shadow_map={1},.dim_tex={2}};
         SpvPshOptions opts={.ubo_binding=1,.tex_binding=2};
-        if(i<6)s.shadow_depth_func=i+1;
+        if(i<6){s.shadow_depth_func=i+1;s.shadow_map[0]=19;}
         if(i>=6 && i<=8)s.dim_tex[0]=i==8?3:i-6;
         if(i==9)s.g8b8_signed[0]=1;
         if(i==10)s.g8b8_mip_flags=1;
@@ -307,5 +338,5 @@ int main(int argc,char **argv)
         if(i==15){s.combiner_control=1;s.rgb_inputs[0]=0x0f000000;}
         allocations=0;GlslcResult a;memset(&a,0xa5,sizeof(a));assert(!pgraph_spv_psh(&s,opts,&a));assert(!allocations && !a.words && !a.uniforms.members && !a.push_constants.members);
     }
-    puts("Direct PSH: 32768 deterministic/final-allocation/ignored-key/owned-layout modules and sixty-five allocation-free unsupported cases PASS");return 0;
+    puts("Direct PSH: 36864 deterministic/final-allocation/ignored-key/owned-layout modules and eighty-one allocation-free unsupported cases PASS");return 0;
 }

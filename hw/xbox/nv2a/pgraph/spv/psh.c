@@ -50,6 +50,16 @@ static bool constant_shadow(const PshState *s,unsigned stage)
     unsigned mode=texture_mode(s,stage);
     return (mode==PS_TEXTUREMODES_PROJECT2D || mode==PS_TEXTUREMODES_PROJECT3D) && s->shadow_map[stage] && (s->shadow_depth_func==SHADOW_DEPTH_FUNC_NEVER || s->shadow_depth_func==SHADOW_DEPTH_FUNC_ALWAYS);
 }
+static bool sampled_shadow(const PshState *s,unsigned stage)
+{
+    unsigned mode=texture_mode(s,stage);
+    return (mode==PS_TEXTUREMODES_PROJECT2D || mode==PS_TEXTUREMODES_PROJECT3D) && s->shadow_map[stage]==1 && s->shadow_depth_func>=SHADOW_DEPTH_FUNC_LESS && s->shadow_depth_func<=SHADOW_DEPTH_FUNC_GEQUAL;
+}
+static bool shadow_constant_needed(const PshState *s,bool floating)
+{
+    for(unsigned j=0;j<4;j++)if(sampled_shadow(s,j) && (floating?(texture_mode(s,j)==PS_TEXTUREMODES_PROJECT3D && !s->tex_x8y24[j]):(texture_mode(s,j)==PS_TEXTUREMODES_PROJECT3D || s->tex_x8y24[j])))return true;
+    return false;
+}
 static bool dot_mode(unsigned mode)
 { return mode==PS_TEXTUREMODES_DOTPRODUCT || mode==PS_TEXTUREMODES_DOT_ST || mode==PS_TEXTUREMODES_DOT_ZW || mode==PS_TEXTUREMODES_DOT_RFLCT_DIFF || mode==PS_TEXTUREMODES_DOT_RFLCT_SPEC || mode==PS_TEXTUREMODES_DOT_STR_3D || mode==PS_TEXTUREMODES_DOT_STR_CUBE; }
 static bool cube_stage(const PshState *s,unsigned stage)
@@ -81,6 +91,7 @@ static bool sample_stage(const PshState *s,unsigned stage)
 static unsigned sampler_kind(const PshState *s,unsigned stage)
 {
     unsigned mode=texture_mode(s,stage);
+    if(sampled_shadow(s,stage))return s->tex_x8y24[stage]?3:0;
     if(cube_stage(s,stage))return s->tex_cubemap[stage]?2:0;
     if(s->dim_tex[stage]==3)return 1;
     return mode==PS_TEXTUREMODES_PROJECT2D && s->tex_cubemap[stage]?2:0;
@@ -92,11 +103,11 @@ static bool has_texture_results(const PshState *s)
 static bool has_rect_samples(const PshState *s)
 { for(unsigned j=0;j<4;j++)if(sample_stage(s,j) && !cube_stage(s,j) && s->rect_tex[j])return true;return false; }
 static bool has_border_samples(const PshState *s)
-{ for(unsigned j=0;j<4;j++)if(sample_stage(s,j) && (texture_mode(s,j)==PS_TEXTUREMODES_PROJECT2D || texture_mode(s,j)==PS_TEXTUREMODES_PROJECT3D || dot_mode(texture_mode(s,j))) && s->border_adjust[j])return true;return false; }
+{ for(unsigned j=0;j<4;j++)if(sample_stage(s,j) && !s->shadow_map[j] && (texture_mode(s,j)==PS_TEXTUREMODES_PROJECT2D || texture_mode(s,j)==PS_TEXTUREMODES_PROJECT3D || dot_mode(texture_mode(s,j))) && s->border_adjust[j])return true;return false; }
 static bool has_color_key(const PshState *s)
 { for(unsigned j=0;j<4;j++)if(texture_result_stage(s,j) && s->colorkey_mode[j]!=COLOR_KEY_NONE)return true;return false; }
 static bool convolution_stage(const PshState *s,unsigned stage)
-{ return texture_mode(s,stage)==PS_TEXTUREMODES_PROJECT2D && s->conv_tex[stage]!=CONVOLUTION_FILTER_DISABLED; }
+{ return texture_mode(s,stage)==PS_TEXTUREMODES_PROJECT2D && !sampled_shadow(s,stage) && s->conv_tex[stage]!=CONVOLUTION_FILTER_DISABLED; }
 static bool has_convolution(const PshState *s)
 { for(unsigned j=0;j<4;j++)if(convolution_stage(s,j))return true;return false; }
 static bool uniform_enabled(const PshState *s,unsigned which)
@@ -129,7 +140,7 @@ typedef struct Context {
     uint32_t si[32],ui32[32],cf[FLOATS],u127,u313,yes,no;
     uint32_t inputs[9],frag_coord,front,color,depth;
     uint32_t tex_inputs[4],samplers[4],image_t,sampled_t,sampler_ptr,scale_array,min_q,point_coord,in_v2;
-    uint32_t image_other[2],sampled_other[2],sampler_other_ptr[2];
+    uint32_t image_other[3],sampled_other[3],sampler_other_ptr[3];
     uint32_t r[16],ef,z,positions[3],coord,clip;
     /* Shader-local bank and immutable mapping-table IDs; never host payloads. */
     uint32_t comb_array,bank_array,bank_ptr,bank_element,bank;
@@ -140,6 +151,7 @@ typedef struct Context {
     uint32_t cube_fn,cube_fn_type,project_cube_fn,project_cube_type;
     uint32_t bump_array,bump_m2,uniform_v2,sign_fn,sign_type,sign_constants[3];
     uint32_t dots[4],dot_sign[2],dot_sign_type,dot_constants[4],dot_maps[4],dot_map_type;
+    uint32_t shadow_max24,shadow_max_float;
     bool cube_body,project_cube_body;
     bool fetch_body;
     bool precise;
@@ -253,7 +265,7 @@ bool pgraph_spv_psh_supported(const PshState *s,SpvPshOptions opts)
             }
             dots[j]=true;
         }
-        if(s->g8b8_signed[j] || ((s->tex_x8y24[j] || s->shadow_map[j]) && !constant_shadow(s,j)))return false;
+        if(s->g8b8_signed[j] || ((s->tex_x8y24[j] || s->shadow_map[j]) && !constant_shadow(s,j) && !sampled_shadow(s,j)))return false;
         if(dependent_stage(s,j)){
             if(!j || texture_input(s,j)>=j)return false;
             if(!bump_stage(s,j) && (s->dim_tex[j]!=2 || s->rect_tex[j] || s->border_adjust[j]))return false;
@@ -262,7 +274,8 @@ bool pgraph_spv_psh_supported(const PshState *s,SpvPshOptions opts)
             if(s->dim_tex[j]!=2 || s->colorkey_mode[j]<COLOR_KEY_NONE || s->colorkey_mode[j]>COLOR_KEY_DISCARD)return false;
         }else if(sample_stage(s,j)){
             if(opts.tex_binding>=29 || (opts.ubo_binding>=opts.tex_binding && opts.ubo_binding<opts.tex_binding+4) || s->colorkey_mode[j]<COLOR_KEY_NONE || s->colorkey_mode[j]>COLOR_KEY_DISCARD)return false;
-            if(cube_stage(s,j)){if(s->dim_tex[j]!=2)return false;}
+            if(sampled_shadow(s,j)){if(s->dim_tex[j]!=2 || s->tex_cubemap[j])return false;}
+            else if(cube_stage(s,j)){if(s->dim_tex[j]!=2)return false;}
             else{
                 if(s->dim_tex[j]!=2 && s->dim_tex[j]!=3)return false;
                 /* The reference rectangle helper is 2D, including cube sizes. */
@@ -359,6 +372,7 @@ static void stage_store(Context *c,Stage s)
 }
 #include "psh-texture.inc"
 #include "psh-dot.inc"
+#include "psh-shadow.inc"
 
 static void texture_finish(Context *c,uint32_t color,unsigned j)
 {
@@ -390,15 +404,16 @@ static void texture_stages(Context *c)
             for(unsigned k=0;k<4;k++)discard_if(c,binary(c,c->state->compare_mode[j][k]?SpvOpFOrdGreaterThanEqual:SpvOpFOrdLessThan,c->b,extract(c,coord,k),c->cf[F_ZERO]));
         }else{
             unsigned kind=sampler_kind(c->state,j);
-            if(!dependent_stage(c->state,j) && !dot_mode(mode) && mode!=PS_TEXTUREMODES_CUBEMAP)coord=texture_border(c,coord,j);
+            if(!sampled_shadow(c->state,j) && !dependent_stage(c->state,j) && !dot_mode(mode) && mode!=PS_TEXTUREMODES_CUBEMAP)coord=texture_border(c,coord,j);
             uint32_t sample=unary(c,SpvOpLoad,texture_sampled_type(c,kind),c->samplers[j]),uv=xy(c,coord);
-            if(c->state->rect_tex[j] && mode!=PS_TEXTUREMODES_CUBEMAP && !dependent_stage(c->state,j) && !dot_mode(mode)){
+            if(c->state->rect_tex[j] && mode!=PS_TEXTUREMODES_CUBEMAP && !sampled_shadow(c->state,j) && !dependent_stage(c->state,j) && !dot_mode(mode)){
                 uint32_t image=unary(c,SpvOpImage,texture_image_type(c,kind),sample),size=val(c->w,SpvOpImageQuerySizeLod,c->iv2,2,image,c->si[0]);
                 uint32_t scaled=binary(c,SpvOpFDiv,c->v2,unary(c,SpvOpConvertSToF,c->v2,size),splat(c,c->v2,unif(c,TEX_SCALE,j),2));
                 uv=binary(c,SpvOpFDiv,c->v2,uv,scaled);
             }
             uint32_t color;
-            if(dot_mode(mode))color=texture_dot_sample(c,coord,sample,kind,j);
+            if(sampled_shadow(c->state,j))color=texture_shadow(c,coord,sample,kind,j);
+            else if(dot_mode(mode))color=texture_dot_sample(c,coord,sample,kind,j);
             else if(dependent_stage(c->state,j))color=texture_dependent(c,coord,sample,kind,j);
             else if(mode==PS_TEXTUREMODES_CUBEMAP){
                 uint32_t lookup=kind==2?xyz(c,coord):texture_cube_to_2d(c,xyz(c,coord));

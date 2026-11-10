@@ -132,7 +132,7 @@ static uint32_t texture_convolution(Context *c,uint32_t sample,uint32_t uv,uint3
 }
 static void texture_allocate(Context *c)
 {
-    for(unsigned kind=1;kind<3;kind++)if(has_sampler_kind(c->state,kind)){
+    for(unsigned kind=1;kind<4;kind++)if(has_sampler_kind(c->state,kind)){
         c->image_other[kind-1]=id(c->w);c->sampled_other[kind-1]=id(c->w);c->sampler_other_ptr[kind-1]=id(c->w);
     }
     for(unsigned j=0;j<4;j++){
@@ -145,6 +145,9 @@ static void texture_allocate(Context *c)
     }
     if(has_border_samples(c->state)){c->border_array=id(c->w);c->uniform_v3=id(c->w);}
     if(has_color_key(c->state)){c->key_array=id(c->w);c->uvec4_t=id(c->w);}
+    if(has_sampler_kind(c->state,3) && !c->uvec4_t)c->uvec4_t=id(c->w);
+    if(shadow_constant_needed(c->state,false))c->shadow_max24=id(c->w);
+    if(shadow_constant_needed(c->state,true))c->shadow_max_float=id(c->w);
     if(has_convolution(c->state)){
         uint32_t *ids[]={&c->conv_array,&c->conv_offsets_array,&c->conv_ptr,&c->conv_offsets_ptr,
             &c->conv_element,&c->conv_offset_element,&c->conv_weights,&c->conv_offsets,
@@ -157,11 +160,13 @@ static void texture_allocate(Context *c)
 static void texture_types(Context *c)
 {
     Writer *w=c->w;
-    for(unsigned kind=1;kind<3;kind++)if(c->image_other[kind-1]){
-        op(w,SpvOpTypeImage,8,c->image_other[kind-1],c->f,(uint32_t)(kind==1?SpvDim3D:SpvDimCube),0u,0u,0u,1u,(uint32_t)SpvImageFormatUnknown);
+    for(unsigned kind=1;kind<4;kind++)if(c->image_other[kind-1]){
+        op(w,SpvOpTypeImage,8,c->image_other[kind-1],kind==3?c->u:c->f,(uint32_t)(kind==1?SpvDim3D:kind==2?SpvDimCube:SpvDim2D),0u,0u,0u,1u,(uint32_t)SpvImageFormatUnknown);
         op(w,SpvOpTypeSampledImage,2,c->sampled_other[kind-1],c->image_other[kind-1]);
         op(w,SpvOpTypePointer,3,c->sampler_other_ptr[kind-1],(uint32_t)SpvStorageClassUniformConstant,c->sampled_other[kind-1]);
     }
+    if(c->shadow_max24){float x=16777215;uint32_t bits;memcpy(&bits,&x,4);op(w,SpvOpConstant,3,c->f,c->shadow_max24,bits);}
+    if(c->shadow_max_float){float x=511.9375f;uint32_t bits;memcpy(&bits,&x,4);op(w,SpvOpConstant,3,c->f,c->shadow_max_float,bits);}
     if(c->bump_m2){
         op(w,SpvOpTypeMatrix,3,c->bump_m2,c->v2,2u);
         op(w,SpvOpTypePointer,3,c->uniform_v2,(uint32_t)SpvStorageClassUniform,c->v2);

@@ -445,3 +445,46 @@ measurements. NGB's four remaining packed-depth recipes and DOA3's seven UI
 clamp recipes still require further native coverage. General fixed/packed/F16
 shadow sampling and signed/mip formats remain open work. Cold play and
 draw-critical pipeline compilation remain BAD/OPEN and unqualified.
+
+
+## Sampled fixed-depth comparisons and packed X8Y24
+
+PROJECT2D/PROJECT3D fixed-depth shadow stages now sample existing 2D float or
+unsigned views directly. The extra sampler kind is an unsigned 2D image at the
+same unit binding, with bounded image/type IDs and no new renderer resources,
+image conversions, payload buffers or retained views. A shared uint-vector type
+serves packed reads and color keys. No uniform groups or cache schema change.
+Two final allocations remain; immutable recipes are borrowed synchronously.
+
+Projection uses the reference's raw Q, including rectangle normalization before
+the projected sample. Shadow stages ignore border/convolution processing as in
+the reference. Packed depth extracts the high 24 bits and divides by 16777215;
+PROJECT3D retains the normalization/scale roundtrip. Float view markers select
+16777215, 511.9375 or 65535 at runtime, then clamp original Z/Q to that range.
+All six comparisons preserve the reference order (sampled depth OP reference Z)
+and unordered not-equal behavior. PROJECT2D compares sampled depth against zero.
+Alpha kill and color keys still run on the resulting four-channel Boolean.
+F16 gather/decode/filter flags, UI clamp, signed formats and unsupported shapes
+continue through the compiler rather than receiving an approximate substitute.
+
+CPU coverage adds 4096 final-owner/typed-image/projection/layout/ignored-field
+recipes and sixteen rejected inputs: 36864 validated modules and eighty-one
+allocation-free rejects overall. Prior 32768 native modules remain byte-identical.
+GPU fixtures use aliased views of the existing float image for depth markers,
+a one-time 84-byte mapped staging upload for marked packed texels, and a shadow
+coordinate vertex variant for range/boundary comparisons. Prior vertex variants
+remain unchanged and new views/image are created only in the new batches.
+These fixtures add no resource work to the core. Packed image samplers use
+nearest minification, magnification and mip selection. Tests cover all six
+comparisons, stage slots, rectangles, Q cases, static/gradient references,
+point coordinates, alpha/key controls and static/live combiners. Mixed cases
+consume float depth, unsigned depth, ordinary 2D/volume and cube results in one
+final combiner, exercising all four sampler kinds together. The full matrix is
+44032 recipes. Counts and invalid-coordinate observations are not portable
+hardware behavior or GPU execution/cold-play measurements.
+
+Read-only mapped recipe inspection of completed phase120 profiles accepts all
+187 NGB, 121 JSRF and 281 CT3 recipes, plus 34 of 41 DOA3 recipes. These are
+recorded/seeded keys, not draw frequencies or ready PSOs. DOA3's seven UI-clamp
+recipes, general F16/signed/mip coverage and existing draw-path pipeline misses
+remain open. Driver caches and cold-first-play qualification remain unqualified.
