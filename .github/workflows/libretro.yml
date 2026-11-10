@@ -32,6 +32,8 @@ jobs:
         run: python3 libretro/tests/test-x87-integer-status.py . cc
       - name: OHCI publishes completion queues before frame interrupts
         run: python3 libretro/tests/test-ohci-hcca.py . cc
+      - name: Network RX flush respects VM and link state
+        run: python3 libretro/tests/test-nvnet-rx-snapshot.py . cc
       - name: GPU reset clears stale interrupt state and lowers IRQ
         run: python3 libretro/tests/test-nv2a-reset-irq.py . cc
       - name: Vulkan packed indices preserve values and restart boundaries

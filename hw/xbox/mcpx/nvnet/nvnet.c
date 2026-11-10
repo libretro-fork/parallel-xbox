@@ -30,6 +30,7 @@
 #include "qemu/bswap.h"
 #include "qemu/iov.h"
 #include "migration/vmstate.h"
+#include "system/runstate.h"
 #include "nvnet_regs.h"
 
 #define IOPORT_SIZE 0x8
@@ -427,6 +428,11 @@ static bool nvnet_can_receive(NetClientState *nc)
 static void nvnet_flush_rx(NvNetState *s)
 {
     NetClientState *nc = qemu_get_queue(s->nic);
+    /* Flushing may DMA into guest RAM. Backend TX backpressure must not
+     * gate RX recovery, but a stopped VM or disconnected NIC must. */
+    if (!runstate_is_running() || nc->link_down) {
+        return;
+    }
     if (nvnet_can_receive(nc)) {
         qemu_flush_queued_packets(nc);
     }
