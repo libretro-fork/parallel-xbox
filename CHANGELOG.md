@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Streaming APU voices wait silently for SSL entries with no published samples instead of aborting. Retry the entry without advancing source position or reporting completion, and preserve valid samples stored at RAM address zero.
+
 - Shader regression checks now compare native fragment eligibility with the production GLSL compiler across 17 texture families and 3,360 shape/format states. Reject silent fallback for supported families and unexpected acceptance of reference errors, without GPU or private game fixtures.
 
 - Vulkan allocates shader source and immutable layout headers together, removing one allocation/free pair for each layout-bearing source. Words still retire independently; module-held layouts retain the bounded source-header storage until their last reference, without payload copies.

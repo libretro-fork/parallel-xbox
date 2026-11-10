@@ -59,3 +59,14 @@ with tempfile.TemporaryDirectory(prefix='voice-tail-',dir=repo.parent) as direct
     subprocess.run(args,env=env,check=True)
     if not os.environ.get('TAIL_TEST_SKIP_RUN'):
         subprocess.run([str(exe),*sys.argv[3:]],env=env,check=True,timeout=60)
+        if os.environ.get('TAIL_PENDING_NEGATIVE'):
+            needle='''        if (!seg_len) {'''
+            assert needle in generated
+            controls=[('pending entry consumed',generated.replace(needle,'        if (false) {',1)),
+                      ('valid RAM address zero rejected',generated.replace(needle,'        if (!segment_offset || !seg_len) {',1)),
+                      ('pending entry ends source',generated.replace(needle,needle+'\n            d->vp.filters[v].source_ended = true;',1))]
+            for name,mutant in controls:
+                c.write_text(mutant,encoding='utf-8');subprocess.run(args,env=env,check=True)
+                result=subprocess.run([str(exe),'pending'],env=env,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,timeout=60)
+                assert result.returncode and b'Assertion' in result.stdout,(name,result.stdout)
+                print('Required negative control rejected:',name,flush=True)

@@ -26,6 +26,11 @@ jobs:
       - uses: actions/checkout@v4
       - name: Carry specialization rejects the DOA3 throughput regression
         run: python3 libretro/tests/test-tb-lookup-state.py . cc
+      - name: APU waits for SSL publication and preserves RAM address zero
+        env:
+          TAIL_TEST_CFLAGS: -fsanitize=address,undefined
+          TAIL_PENDING_NEGATIVE: 1
+        run: python3 libretro/tests/test-voice-tail.py . cc pending
       - name: MMX MOVD preserves values with one full-width store
         run: python3 libretro/tests/test-mmx-movd.py . cc
       - name: MMX entry preserves x87 publication and state transitions

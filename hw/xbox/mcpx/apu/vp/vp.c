@@ -1087,8 +1087,14 @@ static int voice_get_samples(MCPXAPUState *d, uint32_t v, int32_t samples[][2],
         segment_offset = apu_ram_ldl(d, addr);
         segment_length = apu_ram_ldl(d, addr + 4);
         /* SSL offsets are physical RAM addresses, including address zero. */
-        assert(segment_length != 0);
         seg_len = (segment_length >> 0) & 0xffff;
+        if (!seg_len) {
+            /* The guest can start a streaming voice before publishing its
+             * SSL entry. Wait as for a paused source and retry next frame;
+             * do not consume samples or report stream completion. Offset
+             * zero alone cannot identify an unpublished entry. */
+            return -1;
+        }
         seg_cs = (segment_length >> 16) & 3;
         seg_spb = (segment_length >> 18) & 0x1f;
         seg_s = (segment_length >> 23) & 1;
@@ -1100,7 +1106,6 @@ static int voice_get_samples(MCPXAPUState *d, uint32_t v, int32_t samples[][2],
             sample_size = NV_PAVS_VOICE_CFG_FMT_SAMPLE_SIZE_S24;
         }
 
-        assert(seg_len > 0);
         ebo = seg_len - 1; // FIXME: Confirm seg_len-1 is last valid sample index
 
         DPRINTF("Segment: SSL%c[%d]\n", 'A' + ssl_index, ssl_seg);
