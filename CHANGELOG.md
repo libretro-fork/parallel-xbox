@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Vulkan fragment translation computes uniform routing once per compile and borrows the 28-byte stack table through count, write and layout emission. Remove repeated prefix/profile scans at each uniform read without changing generated shader bytes, layouts, cache keys or allocation counts. Compiler work reduction does not establish frame-time or PSO-readiness improvement.
+
 - Shader CI checks the actual bundled Vulkan seed dictionary for direct-stage eligibility after migration, including all current 9,334 state entries. Fail obsolete key migrations, stale record layouts, missing coverage and malformed streams before they can silently weaken prewarming. Map compressed input and decode directly into one bounded final owner per game; no runtime code changes.
 
 - OpenGL and Vulkan migrate old convolution tags when loading shader seeds, so prewarming targets the current projected-convolution shader keys. Update only already-owned seed metadata before hashing or queue publication, without new allocations, file scans, retained pointers or draw-path work. Keep current shader/cache keys and unknown tags unchanged; cold-play recovery remains unqualified.

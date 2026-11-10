@@ -142,10 +142,19 @@ static bool uniform_enabled(const PshState *s,unsigned which)
     if(which>=BORDER_LOGICAL)return which<=BORDER_INV?has_border_samples(s):has_color_key(s);
     return which<BASE_UNIFORMS || (which>=COMB_CTL?s->combiner_dynamic:which==TEX_SCALE?has_texture_scale(s):s->alpha_dynamic && has_texture_results(s));
 }
-static unsigned uniform_member(const PshState *s,unsigned which)
-{ unsigned n=0;for(unsigned j=0;j<which;j++)n+=uniform_enabled(s,j);return n; }
-static unsigned uniform_count(const PshState *s)
-{ return uniform_member(s,UNIFORMS); }
+/* Host routing metadata only. The compiler stack owns this map through
+ * synchronous count/write/layout emission; no key or map pointer escapes. */
+_Static_assert(UNIFORMS <= UINT8_MAX, "uniform routing index must fit");
+typedef struct UniformMap { uint8_t members[UNIFORMS + 1]; } UniformMap;
+static void init_uniform_map(const PshState *state, UniformMap *map)
+{
+    unsigned member = 0;
+    for (unsigned j = 0; j < UNIFORMS; j++) {
+        map->members[j] = member;
+        member += uniform_enabled(state, j);
+    }
+    map->members[UNIFORMS] = member;
+}
 static unsigned texture_uniform_size(const PshState *s)
 { return has_texture_scale(s)?(s->alpha_dynamic?576:560):(s->alpha_dynamic && has_texture_results(s)?512:496); }
 static unsigned uniform_offset(const PshState *s,unsigned which)
@@ -160,7 +169,7 @@ static unsigned uniform_size(const PshState *s)
 
 enum Floats { F_ZERO, F_HALF, F_ONE, F_TWO, F_FOUR, F_BYTE_MAX, F_D16_MAX, F_D24_SCALE, F_FLOAT_MAX, FLOATS };
 typedef struct Context {
-    Writer *w;const PshState *state;SpvPshOptions opts;
+    Writer *w;const PshState *state;SpvPshOptions opts;const UniformMap *uniform_map;
     uint32_t void_t,fn,f,v2,v3,v4,i,u,b,iv2,iv4,in_f,in_v4,in_b,out_f,out_v4,uf,uv4,uiv2,uiv4,ui,uu;
     uint32_t region_array,const_array,ubo_type,ubo_ptr,ubo,entry,ext;
     uint32_t si[32],ui32[32],cf[FLOATS],u127,u313,yes,no,ui_marker,ui_rect;
@@ -208,7 +217,7 @@ static uint32_t unif_at(Context *c,unsigned which,uint32_t index)
     const unsigned width=uniforms[which].width;bool integer=uniforms[which].integer;
     uint32_t type=integer?((which==SIDE || which==ALPHA_KILL || which>=COMB_CTL)?c->u:width==4?c->iv4:width==2?c->iv2:c->i):width==4?c->v4:width==3?c->v3:width==2?c->v2:c->f;
     uint32_t ptr=integer?((which==SIDE || which==ALPHA_KILL || which>=COMB_CTL)?c->uu:width==4?c->uiv4:width==2?c->uiv2:c->ui):width==4?c->uv4:width==3?c->uniform_v3:width==2?c->uniform_v2:c->uf;
-    unsigned member=uniform_member(c->state,which);
+    unsigned member=c->uniform_map->members[which];
     uint32_t p=uniforms[which].count>1?val(c->w,SpvOpAccessChain,ptr,3,c->ubo,c->si[member],index):val(c->w,SpvOpAccessChain,ptr,2,c->ubo,c->si[member]);
     return unary(c,SpvOpLoad,type,p);
 }
@@ -584,9 +593,9 @@ static void allocate(Context *c)
     texture_allocate(c);dot_allocate(c);
     if(c->state->depth_format&DEPTH_FORMAT_UI_CLAMP)c->ui_marker=id(c->w);
 }
-static void emit(Writer *w,const PshState *state,SpvPshOptions opts)
+static void emit(Writer *w,const PshState *state,SpvPshOptions opts,const UniformMap *map)
 {
-    Context c={.w=w,.state=state,.opts=opts};allocate(&c);
+    Context c={.w=w,.state=state,.opts=opts,.uniform_map=map};allocate(&c);
     unsigned interfaces=0;for(unsigned j=0;j<4;j++)interfaces+=!!c.tex_inputs[j]+!!c.samplers[j];interfaces+=!!c.point_coord;if(state->combiner_dynamic)interfaces+=5;if(has_convolution(state))interfaces+=2;
     word(w,SpvMagicNumber);word(w,opts.spirv_1_6?0x00010600u:0x00010500u);word(w,0);word(w,0);word(w,0);
     op(w,SpvOpCapability,1,(uint32_t)SpvCapabilityShader);
@@ -614,7 +623,7 @@ static void emit(Writer *w,const PshState *state,SpvPshOptions opts)
     op(w,SpvOpDecorate,3,c.depth,(uint32_t)SpvDecorationBuiltIn,(uint32_t)SpvBuiltInFragDepth);
     op(w,SpvOpDecorate,3,c.color,(uint32_t)SpvDecorationLocation,0u);
     op(w,SpvOpDecorate,2,c.ubo_type,(uint32_t)SpvDecorationBlock);
-    for(unsigned j=0,member=0;j<UNIFORMS;j++)if(uniform_enabled(state,j))op(w,SpvOpMemberDecorate,4,c.ubo_type,member++,(uint32_t)SpvDecorationOffset,uniform_offset(state,j));
+    for(unsigned j=0,member=0;j<UNIFORMS;j++)if(map->members[j+1]!=map->members[j])op(w,SpvOpMemberDecorate,4,c.ubo_type,member++,(uint32_t)SpvDecorationOffset,uniform_offset(state,j));
     if(c.scale_array)op(w,SpvOpDecorate,3,c.scale_array,(uint32_t)SpvDecorationArrayStride,16u);
     op(w,SpvOpDecorate,3,c.region_array,(uint32_t)SpvDecorationArrayStride,16u);op(w,SpvOpDecorate,3,c.const_array,(uint32_t)SpvDecorationArrayStride,16u);
     op(w,SpvOpDecorate,3,c.ubo,(uint32_t)SpvDecorationDescriptorSet,0u);op(w,SpvOpDecorate,3,c.ubo,(uint32_t)SpvDecorationBinding,opts.ubo_binding);
@@ -639,8 +648,8 @@ static void emit(Writer *w,const PshState *state,SpvPshOptions opts)
     if(c.border_array)op(w,SpvOpTypeArray,3,c.border_array,c.v3,c.ui32[4]);
     if(c.key_array)op(w,SpvOpTypeArray,3,c.key_array,c.u,c.ui32[4]);
     if(c.bump_array)op(w,SpvOpTypeArray,3,c.bump_array,c.v2,c.ui32[8]);
-    word(w,((2u+uniform_count(state))<<16)|SpvOpTypeStruct);word(w,c.ubo_type);
-    uint32_t fields[]={c.v4,c.region_array,c.const_array,c.f,c.f,c.v4,c.iv2,c.u,c.i,c.i,c.i,c.scale_array,c.u,c.u,c.u,c.u,c.comb_array,c.comb_array,c.comb_array,c.comb_array,c.border_array,c.border_array,c.key_array,c.key_array,c.bump_array,c.scale_array,c.scale_array};for(unsigned j=0;j<UNIFORMS;j++)if(uniform_enabled(state,j))word(w,fields[j]);
+    word(w,((2u+map->members[UNIFORMS])<<16)|SpvOpTypeStruct);word(w,c.ubo_type);
+    uint32_t fields[]={c.v4,c.region_array,c.const_array,c.f,c.f,c.v4,c.iv2,c.u,c.i,c.i,c.i,c.scale_array,c.u,c.u,c.u,c.u,c.comb_array,c.comb_array,c.comb_array,c.comb_array,c.border_array,c.border_array,c.key_array,c.key_array,c.bump_array,c.scale_array,c.scale_array};for(unsigned j=0;j<UNIFORMS;j++)if(map->members[j+1]!=map->members[j])word(w,fields[j]);
     uint32_t pointers[][3]={{c.in_f,SpvStorageClassInput,c.f},{c.in_v4,SpvStorageClassInput,c.v4},{c.in_b,SpvStorageClassInput,c.b},{c.out_f,SpvStorageClassOutput,c.f},{c.out_v4,SpvStorageClassOutput,c.v4},{c.uf,SpvStorageClassUniform,c.f},{c.uv4,SpvStorageClassUniform,c.v4},{c.uiv2,SpvStorageClassUniform,c.iv2},{c.uiv4,SpvStorageClassUniform,c.iv4},{c.ui,SpvStorageClassUniform,c.i},{c.uu,SpvStorageClassUniform,c.u},{c.ubo_ptr,SpvStorageClassUniform,c.ubo_type}};
     for(unsigned j=0;j<sizeof(pointers)/sizeof(pointers[0]);j++)op(w,SpvOpTypePointer,3,pointers[j][0],pointers[j][1],pointers[j][2]);
     if(state->combiner_dynamic)dynamic_types(&c);
@@ -666,19 +675,20 @@ static void emit(Writer *w,const PshState *state,SpvPshOptions opts)
     }
     op(w,SpvOpStore,2,c.depth,depth);op(w,SpvOpReturn,0);op(w,SpvOpFunctionEnd,0);if(w->words)w->words[3]=w->next;
 }
-static GlslcLayout layout(const PshState *state)
+static GlslcLayout layout(const PshState *state,const UniformMap *map)
 {
-    unsigned count=uniform_count(state);size_t bytes=count*sizeof(GlslcUniform);for(unsigned j=0;j<UNIFORMS;j++)if(uniform_enabled(state,j))bytes+=strlen(uniforms[j].name)+1;
+    unsigned count=map->members[UNIFORMS];size_t bytes=count*sizeof(GlslcUniform);for(unsigned j=0;j<UNIFORMS;j++)if(map->members[j+1]!=map->members[j])bytes+=strlen(uniforms[j].name)+1;
     GlslcUniform *m=malloc(bytes);if(!m)abort();char *text=(char *)(m+count);
-    for(unsigned j=0,member=0;j<UNIFORMS;j++)if(uniform_enabled(state,j)){size_t n=strlen(uniforms[j].name)+1;memcpy(text,uniforms[j].name,n);m[member++]=(GlslcUniform){.name=text,.dim_v=uniforms[j].width,.dim_a=uniforms[j].count,.stride=uniforms[j].count>1?16:uniforms[j].width*4,.offset=uniform_offset(state,j)};text+=n;}
+    for(unsigned j=0,member=0;j<UNIFORMS;j++)if(map->members[j+1]!=map->members[j]){size_t n=strlen(uniforms[j].name)+1;memcpy(text,uniforms[j].name,n);m[member++]=(GlslcUniform){.name=text,.dim_v=uniforms[j].width,.dim_a=uniforms[j].count,.stride=uniforms[j].count>1?16:uniforms[j].width*4,.offset=uniform_offset(state,j)};text+=n;}
     return (GlslcLayout){.members=m,.count=count,.size=uniform_size(state)};
 }
 bool pgraph_spv_psh(const PshState *state,SpvPshOptions opts,GlslcResult *out)
 {
     memset(out,0,sizeof(*out));if(!pgraph_spv_psh_supported(state,opts))return false;
-    uint32_t precise[128];Writer count={.next=1,.precise=precise};emit(&count,state,opts);
+    UniformMap map;init_uniform_map(state,&map);
+    uint32_t precise[128];Writer count={.next=1,.precise=precise};emit(&count,state,opts,&map);
     size_t size=count.count+count.recorded*3;uint32_t *words=malloc(size*4);if(!words)abort();
-    Writer output={.words=words,.capacity=size,.next=1,.precise=precise,.annotations=count.recorded};emit(&output,state,opts);
+    Writer output={.words=words,.capacity=size,.next=1,.precise=precise,.annotations=count.recorded};emit(&output,state,opts,&map);
     if(output.count!=size || output.next!=count.next || output.recorded!=count.recorded)abort();
-    out->words=words;out->num_words=out->allocation_words=size;out->uniforms=layout(state);return true;
+    out->words=words;out->num_words=out->allocation_words=size;out->uniforms=layout(state,&map);return true;
 }

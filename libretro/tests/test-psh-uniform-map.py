@@ -1,0 +1,39 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
+"""Production fragment uniform routing: borrowed count/write map and scan bounds."""
+from pathlib import Path
+import os, shlex, subprocess, sys, tempfile
+
+r=Path(sys.argv[1]).resolve()
+cc=sys.argv[2] if len(sys.argv)>2 else 'cc'
+production=(r/'hw/xbox/nv2a/pgraph/spv/psh.c').read_text()
+assert 'UniformMap map;init_uniform_map(state,&map);' in production
+production=production.replace('static bool uniform_enabled(const PshState *s,unsigned which)\n{','static bool uniform_enabled(const PshState *s,unsigned which)\n{ profile_queries++;',1)
+template=Path(__file__).with_suffix('.c').read_text()
+env=dict(os.environ)
+env['PATH']=str(Path(cc).resolve().parent)+os.pathsep+env.get('PATH','')
+with tempfile.TemporaryDirectory(prefix='psh-uniform-map-') as tmp:
+    d=Path(tmp)
+    (d/'qemu').mkdir()
+    (d/'qemu/osdep.h').write_text('#include <stdint.h>\n#include <stdbool.h>\n#include <stddef.h>\n')
+    (d/'qemu/mstring.h').write_text('typedef struct MString MString;\n')
+    src=d/'test.c';exe=d/('test.exe' if os.name=='nt' else 'test')
+    cmd=[cc,'-O2','-std=gnu11','-Wall','-Wextra','-Werror',
+         '-fsanitize=undefined','-fsanitize-undefined-trap-on-error',
+         '-I'+str(d),'-I'+str(r),'-I'+str(r/'hw/xbox/nv2a/pgraph/spv'),
+         '-I'+str(r/'deps/spirv-headers/include'),str(src),'-o',str(exe)]
+    def build(text):
+        src.write_text(template.replace('/* PRODUCTION */',text))
+        subprocess.run(cmd,check=True,env=env)
+    runner=shlex.split(env.get('PSH_UNIFORM_RUNNER',''))
+    build(production)
+    subprocess.run(runner+[str(exe)],check=True,env=env,timeout=30)
+    for label,old,new in [
+        ('prefix index','map->members[j] = member;','map->members[j] = member + 1;'),
+        ('terminal count','map->members[UNIFORMS] = member;','map->members[UNIFORMS] = member + 1;'),
+        ('optional routing','unsigned member=c->uniform_map->members[which];','unsigned member=which;'),
+    ]:
+        assert old in production,label
+        build(production.replace(old,new,1))
+        result=subprocess.run(runner+[str(exe)],capture_output=True,env=env,timeout=30)
+        assert result.returncode and b'uniform route line' in result.stderr,(label,result.stderr)
+        print('Required uniform-route control rejected:',label)
