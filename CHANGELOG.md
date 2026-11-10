@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Unsupported NV_USER channel, PIO and register accesses no longer abort the emulator. Read zero or ignore writes without kicking PFIFO; retain valid DMA register access and GPU-poll detection.
+
 - Flat 32-bit x87 memory operands retain their instruction-owned address for the deferred data pointer, removing intermediate address copies while preserving segmented and 16-bit addressing paths. Gameplay performance remains unmeasured.
 
 - Chardev frontends returned to the main loop replace their old event context before rebuilding read watches, avoiding watches attached to a retiring context.
