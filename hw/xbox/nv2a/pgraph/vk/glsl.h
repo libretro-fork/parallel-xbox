@@ -44,6 +44,8 @@ typedef struct ShaderSource {
 
 /* Takes ownership of malloc-allocated words. */
 ShaderSource *pgraph_vk_shader_source_new(uint32_t *words, size_t num_words);
+/* Takes final words and metadata owners, emptying result without cloning. */
+ShaderSource *pgraph_vk_shader_source_take(GlslcResult *result);
 ShaderSource *pgraph_vk_shader_source_ref(ShaderSource *source);
 void pgraph_vk_shader_source_unref(ShaderSource *source);
 void pgraph_vk_shader_layouts_unref(ShaderLayouts *layouts);

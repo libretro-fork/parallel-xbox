@@ -19,7 +19,7 @@ ready=s[s.index('static VkSpecDone vk_spec_ready['):s.index('static void vk_spec
 code=code.replace('/* READY STATE */',ready)
 code=code.replace('/* PRODUCTION */','\n'.join([state]+[function(s,n) for n in ['vk_spec_module_evict','vk_spec_modules_clear','vk_spec_compile_module','vk_spec_compile_state','vk_spec_ready_remove_order','vk_spec_ready_clear','vk_spec_ready_push','vk_spec_ready_take_at','vk_spec_take_ready']]))
 types='\n'.join(re.search(r'typedef struct '+name+r' \{.*?\} '+name+r';',h,re.S)[0] for name in ['ShaderLayouts','ShaderSource'])
-code=code.replace('/* SOURCE TYPES */',types).replace('/* SOURCE FUNCTIONS */','\n'.join(function(g,n) for n in ['pgraph_vk_shader_source_new','pgraph_vk_shader_source_ref','pgraph_vk_shader_layouts_unref','pgraph_vk_shader_source_unref']))
+code=code.replace('/* SOURCE TYPES */',types).replace('/* SOURCE FUNCTIONS */','\n'.join(function(g,n) for n in ['pgraph_vk_shader_source_new','pgraph_vk_shader_source_take','pgraph_vk_shader_source_ref','pgraph_vk_shader_layouts_unref','pgraph_vk_shader_source_unref']))
 module_types=re.search(r'typedef struct ShaderUniformLayout \{.*?\} ShaderUniformLayout;',h,re.S)[0]
 code=code.replace('/* MODULE TYPES */',module_types).replace('/* MODULE FUNCTIONS */','\n'.join(function(g,n) for n in ['init_uniform_layout','alloc_shader_module_info','pgraph_vk_create_shader_module_from_spirv','pgraph_vk_destroy_shader_module']))
 env=os.environ.copy();env['PATH']=str(Path(cc).resolve().parent)+os.pathsep+env.get('PATH','')

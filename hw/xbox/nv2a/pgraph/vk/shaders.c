@@ -25,6 +25,7 @@
 #include "ui/xemu-settings.h"
 #include "hw/xbox/nv2a/pgraph/seed.h"
 #include "hw/xbox/nv2a/pgraph/spv/geom.h"
+#include "hw/xbox/nv2a/pgraph/spv/vsh.h"
 #include "hw/xbox/nv2a/pgraph/glsl/uniform-cache.h"
 #include <encodings/xxh3.h>
 #include <retro_spsc.h>
@@ -921,6 +922,19 @@ static bool vk_module_quad_options(const ShaderModuleCacheKey *key,
 
 static ShaderSource *vk_module_spirv(const ShaderModuleCacheKey *key)
 {
+    if (key->kind == VK_SHADER_STAGE_VERTEX_BIT && key->vsh.glsl_opts.vulkan) {
+        SpvVshOptions vertex = {
+            .spirv_1_6 = pgraph_vk_spirv_1_6,
+            .push_constants = key->vsh.glsl_opts.use_push_constants_for_uniform_attrs,
+            .ubo_binding = key->vsh.glsl_opts.ubo_binding,
+        };
+        GlslcResult result;
+        /* The worker job or render-thread module owns this immutable key
+         * through both emission passes. No key or temporary lend escapes. */
+        if (pgraph_spv_vsh(&key->vsh.state, vertex, &result)) {
+            return pgraph_vk_shader_source_take(&result);
+        }
+    }
     SpvLineGeomOptions opts;
     if (vk_module_line_options(key, &opts)) {
         SpvDirectModule module;

@@ -104,30 +104,39 @@ void pgraph_vk_shader_source_unref(ShaderSource *source)
     }
 }
 
-ShaderSource *pgraph_vk_compile_shader(VkShaderStageFlagBits stage,
-                                      const char *glsl_source)
+/* Move final word/layout owners into the existing immutable shared source.
+ * There is no payload copy; the caller's emptied result owns nothing. */
+ShaderSource *pgraph_vk_shader_source_take(GlslcResult *result)
 {
-    GlslcResult result = compile_glsl(stage, glsl_source, true);
-    ShaderSource *source = pgraph_vk_shader_source_new(result.words,
-                                                      result.num_words);
-    source->words_allocation = result.allocation;
-    source->len = sizeof(*source) + result.allocation_words * sizeof(*result.words);
-    if (!result.uniforms.count && !result.push_constants.count) {
+    ShaderSource *source = pgraph_vk_shader_source_new(result->words,
+                                                      result->num_words);
+    source->words_allocation = result->allocation;
+    source->len = sizeof(*source) + result->allocation_words * sizeof(*result->words);
+    if (!result->uniforms.count && !result->push_constants.count) {
+        memset(result, 0, sizeof(*result));
         return source;
     }
     source->layouts = g_malloc0(sizeof(*source->layouts));
     retro_atomic_int_init(&source->layouts->refs, 1);
-    source->layouts->uniforms = result.uniforms;
-    source->layouts->push_constants = result.push_constants;
+    source->layouts->uniforms = result->uniforms;
+    source->layouts->push_constants = result->push_constants;
     source->len += sizeof(*source->layouts);
-    const GlslcLayout *layouts[] = { &result.uniforms, &result.push_constants };
+    const GlslcLayout *layouts[] = { &result->uniforms, &result->push_constants };
     for (unsigned i = 0; i < ARRAY_SIZE(layouts); i++) {
         source->len += layouts[i]->count * sizeof(GlslcUniform);
         for (size_t j = 0; j < layouts[i]->count; j++) {
             source->len += strlen(layouts[i]->members[j].name) + 1;
         }
     }
+    memset(result, 0, sizeof(*result));
     return source;
+}
+
+ShaderSource *pgraph_vk_compile_shader(VkShaderStageFlagBits stage,
+                                      const char *glsl_source)
+{
+    GlslcResult result = compile_glsl(stage, glsl_source, true);
+    return pgraph_vk_shader_source_take(&result);
 }
 
 VkShaderModule pgraph_vk_create_shader_module_from_words(PGRAPHVkState *r,

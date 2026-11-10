@@ -241,6 +241,8 @@ $(OBJS_LRCOMMON): Makefile.common
 $(OBJS_GLIB):     GROUP_CFLAGS := $(CFLAGS_GLIB)
 $(OBJS_VOLK):     GROUP_CFLAGS := $(CFLAGS_VOLK)
 $(OBJS_GLSLC):    GROUP_CFLAGS := $(CFLAGS_GLSLC)
+# Direct vertex emission borrows native VshState, whose headers use QEMU types.
+$(CORE_DIR)/hw/xbox/nv2a/pgraph/spv/vsh.o: GROUP_CFLAGS := $(CFLAGS_SYSTEM) -I$(CORE_DIR)/deps/spirv-headers/include
 $(OBJS_VSH):      GROUP_CFLAGS := $(CFLAGS_VSH)
 # MinGW's __try1/__except1 (util/oslib-win32.c) put the exception handler's
 # directives in .text, which the assembler rejects in a function's own

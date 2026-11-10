@@ -85,6 +85,38 @@ static void *consumer(void *arg){ShaderSource *a=arg;for(unsigned i=0;i<200000;i
 int main(void)
 {
  retro_atomic_int_init(&live_sources,0);
+ /* Direct and compiler results move the exact owners, including prefix views.
+  * Metadata stays alive independently after the last source-word consumer. */
+ for(unsigned i=0;i<1024;i++) {
+  GlslcResult result={0};unsigned prefix=i&1?8:0;
+  uint32_t *base=malloc((16+prefix)*4);assert(base);
+  result.words=base+prefix;result.num_words=16;result.allocation_words=16+prefix;
+  result.allocation=prefix?base:NULL;
+  GlslcLayout *blocks[]={&result.uniforms,&result.push_constants};
+  for(unsigned b=0;b<2;b++)if(i&(2u<<b)) {
+   blocks[b]->count=1;blocks[b]->size=16;
+   blocks[b]->members=calloc(1,sizeof(GlslcUniform)+6);assert(blocks[b]->members);
+   char *name=(char *)(blocks[b]->members+1);memcpy(name,"value",6);
+   blocks[b]->members[0]=(GlslcUniform){.name=name,.dim_v=4,.dim_a=1};
+  }
+  GlslcUniform *u=result.uniforms.members,*pc=result.push_constants.members;
+  ShaderSource *taken=pgraph_vk_shader_source_take(&result);
+  assert(taken->words==base+prefix && taken->words_allocation==(prefix?base:NULL));
+  assert(!result.words&&!result.allocation&&!result.uniforms.members&&!result.push_constants.members);
+  size_t bytes=sizeof(*taken)+(16+prefix)*4;
+  if(u||pc){
+   assert(taken->layouts->uniforms.members==u && taken->layouts->push_constants.members==pc);
+   bytes+=sizeof(*taken->layouts)+(!!u+!!pc)*(sizeof(GlslcUniform)+6);
+   retro_atomic_fetch_add_int(&taken->layouts->refs,1);
+   ShaderLayouts *retained=taken->layouts;
+   assert(taken->len==bytes);pgraph_vk_shader_source_unref(taken);
+   if(u)assert(!strcmp(retained->uniforms.members[0].name,"value"));
+   if(pc)assert(!strcmp(retained->push_constants.members[0].name,"value"));
+   pgraph_vk_shader_layouts_unref(retained);
+  }else{assert(taken->len==bytes);pgraph_vk_shader_source_unref(taken);}
+  assert(!retro_atomic_load_relaxed_int(&live_sources));
+ }
+
  /* Interior module views retain and release the allocation base. */
  uint32_t *view_base=malloc(20*sizeof(*view_base));assert(view_base);
  ShaderSource *view=pgraph_vk_shader_source_new(view_base+4,16);
