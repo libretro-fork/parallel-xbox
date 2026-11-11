@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Keep x87 precision CI linked to the production exception-status helper: extract the new SoftFloat flag merger with its callers instead of omitting that dependency. Existing precision, rounding and status checks remain intact; no runtime changes.
+
 - Repair secondary jump-cache CI after invalidation gained a deferred-flush parameter: explicitly select immediate invalidation in the existing single-block tests. Keep the cache identity, page-remap and publication checks; no runtime changes.
 
 - Restore compatibility CI after the NVNet RX run-state gate: model VM running state in the isolated harness and test direct flush/timer callbacks while stopped or disconnected. Keep descriptor and timer checks rather than bypassing the production guards. No runtime changes.

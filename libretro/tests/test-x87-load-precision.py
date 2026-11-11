@@ -21,7 +21,7 @@ def function(source,name):
 
 
 helper=(repo/'target/i386/tcg/fpu_helper.c').read_text()
-soft='\n'.join(function(helper,n) for n in ('fpu_set_exception','save_exception_flags','merge_exception_flags',
+soft='\n'.join(function(helper,n) for n in ('fpu_set_exception','save_exception_flags','merge_softfloat_exception_flags','merge_exception_flags',
               'tmp_maximise_precision','helper_fldl_FT0','helper_fldl_ST0'))
 translate=(repo/'target/i386/tcg/translate.c').read_text()
 hard='\n'.join(function(translate,n) for n in ('fpu_rounding_to_single','gen_round_to_single','gen_flush_fp',
