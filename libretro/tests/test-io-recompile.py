@@ -20,3 +20,15 @@ with tempfile.TemporaryDirectory(prefix='io-recompile-',dir=repo.parent) as dire
  p=Path(directory);(p/'test.c').write_text(code);exe=p/('test.exe' if os.name=='nt' else 'test')
  subprocess.run([cc,'-O2','-std=gnu11','-Wall','-Wextra','-Werror','-Wno-unused-parameter','-Wno-sign-compare','-fsanitize=undefined','-fsanitize-undefined-trap-on-error',str(p/'test.c'),'-o',str(exe)],check=True,env=env)
  subprocess.run([str(exe)],check=True,env=env)
+
+ # Permission omissions must fail the unchanged production invalidation checks.
+ if os.name!='nt':
+  import resource
+  resource.setrlimit(resource.RLIMIT_CORE,(0,0))
+  for label,name in [('missing JIT write transition','qemu_thread_jit_write'),('missing JIT execute transition','qemu_thread_jit_execute')]:
+   call=name+'();';assert code.count(call)==1
+   (p/'test.c').write_text(code.replace(call,'(void)'+name+';'))
+   subprocess.run([cc,'-O2','-std=gnu11','-Wall','-Wextra','-Werror','-Wno-unused-parameter','-Wno-sign-compare','-fsanitize=undefined','-fsanitize-undefined-trap-on-error',str(p/'test.c'),'-o',str(exe)],check=True,env=env)
+   result=subprocess.run([str(exe)],capture_output=True,env=env,timeout=30)
+   assert result.returncode and b'Assertion' in result.stderr,label
+   print('Required negative control rejected:',label)

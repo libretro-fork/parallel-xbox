@@ -28,21 +28,25 @@ typedef struct {TranslationBlock*slot;uint32_t hash;} Table;
 static struct {Table htable,inv_htable;}tb_ctx;
 static unsigned pages_locked,page_removed,cache_removed,jumps_removed[2],unlinked,restored;
 static jmp_buf escaped;
+static bool jit_writable;
+static unsigned jit_writes,jit_executes;
+static void qemu_thread_jit_write(void){assert(!jit_writable);jit_writable=true;jit_writes++;}
+static void qemu_thread_jit_execute(void){assert(jit_writable);jit_writable=false;jit_executes++;}
 static vaddr get_pc(CPUState*c){return c->pc;}
 static uint32_t tb_cflags(TranslationBlock*t){return t->cflags;}
 static tb_page_addr_t tb_page_addr0(TranslationBlock*t){return t->physical;}
 static uint32_t tb_hash_func(uint64_t phys,uint64_t pc,uint32_t flags,uint64_t cs,uint32_t cf){return phys^pc^flags^cs^cf;}
 static void assert_memory_lock(void){}
-static void qemu_spin_lock(unsigned*p){assert(!*p);*p=1;}
-static void qemu_spin_unlock(unsigned*p){assert(*p);*p=0;}
-static bool qht_remove(Table*t,TranslationBlock*b,uint32_t h){if(t->slot!=b)return false;assert(t->hash==h);t->slot=NULL;return true;}
-static void qht_insert(Table*t,TranslationBlock*b,uint32_t h,void**old){*old=t->slot;t->slot=b;t->hash=h;}
-static void tb_lock_pages(TranslationBlock*t){assert(!pages_locked);pages_locked=1;}
-static void tb_unlock_pages(TranslationBlock*t){assert(pages_locked);pages_locked=0;}
-static void tb_remove(TranslationBlock*t){assert(pages_locked);page_removed++;}
-static void tb_jmp_cache_inval_tb(TranslationBlock*t){cache_removed++;}
-static void tb_remove_from_jmp_list(TranslationBlock*t,unsigned n){assert(n<2);jumps_removed[n]++;}
-static void tb_jmp_unlink(TranslationBlock*t){unlinked++;}
+static void qemu_spin_lock(unsigned*p){assert(jit_writable && !*p);*p=1;}
+static void qemu_spin_unlock(unsigned*p){assert(jit_writable && *p);*p=0;}
+static bool qht_remove(Table*t,TranslationBlock*b,uint32_t h){assert(jit_writable);if(t->slot!=b)return false;assert(t->hash==h);t->slot=NULL;return true;}
+static void qht_insert(Table*t,TranslationBlock*b,uint32_t h,void**old){assert(jit_writable);*old=t->slot;t->slot=b;t->hash=h;}
+static void tb_lock_pages(TranslationBlock*t){assert(jit_writable && !pages_locked);pages_locked=1;}
+static void tb_unlock_pages(TranslationBlock*t){assert(jit_writable && pages_locked);pages_locked=0;}
+static void tb_remove(TranslationBlock*t){assert(jit_writable && pages_locked);page_removed++;}
+static void tb_jmp_cache_inval_tb(TranslationBlock*t,bool*flush_owed){assert(jit_writable && !flush_owed);cache_removed++;}
+static void tb_remove_from_jmp_list(TranslationBlock*t,unsigned n){assert(jit_writable && n<2);jumps_removed[n]++;}
+static void tb_jmp_unlink(TranslationBlock*t){assert(jit_writable);unlinked++;}
 static TranslationBlock*tcg_tb_lookup(uintptr_t retaddr){assert(retaddr==42);return tb_ctx.htable.slot;}
 static void cpu_restore_state_from_tb(CPUState*c,TranslationBlock*t,uintptr_t r){restored++;}
 static void cpu_abort(CPUState*c,const char*f,...){abort();}
@@ -55,6 +59,7 @@ static void cpu_loop_exit_noexc(CPUState*c){longjmp(escaped,1);}
 static uint32_t original_hash(TranslationBlock*t){return tb_hash_func(t->physical,(t->cflags&CF_PCREL)?0:t->pc,t->flags,t->cs_base,t->cflags);}
 static void setup(TranslationBlock*t)
 {
+ assert(!jit_writable);jit_writes=jit_executes=0;
  memset(&tb_ctx,0,sizeof(tb_ctx));tb_ctx.htable.slot=t;tb_ctx.htable.hash=original_hash(t);
  pages_locked=page_removed=cache_removed=jumps_removed[0]=jumps_removed[1]=unlinked=restored=0;
 }
@@ -71,6 +76,7 @@ int main(void)
   static TranslationBlock tb;tb=(TranslationBlock){.pc=0x1000+32*i,.physical=0x2000+32*i,.cflags=CF_USE_ICOUNT|((i&1)?CF_PCREL:0),.flags=i,.cs_base=i&2};
   static CPUState cpu;cpu=(CPUState){.cc=&cc,.pc=tb.pc+4};setup(&tb);
   recompile(&cpu);
+  assert(!jit_writable && jit_writes==1 && jit_executes==1);
   assert(tb_io_insn_known(cpu.pc));assert(restored==1);
   assert(!tb_ctx.htable.slot&&!tb_ctx.inv_htable.slot);
   assert(tb.cflags&CF_INVALID);
@@ -81,13 +87,16 @@ int main(void)
  for(unsigned i=0;i<256;i++){
   TranslationBlock tb={.pc=0x4000+32*i,.physical=0x8000+32*i,.cflags=(i&1)?CF_PCREL:0,.flags=i,.cs_base=i&4};setup(&tb);
   uint32_t h=tb_ctx.htable.hash;tb_phys_invalidate(&tb,-1);
+  assert(!jit_writable && jit_writes==1 && jit_executes==1);
   assert(!tb_ctx.htable.slot&&tb_ctx.inv_htable.slot==&tb&&tb_ctx.inv_htable.hash==h);
   assert(unlinked==1&&page_removed==1&&!pages_locked);
   /* Invalidating again cannot reinsert or unlink an already removed TB. */
   tb_phys_invalidate(&tb,-1);assert(unlinked==1);
+  assert(!jit_writable && jit_writes==2 && jit_executes==2);
  }
  /* One-shot code without a physical page has no page lock/list to remove. */
  TranslationBlock tb={.physical=(uint64_t)-1,.cflags=CF_USE_ICOUNT};setup(&tb);
  tb_phys_invalidate_recompile(&tb);assert(!page_removed&&!pages_locked&&!tb_ctx.inv_htable.slot&&unlinked==1);
- puts("PASS: learned I/O blocks cannot resurrect; ordinary blocks retain reuse, hash identity, page/jump cleanup and duplicate-invalidation behavior (513 cases)");
+ assert(!jit_writable && jit_writes==1 && jit_executes==1);
+ puts("PASS: learned I/O blocks cannot resurrect; ordinary blocks retain reuse, hash identity, page/jump cleanup and duplicate-invalidation behavior and balanced JIT permissions (513 cases)");
 }
