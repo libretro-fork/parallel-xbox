@@ -94,6 +94,47 @@ aliasing. Keep the existing specialized value tests and correct unsupported
 fallback; no runtime change or pipeline-readiness claim follows from these
 additional tests.
 
+## Scalar dot-output mapping regression
+
+The alias/multistage probe exposed an actual numerical gap. With non-binary
+input colors, the former native emitter produced 39 low-bit color differences
+in 163,840 software-Vulkan scalar results across 2,048 cases. Both paths used
+valid SPIR-V and every draw was present. A separate initial probe hit a mux
+without an R0 declaration; the reference rejected that state too. The final
+fixture explicitly references R0 in final E so the compared states are valid.
+
+The reference applies output mapping to the scalar `dot` result before the
+RGB constructor. The native emitter formerly broadcast first and mapped a
+vector, allowing different host rounding/contraction. Keep dot results scalar
+through AB/CD mapping and through SUM when both products are dots. MUX retains
+the reference's RGB branch constructors. This changes SSA types/order only;
+no heap allocation, word buffer, key copy or retained pointer is introduced.
+The existing immutable compile-key and final word/layout owners keep their
+lifetimes through the synchronous compiler and module consumers.
+
+The regular GPU contract appends 80656:82704: one through eight static stages,
+aliased AB/CD/SUM destinations, input mappings, dot/scaling/blue-to-alpha flags
+and non-binary colors. Software Vulkan and RTX each compare all 163,840
+color/depth results exactly after the fix; software validation is enabled,
+while RTX validation layers are unavailable. Every one of the 32,768 fixture
+pixels is present. This is per-device reference equality, not cross-device
+bit identity or gameplay performance evidence.
+
+The focused CPU contract checks 30 AB/CD/two-dot-SUM profiles under both SPIR-V
+versions, with five nontrivial output mappings. It validates final owned words,
+poisons the caller's state before inspection and requires two allocations per
+compile. Its mutation restores valid SPIR-V with the former early broadcast;
+the validator accepts it, but the scalar-mapping invariant must reject it.
+
+Compatibility decision: shader-state keys and seed schemas retain their
+meaning. The core persists input states and an opaque Vulkan pipeline cache,
+not these native emitted modules; process-local module owners are rebuilt.
+Corrected words go through the existing shader-module/pipeline APIs. No seed
+migration, cache-default change or global cache clear is needed. Module words
+may increase for affected profiles; retain their measured costs as a
+correctness tradeoff. Prepared/native modules still do not establish ready
+PSOs, zero draw-critical compile waits, or cold-play recovery.
+
 ## Fallback boundaries inspected
 
 - Vertex binding/capability guards reject unsupported host layouts and preserve

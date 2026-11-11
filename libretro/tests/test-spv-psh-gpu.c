@@ -13,6 +13,7 @@
 #include "hw/xbox/nv2a/pgraph/spv/psh.h"
 #include "hw/xbox/nv2a/pgraph/glsl/g8b8-lod.h"
 #include "spv-psh-composition.h"
+#include "spv-psh-alias.h"
 #define CHECK(x) do { VkResult result=(x); if(result) { fprintf(stderr,"Vulkan %d at %d\n",result,__LINE__);abort(); } } while(0)
 /* Test-only attribution; never linked into the core. Raw wall times are
  * not isolated GPU/driver-cold qualification or presentation measurements. */
@@ -187,7 +188,7 @@ int main(int argc,char **argv){
  }
  Image volume=dimensional_texture(1,cmd,queue,fence),cube=dimensional_texture(2,cmd,queue,fence);
  Image signed_gb={0};if(limit>54272)signed_gb=signed_gb_texture(cmd,queue,fence);Image encoded_f16={0};if(limit>48128)encoded_f16=encoded_f16_texture(cmd,queue,fence);VkImageView depth_views[3]={0};Image packed_depth={0};if(limit>37888){for(unsigned j=0;j<3;j++)depth_views[j]=depth_marker_view(texture,j);packed_depth=packed_depth_texture(cmd,queue,fence);}
- VkShaderModule vertices[4][2]={{vertex(false,0),vertex(true,0)},{vertex(false,1),vertex(true,1)},{0,0}};if(limit>37888){vertices[2][0]=vertex(false,2);vertices[2][1]=vertex(true,2);}if(limit>52224){vertices[3][0]=vertex(false,3);vertices[3][1]=vertex(true,3);}unsigned failures=0,compared=0,written=0,discarded=0,sample_pixels=0,point_pixels=0,metadata_signal=0,sampler_signal=0,composition_signal=0;uint64_t words[2]={0},reference_source_bytes=0;bool timings=getenv("PSH_COMPILER_TIMINGS")!=NULL;
+ VkShaderModule vertices[4][2]={{vertex(false,0),vertex(true,0)},{vertex(false,1),vertex(true,1)},{0,0}};if(limit>37888){vertices[2][0]=vertex(false,2);vertices[2][1]=vertex(true,2);}if(limit>52224){vertices[3][0]=vertex(false,3);vertices[3][1]=vertex(true,3);}unsigned failures=0,compared=0,written=0,discarded=0,sample_pixels=0,point_pixels=0,metadata_signal=0,sampler_signal=0,composition_signal=0,alias_signal=0;uint64_t words[2]={0},reference_source_bytes=0;bool timings=getenv("PSH_COMPILER_TIMINGS")!=NULL;
  for(unsigned test=first;test<limit;test++){
   PshState state={.final_inputs_0=0x04200000,.final_inputs_1=0x1400};state.smooth_shading=!!(test&1);state.z_perspective=!!(test&2);state.depth_clipping=!!(test&4);state.window_clip_exclusive=!!(test&8);state.alpha_test=!!(test&16);state.alpha_dynamic=!!(test&32);state.depth_format=(test/64)%4;
   if(test>=512){
@@ -766,7 +767,7 @@ int main(int argc,char **argv){
    }
    const float refs[]={0,.125f,.5f,.75f,1,1.5f,-.25f,.0001f};float plane[3][4]={{0,0,100,1},{4,0,200,1},{0,4,300,1}};memcpy(data[4],plane,sizeof(plane));data[7][0]=.5f;data[7][1]=refs[n%8];data[7][2]=(n&4)?1:-1;data[7][3]=(float)(256+n%8);
   }
-  if(test>=79360){
+  if(test>=79360 && test<80656){
    unsigned choice=test-79360;composition_state(&state,choice,choice%24);
    memset(&values,0,sizeof(values));memset(data,0,sizeof(data));
    values.surfaceScale[0][0]=values.surfaceScale[0][1]=1;
@@ -790,12 +791,21 @@ int main(int argc,char **argv){
    pgraph_glsl_psh_migrate_seed(&state);
    assert(!memcmp(&current,&state,sizeof(state)));
   }
+  if(test>=80656){
+   unsigned f=test-80656;alias_state(&state,f);memset(&values,0,sizeof(values));memset(data,0,sizeof(data));
+   values.surfaceScale[0][0]=values.surfaceScale[0][1]=1;values.clipRange[0][1]=values.clipRange[0][3]=16777215;
+   for(unsigned j=0;j<8;j++){values.clipRegion[j][2]=4;values.clipRegion[j][3]=4;}
+   for(unsigned j=0;j<18;j++)for(unsigned k=0;k<4;k++)values.consts[j][k]=.1f+((j+k+f)%7)*.1f;
+   values.fogColor[0][0]=.1f;values.fogColor[0][1]=.3f;values.fogColor[0][2]=.7f;
+   const float colors[4][4]={{.1f,.3f,.7f,.6f},{.9f,.2f,.4f,.8f},{.3f,.6f,.1f,.7f},{.5f,.8f,.2f,.4f}};memcpy(data,colors,sizeof(colors));
+   float plane[3][4]={{0,0,100,1},{4,0,200,1},{0,4,300,1}};memcpy(data[4],plane,sizeof(plane));data[7][2]=1;
+  }
   const PshState *native_state=&state;
 #ifdef COMPOSITION_DROP_T3
   /* Bounded test-only metadata mutation; prove the GPU comparison notices
    * the lost contribution while the reference keeps all four stages. */
   PshState mutation;
-  if(test>=79360){mutation=state;mutation.rgb_inputs[0]&=~255u;mutation.alpha_inputs[0]&=~255u;native_state=&mutation;}
+  if(test>=79360 && test<80656){mutation=state;mutation.rgb_inputs[0]&=~255u;mutation.alpha_inputs[0]&=~255u;native_state=&mutation;}
 #endif
   GlslcResult modules[2];SpvPshOptions opts={.spirv_1_6=!!(test&256),.ubo_binding=1,.tex_binding=2};assert(pgraph_spv_psh(native_state,opts,&modules[1]));MString *source=pgraph_glsl_gen_psh(&state,(GenPshGlslOptions){.vulkan=true,.locations=true,.ubo_binding=1,.tex_binding=2});GlslcOptions go={.spirv_1_6=opts.spirv_1_6,.emit_layout=true};if(!glslc_compile(GLSLC_STAGE_FRAGMENT,mstring_get_str(source),&go,&modules[0])){fprintf(stderr,"fragment %u %d %s\n",test,modules[0].error_line,modules[0].error);abort();}if(test>=74752 && test<76288){PshState canonical=state;for(unsigned j=0;j<4;j++)canonical.tex_x8y24[j]=false;MString *other=pgraph_glsl_gen_psh(&canonical,(GenPshGlslOptions){.vulkan=true,.locations=true,.ubo_binding=1,.tex_binding=2});assert(!strcmp(mstring_get_str(source),mstring_get_str(other)));mstring_unref(other);}if(test>=76288 && test<77824){PshState canonical=state;for(unsigned j=0;j<4;j++){canonical.dim_tex[j]=2;canonical.tex_cubemap[j]=false;}MString *other=pgraph_glsl_gen_psh(&canonical,(GenPshGlslOptions){.vulkan=true,.locations=true,.ubo_binding=1,.tex_binding=2});assert(!strcmp(mstring_get_str(source),mstring_get_str(other)));mstring_unref(other);}if(test>=77824 && test<79360 && (test-77824)%3!=2){PshState canonical=state;for(unsigned j=0;j<4;j++){canonical.dim_tex[j]=2;canonical.tex_cubemap[j]=false;}MString *other=pgraph_glsl_gen_psh(&canonical,(GenPshGlslOptions){.vulkan=true,.locations=true,.ubo_binding=1,.tex_binding=2});assert(!strcmp(mstring_get_str(source),mstring_get_str(other)));mstring_unref(other);}reference_source_bytes+=strlen(mstring_get_str(source));mstring_unref(source);
   words[0]+=modules[0].num_words;words[1]+=modules[1].num_words;
@@ -816,15 +826,17 @@ int main(int argc,char **argv){
   if(test==70656){unsigned signal=0;for(unsigned p=0;p<16;p++){float red;memcpy(&red,expected+p*4,4);signal+=isfinite(red)&&red>=.125f&&red<=.5f;}assert(signal);printf("Integer dot fixture signal: %u nontrivial scaled integer pixels\n",signal);}
   if(test>=74752 && test<76288)for(unsigned p=0;p<16;p++){float red;memcpy(&red,expected+p*4,4);metadata_signal+=isfinite(red)&&red>0.0f&&red<1.0f;}
   if(test>=77824 && test<79360 && (test-77824)%3==1)for(unsigned p=0;p<16;p++){float red;memcpy(&red,expected+p*4,4);sampler_signal+=isfinite(red)&&red>0.0f&&red<1.0f;}
-  if(test>=79360)for(unsigned p=0;p<16;p++){float red;memcpy(&red,expected+p*4,4);composition_signal+=isfinite(red)&&red>0.0f&&red<1.0f;}
+  if(test>=79360 && test<80656)for(unsigned p=0;p<16;p++){float red;memcpy(&red,expected+p*4,4);composition_signal+=isfinite(red)&&red>0.0f&&red<1.0f;}
+  if(test>=80656)for(unsigned p=0;p<16;p++){float red;memcpy(&red,expected+p*4,4);alias_signal+=isfinite(red)&&red>0.0f&&red<1.0f;}
   for(unsigned j=0;j<16;j++){if(expected[j*4]==0xc0000000u)discarded++;else{written++;sample_pixels+=sampled;point_pixels+=state.point_sprite;}}
   release(&modules[0]);release(&modules[1]);
  }
  printf("Fragment GPU: %u scalar color/depth/discard results, %u differences, %u validation errors; validation=%s\n",compared,failures,errors,validated?"enabled":"DISABLED");
  if(first>=74752 && first<76288){assert(metadata_signal);printf("Float metadata fixture: %u nontrivial pixels; production GLSL identical with packed flag off/on\n",metadata_signal);}
  if(first>=77824 && first<79360){assert(sampler_signal);printf("Packed sampler fixture: %u nontrivial numeric-color pixels\n",sampler_signal);}
- if(first>=79360){assert(composition_signal);printf("Composition fixture: %u nontrivial four-stage pixels\n",composition_signal);}
- if(first>=16896)assert(written && sample_pixels);
+ if(first>=79360 && first<80656){assert(composition_signal);printf("Composition fixture: %u nontrivial four-stage pixels\n",composition_signal);}
+ if(first>=80656){assert(alias_signal && written==(limit-first)*16 && !discarded);printf("Aliased combiner fixture: %u nontrivial pixels, every draw present\n",alias_signal);}
+ if(first>=16896 && first<80656)assert(written && sample_pixels);
  if(first>=4096 && (first<10240 || (first>=14336 && first<16384)))assert(written && discarded && sample_pixels);
  if(first>=8192 && (first<10240 || (first>=14336 && first<16384)))assert(point_pixels);
  printf("Fragment coverage: written_pixels=%u discarded_pixels=%u sampled_pixels=%u point_pixels=%u\n",written,discarded,sample_pixels,point_pixels);

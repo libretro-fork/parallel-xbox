@@ -91,3 +91,4 @@ with tempfile.TemporaryDirectory(prefix='spv-psh-gpu-') as tmp:
 if not special and batch:
  subprocess.run([sys.executable,str(Path(__file__).resolve()),str(r),cc,'--combiners'],check=True)
  subprocess.run([sys.executable,str(Path(__file__).resolve()),str(r),cc,'--composition'],check=True)
+ subprocess.run([sys.executable,str(Path(__file__).with_name('test-psh-dot-mapping.py')),str(r),cc],check=True)

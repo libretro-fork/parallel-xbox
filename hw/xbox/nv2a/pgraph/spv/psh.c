@@ -411,18 +411,33 @@ static Stage stage_values(Context *c,unsigned stage,bool alpha)
     uint32_t encoded=alpha?c->state->alpha_inputs[stage]:c->state->rgb_inputs[stage],out=alpha?c->state->alpha_outputs[stage]:c->state->rgb_outputs[stage];
     uint32_t a=input_value(c,encoded>>24,alpha,stage),b=input_value(c,(encoded>>16)&255,alpha,stage),d=input_value(c,(encoded>>8)&255,alpha,stage),e=input_value(c,encoded&255,alpha,stage);
     unsigned flags=out>>12;uint32_t type=alpha?c->f:c->v3;
-    uint32_t ab=(!alpha && (flags&PS_COMBINEROUTPUT_AB_DOT_PRODUCT))?splat(c,type,binary(c,SpvOpDot,c->f,a,b),3):binary(c,SpvOpFMul,type,a,b);
-    uint32_t cd=(!alpha && (flags&PS_COMBINEROUTPUT_CD_DOT_PRODUCT))?splat(c,type,binary(c,SpvOpDot,c->f,d,e),3):binary(c,SpvOpFMul,type,d,e),mux=0;
+    bool ab_dot=!alpha && (flags&PS_COMBINEROUTPUT_AB_DOT_PRODUCT);
+    bool cd_dot=!alpha && (flags&PS_COMBINEROUTPUT_CD_DOT_PRODUCT);
+    uint32_t ab=ab_dot?binary(c,SpvOpDot,c->f,a,b):binary(c,SpvOpFMul,type,a,b);
+    uint32_t cd=cd_dot?binary(c,SpvOpDot,c->f,d,e):binary(c,SpvOpFMul,type,d,e),mux=0;
     if((out>>8)&15){
+        bool scalar_sum=ab_dot && cd_dot && !(flags&PS_COMBINEROUTPUT_AB_CD_MUX);
+        uint32_t ab_mux=ab,cd_mux=cd;
+        if(!scalar_sum){
+            if(ab_dot)ab_mux=splat(c,c->v3,ab,3);
+            if(cd_dot)cd_mux=splat(c,c->v3,cd,3);
+        }
         if(flags&PS_COMBINEROUTPUT_AB_CD_MUX){
             uint32_t r0=extract(c,c->r[PS_REGISTER_R0],3),test;
             if((c->state->combiner_control>>8)&PS_COMBINERCOUNT_MUX_MSB)test=binary(c,SpvOpFOrdGreaterThanEqual,c->b,r0,c->cf[F_HALF]);
             else{uint32_t bits=unary(c,SpvOpConvertFToU,c->u,mul(c,r0,c->cf[F_BYTE_MAX]));test=binary(c,SpvOpIEqual,c->b,binary(c,SpvOpBitwiseAnd,c->u,bits,c->ui32[1]),c->ui32[1]);}
-            mux=choose(c,type,test,cd,ab);
-        }else mux=binary(c,SpvOpFAdd,type,ab,cd);
-        mux=map_output(c,mux,flags&0x38,alpha);
+            mux=choose(c,type,test,cd_mux,ab_mux);
+        }else mux=binary(c,SpvOpFAdd,scalar_sum?c->f:type,ab_mux,cd_mux);
+        mux=map_output(c,mux,flags&0x38,alpha || scalar_sum);
+        if(scalar_sum)mux=splat(c,c->v3,mux,3);
     }
-    return (Stage){map_output(c,ab,flags&0x38,alpha),map_output(c,cd,flags&0x38,alpha),mux,out,alpha};
+    /* The reference maps a dot's scalar before the RGB constructor. Keep
+     * this order: vectorizing first can change host contraction/rounding. */
+    ab=map_output(c,ab,flags&0x38,alpha || ab_dot);
+    cd=map_output(c,cd,flags&0x38,alpha || cd_dot);
+    if(ab_dot)ab=splat(c,c->v3,ab,3);
+    if(cd_dot)cd=splat(c,c->v3,cd,3);
+    return (Stage){ab,cd,mux,out,alpha};
 }
 static void stage_store(Context *c,Stage s)
 {

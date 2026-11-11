@@ -38,10 +38,10 @@ with tempfile.TemporaryDirectory(prefix='spv-psh-gpu-') as tmp:
  drop=os.environ.get('SPV_COMPOSITION_DROP_T3')=='1'
  if drop:flags+=['-DCOMPOSITION_DROP_T3']
  subprocess.run(flags+list(map(str,sources))+['-Wl,--gc-sections','-lm',*([str(Path(os.environ.get('WINDIR','C:/Windows'))/'System32/vulkan-1.dll')] if os.name=='nt' else ['-lvulkan']),'-o',str(exe)],check=True)
- batches=[(first,first+512) for first in range(0,79360,512)]+[(79360,80656)]
+ batches=[(first,first+512) for first in range(0,79360,512)]+[(79360,80656)]+[(first,first+512) for first in range(80656,82704,512)]
  if os.environ.get('SPV_PSH_GPU_RANGE'):
   first,limit=map(int,os.environ['SPV_PSH_GPU_RANGE'].split(':'))
-  assert 0<=first<limit<=80656
+  assert 0<=first<limit<=82704
   batches=[(first,limit)]
  for first,limit in batches:
   if drop:

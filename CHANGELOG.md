@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Fix Vulkan register-combiner dot-product rounding: apply output mapping to the scalar result before expanding to RGB, including sums of two dot products. Prevent low-bit color differences from the GLSL reference in aliased/multistage combiners without new allocations, intermediate copies or ownership changes. Add scalar-type/owner checks and a 2,048-case Vulkan regression fixture; pipeline readiness and cold-play recovery remain separate.
+
 - Keep x87 precision CI linked to the production exception-status helper: extract the new SoftFloat flag merger with its callers instead of omitting that dependency. Existing precision, rounding and status checks remain intact; no runtime changes.
 
 - Repair secondary jump-cache CI after invalidation gained a deferred-flush parameter: explicitly select immediate invalidation in the existing single-block tests. Keep the cache identity, page-remap and publication checks; no runtime changes.
