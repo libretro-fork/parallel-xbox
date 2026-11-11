@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Repair secondary jump-cache CI after invalidation gained a deferred-flush parameter: explicitly select immediate invalidation in the existing single-block tests. Keep the cache identity, page-remap and publication checks; no runtime changes.
+
 - Restore compatibility CI after the NVNet RX run-state gate: model VM running state in the isolated harness and test direct flush/timer callbacks while stopped or disconnected. Keep descriptor and timer checks rather than bypassing the production guards. No runtime changes.
 
 - Shader CI checks four-stage texture composition across 31,104 mode/filter/key/point-sprite states and validates 62,208 reference/native modules. Add a 1,296-case Vulkan value suite with all four results contributing and a deliberate lost-stage rejection control. Reuse final module owners without intermediate word copies; no runtime changes or stutter-recovery claim.
