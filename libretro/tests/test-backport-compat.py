@@ -99,6 +99,8 @@ typedef struct { NetClientState nc; } NICState;
 struct NvNetState { bool rx,dma,link,available; QEMUTimer *rx_poll_timer; NICState *nic;
     uint32_t phy_regs[6]; uint8_t tx_ring_index,rx_ring_index; };
 static unsigned descriptor_reads,flushes;
+static bool vm_running=true;
+static bool runstate_is_running(void) { return vm_running; }
 static int64_t clock_ms=100;
 #define QEMU_CLOCK_VIRTUAL 0
 #define RX_POLL_INTERVAL_MS 1
@@ -181,6 +183,21 @@ int main(void) {
         if(timer.pending) assert(timer.deadline==77);
         cases++;
     }
+    /* The production flush now gates descriptor access on VM and host-link
+     * state. Model both states, including timer callbacks while stopped. */
+    for(unsigned poll=0;poll<2;poll++) for(unsigned gate=0;gate<4;gate++) {
+        vm_running=gate&1;nic.nc.link_down=!(gate&2);
+        s.rx=s.dma=s.link=s.available=true;
+        timer.pending=true;timer.deadline=77;
+        unsigned rd=descriptor_reads,fl=flushes;
+        if(poll) rx_poll_timer(&s); else nvnet_flush_rx(&s);
+        bool allowed=vm_running && !nic.nc.link_down;
+        assert(flushes==fl+allowed);
+        assert(descriptor_reads==rd+(allowed?3:0));
+        assert(timer.pending && timer.deadline==(allowed?101:77));
+        cases++;
+    }
+    vm_running=true;nic.nc.link_down=false;flushes=0;
     s.rx=s.dma=s.link=true;s.available=false;timer.pending=false;
     nvnet_flush_rx(&s);assert(!flushes && timer.pending && timer.deadline==101);
     /* Descriptor-only recovery, with no MMIO write. */

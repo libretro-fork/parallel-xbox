@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Restore compatibility CI after the NVNet RX run-state gate: model VM running state in the isolated harness and test direct flush/timer callbacks while stopped or disconnected. Keep descriptor and timer checks rather than bypassing the production guards. No runtime changes.
+
 - Shader CI checks four-stage texture composition across 31,104 mode/filter/key/point-sprite states and validates 62,208 reference/native modules. Add a 1,296-case Vulkan value suite with all four results contributing and a deliberate lost-stage rejection control. Reuse final module owners without intermediate word copies; no runtime changes or stutter-recovery claim.
 
 - Fragment CI checks static combiner source and output register encodings against the production GLSL compiler: 17,024 states, 15,232 matching pairs and 30,464 validated modules. Keep correct fallback for reference failures, validate borrowed final words without intermediate files, and reject lost native coverage or corrupt modules. Test-only coverage; no runtime or stutter-recovery claim.
