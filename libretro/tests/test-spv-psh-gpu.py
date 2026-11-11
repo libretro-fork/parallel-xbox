@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 """Compare native fragment color/depth/discard against production GLSL on Vulkan."""
 from pathlib import Path
-import os, subprocess, sys, tempfile
+import os, re, subprocess, sys, tempfile
 r=Path(sys.argv[1]).resolve();cc=sys.argv[2] if len(sys.argv)>2 else 'cc'
 def function(path,name):
  s=path.read_text();start=s.index('MString *'+name+'(');p=s.index('{',start);depth=1;p+=1
@@ -35,11 +35,23 @@ with tempfile.TemporaryDirectory(prefix='spv-psh-gpu-') as tmp:
  sources=[Path(__file__).with_suffix('.c'),d/'reference.c',r/'hw/xbox/nv2a/pgraph/spv/psh.c',r/'hw/xbox/nv2a/pgraph/spv/glslc.c',r/'hw/xbox/nv2a/pgraph/spv/glslc_lex.c',r/'libretro/glib/gcore.c']
  if os.name=='nt':
   sources += [r/'libretro/glib/gcontainers.c']+[r/'libretro-common'/f for f in ['compat/compat_strl.c','encodings/encoding_utf.c','encodings/encoding_base64.c','hash/lrc_hash.c','features/features_cpu.c','time/rtime.c','compat/fopen_utf8.c','string/rstrtod.c','streams/file_stream.c','vfs/vfs_implementation.c','file/file_path.c','file/file_path_io.c','compat/compat_posix_string.c','string/stdstring.c']]
+ drop=os.environ.get('SPV_COMPOSITION_DROP_T3')=='1'
+ if drop:flags+=['-DCOMPOSITION_DROP_T3']
  subprocess.run(flags+list(map(str,sources))+['-Wl,--gc-sections','-lm',*([str(Path(os.environ.get('WINDIR','C:/Windows'))/'System32/vulkan-1.dll')] if os.name=='nt' else ['-lvulkan']),'-o',str(exe)],check=True)
- batches=[(first,first+512) for first in range(0,79360,512)]
+ batches=[(first,first+512) for first in range(0,79360,512)]+[(79360,80656)]
  if os.environ.get('SPV_PSH_GPU_RANGE'):
   first,limit=map(int,os.environ['SPV_PSH_GPU_RANGE'].split(':'))
-  assert 0<=first<limit<=79360
+  assert 0<=first<limit<=80656
   batches=[(first,limit)]
  for first,limit in batches:
-  subprocess.run([str(exe),str(first),str(limit)],check=True,timeout=300)
+  if drop:
+   assert 79360<=first<limit<=80656
+   result=subprocess.run([str(exe),str(first),str(limit)],capture_output=True,text=True,timeout=300)
+   print(result.stdout,end='');print(result.stderr,end='',file=sys.stderr)
+   match=re.search(r'(\d+) differences, 0 validation errors',result.stdout)
+   assert result.returncode==1 and match and int(match[1])>0,'GPU lost-stage control was not rejected'
+   print('Required numerical negative control rejected: native loses stage-three contribution')
+  else:subprocess.run([str(exe),str(first),str(limit)],check=True,timeout=300)
+ if not drop and any(limit>79360 for first,limit in batches):
+  env=dict(os.environ,SPV_COMPOSITION_DROP_T3='1',SPV_PSH_GPU_RANGE='80640:80656')
+  subprocess.run([sys.executable,str(Path(__file__).resolve()),str(r),cc],env=env,check=True)

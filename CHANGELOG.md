@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Shader CI checks four-stage texture composition across 31,104 mode/filter/key/point-sprite states and validates 62,208 reference/native modules. Add a 1,296-case Vulkan value suite with all four results contributing and a deliberate lost-stage rejection control. Reuse final module owners without intermediate word copies; no runtime changes or stutter-recovery claim.
+
 - Fragment CI checks static combiner source and output register encodings against the production GLSL compiler: 17,024 states, 15,232 matching pairs and 30,464 validated modules. Keep correct fallback for reference failures, validate borrowed final words without intermediate files, and reject lost native coverage or corrupt modules. Test-only coverage; no runtime or stutter-recovery claim.
 
 - Fragment-family CI crosses convolution, color-key and point-sprite profiles with the existing texture/shadow shape matrix: 67,008 reference/native pairs and 134,016 validated modules. Validate final owned words synchronously in-process instead of creating a module file and validator process for each case. Keep the original base cases and CLI validation path; CI requires the expanded mode. No runtime changes or GPU-performance claim.

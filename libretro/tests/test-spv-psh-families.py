@@ -5,6 +5,8 @@ from pathlib import Path
 import os, shutil, subprocess, sys, tempfile
 r=Path(sys.argv[1]).resolve();cc=sys.argv[2] if len(sys.argv)>2 else 'cc'
 combiners=len(sys.argv)>3 and sys.argv[3]=='--combiners'
+composition=len(sys.argv)>3 and sys.argv[3]=='--composition'
+special=combiners or composition
 def function(path,name):
  s=path.read_text();start=s.index('MString *'+name+'(');p=s.index('{',start);depth=1;p+=1
  # These production functions have balanced braces within strings as well.
@@ -34,8 +36,9 @@ with tempfile.TemporaryDirectory(prefix='spv-psh-gpu-') as tmp:
  exe=d/('test.exe' if os.name=='nt' else 'test')
  flags=[cc,'-O2','-std=gnu11','-ffunction-sections','-fdata-sections','-Wall','-Wextra','-Wno-unused-parameter','-Wno-sign-compare','-Wno-missing-field-initializers','-Wno-cast-function-type',
  '-I'+str(d),'-I'+str(r),'-I'+str(r/'include'),'-I'+str(r/'libretro/glib'),'-I'+str(r/'libretro-common/include'),'-I'+str(r/'deps/spirv-headers/include')]
- sources=[Path(__file__).with_name('test-spv-psh-combiners.c') if combiners else Path(__file__).with_suffix('.c'),d/'reference.c',r/'hw/xbox/nv2a/pgraph/spv/psh.c',r/'hw/xbox/nv2a/pgraph/spv/glslc.c',r/'hw/xbox/nv2a/pgraph/spv/glslc_lex.c',r/'libretro/glib/gcore.c']
- if combiners:flags+=['-fsanitize=undefined','-fsanitize-undefined-trap-on-error']
+ fixture=Path(__file__).with_name('test-spv-psh-composition.c' if composition else 'test-spv-psh-combiners.c') if special else Path(__file__).with_suffix('.c')
+ sources=[fixture,d/'reference.c',r/'hw/xbox/nv2a/pgraph/spv/psh.c',r/'hw/xbox/nv2a/pgraph/spv/glslc.c',r/'hw/xbox/nv2a/pgraph/spv/glslc_lex.c',r/'libretro/glib/gcore.c']
+ if special:flags+=['-fsanitize=undefined','-fsanitize-undefined-trap-on-error']
  if os.name=='nt':
   sources += [r/'libretro/glib/gcontainers.c']+[r/'libretro-common'/f for f in ['compat/compat_strl.c','encodings/encoding_utf.c','encodings/encoding_base64.c','hash/lrc_hash.c','features/features_cpu.c','time/rtime.c','compat/fopen_utf8.c','string/rstrtod.c','streams/file_stream.c','vfs/vfs_implementation.c','file/file_path.c','file/file_path_io.c','compat/compat_posix_string.c','string/stdstring.c']]
  # Probe only validator availability. A failure in the actual matrix build
@@ -45,7 +48,7 @@ with tempfile.TemporaryDirectory(prefix='spv-psh-gpu-') as tmp:
  probe=d/'validator-probe.c';probe.write_text('#include <spirv-tools/libspirv.h>\nint main(void){spv_context c=spvContextCreate(SPV_ENV_VULKAN_1_3);spvContextDestroy(c);return 0;}\n')
  library=subprocess.run([cc,str(probe),'-lSPIRV-Tools','-lstdc++','-o',str(d/'validator-probe')],capture_output=True)
  batch=mode!='cli' and library.returncode==0
- if not batch and (combiners or mode=='auto' or os.environ.get('SPV_FAMILY_REQUIRE_IN_PROCESS')=='1'):
+ if not batch and (special or mode=='auto' or os.environ.get('SPV_FAMILY_REQUIRE_IN_PROCESS')=='1'):
   raise SystemExit('UNQUALIFIED: expanded family matrix requires the native SPIRV-Tools library; '+library.stderr.decode(errors='replace'))
  validator=shutil.which('spirv-val')
  if not batch and not validator:raise SystemExit('UNQUALIFIED: no SPIR-V validator available')
@@ -57,8 +60,8 @@ with tempfile.TemporaryDirectory(prefix='spv-psh-gpu-') as tmp:
   modules=d/control;modules.mkdir()
   result=subprocess.run([str(exe),str(modules)],stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True,timeout=600 if batch and control=='positive' else 120)
   if control=='family-gap':
-   assert result.returncode and ('MISMATCH category=0 position=0 byte=4 ' if combiners else 'native eligibility mismatch: mode=2 ') in result.stdout,result.stdout
-   print('Required negative control rejected: supported '+('combiner source' if combiners else 'projective family')+' falls back to GLSL')
+   assert result.returncode and ('COMPOSITION_MISMATCH choice=100 profile=0 ' if composition else 'MISMATCH category=0 position=0 byte=4 ' if combiners else 'native eligibility mismatch: mode=2 ') in result.stdout,result.stdout
+   print('Required negative control rejected: supported '+('stage composition' if composition else 'combiner source' if combiners else 'projective family')+' falls back to GLSL')
   elif control=='invalid-module':
    assert result.returncode and 'module validation failure:' in result.stdout,result.stdout
    print('Required negative control rejected: corrupt module reaches the real in-process validator')
@@ -68,12 +71,12 @@ with tempfile.TemporaryDirectory(prefix='spv-psh-gpu-') as tmp:
    files=list(modules.glob('*.spv'))
    if batch:
     assert not files,'in-process validation must not materialize module files'
-    assert ('Combiner audit: 17024 states, 15232 pairs, 0 mismatches; 30464 modules validated in-process' if combiners else '134016 reference/native family modules validated in-process') in result.stdout
+    assert ('Composition audit: 31104 states, 31104 pairs; 62208 modules validated in-process' if composition else 'Combiner audit: 17024 states, 15232 pairs, 0 mismatches; 30464 modules validated in-process' if combiners else '134016 reference/native family modules validated in-process') in result.stdout
    else:
     assert len(files)==5760
     for path in files:subprocess.run([validator,'--target-env','vulkan1.3',str(path)],check=True)
     print('5760 reference/native family modules validated as Vulkan SPIR-V',flush=True)
-   if combiners:continue
+   if special:continue
    # Execute selected assertions rather than trusting duplicated preconditions.
    witnesses={'cube dimension':(2,0,1),'dependent rectangle':(13,0,2),'two-dot dimension':(7,0,1),'passthrough border':(3,0,4),'cube shadow':(2,0,32),'dependent dimension':(13,0,1),'bump shadow':(5,0,32)}
    if batch:witnesses.update({'convolution dimension':(0,1,1),'point rectangle':(11,12,2)})
@@ -85,5 +88,6 @@ with tempfile.TemporaryDirectory(prefix='spv-psh-gpu-') as tmp:
 
 # Exercise static register graphs through the same reference/compiler setup.
 # Explicit CLI mode retains its documented base-only scope.
-if not combiners and batch:
+if not special and batch:
  subprocess.run([sys.executable,str(Path(__file__).resolve()),str(r),cc,'--combiners'],check=True)
+ subprocess.run([sys.executable,str(Path(__file__).resolve()),str(r),cc,'--composition'],check=True)

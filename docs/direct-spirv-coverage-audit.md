@@ -67,6 +67,33 @@ simultaneous destination aliases, multistage dependencies or mixed texture
 families. Existing value/image evidence remains separate. No runtime changes or
 PSO-readiness/cold-play recovery follow from this test-only expansion.
 
+## Active-stage composition
+
+The fragment contract additionally checks all 6^4 stage combinations of NONE,
+PASSTHRU, CLIPPLANE, PROJECT2D, PROJECT3D and CUBEMAP across the same 24
+convolution/color-key/point-sprite profiles. PROJECT3D uses a volume texture;
+CUBEMAP uses a cube. A static combiner consumes all four results as two products
+and a sum, with RGB and alpha contributing to the final output. All 31,104
+reference/native pairs compile; their 62,208 modules validate in-process with
+undefined-behavior checks. Lost-native-eligibility and corrupt-module controls
+must fail. This runs alongside the original family and register audits.
+
+The software/physical Vulkan fixture shares the state builder and appends 1,296
+cases to the existing GPU contract (79360:80656). Each stage-mode combination
+gets one deterministic profile, `choice % 24`; this numerical subset is not the
+full 31,104-pair CPU product. It varies descriptor view dimensions, per-unit
+samplers, scales and color-key metadata. The reference/native comparison checks
+color, depth and discard. A numerical mutation removes only the native T3
+contribution and must produce differences without validation errors. Final words
+remain in their result owners until each synchronous CPU/GPU consumer returns;
+the test-only mutation uses one bounded metadata snapshot, not a module clone.
+
+This does not establish dependent/bump/dot chains in arbitrary mixed graphs,
+all cross-products of shadow/packed/signed formats, or multistage combiner
+aliasing. Keep the existing specialized value tests and correct unsupported
+fallback; no runtime change or pipeline-readiness claim follows from these
+additional tests.
+
 ## Fallback boundaries inspected
 
 - Vertex binding/capability guards reject unsupported host layouts and preserve
