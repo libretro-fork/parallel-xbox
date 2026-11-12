@@ -17,4 +17,16 @@ with tempfile.TemporaryDirectory(prefix='pramin-') as tmp:
  p=Path(tmp);(p/'test.c').write_text(fixture)
  binary=os.environ.get('PRAMIN_BINARY',str(p/'test'));flags=shlex.split(os.environ.get('PRAMIN_CFLAGS','-static' if 'mingw' in cc else '-fsanitize=address,undefined'))
  subprocess.run([cc,'-O2','-g','-std=gnu11','-Wall','-Wextra','-Werror',*flags,str(p/'test.c'),'-o',binary],check=True)
- if not os.environ.get('PRAMIN_SKIP_RUN'):subprocess.run([binary],check=True,timeout=60)
+ if not os.environ.get('PRAMIN_SKIP_RUN'):
+  with subprocess.Popen([binary]) as child:
+   try:
+    result=child.wait(timeout=60)
+   except subprocess.TimeoutExpired:
+    # Preserve the existing limit while distinguishing CPU work from a
+    # blocked sanitizer/runtime on native ARM64 CI. Never retry as a pass.
+    for name in ('stat','wchan'):
+     sample=Path('/proc')/str(child.pid)/name
+     if sample.is_file():print('PRAMIN timeout '+name+': '+sample.read_text()[:1024],flush=True)
+    child.kill();child.wait()
+    raise
+   if result:raise subprocess.CalledProcessError(result,[binary])

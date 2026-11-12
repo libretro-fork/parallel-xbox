@@ -31,6 +31,7 @@ static void exercise(bool unified){
  nv2a_pramin_set_mode(&d,unified);unsigned cases=0;
  for(unsigned pass=0;pass<3;pass++){
   unsigned n=1u<<pass;
+  printf("PRAMIN %s: checking every %u-byte address\n",unified?"unified":"legacy",n);fflush(stdout);
   for(size_t a=0;a+n<=0x100000;a++){
    uint32_t value=random_word();uint64_t expected=0;
    uint8_t old[4];for(unsigned j=0;j<n;j++)old[j]=d.vram_ptr[oracle(a+j)];

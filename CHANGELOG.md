@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Expose PRAMIN test progress and bounded process-state diagnostics when the native ARM64 fixture times out. Keep its 60-second limit, exhaustive address checks and sanitizer coverage; timeouts remain failures.
+
 - Reuse an in-memory driver pipeline cache in the geometry numerical test, retaining every reference/direct PSO, output comparison and validation check within the existing timeout. This affects test execution only, not runtime caches or cold-play qualification.
 
 - Restore packed-overlay pixel regression coverage after its GLSL reference moved to the shared utility header. Extract only that shader's complete initializer; retain the production row packer and independent pixel oracle. No runtime changes; shader/PSO cold-play qualification remains open.
