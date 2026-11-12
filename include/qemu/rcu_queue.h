@@ -31,16 +31,17 @@
 /*
  * Lists that RCU readers walk while a writer changes them. The links a
  * reader follows (the head's first pointer and each element's next one)
- * are retro_atomic_ptr_t; a reader loads them relaxed, as QEMU's own
- * RCU read did (the address dependency orders what it reads
- * through them), and a writer publishes a new element with a release
- * store once its own links are set. The back links only writers use
+ * are retro_atomic_ptr_t; acquire readers pair with release publication
+ * of initialized element fields. Unlink also publishes its successor:
+ * a relaxed bypass store can expose that successor before its fields on
+ * weakly ordered hosts, even when its original insertion used release.
+ * The back links only writers use
  * stay plain. Every access to such a list, the writer's too, goes
  * through these macros; an empty zero-length member of the head gives
  * the element type back to FIRST.
  */
 
-#define QRCU_LOAD(type, p)   ((type)retro_atomic_load_relaxed_ptr(p))
+#define QRCU_LOAD(type, p)   ((type)retro_atomic_load_acquire_ptr(p))
 
 /*
  * List
@@ -102,7 +103,7 @@ struct {                                                                \
     if (next_ != NULL) {                                                \
         next_->field.le_prev = (elm)->field.le_prev;                    \
     }                                                                   \
-    retro_atomic_store_relaxed_ptr((elm)->field.le_prev, next_);        \
+    retro_atomic_store_release_ptr((elm)->field.le_prev, next_);        \
 } while (/*CONSTCOND*/0)
 
 /* Unlink an element no reader walks, if it is on the list. */
@@ -189,7 +190,7 @@ union {                                                                 \
     } else {                                                            \
         (head)->tqh_circ.tql_prev = (elm)->field.tqe_circ.tql_prev;     \
     }                                                                   \
-    retro_atomic_store_relaxed_ptr(                                     \
+    retro_atomic_store_release_ptr(                                     \
         &(elm)->field.tqe_circ.tql_prev->tql_next, next_);              \
     (elm)->field.tqe_circ.tql_prev = NULL;                              \
 } while (/*CONSTCOND*/0)

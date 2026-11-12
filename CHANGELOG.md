@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Reuse identical driver-stage compilation within each vertex numerical-test batch using a test-owned pipeline cache. Preserve the complete corpus, PSO execution, value oracles, validation and existing watchdogs; this does not change the core's runtime caching.
+
+- Pair RCU list traversal with release publication when unlinking a node and exposing its successor. Keep initialized callback fields ordered on weakly ordered hosts while preserving deferred reclamation and nonblocking unlink.
+
 - Run the PRAMIN fixture's independent unified/64 MiB legacy/128 MiB legacy configurations concurrently under one shared 60-second deadline. Preserve all 9,437,172 address/width cases, descriptor checks, state compatibility and sanitizer coverage; native ARM64 no longer serializes the CPU-heavy configurations.
 
 - Expose PRAMIN test progress and bounded process-state diagnostics when the native ARM64 fixture times out. Keep its 60-second limit, exhaustive address checks and sanitizer coverage; timeouts remain failures.
