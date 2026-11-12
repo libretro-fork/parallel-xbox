@@ -6424,13 +6424,20 @@ static void tcg_out_st_helper_args(TCGContext *s, const TCGLabelQemuLdst *ldst,
  * next tcg_tb_alloc moves on once this one is marked full), or with
  * fewer insns (-2) if it started at the bottom of one already.
  */
-static int tcg_code_overflow(TCGContext *s)
+static int tcg_code_overflow(TCGContext *s, bool body_only)
 {
 #ifdef TCG_TARGET_COLD_CODE
     if (s->code_buf == s->code_gen_hot_start) {
         return -2;
     }
-    tcg_code_gen_chunk_full(s);
+    if (body_only) {
+        /* The failing body may occupy its entire highwater reserve, but
+         * no cold tail has been emitted. Retire all hot bytes and retain
+         * the untouched cold remainder beyond the reserved TB metadata. */
+        s->code_gen_ptr = s->code_gen_highwater + TCG_HIGHWATER;
+    } else {
+        tcg_code_gen_chunk_full(s);
+    }
 #endif
     return -1;
 }
@@ -6584,7 +6591,7 @@ int tcg_gen_code(TCGContext *s, TranslationBlock *tb)
             g_assert((void *)s->code_ptr <=
                      s->code_gen_highwater + TCG_HIGHWATER);
 #endif
-            return tcg_code_overflow(s);
+            return tcg_code_overflow(s, true);
         }
         /* Test for TB overflow, as seen by gen_insn_end_off.  */
         if (unlikely(tcg_current_code_size(s) > UINT16_MAX)) {
@@ -6614,7 +6621,7 @@ int tcg_gen_code(TCGContext *s, TranslationBlock *tb)
         i = tcg_out_pool_finalize(s, cold_highwater);
     }
     if (i < 0) {
-        return i == -1 ? tcg_code_overflow(s) : i;
+        return i == -1 ? tcg_code_overflow(s, false) : i;
     }
     cold_end = s->code_ptr;
 #ifdef TCG_TARGET_COLD_CODE

@@ -72,3 +72,19 @@ boundary, 376569 allocation and 1792 retry decisions. A new required
 negative control substitutes chunk end for segment end and must fail.
 Runtime emitted-body/tail mixtures and failed-emission reuse remain
 future work; the original noisy timing samples remain unqualified.
+
+Body-only overflow follow-up
+Body emission now tells the overflow handler that no cold tail was written.
+The handler retires every hot byte through the highwater reserve and leaves
+the cold allocation cursor beyond the failed TB metadata. This permits
+subdivision of untouched cold space without treating attempted body bytes
+as free. A fresh segment still retries with fewer guest instructions;
+cold-tail and search overflow still abandon the chunk conservatively.
+
+Eight explicit partial-body scenarios fill every attempted hot byte and
+failed metadata with canaries, then verify the next allocation remains in
+untouched cold space. A required mutation control retaining the failed hot
+range must fail. Existing ownership and unwind tests remain required.
+The 4096/16 model improves from 1016 to 1840 blocks (-3.11% vs parent),
+but cold-heavy mixtures still fail capacity qualification. No runtime
+speedup, acceptable overall capacity or main-branch readiness is claimed.

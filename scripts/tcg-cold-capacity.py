@@ -23,7 +23,13 @@ static unsigned capacity(uint8_t*base,unsigned hot,unsigned cold,bool split){
   if(split){
    if((uint8_t*)s.code_gen_ptr+hot>(uint8_t*)s.code_gen_highwater ||
       (uint8_t*)s.code_gen_cold_ptr+cold>(uint8_t*)s.code_gen_cold_highwater){
-    s.code_buf=s.code_gen_ptr;tcg_code_overflow(&s);tcg_code_gen_chunk_full(&s);continue;
+    bool body_failed=(uint8_t*)s.code_gen_ptr+hot>(uint8_t*)s.code_gen_highwater;
+    s.code_buf=s.code_gen_ptr;
+    int retry=tcg_code_overflow(&s,body_failed);
+    /* This fixed-size model cannot halve a TB: advance a segment if a
+     * fresh one is too small. Production retries with fewer instructions. */
+    if(retry==-2)tcg_code_gen_chunk_full(&s);
+    continue;
    }
    s.code_gen_ptr=(void*)ROUND_UP((uintptr_t)s.code_gen_ptr+hot,16);
    s.code_gen_cold_ptr=(void*)ROUND_UP((uintptr_t)s.code_gen_cold_ptr+cold,16);

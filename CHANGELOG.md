@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Experimental TCG distinguishes body-only overflow from failed cold emission. Retire all attempted hot bytes and preserve only untouched cold space beyond reserved metadata for retry. Cold-heavy capacity losses remain unresolved; keep the experiment off libretro.
+
 - Experimental TCG reuses bounded, committed chunk remainders before allocating another chunk. Keep failed-emission ranges unreclaimed and track segment bounds separately from relocation chunks. Some capacity losses improve, but the candidate still fails the broader capacity comparison and stays off libretro.
 
 - Experimental x86-64 TCG separates translated instruction bodies from slow paths, pools and search records within bounded hot/cold chunks. Correctness tests pass, but synthetic capacity models expose substantial losses from the fixed split; keep this candidate off libretro pending allocator revision and performance qualification.

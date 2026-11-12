@@ -99,7 +99,8 @@ int main(void){
     tb_jmp_cache_store(&caches[cpu],pc,variants[2].flags,&variants[2]);
     tb_jmp_cache_store(&caches[cpu],pc,variants[3].flags,&variants[3]);
    }
-   tb_jmp_cache_inval_tb(&variants[3]);
+   /* NULL keeps this single-TB test on the immediate invalidation path. */
+   tb_jmp_cache_inval_tb(&variants[3],NULL);
    for(unsigned cpu=0;cpu<2;cpu++){
     assert(!caches[cpu].array[primary].tb);
     if(boost)assert(!caches[cpu].classes[seen[3]].tb);
@@ -113,7 +114,7 @@ int main(void){
    table_answer=NULL;variants[0].cflags=variants[1].cflags=CF_PCREL;
    tb_jmp_cache_store(&caches[0],pc,mode,&variants[0]);
    tb_jmp_cache_store(&caches[0],pc,mode|flags(1),&variants[1]);
-   variants[0].cflags|=CF_INVALID;tb_jmp_cache_inval_tb(&variants[0]);
+   variants[0].cflags|=CF_INVALID;tb_jmp_cache_inval_tb(&variants[0],NULL);
    assert(!tb_lookup(&cpus[0],(TCGTBCPUState){pc,0,mode,CF_PCREL}));
    tb_jmp_cache_clear_page(&cpus[0],pc&~4095ull);
    assert(!caches[0].array[primary].tb);
