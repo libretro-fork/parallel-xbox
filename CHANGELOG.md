@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Reuse an in-memory driver pipeline cache in the geometry numerical test, retaining every reference/direct PSO, output comparison and validation check within the existing timeout. This affects test execution only, not runtime caches or cold-play qualification.
+
 - Restore packed-overlay pixel regression coverage after its GLSL reference moved to the shared utility header. Extract only that shader's complete initializer; retain the production row packer and independent pixel oracle. No runtime changes; shader/PSO cold-play qualification remains open.
 
 - Refresh the used libretro-common subset from RetroArch c7a5f6e, retaining clockless waits and bounded queue/borrowed-buffer extensions. Frontend-backed disc reads use VFS v6 positional I/O when available, avoiding cursor seeks without staging buffers; older frontends and unsupported handles keep seek/read. Shader/PSO cold-play recovery remains unqualified.
