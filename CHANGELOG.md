@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Restore the Vulkan overlay regression test after runtime conversion moved to immutable utility words. Execute the actual module-creation helpers and bundled converter against the existing independent pixel, bounds and synchronization checks instead of a stale GLSL-compiler stub. Model separate descriptor owners for the two conversions retained until their submission fence.
+
 - Reuse identical driver-stage compilation within each vertex numerical-test batch using a test-owned pipeline cache. Preserve the complete corpus, PSO execution, value oracles, validation and existing watchdogs; this does not change the core's runtime caching.
 
 - Pair RCU list traversal with release publication when unlinking a node and exposing its successor. Keep initialized callback fields ordered on weakly ordered hosts while preserving deferred reclamation and nonblocking unlink.
