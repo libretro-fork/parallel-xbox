@@ -38,6 +38,7 @@ typedef struct { int kind; int64_t length, base, vfs_position; bool writable;
                  void *file, *qcow2, *vfs, *as; } LRMedium;
 typedef struct { LRMedium m; } BlockBackend;
 static void *xemu_libretro_vfs;
+static void *xemu_libretro_vfs_read_at;
 static int calls, fail_at, failure, writing;
 static int64_t next_offset;
 static MemTxResult transfer(void *as, int64_t off, int attr, const void *buf, size_t len, bool write) {
@@ -60,8 +61,8 @@ static int filev(void *p, int64_t off, const LRFileIOV *v, int n) {
 #define lr_file_pwritev filev
 #define lr_qcow2_preadv filev
 #define lr_qcow2_pwritev filev
-static int lr_vfs_readv(void *api, void *file, int64_t *pos, int64_t off, const LRFileIOV *v, int n) {
-    (void)api; (void)pos; return filev(file, off, v, n);
+static int lr_vfs_readv_at(void *api, void *file, void *read_at, int64_t *pos, int64_t off, const LRFileIOV *v, int n) {
+    (void)api; (void)read_at; (void)pos; return filev(file, off, v, n);
 }
 static int filezero(void *p, int64_t off, int64_t len) {
     (void)p; (void)off; (void)len; assert(0); return -EIO;

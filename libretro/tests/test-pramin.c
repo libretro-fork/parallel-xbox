@@ -31,6 +31,7 @@ static void exercise(bool unified){
  nv2a_pramin_set_mode(&d,unified);unsigned cases=0;
  for(unsigned pass=0;pass<3;pass++){
   unsigned n=1u<<pass;
+  printf("PRAMIN %s: checking every %u-byte address\n",unified?"unified":"legacy",n);fflush(stdout);
   for(size_t a=0;a+n<=0x100000;a++){
    uint32_t value=random_word();uint64_t expected=0;
    uint8_t old[4];for(unsigned j=0;j<n;j++)old[j]=d.vram_ptr[oracle(a+j)];
@@ -54,18 +55,23 @@ static void exercise(bool unified){
  }
  printf("PRAMIN %s: %u width/address cases plus 262144 descriptor dwords PASS\n",unified?"unified":"legacy",cases);
 }
-int main(void){
+int main(int argc,char **argv){
+ const char *mode=argc==2?argv[1]:"all";
+ assert(argc<=2 && (!strcmp(mode,"all") || !strcmp(mode,"unified") || !strcmp(mode,"legacy64") || !strcmp(mode,"legacy128")));
  RAMBlock shadow={true};MemoryRegion region={.size=128*MiB};d=(NV2AState){.vram=&region,.ramin={.size=0x100000,.ram_block=&shadow},.vram_ptr=calloc(1,128*MiB),.ramin_ptr=calloc(1,0x100000)};assert(d.vram_ptr && d.ramin_ptr);
  region.size=64*MiB;
  nv2a_pramin_set_mode(&d,true);nv2a_pramin_save_begin(&d);assert(!shadow.migratable);nv2a_pramin_save_end(&d);assert(shadow.migratable);
  nv2a_pramin_set_mode(&d,false);nv2a_pramin_save_begin(&d);assert(shadow.migratable);
  d.migration_parked=true;shadow.migratable=false;nv2a_migration_release(&d);assert(unpark==1 && shadow.migratable && !d.migration_parked);nv2a_migration_release(&d);assert(unpark==1);
- exercise(true);exercise(false);
+ if(!strcmp(mode,"all") || !strcmp(mode,"unified"))exercise(true);
+ if(!strcmp(mode,"all") || !strcmp(mode,"legacy64"))exercise(false);
  /* Old versions force the original model without copying either RAM store. */
  uint8_t before[32];memcpy(before,d.vram_ptr+64*MiB-32,32);
  for(int v=1;v<=5;v++){nv2a_pramin_set_mode(&d,true);assert(nv2a_pramin_restore_mode(&d,v) && !d.pramin_unified && !d.pramin_top);assert(!memcmp(before,d.vram_ptr+64*MiB-32,32));}
  nv2a_pramin_set_mode(&d,true);assert(nv2a_pramin_restore_mode(&d,6) && d.pramin_top);
  nv2a_pramin_set_mode(&d,false);assert(nv2a_pramin_restore_mode(&d,6) && !d.pramin_top);
- region.size=128*MiB;exercise(false);d.pramin_unified=true;assert(!nv2a_pramin_restore_mode(&d,6) && !d.pramin_unified && !d.pramin_top);
+ region.size=128*MiB;
+ if(!strcmp(mode,"all") || !strcmp(mode,"legacy128"))exercise(false);
+ d.pramin_unified=true;assert(!nv2a_pramin_restore_mode(&d,6) && !d.pramin_unified && !d.pramin_top);
  free(d.ramin_ptr);free(d.vram_ptr);puts("PRAMIN mode/state compatibility and 128 MiB legacy policy PASS");
 }

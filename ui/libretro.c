@@ -33,6 +33,7 @@
 #include "block/libretro-disk.h"
 #include "hw/ide/ide-dev.h"
 #include "block/libretro-file.h"
+#include "block/libretro-vfs-negotiate.h"
 #include "block/qcow2-raw.h"
 #include <glib/gstdio.h>
 #include "ui/libretro-widescreen-titles.h"
@@ -95,6 +96,7 @@ static retro_log_printf_t         log_cb       = NULL;
 
 /* also read by block/libretro-vfs.c, the DVD drive's driver for saf:// */
 struct retro_vfs_interface *xemu_libretro_vfs = NULL;
+retro_vfs_read_at_t xemu_libretro_vfs_read_at = NULL;
 
 /* ========================================================================= */
 /* Hardware rendering state                                                  */
@@ -2202,9 +2204,12 @@ RETRO_API void retro_set_environment(retro_environment_t cb)
     environ_cb(RETRO_ENVIRONMENT_SET_SUPPORT_NO_GAME, &no_game);
 
     /* Get VFS interface */
-    struct retro_vfs_interface_info vfs_info = { 3, NULL };
-    if (environ_cb(RETRO_ENVIRONMENT_GET_VFS_INTERFACE, &vfs_info)) {
+    struct retro_vfs_interface_info vfs_info;
+    xemu_libretro_vfs = NULL;
+    xemu_libretro_vfs_read_at = NULL;
+    if (lr_vfs_negotiate(environ_cb, &vfs_info)) {
         xemu_libretro_vfs = vfs_info.iface;
+        xemu_libretro_vfs_read_at = lr_vfs_positional_read(&vfs_info);
         LRLOG_INFO("[xemu] VFS interface obtained (version %u)\n", vfs_info.required_interface_version);
     }
 

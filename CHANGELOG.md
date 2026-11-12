@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Refresh the used libretro-common subset from RetroArch c7a5f6e, retaining clockless waits and bounded queue/borrowed-buffer extensions. Frontend-backed disc reads use VFS v6 positional I/O when available, avoiding cursor seeks without staging buffers; older frontends and unsupported handles retain seek/read. Native disc I/O is unchanged. Shader/PSO cold-play recovery remains unqualified; no gameplay speedup is claimed.
+
+- Pair RCU list traversal with release publication when unlinking a node and exposing its successor. Keep initialized callback fields ordered on weakly ordered hosts while preserving deferred reclamation and nonblocking unlink.
+
+- Restore overlay regression tests after utility shaders moved to shared reference/immutable-word providers; retain pixel, bounds, synchronization and descriptor-ownership checks. Reuse identical driver-stage compilation in numerical fixtures and run independent PRAMIN storage configurations concurrently under the same shared deadline, preserving the full corpora, sanitizers and watchdogs.
+
 - Restore I/O-recompilation CI after the invalidation API gained a deferred-flush parameter and JIT permission transitions. Check immediate invalidation, write ownership and return to execute mode, including duplicate and one-shot invalidations; reject omitted transitions. No runtime changes.
 
 - Fix Vulkan register-combiner dot-product rounding: apply output mapping to the scalar result before expanding to RGB, including sums of two dot products. Prevent low-bit color differences from the GLSL reference in aliased/multistage combiners without new allocations, intermediate copies or ownership changes. Add scalar-type/owner checks and a 2,048-case Vulkan regression fixture; pipeline readiness and cold-play recovery remain separate.
