@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Run the PRAMIN fixture's independent unified/64 MiB legacy/128 MiB legacy configurations concurrently under one shared 60-second deadline. Preserve all 9,437,172 address/width cases, descriptor checks, state compatibility and sanitizer coverage; native ARM64 no longer serializes the CPU-heavy configurations.
+
 - Expose PRAMIN test progress and bounded process-state diagnostics when the native ARM64 fixture times out. Keep its 60-second limit, exhaustive address checks and sanitizer coverage; timeouts remain failures.
 
 - Reuse an in-memory driver pipeline cache in the geometry numerical test, retaining every reference/direct PSO, output comparison and validation check within the existing timeout. This affects test execution only, not runtime caches or cold-play qualification.
