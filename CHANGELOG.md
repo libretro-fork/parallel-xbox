@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Experimental TCG reuses bounded, committed chunk remainders before allocating another chunk. Keep failed-emission ranges unreclaimed and track segment bounds separately from relocation chunks. Some capacity losses improve, but the candidate still fails the broader capacity comparison and stays off libretro.
+
 - Experimental x86-64 TCG separates translated instruction bodies from slow paths, pools and search records within bounded hot/cold chunks. Correctness tests pass, but synthetic capacity models expose substantial losses from the fixed split; keep this candidate off libretro pending allocator revision and performance qualification.
 
 - Vulkan vertex translation omits unreferenced signed-integer declarations using a stack-owned count/write usage mask. Preserve instruction IDs, arithmetic, layouts and allocation counts while shrinking generated modules; frame-time improvement remains unmeasured.

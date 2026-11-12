@@ -338,6 +338,7 @@ static bool tcg_region_chunk_init(TCGContext *s, void *start)
     s->code_gen_cold_ptr = start + hot;
     s->code_gen_cold_highwater = start + size - TCG_HIGHWATER;
     s->code_gen_chunk_end = start + size;
+    s->code_gen_segment_end = start + size;
     return true;
 }
 
@@ -347,6 +348,35 @@ static bool tcg_region_chunk_init(TCGContext *s, void *start)
  */
 bool tcg_region_next_chunk(TCGContext *s)
 {
+    /* Only committed cursors describe reusable space. A failed emitter
+     * marks cold_ptr at chunk_end; its partially written ranges are not
+     * reclaimed. Keep original chunk_end for relocation reach and advance. */
+    if (s->code_gen_cold_ptr != s->code_gen_chunk_end) {
+        uint8_t *hot_end = s->code_gen_highwater + TCG_HIGHWATER;
+        uint8_t *cold_end = s->code_gen_segment_end;
+        size_t hot_free = s->code_gen_ptr < (void *)hot_end ?
+                          hot_end - (uint8_t *)s->code_gen_ptr : 0;
+        size_t cold_free = s->code_gen_cold_ptr < (void *)cold_end ?
+                           cold_end - (uint8_t *)s->code_gen_cold_ptr : 0;
+        uint8_t *start = hot_free > cold_free ? s->code_gen_ptr :
+                                              s->code_gen_cold_ptr;
+        size_t size = MAX(hot_free, cold_free);
+        size_t hot = QEMU_ALIGN_DOWN(size / TCG_COLD_HOT_DIVISOR, 128);
+
+        /* Bound subdivision depth and leave room for useful translations,
+         * metadata alignment and both highwater margins. */
+        if (size >= TCG_COLD_CHUNK_SIZE / 64 &&
+            hot > TCG_HIGHWATER + sizeof(TranslationBlock) + 128 &&
+            size - hot > TCG_HIGHWATER + sizeof(TranslationBlock) + 128) {
+            s->code_gen_hot_start = start;
+            s->code_gen_ptr = start;
+            s->code_gen_highwater = start + hot - TCG_HIGHWATER;
+            s->code_gen_cold_ptr = start + hot;
+            s->code_gen_cold_highwater = start + size - TCG_HIGHWATER;
+            s->code_gen_segment_end = start + size;
+            return false;
+        }
+    }
     if (tcg_region_chunk_init(s, s->code_gen_chunk_end)) {
         return false;
     }

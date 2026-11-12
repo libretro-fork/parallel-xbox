@@ -417,6 +417,8 @@ struct TCGContext {
     void *code_gen_cold_ptr;
     void *code_gen_cold_highwater;
     void *code_gen_chunk_end;
+    /* Reused segments may end before the original chunk boundary. */
+    void *code_gen_segment_end;
 #endif
 
     /* Track which vCPU triggers events */

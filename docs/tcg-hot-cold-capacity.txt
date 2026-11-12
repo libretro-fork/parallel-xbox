@@ -51,3 +51,24 @@ partition policy; a different fixed ratio alone merely moves the loss.
 This follow-up changes only analysis tooling/documentation. Runtime bytes
 are unchanged from the already-tested experimental candidate. The branch
 remains experimental and libretro is not modified by this work.
+
+2026-11-12 implementation follow-up
+The experimental allocator now subdivides the larger unused remainder
+when allocation exhausts a segment at committed cursors. Segment end is
+tracked independently of original chunk end. At least 16 KiB is required
+before subdivision; no dynamic allocation or free-range list is used.
+Failed emission still marks the original chunk full and skips all reuse:
+partially written bytes are not described by committed cursors.
+
+Re-running the same 49-mix comparison with this conservative policy:
+16/16 capacity improves to 24512 blocks (-6.48% versus parent), but 16/128
+still holds only 10896 (-41.80%), and 4096/256 holds 1016 (-44.18%).
+This is deliberately less aggressive than the earlier offline model.
+The broad capacity gate remains failed; do not promote this branch.
+
+The ownership regression exercises 640 reused segments and 604720
+disjoint metadata/body/tail publications, besides the existing 1280
+boundary, 376569 allocation and 1792 retry decisions. A new required
+negative control substitutes chunk end for segment end and must fail.
+Runtime emitted-body/tail mixtures and failed-emission reuse remain
+future work; the original noisy timing samples remain unqualified.
