@@ -1,5 +1,5 @@
 CHD codec sources imported from libretro/RetroArch
-Commit: 86d9bbc6c0f872397a07e5950e4ef6d58db12195
+Commit: c7a5f6edb8aecfe15d4aad5c3df3c29008f4abdf
 
 formats/chd/rchd.c
 formats/chd/FORMAT.md

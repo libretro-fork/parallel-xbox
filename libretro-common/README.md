@@ -1,19 +1,32 @@
 # libretro-common
 
-The parts of [libretro-common](https://github.com/libretro/RetroArch/tree/master/libretro-common)
-the core uses, as RetroArch has them (RetroArch commit af62210): the
-lock-free threading primitives (`retro_atomic.h`, `rthreads`,
-`retro_eventcount`, `retro_spsc`). Each file carries its own license
-(MIT). Fixes go to RetroArch's copy first and are brought over from
-there.
+The subset used by this core, refreshed from
+[RetroArch](https://github.com/libretro/RetroArch/tree/c7a5f6edb8aecfe15d4aad5c3df3c29008f4abdf/libretro-common)
+commit `c7a5f6edb8aecfe15d4aad5c3df3c29008f4abdf`.
+`UPSTREAM.json` records the source revision and normalized file hashes.
+Files retain their upstream licenses.
 
-`memmap/memmap.c` is copied unchanged from the same RetroArch commit
-(`af622105435d776c1ce203c28387cbc27e0c7925`) and compiled on macOS for its
-`memjit_write_begin/end` implementation. QEMU's absolute write/execute
-switches are adapted to those nested scopes in `util/libretro-jit.c`.
+Existing core adaptations are retained across the refresh:
 
-Windows GL dispatch uses the unmodified `glsym/rglgen.c`, `glsym/glsym_gl.c`
-and their five `include/glsym` headers from the local RetroArch checkout
-(commit a8650d1dfbcb62bec03213a4e87c420b08305b7b).
-They perform eager pointer resolution; context ownership and the few renderer
-extensions absent from their table belong to `ui/gl-dispatch.c`.
+- `RETRO_DISABLE_HOST_CLOCK`, fixed-spin thread waits and untimed core paths.
+- Eventcount initialization that rejects lock/condition-variable fallback.
+- SPSC pair publication, contiguous producer reservation and paired borrowed
+  consumer views; the upstream queue otherwise matches this copy.
+- Paired XXH3 hashing without allocating a concatenated payload.
+- The intrusive MPSC header, absent from this RetroArch snapshot.
+
+These adaptations must not be lost by copying the upstream tree wholesale.
+Clock-related changes were merged against the original RetroArch import
+`af622105435d776c1ce203c28387cbc27e0c7925`, preserving later upstream changes
+and the core's clockless contract. `time/rtime.c` remains excluded from the
+core build. Existing GL dispatch and macOS JIT permission adapters are kept.
+
+VFS v6 provides optional positional reads. The core negotiates v6 before
+accessing appended function pointers, falls back to v3 on older frontends,
+and retains seek/read for handles without positional I/O. Local writable
+disk images continue to use native positional/vectored I/O.
+
+`retro_deque` was reviewed but is not imported: it is single-owner and does
+not replace the core's cross-thread queues. Sequential `data_transfer`
+windows likewise do not replace random-access Xbox disk images. No unused
+decoder or transfer subsystem is added by this refresh.
