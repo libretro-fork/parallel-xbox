@@ -54,6 +54,8 @@ static void reader_during_write(void){assert(!read_frame());}
 static void writer_during_read(void){assert(!pgraph_vk_frame_write_begin(&state.display.handoff,1));}
 static void change_publication(void){publish(2,3);}
 static unsigned produced,consumed;
+static retro_atomic_int_t producer_done;
+static retro_atomic_int_t reader_window_done;
 static void producer(void *arg)
 {
  (void)arg;unsigned slot=0;uint64_t n=0;
@@ -64,11 +66,16 @@ static void producer(void *arg)
   pgraph_vk_frame_write_end(&state.display.handoff);
   slot=(slot+1)%8;produced++;
  }
+ retro_atomic_store_release_int(&producer_done,1);
 }
 static void consumer(void *arg)
 {
  (void)arg;
- for(unsigned i=0;i<300000;i++) {
+ /* The scheduler may run all reader attempts before the producer starts.
+  * Keep the original stress window, then require producer completion and
+  * at least one validated snapshot. The unchanged watchdog catches hangs. */
+ for(unsigned i=0;i<300000 || !retro_atomic_load_acquire_int(&producer_done) || !consumed;i++) {
+  if(i==300000)retro_atomic_store_release_int(&reader_window_done,1);
   if(!read_frame())continue;
   assert(image==1000+count&&view==2000+count&&width==640&&height==480);
   nv2a_vk_libretro_frame_presented();consumed++;
@@ -112,7 +119,10 @@ int main(void)
   assert(pgraph_vk_frame_write_begin(&state.display.handoff,old));pgraph_vk_frame_write_end(&state.display.handoff);cases++;
  }
  memset(&state.display,0,sizeof(state.display));count=0;hook=NULL;concurrent=true;
- sthread_t *writer=sthread_create(producer,NULL),*reader=sthread_create(consumer,NULL);
+ /* Force the formerly failing reader-first schedule before starting writes. */
+ sthread_t *reader=sthread_create(consumer,NULL);assert(reader);
+ while(!retro_atomic_load_acquire_int(&reader_window_done)){}
+ sthread_t *writer=sthread_create(producer,NULL);
  assert(writer&&reader);sthread_join(writer);sthread_join(reader);concurrent=false;
  assert(produced&&consumed&&!retro_atomic_load_relaxed_int(&state.display.handoff.reading));
  printf("Concurrent handoff: %u publications, %u stable frontend snapshots\n",produced,consumed);

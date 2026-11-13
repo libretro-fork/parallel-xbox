@@ -3,7 +3,7 @@
 --gpu additionally captures every geometry output using test-only Vulkan storage writes.
 """
 from pathlib import Path
-import argparse,os,re,shutil,subprocess,tempfile
+import argparse,os,re,shutil,subprocess,tempfile,time
 
 def function(source,signature):
  a=source.index(signature);i=source.index('{',a)+1;depth=1
@@ -40,10 +40,28 @@ def run(r,cc,folder,gpu):
  subprocess.run(command+['-o',str(exe)],check=True,env=env)
  # Software Vulkan compiles and executes hundreds of pipeline pairs.
  # Keep the shorter bound for the CPU-only generator checks.
- subprocess.run([str(exe),str(folder)],check=True,timeout=600 if gpu else 120,env=env)
+ if gpu and not env.get('GEOM_UI_ONLY'):
+  # Independent module owners execute every base and UI case once. Share
+  # the original watchdog instead of granting each process a fresh timeout.
+  children=[];deadline=time.monotonic()+600
+  try:
+   for name,flag in [('base','GEOM_SKIP_UI'),('ui','GEOM_UI_ONLY')]:
+    target=folder/name;target.mkdir(exist_ok=True)
+    child_env=dict(env);child_env.pop('GEOM_SKIP_UI',None);child_env.pop('GEOM_UI_ONLY',None)
+    child_env[flag]='1';child_env['LP_NUM_THREADS']='1'
+    command=[str(exe),str(target)]
+    children.append((command,subprocess.Popen(command,env=child_env)))
+   for command,child in children:
+    result=child.wait(timeout=max(0,deadline-time.monotonic()))
+    if result:raise subprocess.CalledProcessError(result,command)
+  finally:
+   for command,child in children:
+    if child.poll() is None:child.kill()
+   for command,child in children:child.wait()
+ else:subprocess.run([str(exe),str(folder)],check=True,timeout=600 if gpu else 120,env=env)
  validator=shutil.which('spirv-val',path=env['PATH'])
  if validator:
-  files=list(folder.glob('*.spv'))
+  files=list(folder.rglob('*.spv'))
   for file in files:
    import struct
    version=struct.unpack_from('<I',file.read_bytes(),4)[0]

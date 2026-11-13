@@ -182,7 +182,7 @@ int main(int argc,char **argv){
 #endif
  int result=line_tests(argc,argv);triangle_tests(argv[1]);quad_tests(argv[1]);modes_tests(argv[1]);
 #ifdef TEST_VULKAN
- ui_geometry_gpu_tests(argv[1]);
+ if(!getenv("GEOM_SKIP_UI"))ui_geometry_gpu_tests(argv[1]);
 #endif
  return result;
 }

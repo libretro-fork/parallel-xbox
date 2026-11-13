@@ -30,7 +30,7 @@ def function(source, name):
     raise AssertionError(name)
 
 parts = [function(common, n) for n in ("convert_r6g5b5_pixel", "pgraph_convert_swizzled_rgb655_into", "pgraph_converted_texture_size", "pgraph_convert_texture_data_into")]
-parts += [function(vk, n) for n in ("stage_level", "stage_swizzled",
+parts += [function(vk, n) for n in ("level_from_vram", "stage_level", "stage_swizzled",
                                    "vk_format_texel_size", "check_surface_to_texture_compatiblity")]
 code = Path(__file__).with_suffix(".c").read_text().replace("/* PRODUCTION */", "\n".join(parts))
 code = code.replace("ORACLE_FORMAT", fmt)

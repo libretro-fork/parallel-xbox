@@ -6,7 +6,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include "hw/xbox/nv2a/pgraph/spv/glslc.h"
+#include "hw/xbox/nv2a/pgraph/spv/utility.h"
 #define VK_CHECK(x) assert((x)==VK_SUCCESS)
 #define CHECK VK_CHECK
 #define MAX(a,b) ((a)>(b)?(a):(b))
@@ -78,13 +78,8 @@ static VkDeviceSize pgraph_vk_staging_alloc(PGRAPHState *pg,size_t size,size_t a
 {assert(align>=16&&!(align&(align-1)));size_t offset=(pg->src+align-1)&~(align-1);assert(offset+size<=pg->vk_renderer_state->storage_buffers[0].buffer_size);pg->written+=size;pg->src=offset+size;*out=pg->vk_renderer_state->storage_buffers[0].mapped+offset;return offset;}
 static void pgraph_vk_staging_flush(PGRAPHState *pg,VkDeviceSize offset,size_t size){(void)pg;(void)offset;(void)size;}
 static void pgraph_vk_wait_for_aux(PGRAPHState *pg){(void)pg;/* Test submissions are fence-waited below. */}
-static VkShaderModule pgraph_vk_create_fixed_shader_module_from_glsl(PGRAPHVkState *r,VkShaderStageFlagBits stage,const char *source)
-{
- assert(stage==VK_SHADER_STAGE_COMPUTE_BIT);GlslcResult result;GlslcOptions opts={0};
- if(!glslc_compile(GLSLC_STAGE_COMPUTE,source,&opts,&result)){fprintf(stderr,"line %d: %s\n",result.error_line,result.error);abort();}
- VkShaderModuleCreateInfo ci={.sType=VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,.codeSize=result.num_words*4,.pCode=result.words};
- VkShaderModule module;CHECK(vkCreateShaderModule(r->device,&ci,NULL,&module));free(result.words);return module;
-}
+static bool pgraph_vk_spirv_1_6;
+/* MODULE HELPERS */
 
 static unsigned dispatch_expected, dispatch_calls;
 static void tracked_dispatch(VkCommandBuffer cmd, uint32_t x, uint32_t y, uint32_t z)
@@ -204,7 +199,11 @@ int main(void)
    }
   }
   expect_direct=direct;unsigned prior_barriers=source_barriers;
+  /* Both conversions remain recorded until the fence below. Give each its
+   * own immutable descriptor slot, as separate auxiliary recordings do. */
+  r.aux_slot=0;
   assert(pgraph_vk_pvideo_convert(&pg,cmd,guest,w,h,pitch,true));
+  r.aux_slot=1;
   assert(pgraph_vk_pvideo_convert(&pg,cmd,guest,w,h,pitch,false));
   assert(source_barriers==prior_barriers+2);
   assert(claims==(direct?2u:0u));

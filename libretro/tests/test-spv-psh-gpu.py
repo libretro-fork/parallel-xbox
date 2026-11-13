@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 """Compare native fragment color/depth/discard against production GLSL on Vulkan."""
 from pathlib import Path
-import os, re, subprocess, sys, tempfile
+import os, re, subprocess, sys, tempfile, time
 r=Path(sys.argv[1]).resolve();cc=sys.argv[2] if len(sys.argv)>2 else 'cc'
 def function(path,name):
  s=path.read_text();start=s.index('MString *'+name+'(');p=s.index('{',start);depth=1;p+=1
@@ -43,15 +43,43 @@ with tempfile.TemporaryDirectory(prefix='spv-psh-gpu-') as tmp:
   first,limit=map(int,os.environ['SPV_PSH_GPU_RANGE'].split(':'))
   assert 0<=first<limit<=82704
   batches=[(first,limit)]
- for first,limit in batches:
-  if drop:
+ if not drop and 'PSH_COMPILER_TIMINGS' not in os.environ:
+  # Preserve every original batch and its 300-second watchdog. Only device
+  # owners run concurrently; numerical inputs remain indexed identically.
+  cpus=len(os.sched_getaffinity(0)) if hasattr(os,'sched_getaffinity') else (os.cpu_count() or 1)
+  workers=min(4,cpus);pending=iter(batches);active={};exhausted=False
+  env=dict(os.environ,LP_NUM_THREADS='1')
+  try:
+   while active or not exhausted:
+    while not exhausted and len(active)<workers:
+     batch=next(pending,None)
+     if batch is None:exhausted=True;break
+     first,limit=batch;command=[str(exe),str(first),str(limit)]
+     print(f'Fragment batch [{first}, {limit}): independent owner, 300s deadline',flush=True)
+     deadline=time.monotonic()+300;child=subprocess.Popen(command,env=env)
+     active[child]=(command,deadline)
+    for child,(command,deadline) in list(active.items()):
+     result=child.poll()
+     if result is not None:
+      del active[child]
+      if result:raise subprocess.CalledProcessError(result,command)
+     elif time.monotonic()>=deadline:raise subprocess.TimeoutExpired(command,300)
+    if active:time.sleep(.01)
+  finally:
+   for child in active:
+    if child.poll() is None:child.kill()
+   for child in active:child.wait()
+ else:
+  for first,limit in batches:
+   if not drop:
+    subprocess.run([str(exe),str(first),str(limit)],check=True,timeout=300)
+    continue
    assert 79360<=first<limit<=80656
    result=subprocess.run([str(exe),str(first),str(limit)],capture_output=True,text=True,timeout=300)
    print(result.stdout,end='');print(result.stderr,end='',file=sys.stderr)
    match=re.search(r'(\d+) differences, 0 validation errors',result.stdout)
    assert result.returncode==1 and match and int(match[1])>0,'GPU lost-stage control was not rejected'
    print('Required numerical negative control rejected: native loses stage-three contribution')
-  else:subprocess.run([str(exe),str(first),str(limit)],check=True,timeout=300)
  if not drop and any(limit>79360 for first,limit in batches):
   env=dict(os.environ,SPV_COMPOSITION_DROP_T3='1',SPV_PSH_GPU_RANGE='80640:80656')
   subprocess.run([sys.executable,str(Path(__file__).resolve()),str(r),cc],env=env,check=True)

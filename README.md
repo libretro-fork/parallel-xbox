@@ -338,6 +338,13 @@ entries needs one provider read instead of three when it completes fully.
 Short-read, EOF, cursor recovery and descriptor immutability remain covered;
 no staging buffer, allocation or throughput/FPS claim is added.
 
+VFS v6 positional reads avoid cursor seeks for frontend-backed discs,
+including compressed-media source reads. The core negotiates v6 before
+reading its appended callbacks, falls back to v3 on older frontends, and
+uses seek/read when a particular handle declines positional I/O. Native
+disk-image I/O keeps its existing mapped/positional paths. This removes
+provider operations; no gameplay frame-time improvement is claimed.
+
 GL module-cache admission checks driver link status before publishing the
 stage. Rejected binaries are discarded and regenerated through the normal
 compiler path; driver input still borrows the mapped payload directly. The

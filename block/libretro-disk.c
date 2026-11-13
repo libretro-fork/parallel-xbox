@@ -80,6 +80,7 @@
 
 /* ui/libretro.c: the frontend's VFS, if it has one */
 extern struct retro_vfs_interface *xemu_libretro_vfs;
+extern retro_vfs_read_at_t xemu_libretro_vfs_read_at;
 
 /* requests whose completion has not run, per drive: the IDE has one in
  * flight at a time (a DMA's chunks follow one another) */
@@ -221,6 +222,7 @@ typedef struct LRCHDInput {
     LRFile *file;
     struct retro_vfs_file_handle *vfs;
     struct retro_vfs_interface *interface;
+    retro_vfs_read_at_t read_at;
     int64_t cursor;
 } LRCHDInput;
 
@@ -230,7 +232,8 @@ static int lr_chd_source_read(void *opaque, uint64_t offset, void *data, size_t 
     LRFileIOV iov = {data, len};
     if (offset > INT64_MAX) return -EIO;
     return in->file ? lr_file_pread(in->file, offset, data, len) :
-        lr_vfs_readv(in->interface, in->vfs, &in->cursor, offset, &iov, 1);
+        lr_vfs_readv_at(in->interface, in->vfs, in->read_at,
+                       &in->cursor, offset, &iov, 1);
 }
 static const uint8_t *lr_chd_source_view(void *opaque, uint64_t offset, size_t len)
 {
@@ -258,7 +261,8 @@ static int lr_medium_read_metadata(LRMedium *m, uint64_t offset, void *data, siz
     offset += m->base;
     if (m->chd) return lr_chd_read_metadata(m->chd, offset, data, len);
     return m->file ? lr_file_pread(m->file, offset, data, len) :
-        m->vfs ? lr_vfs_readv(xemu_libretro_vfs, m->vfs, &m->vfs_position,
+        m->vfs ? lr_vfs_readv_at(xemu_libretro_vfs, m->vfs,
+                            xemu_libretro_vfs_read_at, &m->vfs_position,
                             offset, &iov, 1) : -ENOTSUP;
 }
 
@@ -271,6 +275,7 @@ static bool lr_medium_open_chd(LRMedium *m, int64_t *size, Error **errp)
     int error;
     input->file = m->file; input->vfs = m->vfs;
     input->interface = xemu_libretro_vfs; input->cursor = -1;
+    input->read_at = xemu_libretro_vfs_read_at;
     source.opaque = input; source.size = *size;
     source.read = lr_chd_source_read; source.view = lr_chd_source_view;
     source.close = lr_chd_source_close; source.notify = lr_chd_source_notify;
@@ -447,7 +452,8 @@ static int lr_disk_rw(BlockBackend *blk, int64_t offset, QEMUIOVector *qiov,
                                       qiov->niov);
         break;
     case LR_MEDIUM_VFS:
-        ret = lr_vfs_readv(xemu_libretro_vfs, m->vfs, &m->vfs_position,
+        ret = lr_vfs_readv_at(xemu_libretro_vfs, m->vfs,
+                           xemu_libretro_vfs_read_at, &m->vfs_position,
                            m->base + offset,
                            (const LRFileIOV *)qiov->iov, qiov->niov);
         break;
