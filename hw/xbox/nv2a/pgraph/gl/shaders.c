@@ -1220,6 +1220,21 @@ static void shader_cache_entry_init(Lru *lru, LruNode *node, const void *state)
     binding->gl_primitive_mode = 0;
 }
 
+/* A deleted stage may still be used by another pipeline and repopulate its
+ * uniform memo. Forget again at each pipeline retirement, before GL can
+ * recycle a name at its final detach. Other live pipelines simply reupload. */
+static void forget_binding_program_uniforms(PGRAPHGLState *r,
+                                             const ShaderBinding *binding)
+{
+    const GLuint programs[] = {
+        binding->gl_program, binding->gl_prog_vs,
+        binding->gl_prog_fs, binding->gl_prog_gs,
+    };
+    for (unsigned i = 0; i < ARRAY_SIZE(programs); i++) {
+        if (programs[i]) uniform_cache_forget(&r->uni_cache, programs[i]);
+    }
+}
+
 static void shader_cache_entry_post_evict(Lru *lru, LruNode *node)
 {
     ShaderBinding *binding = container_of(node, ShaderBinding, node);
@@ -1239,6 +1254,7 @@ static void shader_cache_entry_post_evict(Lru *lru, LruNode *node)
     }
     binding->initialized = false;
 
+    forget_binding_program_uniforms(r, binding);
     glDeleteProgram(binding->gl_program);
     if (binding->gl_pipeline) {
         glDeleteProgramPipelines(1, &binding->gl_pipeline);
