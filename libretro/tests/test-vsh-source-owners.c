@@ -11,7 +11,7 @@
 
 int main(int argc,char **argv)
 {
-    assert(argc==3);
+    assert(argc==3 || argc==5);
     unsigned first=strtoul(argv[1],NULL,10),limit=strtoul(argv[2],NULL,10);
     VkPhysicalDeviceProperties props={0};props.limits.maxPushConstantsSize=256;
     VkPhysicalDeviceFloatControlsProperties fp={.shaderSignedZeroInfNanPreserveFloat32=true};

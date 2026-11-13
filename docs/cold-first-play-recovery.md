@@ -251,10 +251,19 @@ Implemented in `.github/workflows/shader-regressions.yml`:
 5. Use software Vulkan to create real test PSOs and run numerical geometry,
    clear and local-initialization checks. This catches API/semantic errors;
    lavapipe timing is not hardware PSO or gameplay performance.
-   Utility and vertex tests have separate jobs. Eight fragment jobs partition
+   Utility and vertex tests have separate jobs. Vertex workers interleave
+   disjoint 16-case chunks across the existing four slots, rotating owners
+   each round so low-bit selectors do not pin expensive shader families to
+   one slot. The original batch deadline is not renewed. Eight fragment jobs
+   partition
    the original 160 batches, covering all 82,704 cases exactly once, with one
-   driver owner at a time in each job. Batch boundaries and the 300-second
-   watchdog are unchanged. Each fragment artifact includes its exact batch
+   original batch at a time in each job. Up to four existing worker slots
+   execute disjoint subranges under that batch's one shared 300-second
+   watchdog, including spawning and coverage verification. Every child retains
+   all numerical comparisons and validation checks. The original C coverage
+   assertions run on their summed counters for the original batch, with
+   negative controls for every required signal. No child receives a fresh
+   300-second allowance. Each fragment artifact includes its exact batch
    manifest; the contracts check rejects gaps, overlaps, lost numerical
    controls and invalid shard/worker settings. A revision/reference expansion
    over GitHub's 256-job matrix limit fails explicitly and requires splitting

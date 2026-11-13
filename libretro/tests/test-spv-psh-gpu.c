@@ -152,8 +152,22 @@ static uint32_t dynamic_inputs(unsigned seed,bool alpha,bool signed_alpha){
   v=(v<<8)|reg|(mapping<<5)|(alpha || ((seed>>j)&1)?16:0);
  }return v;
 }
+static void verify_coverage(unsigned first,unsigned limit,unsigned written,unsigned discarded,unsigned sample_pixels,unsigned point_pixels,unsigned metadata_signal,unsigned sampler_signal,unsigned composition_signal,unsigned alias_signal){
+ if(first>=74752 && first<76288){assert(metadata_signal);printf("Float metadata fixture: %u nontrivial pixels; production GLSL identical with packed flag off/on\n",metadata_signal);}
+ if(first>=77824 && first<79360){assert(sampler_signal);printf("Packed sampler fixture: %u nontrivial numeric-color pixels\n",sampler_signal);}
+ if(first>=79360 && first<80656){assert(composition_signal);printf("Composition fixture: %u nontrivial four-stage pixels\n",composition_signal);}
+ if(first>=80656){assert(alias_signal && written==(limit-first)*16 && !discarded);printf("Aliased combiner fixture: %u nontrivial pixels, every draw present\n",alias_signal);}
+ if(first>=16896 && first<80656)assert(written && sample_pixels);
+ if(first>=4096 && (first<10240 || (first>=14336 && first<16384)))assert(written && discarded && sample_pixels);
+ if(first>=8192 && (first<10240 || (first>=14336 && first<16384)))assert(point_pixels);
+}
 int main(int argc,char **argv){
- unsigned first=argc==3?strtoul(argv[1],NULL,10):0,limit=argc==3?strtoul(argv[2],NULL,10):64;assert(first<limit);printf("PSH fixtures [%u,%u)\n",first,limit);
+ if(argc==12 && !strcmp(argv[1],"--verify-coverage")){
+  unsigned c[10];for(unsigned i=0;i<10;i++){char *end;unsigned long v=strtoul(argv[i+2],&end,10);assert(*argv[i+2] && !*end && v<=UINT32_MAX);c[i]=v;}
+  assert(c[0]<c[1] && c[1]<=82704);verify_coverage(c[0],c[1],c[2],c[3],c[4],c[5],c[6],c[7],c[8],c[9]);return 0;
+ }
+ bool defer_coverage=argc==4 && !strcmp(argv[3],"--defer-coverage");assert(argc==1 || argc==3 || defer_coverage);
+ unsigned first=argc>=3?strtoul(argv[1],NULL,10):0,limit=argc>=3?strtoul(argv[2],NULL,10):64;assert(first<limit);printf("PSH fixtures [%u,%u)\n",first,limit);
  bool validated=getenv("NO_VALIDATION")==NULL;const char *layer="VK_LAYER_KHRONOS_validation",*debug=VK_EXT_DEBUG_UTILS_EXTENSION_NAME;
  VkApplicationInfo app={.sType=VK_STRUCTURE_TYPE_APPLICATION_INFO,.apiVersion=VK_API_VERSION_1_3};VkInstanceCreateInfo ici={.sType=VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,.pApplicationInfo=&app,.enabledLayerCount=validated,.ppEnabledLayerNames=&layer,.enabledExtensionCount=validated,.ppEnabledExtensionNames=&debug};VkInstance instance;CHECK(vkCreateInstance(&ici,NULL,&instance));
  PFN_vkCreateDebugUtilsMessengerEXT create=(void *)vkGetInstanceProcAddr(instance,"vkCreateDebugUtilsMessengerEXT");PFN_vkDestroyDebugUtilsMessengerEXT destroy=(void *)vkGetInstanceProcAddr(instance,"vkDestroyDebugUtilsMessengerEXT");VkDebugUtilsMessengerEXT messenger=VK_NULL_HANDLE;
@@ -834,13 +848,8 @@ int main(int argc,char **argv){
   release(&modules[0]);release(&modules[1]);
  }
  printf("Fragment GPU: %u scalar color/depth/discard results, %u differences, %u validation errors; validation=%s\n",compared,failures,errors,validated?"enabled":"DISABLED");
- if(first>=74752 && first<76288){assert(metadata_signal);printf("Float metadata fixture: %u nontrivial pixels; production GLSL identical with packed flag off/on\n",metadata_signal);}
- if(first>=77824 && first<79360){assert(sampler_signal);printf("Packed sampler fixture: %u nontrivial numeric-color pixels\n",sampler_signal);}
- if(first>=79360 && first<80656){assert(composition_signal);printf("Composition fixture: %u nontrivial four-stage pixels\n",composition_signal);}
- if(first>=80656){assert(alias_signal && written==(limit-first)*16 && !discarded);printf("Aliased combiner fixture: %u nontrivial pixels, every draw present\n",alias_signal);}
- if(first>=16896 && first<80656)assert(written && sample_pixels);
- if(first>=4096 && (first<10240 || (first>=14336 && first<16384)))assert(written && discarded && sample_pixels);
- if(first>=8192 && (first<10240 || (first>=14336 && first<16384)))assert(point_pixels);
+ if(!defer_coverage)verify_coverage(first,limit,written,discarded,sample_pixels,point_pixels,metadata_signal,sampler_signal,composition_signal,alias_signal);
+ printf("PSH_COVERAGE %u %u %u %u %u %u %u %u %u %u\n",first,limit,written,discarded,sample_pixels,point_pixels,metadata_signal,sampler_signal,composition_signal,alias_signal);
  printf("Fragment coverage: written_pixels=%u discarded_pixels=%u sampled_pixels=%u point_pixels=%u\n",written,discarded,sample_pixels,point_pixels);
  printf("Fragment work: reference_words=%llu native_words=%llu avoided_GLSL_bytes=%llu; work counts only, no latency/GPU execution claim\n",(unsigned long long)words[0],(unsigned long long)words[1],(unsigned long long)reference_source_bytes);
  for(unsigned j=0;j<4;j++){for(unsigned k=0;k<2;k++)if(vertices[j][k])vkDestroyShaderModule(device,vertices[j][k],NULL);}

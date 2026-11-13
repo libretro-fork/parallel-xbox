@@ -152,8 +152,8 @@ static void unselected_output(uint32_t t[4], unsigned variant, bool invalid)
 }
 
 int main(int argc, char **argv) {
- assert(argc==1 || argc==3);
- unsigned first=argc==3?strtoul(argv[1],NULL,10):0, limit=argc==3?strtoul(argv[2],NULL,10):42512;
+ assert(argc==1 || argc==3 || argc==5);
+ unsigned first=argc>=3?strtoul(argv[1],NULL,10):0, limit=argc>=3?strtoul(argv[2],NULL,10):42512;
  assert(first<limit && limit<=42512);
  printf("Fixture range [%u, %u)\n",first,limit);
  const bool validated=getenv("NO_VALIDATION")==NULL;
@@ -207,6 +207,16 @@ int main(int argc, char **argv) {
  uint32_t reference[VERTICES*60];unsigned compared=0,failures=0;
  clock_t reference_ticks=0,direct_ticks=0;size_t reference_words=0,direct_words=0;
  for(unsigned test=first;test<limit;test++) {
+  /* Spread adjacent state families in 16-case chunks, rotating owners each
+   * round so low-bit shader selectors do not remain pinned to one owner.
+   * Every case belongs to exactly one slot; the parent owns one deadline. */
+  if(argc==5){
+   unsigned slot=strtoul(argv[3],NULL,10),slots=strtoul(argv[4],NULL,10);
+   assert(slots>=1 && slots<=4 && slot<slots);
+   unsigned block=(test-first)/16;
+   if((block+block/slots)%slots!=slot)continue;
+  }
+
   VshState state={0};state.smooth_shading=test&1;state.fog_dynamic=true;state.specular_enable=test&2;state.ignore_specular_alpha=test&4;
   unsigned variant=(test%1568)/112,m=test%14,l=(test%112)/14;state.programmable.program_length=5;
   token(state.programmable.program_data[0],MAC_MOV,ILU_NOP,0,0,false,false);

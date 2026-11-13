@@ -120,6 +120,8 @@ jobs:
           python3 driver/libretro/tests/test-pvideo-dirty.py candidate cc 2>&1 | tee results/pvideo-dirty.log
           SHADER_OWNER_SANITIZE=1 python3 driver/libretro/tests/test-vsh-source-owners.py candidate cc 2>&1 | tee results/vsh-source-owners.log
           python3 driver/libretro/tests/test-shader-gpu-shards.py candidate 2>&1 | tee results/gpu-shards.log
+          python3 driver/libretro/tests/test-shader-gpu-batch.py 2>&1 | tee results/gpu-batch.log
+          python3 driver/libretro/tests/test-vsh-worker-partition.py candidate cc 2>&1 | tee results/vsh-worker-partition.log
           python3 driver/libretro/tests/test-throughput-gate.py 2>&1 | tee results/throughput-gate.log
           python3 driver/libretro/tests/test-shader-compile-gate.py 2>&1 | tee results/compiler-gate.log
           python3 driver/libretro/tests/test-cold-play-frame-gate.py candidate 2>&1 | tee results/cold-play-frame-gate.log
@@ -271,8 +273,8 @@ jobs:
           set -euo pipefail
           mkdir -p results
           shard="${SUITE#fragment-}/8"
-          python3 driver/libretro/tests/test-spv-psh-gpu.py candidate cc --shard "$shard" --workers 1 --list-batches | tee results/fragment-manifest.json
-          python3 driver/libretro/tests/test-spv-psh-gpu.py candidate cc --shard "$shard" --workers 1 2>&1 | tee results/direct-fragment.log
+          python3 driver/libretro/tests/test-spv-psh-gpu.py candidate cc --shard "$shard" --workers 4 --list-batches | tee results/fragment-manifest.json
+          python3 driver/libretro/tests/test-spv-psh-gpu.py candidate cc --shard "$shard" --workers 4 2>&1 | tee results/direct-fragment.log
       - uses: actions/upload-artifact@v4
         if: always()
         with:

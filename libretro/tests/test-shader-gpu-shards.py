@@ -27,9 +27,9 @@ assert [case for first, limit in expected for case in range(first, limit)] == li
 seen = []
 controls = 0
 for index in range(8):
-    part = manifest('--shard', f'{index}/8', '--workers', '1')
+    part = manifest('--shard', f'{index}/8', '--workers', '4')
     assert part['shard'] == index and part['shards'] == 8
-    assert part['workers'] == 1 and part['deadline_seconds'] == 300
+    assert part['workers'] == 4 and part['deadline_seconds'] == 300
     assert part['batches'] == expected[index::8]
     seen += part['batches']
     controls += part['composition_control']

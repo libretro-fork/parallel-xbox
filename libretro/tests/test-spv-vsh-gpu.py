@@ -52,13 +52,12 @@ DEF_UNIFORM_INFO_ARR(VshUniform,VSH_UNIFORM_DECL_X)
   # Independent devices/buffers let the numerical corpus use available CPUs.
   # Keep one shared watchdog for the original batch, never 300s per child.
   cpus=len(os.sched_getaffinity(0)) if hasattr(os,'sched_getaffinity') else (os.cpu_count() or 1)
-  workers=min(4,cpus,limit-first);children=[];deadline=time.monotonic()+300
+  workers=min(4,cpus,(limit-first+15)//16);children=[];deadline=time.monotonic()+300
   env=dict(os.environ);env['LP_NUM_THREADS']='1'
   print(f'Vertex batch [{first}, {limit}): {workers} independent workers, shared 300s deadline',flush=True)
   try:
    for i in range(workers):
-    start=first+(limit-first)*i//workers;end=first+(limit-first)*(i+1)//workers
-    command=[str(exe),str(start),str(end)]
+    command=[str(exe),str(first),str(limit),str(i),str(workers)]
     children.append((command,subprocess.Popen(command,env=env)))
    for command,child in children:
     result=child.wait(timeout=max(0,deadline-time.monotonic()))

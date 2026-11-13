@@ -60,32 +60,15 @@ with tempfile.TemporaryDirectory(prefix='spv-psh-gpu-') as tmp:
  drop=os.environ.get('SPV_COMPOSITION_DROP_T3')=='1'
  if drop:flags+=['-DCOMPOSITION_DROP_T3']
  subprocess.run(flags+list(map(str,sources))+['-Wl,--gc-sections','-lm',*([str(Path(os.environ.get('WINDIR','C:/Windows'))/'System32/vulkan-1.dll')] if os.name=='nt' else ['-lvulkan']),'-o',str(exe)],check=True)
+ from shader_gpu_batch import check_coverage_controls
+ check_coverage_controls(exe)
  if not drop and 'PSH_COMPILER_TIMINGS' not in os.environ:
-  # Preserve every original batch and its 300-second watchdog. Only device
-  # owners run concurrently; numerical inputs remain indexed identically.
+  # All children share the original batch's watchdog, as in the VSH fixture.
+  # Parallelizing whole batches left heavy individual batches on one CPU.
+  from shader_gpu_batch import run_batch
   cpus=len(os.sched_getaffinity(0)) if hasattr(os,'sched_getaffinity') else (os.cpu_count() or 1)
-  workers=min(args.workers,cpus);pending=iter(batches);active={};exhausted=False
-  env=dict(os.environ,LP_NUM_THREADS='1')
-  try:
-   while active or not exhausted:
-    while not exhausted and len(active)<workers:
-     batch=next(pending,None)
-     if batch is None:exhausted=True;break
-     first,limit=batch;command=[str(exe),str(first),str(limit)]
-     print(f'Fragment batch [{first}, {limit}): independent owner, 300s deadline',flush=True)
-     deadline=time.monotonic()+300;child=subprocess.Popen(command,env=env)
-     active[child]=(command,deadline)
-    for child,(command,deadline) in list(active.items()):
-     result=child.poll()
-     if result is not None:
-      del active[child]
-      if result:raise subprocess.CalledProcessError(result,command)
-     elif time.monotonic()>=deadline:raise subprocess.TimeoutExpired(command,300)
-    if active:time.sleep(.01)
-  finally:
-   for child in active:
-    if child.poll() is None:child.kill()
-   for child in active:child.wait()
+  for first,limit in batches:
+   run_batch(exe,first,limit,min(args.workers,cpus))
  else:
   for first,limit in batches:
    if not drop:
