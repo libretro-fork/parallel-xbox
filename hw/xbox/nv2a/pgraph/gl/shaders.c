@@ -397,7 +397,6 @@ static void module_write_to_disk(GLDiskSlot *slot)
     FILE *f = qemu_fopen(path, "wb");
     if (!f) {
         g_free(path);
-        g_free(save);
         return;
     }
 
@@ -424,7 +423,6 @@ static void module_write_to_disk(GLDiskSlot *slot)
         qemu_unlink(path);
     }
     g_free(path);
-    g_free(save);
 }
 
 static bool module_save_to_disk(PGRAPHGLState *r,
@@ -440,12 +438,12 @@ static bool module_save_to_disk(PGRAPHGLState *r,
     GLenum format;
     glGetProgramBinary(module->gl_stage_program,size,&copied,&format,bin);
     if (glGetError()!=GL_NO_ERROR || copied<=0 || copied>size) return true;
-    ModuleDiskSave *save=g_new(ModuleDiskSave,1);
+    ModuleDiskSave *save=slot->data;
     save->key=module->key;
     save->hash=hash;
     save->format=format;
     save->size=copied;
-    slot->data=save;slot->write=module_write_to_disk;
+    slot->write=module_write_to_disk;
     gl_disk_writer_submit(r->cache_writer);
     return true;
 }
@@ -1315,7 +1313,8 @@ void pgraph_gl_init_shaders(PGRAPHState *pg)
     r->shader_module_cache.post_node_evict = shader_module_cache_entry_post_evict;
 
     r->cache_writer=gl_disk_writer_create(xemu_settings_get_base_path(),
-                                                  shader_gl_vendor, shader_gl_version);
+                                                  shader_gl_vendor, shader_gl_version,
+                                                  MAX(sizeof(ModuleDiskSave), sizeof(ShaderDiskResult)));
     r->seed.state = -1;
     r->prewarm.state = -1;
 }
@@ -1418,7 +1417,6 @@ static void shader_write_to_disk(GLDiskSlot *slot)
 
     g_free(shader_path);
     shader_binary_release(binding->program, &binding->program_owner);
-    g_free(binding);
 
     return;
 
@@ -1427,7 +1425,6 @@ error:
     qemu_unlink(shader_path);
     g_free(shader_path);
     shader_binary_release(binding->program, &binding->program_owner);
-    g_free(binding);
     return;
 }
 
@@ -1436,7 +1433,7 @@ static bool shader_start_disk_save(GLDiskWriter *writer, ShaderBinding *binding)
 {
     GLDiskSlot *slot=gl_disk_writer_acquire(writer);
     if (!slot) return false;
-    ShaderDiskResult *save=g_new(ShaderDiskResult,1);
+    ShaderDiskResult *save=slot->data;
     save->hash=binding->node.hash;
     save->state=binding->state;
     save->program_format=binding->program_format;
@@ -1445,7 +1442,7 @@ static bool shader_start_disk_save(GLDiskWriter *writer, ShaderBinding *binding)
     save->program_owner=binding->program_owner;
     binding->program=NULL;
     binding->program_owner=(ShaderBinaryOwner){0};
-    slot->data=save;slot->write=shader_write_to_disk;
+    slot->write=shader_write_to_disk;
     gl_disk_writer_submit(writer);
     return true;
 }

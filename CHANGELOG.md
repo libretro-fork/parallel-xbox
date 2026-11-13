@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Reuse the OpenGL cache writer's two metadata slots instead of allocating/freeing a job record for each program/module save. Queue saturation still defers optional saves; binary payload owners remain retained until the disk callback finishes. Binary slab growth, file paths and host-driver allocations remain separate optimization work.
+
 - On Vulkan devices with dynamic vertex input, supply constant attributes through zero-stride vertex bindings instead of specializing shaders by the constant/array mask. Reuse the existing uniform upload/device buffer owners and retain the previous path without dynamic vertex input. This is under qualification; remaining draw-critical compilation and cold-play stutter recovery stay open.
 
 - Refresh the used libretro-common subset from RetroArch c7a5f6e, retaining clockless waits and bounded queue/borrowed-buffer extensions. Frontend-backed disc reads use VFS v6 positional I/O when available, avoiding cursor seeks without staging buffers; older frontends and unsupported handles retain seek/read. Native disc I/O is unchanged. Shader/PSO cold-play recovery remains unqualified; no gameplay speedup is claimed.

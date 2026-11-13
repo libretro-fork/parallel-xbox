@@ -2,6 +2,8 @@
 #ifndef NV2A_GL_DISK_WRITER_H
 #define NV2A_GL_DISK_WRITER_H
 #include <stdbool.h>
+#include <stddef.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 #include <retro_atomic.h>
@@ -13,7 +15,9 @@
 
 /* One render-thread producer and one disk consumer. A slot, including its
  * reusable binary slab, belongs to the producer only after read publication.
- * The producer never waits for disk progress. */
+ * Job metadata is allocated with the writer, not for each save. The callback
+ * must not free slot->data; read publication lends that same storage back to
+ * the producer. The producer never waits for disk progress. */
 typedef struct GLDiskSlot GLDiskSlot;
 struct GLDiskSlot {
     void (*write)(GLDiskSlot *);
@@ -30,6 +34,7 @@ typedef struct GLDiskWriter {
     retro_eventcount_t ready;
     sthread_t *thread;
     char *base_path, *vendor, *version;
+    _Alignas(max_align_t) unsigned char jobs[];
 } GLDiskWriter;
 
 static GLDiskSlot *gl_disk_writer_acquire(GLDiskWriter *w)
@@ -57,7 +62,6 @@ static void gl_disk_writer_run(void *arg)
         if (read != retro_atomic_load_acquire_size(&w->published)) {
             GLDiskSlot *slot=&w->slots[read & 1];
             slot->write(slot);
-            slot->data=NULL;
             retro_atomic_store_release_size(&w->read, read+1);
             continue;
         }
@@ -76,9 +80,13 @@ static void gl_disk_writer_run(void *arg)
     }
 }
 static GLDiskWriter *gl_disk_writer_create(const char *base_path, const char *vendor,
-                                             const char *version)
+                                             const char *version, size_t metadata_size)
 {
-    GLDiskWriter *w=calloc(1,sizeof(*w));
+    const size_t alignment = _Alignof(max_align_t);
+    if (!metadata_size || metadata_size > SIZE_MAX - (alignment - 1)) return NULL;
+    size_t stride = (metadata_size + alignment - 1) & ~(alignment - 1);
+    if (stride > (SIZE_MAX - sizeof(GLDiskWriter)) / 2) return NULL;
+    GLDiskWriter *w=calloc(1,sizeof(*w) + 2 * stride);
     if (!w) return NULL;
     w->base_path=malloc(strlen(base_path)+1);
     w->vendor=malloc(strlen(vendor)+1);
@@ -89,6 +97,7 @@ static GLDiskWriter *gl_disk_writer_create(const char *base_path, const char *ve
     strcpy(w->base_path,base_path);
     strcpy(w->vendor,vendor);strcpy(w->version,version);
     for (unsigned i=0;i<2;i++) {
+        w->slots[i].data=w->jobs+i*stride;
         w->slots[i].base_path=w->base_path;
         w->slots[i].vendor=w->vendor;w->slots[i].version=w->version;
     }
