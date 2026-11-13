@@ -187,6 +187,29 @@ static void set_programmable_vsh_state(PGRAPHState *pg,
     }
 }
 
+/* A pure recipe projection, not a readiness notification. Backends must prove
+ * their complete native pipeline ready before selecting this state. */
+bool pgraph_glsl_vsh_canonicalize_lighting(VshState *vsh)
+{
+    if (!vsh->is_fixed_function) return false;
+    FixedFunctionVshState *f = &vsh->fixed_function;
+    f->csv0c_dynamic = true;
+    f->lighting = false;
+    f->local_eye = false;
+    f->normalization = false;
+    f->emission_src = 0;
+    f->ambient_src = 0;
+    f->diffuse_src = 0;
+    f->specular_src = 0;
+    memset(f->light, 0, sizeof(f->light));
+    f->light_dynamic = false;
+    f->two_sided = false;
+    vsh->specular_enable = false;
+    vsh->separate_specular = false;
+    vsh->ignore_specular_alpha = false;
+    return true;
+}
+
 void pgraph_glsl_set_vsh_state(PGRAPHState *pg, VshState *vsh)
 {
     bool vertex_program = GET_MASK(pgraph_reg_r(pg, NV_PGRAPH_CSV0_D),
@@ -248,21 +271,7 @@ void pgraph_glsl_set_vsh_state(PGRAPHState *pg, VshState *vsh)
         /* The all-dynamic lighting module compiles in the background; the
          * family keeps specialising until it is ready, then switches. */
         VshState dyn = *vsh;
-        FixedFunctionVshState *f = &dyn.fixed_function;
-        f->csv0c_dynamic = true;
-        f->lighting = false;
-        f->local_eye = false;
-        f->normalization = false;
-        f->emission_src = 0;
-        f->ambient_src = 0;
-        f->diffuse_src = 0;
-        f->specular_src = 0;
-        memset(f->light, 0, sizeof(f->light));
-        f->light_dynamic = false;
-        f->two_sided = false;
-        dyn.specular_enable = false;
-        dyn.separate_specular = false;
-        dyn.ignore_specular_alpha = false;
+        pgraph_glsl_vsh_canonicalize_lighting(&dyn);
 
         uint64_t h = fast_hash((const uint8_t *)&dyn, sizeof(dyn));
         int idx = -1;

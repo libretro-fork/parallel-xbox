@@ -365,6 +365,102 @@ get_and_ref_shader_module_for_key(PGRAPHVkState *r,
     return module->module_info;
 }
 
+/* A vertex module key in three borrowed spans. Only its final native LRU
+ * node owns a key copy; no intermediate vertex-program snapshot is made. */
+enum {
+    VK_VERTEX_KEY_HEAD = offsetof(ShaderModuleCacheKey, vsh.state),
+    VK_VERTEX_KEY_TAIL = sizeof(ShaderModuleCacheKey) -
+                         offsetof(ShaderModuleCacheKey, vsh.glsl_opts),
+};
+typedef struct VertexModuleView {
+    uint8_t head[VK_VERTEX_KEY_HEAD];
+    const VshState *state;
+    uint8_t tail[VK_VERTEX_KEY_TAIL];
+    ShaderModuleInfo *module;
+} VertexModuleView;
+
+static uint64_t vertex_module_view(PGRAPHVkState *r, const ShaderState *state,
+                                    VertexModuleView *view)
+{
+    memset(view, 0, sizeof(*view));
+    VkShaderStageFlagBits kind = VK_SHADER_STAGE_VERTEX_BIT;
+    memcpy(view->head, &kind, sizeof(kind));
+    view->state = &state->vsh;
+    GenVshGlslOptions opts = {0};
+    opts.vulkan = true;
+    opts.prefix_outputs = pgraph_glsl_need_geom(&state->geom);
+    opts.use_push_constants_for_uniform_attrs =
+        r->use_push_constants_for_uniform_attrs;
+    opts.ubo_binding = VSH_UBO_BINDING;
+    memcpy(view->tail, &opts, sizeof(opts));
+    xxh3_state_t hash;
+    xxh3_reset(&hash, 0);
+    xxh3_update(&hash, view->head, sizeof(view->head));
+    xxh3_update(&hash, view->state, sizeof(*view->state));
+    xxh3_update(&hash, view->tail, sizeof(view->tail));
+    return xxh3_digest(&hash);
+}
+
+static bool vertex_module_compare(Lru *lru, LruNode *node, const void *key)
+{
+    const VertexModuleView *view = key;
+    const ShaderModuleCacheEntry *entry =
+        container_of(node, ShaderModuleCacheEntry, node);
+    return memcmp(&entry->key, view->head, sizeof(view->head)) ||
+           memcmp(&entry->key.vsh.state, view->state, sizeof(*view->state)) ||
+           memcmp((const uint8_t *)&entry->key +
+                      offsetof(ShaderModuleCacheKey, vsh.glsl_opts),
+                  view->tail, sizeof(view->tail));
+}
+
+/* A synchronous render-thread lend. The caller must reference this owner
+ * before any cache mutation/drain; no initializer or native API is called. */
+ShaderModuleInfo *pgraph_vk_ready_vertex_module(PGRAPHVkState *r,
+                                               const ShaderState *state)
+{
+    VertexModuleView view;
+    uint64_t hash = vertex_module_view(r, state, &view);
+    unsigned bin = lru_hash_to_bin(&r->shader_module_cache, hash);
+    LruNode *node;
+    QTAILQ_FOREACH(node, &r->shader_module_cache.bins[bin], next_bin) {
+        if (node->hash == hash &&
+            !vertex_module_compare(&r->shader_module_cache, node, &view)) {
+            return container_of(node, ShaderModuleCacheEntry, node)->module_info;
+        }
+    }
+    return NULL;
+}
+
+static void vertex_module_adopt(Lru *lru, LruNode *node, const void *key)
+{
+    const VertexModuleView *view = key;
+    ShaderModuleCacheEntry *entry =
+        container_of(node, ShaderModuleCacheEntry, node);
+    memcpy(&entry->key, view->head, sizeof(view->head));
+    memcpy(&entry->key.vsh.state, view->state, sizeof(*view->state));
+    memcpy((uint8_t *)&entry->key +
+               offsetof(ShaderModuleCacheKey, vsh.glsl_opts),
+           view->tail, sizeof(view->tail));
+    assert(view->module);
+    pgraph_vk_ref_shader_module(view->module);
+    entry->module_info = view->module;
+}
+
+/* The completed pipeline job still owns the input state and native module.
+ * Exact existing keys win; a miss only retains the already-created owner. */
+void pgraph_vk_adopt_vertex_module(PGRAPHVkState *r, const ShaderState *state,
+                                    ShaderModuleInfo *module)
+{
+    VertexModuleView view;
+    uint64_t hash = vertex_module_view(r, state, &view);
+    view.module = module;
+    static const LruKeyOps ops = {
+        .init_node = vertex_module_adopt,
+        .compare_nodes = vertex_module_compare,
+    };
+    lru_lookup_with_ops(&r->shader_module_cache, hash, &view, &ops);
+}
+
 /* Prewarming needs only geometry and vertex keys; no fragment key or
  * fragment-module lookup is constructed on this path. */
 void pgraph_vk_ref_pre_state_modules(PGRAPHVkState *r, const ShaderState *st,
@@ -412,9 +508,15 @@ static inline QEMU_ALWAYS_INLINE void shader_cache_entry_init_modules(
     NV2A_VK_DPRINTF("cache miss");
     nv2a_profile_inc_counter(NV2A_PROF_SHADER_GEN);
 
-    pgraph_vk_ref_state_modules(r, &binding->state, &binding->geom.module_info,
-                                &binding->vsh.module_info,
-                                &binding->psh.module_info);
+    /* The final LRU node already owns this state. A live full PSO retains
+     * its metadata even after the module/binding caches evict their entries.
+     * Acquire those owners before invoking any compiler-capable initializer. */
+    if (!pgraph_vk_ref_ready_pipeline_modules(r->shader_cache_owner, binding)) {
+        pgraph_vk_ref_state_modules(r, &binding->state,
+                                   &binding->geom.module_info,
+                                   &binding->vsh.module_info,
+                                   &binding->psh.module_info);
+    }
 
     update_shader_uniform_locs(binding);
 }
@@ -527,6 +629,7 @@ static void shader_cache_init(PGRAPHState *pg)
     /* A cache smaller than a game's working set of shader states
      * recompiles forever. */
     const size_t shader_cache_size = 16384;
+    r->shader_cache_owner = pg;
     lru_init(&r->shader_cache);
     r->shader_cache_entries = g_malloc_n(shader_cache_size, sizeof(ShaderBinding));
     assert(r->shader_cache_entries != NULL);
@@ -561,6 +664,7 @@ static void shader_cache_finalize(PGRAPHState *pg)
     lru_flush(&r->shader_cache);
     g_free(r->shader_cache_entries);
     r->shader_cache_entries = NULL;
+    r->shader_cache_owner = NULL;
 
     lru_flush(&r->shader_module_cache);
     g_free(r->shader_module_cache_entries);
@@ -1893,19 +1997,42 @@ static void ready_binding_init(Lru *lru, LruNode *node, const void *key)
     update_shader_uniform_locs(binding);
 }
 
-/* Only called for a proven ready PSO after ordinary shader selection has
- * completed. Never invoke the module/compiler initializer to fill a miss. */
+/* Prove exact full-PSO readiness and publish a binding from retained module
+ * metadata. A miss never invokes a module/compiler initializer. */
 ShaderBinding *pgraph_vk_materialize_ready_shader_binding(PGRAPHVkState *r,
-                                  const ShaderState *state, uint64_t hash)
+                                  const PipelineKey *key, uint64_t pipeline_hash)
 {
+    /* Exact full PSO identity owns the original module metadata. No compiler
+     * or module-cache initializer is reachable from this ready query. */
+    const PipelineBinding *pipeline = NULL;
+    unsigned bin = lru_hash_to_bin(&r->pipeline_cache, pipeline_hash);
+    LruNode *node;
+    QTAILQ_FOREACH(node, &r->pipeline_cache.bins[bin], next_bin) {
+        PipelineBinding *candidate = container_of(node, PipelineBinding, node);
+        if (node->hash == pipeline_hash && candidate->pipeline &&
+            !memcmp(&candidate->key, key, sizeof(*key))) {
+            pipeline = candidate;
+            break;
+        }
+    }
+    if (!pipeline || key->clear || !pipeline->shader_modules[0] ||
+        !pipeline->shader_modules[2] ||
+        (pgraph_glsl_need_geom(&key->shader_state.geom) &&
+         !pipeline->shader_modules[1])) {
+        return NULL;
+    }
+    const ShaderState *state = &pipeline->key.shader_state;
+    uint64_t hash = fast_hash((const uint8_t *)state, sizeof(*state));
     ShaderBinding *ready = pgraph_vk_ready_shader_binding(r, state, hash);
     if (ready) {
         return ready;
     }
-    /* An incomplete exact entry is not a miss we may initialize through a
-     * second lookup: it would hit without consuming the new references. */
-    LruNode *node;
-    unsigned bin = lru_hash_to_bin(&r->shader_cache, hash);
+    /* An incomplete hit is not a miss to initialize. Defer optional adoption
+     * under pressure without evicting a binding still borrowed by selection. */
+    if (!r->shader_cache.num_free) {
+        return NULL;
+    }
+    bin = lru_hash_to_bin(&r->shader_cache, hash);
     QTAILQ_FOREACH(node, &r->shader_cache.bins[bin], next_bin) {
         ShaderBinding *binding = container_of(node, ShaderBinding, node);
         if (node->hash == hash &&
@@ -1913,41 +2040,9 @@ ShaderBinding *pgraph_vk_materialize_ready_shader_binding(PGRAPHVkState *r,
             return NULL;
         }
     }
-    ShaderBinding *full = r->shader_binding;
-    if (!r->shader_cache.num_free || !full || !full->vsh.module_info ||
-        memcmp(&full->state, state, offsetof(ShaderState, psh)) ||
-        pgraph_glsl_ui_clamp_stage(&full->state.psh) !=
-            pgraph_glsl_ui_clamp_stage(&state->psh) ||
-        (pgraph_glsl_need_geom(&state->geom) && !full->geom.module_info)) {
-        return NULL;
-    }
-    /* Vertex/geometry modules are borrowed from the exact current binding.
-     * Only a fragment lookup key is constructed; no vertex program clone.
-     * The unused union tail is canonical zero metadata, not shader words. */
-    ShaderModuleCacheKey key = {0};
-    key.kind = VK_SHADER_STAGE_FRAGMENT_BIT;
-    key.psh.state = state->psh;
-    key.psh.glsl_opts.vulkan = true;
-    key.psh.glsl_opts.ubo_binding = PSH_UBO_BINDING;
-    key.psh.glsl_opts.tex_binding = PSH_TEX_BINDING;
-    uint64_t module_hash = fast_hash((const uint8_t *)&key, sizeof(key));
-    ShaderModuleInfo *psh = NULL;
-    bin = lru_hash_to_bin(&r->shader_module_cache, module_hash);
-    QTAILQ_FOREACH(node, &r->shader_module_cache.bins[bin], next_bin) {
-        ShaderModuleCacheEntry *entry =
-            container_of(node, ShaderModuleCacheEntry, node);
-        if (node->hash == module_hash && entry->module_info &&
-            !memcmp(&entry->key, &key, sizeof(key))) {
-            psh = entry->module_info;
-            break;
-        }
-    }
-    if (!psh) {
-        return NULL;
-    }
     ReadyBindingInput input = {
-        .state = state, .vsh = full->vsh.module_info,
-        .geom = full->geom.module_info, .psh = psh,
+        .state = state, .vsh = pipeline->shader_modules[0],
+        .geom = pipeline->shader_modules[1], .psh = pipeline->shader_modules[2],
     };
     pgraph_vk_ref_shader_module(input.vsh);
     if (input.geom) {
@@ -1958,8 +2053,6 @@ ShaderBinding *pgraph_vk_materialize_ready_shader_binding(PGRAPHVkState *r,
         .init_node = ready_binding_init,
         .compare_nodes = ready_binding_compare,
     };
-    /* The preceding exact miss and free-node check preclude eviction of
-     * the current binding. No draining/reentrant initializer runs here. */
     node = lru_lookup_with_ops(&r->shader_cache, hash, &input, &ops);
     return container_of(node, ShaderBinding, node);
 }
@@ -2037,6 +2130,11 @@ static bool vk_try_pending_binding(PGRAPHState *pg)
     uint64_t hash;
     const ShaderState *state = pgraph_vk_pending_shader_state(pg, &hash);
     if (state && !pgraph_glsl_check_shader_state_dirty(pg, state)) {
+        if (pgraph_vk_pending_vertex_family(pg)) {
+            /* The exact pipeline is still worker-owned. Keep its proven
+             * lighting sibling until ordered completion ends this ticket. */
+            return true;
+        }
         ShaderBinding *binding = pgraph_vk_ready_shader_binding(r, state, hash);
         if (binding) {
             /* End the ring lend at this exact cache query. Only the proven
@@ -2074,6 +2172,12 @@ void pgraph_vk_bind_shaders(PGRAPHState *pg)
             uint64_t h =
                 fast_hash((const uint8_t *)&new_state, sizeof(new_state));
             uint64_t bound_h = h; /* of the state drawn with, below */
+            ShaderBinding *lighting = pgraph_vk_try_vertex_family(pg, &new_state);
+            if (lighting) {
+                r->shader_binding = lighting;
+                bound_h = lighting->node.hash;
+                goto binding_selected;
+            }
             if (unlikely(!vk_seen_contains(h))) {
                 int phase = vk_spec_phase(h);
                 if (phase == VK_SPEC_PIPE_LANDED) {

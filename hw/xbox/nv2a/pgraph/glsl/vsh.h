@@ -131,6 +131,8 @@ typedef struct GenVshGlslOptions {
     int ubo_binding;
 } GenVshGlslOptions;
 
+bool pgraph_glsl_vsh_canonicalize_lighting(VshState *vsh);
+
 MString *pgraph_glsl_gen_vsh(const VshState *state,
                              GenVshGlslOptions glsl_opts);
 

@@ -17,7 +17,7 @@ typedef struct {unsigned refs;} ShaderModuleInfo;
 typedef struct ShaderBinding {LruNode node;ShaderState state;struct{ShaderModuleInfo *module_info;}vsh,geom,psh;} ShaderBinding;
 /* TYPES */
 typedef struct {PipelineKey key;uint64_t hash,state_hash;ShaderModuleInfo *mods[3];unsigned nmods;} LibJob;
-typedef struct {Lru shader_cache,pipeline_cache;ShaderBinding *shader_binding;PipelineBinding *pipeline_binding;bool shader_bindings_changed,pipeline_binding_changed,ahead_valid,sibling_retry;unsigned sibling_ticket,sibling_generation;} PGRAPHVkState;
+typedef struct {Lru shader_cache,pipeline_cache;ShaderBinding *shader_binding;PipelineBinding *pipeline_binding;bool shader_bindings_changed,pipeline_binding_changed,ahead_valid,sibling_vertex_family,sibling_retry;unsigned sibling_ticket,sibling_generation;} PGRAPHVkState;
 struct PGRAPHState {PGRAPHVkState *vk_renderer_state;bool program_data_dirty;};
 typedef struct {PGRAPHState pgraph;} NV2AState;
 static bool feature,geometry,collision,full_queue,inflight,force_dirty;
@@ -60,6 +60,9 @@ static void pipeline_ahead(PGRAPHState *pg,const PipelineKey *key){(void)pg;(voi
 static bool pump_take_pipeline(PGRAPHState *pg,PipelineBinding *binding,uint64_t hash,const PipelineKey *key) {
  (void)pg;(void)binding;(void)hash;assert(key);return false;
 }
+/* Lighting-family behavior is exercised by its own full-PSO fixture. */
+static bool pgraph_vk_pending_vertex_family(PGRAPHState *pg){(void)pg;return false;}
+static void prepare_vertex_family(PGRAPHState *pg,PipelineKey *key,PipelineBinding *source){(void)pg;(void)key;(void)source;}
 /* PRODUCTION */
 int main(void){
  (void)pipeline_ready;(void)pump_full_in_flight;

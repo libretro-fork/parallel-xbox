@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Prepare Vulkan fixed-function lighting siblings as complete native pipelines on the existing worker. Select them only when their entire pass/register/vertex-input key and retained module owners are ready, while exact specializations compile in the final job slot. Reuse prepared vertex modules across PSOs and defer duplicate stage preparation; preserve synchronous handling for uncovered configurations. NGB exercises the path and matches the parent image in the local restore check; cold first-play stall recovery and overall performance remain unqualified.
+
+- On Vulkan shader-binding cache misses, reuse the exact ready full pipeline's retained module metadata before reaching compiler-capable module lookup. Reuse the native final cache node under pressure without an extra shader-state copy or hot-hit query; uncovered PSOs retain the correct synchronous path. This does not establish cold-play recovery.
+
+- Keep full Vulkan PSOs' existing vertex/geometry/fragment metadata owners alive until their final CPU consumers finish. Ready shader binding adoption checks the exact full PSO key and uses those owners without a module-cache/compiler initializer, including for differing vertex shaders. Preserve GPU fence retirement and pressure deferral. This is readiness infrastructure; generic family coverage, remaining draw-critical compilation, allocation reductions and cold-play recovery remain open.
+
 - Let macOS build dependency downloads fall back to official MacPorts HTTPS mirrors when the primary index is unavailable. Preserve exact archive versions and existing pinned-key/signature verification, publish only completed downloads, and request only libepoxy plus its declared dependencies for the static core. No runtime downloads or renderer changes.
 
 - Clear the Windows standalone GL share root when its owning context is destroyed, so later contexts do not try to share with freed memory. Native GL dispatch tests now require three full destroy/recreate cycles.

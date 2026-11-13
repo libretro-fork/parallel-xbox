@@ -19,7 +19,7 @@ typedef struct {LruNode *bins[8];} Lru;
 typedef struct {unsigned refs;} ShaderModuleInfo;
 typedef struct ShaderBinding {LruNode node;ShaderState state;struct{ShaderModuleInfo *module_info;}vsh,geom,psh;} ShaderBinding;
 typedef struct {bool compute,full;struct{ShaderState shader_state;}key;uint64_t state_hash;} LibJob;
-typedef struct PGRAPHVkState {Lru shader_cache;ShaderBinding *shader_binding;bool shader_bindings_changed,sibling_retry;unsigned sibling_ticket,sibling_generation;} PGRAPHVkState;
+typedef struct PGRAPHVkState {Lru shader_cache;ShaderBinding *shader_binding;bool shader_bindings_changed,sibling_vertex_family,sibling_retry;unsigned sibling_ticket,sibling_generation;} PGRAPHVkState;
 struct PGRAPHState {
  PGRAPHVkState *vk_renderer_state;bool program_data_dirty,two_side_light_en;
  uint16_t uniform_attrs,swizzle_attrs,compressed_attrs;unsigned primitive_mode,surface_scale_factor;
@@ -28,7 +28,7 @@ struct PGRAPHState {
 };
 unsigned pgraph_glsl_dynamic_gen;
 static LibJob pump_jobs[PUMP_RING];static unsigned pump_d,pump_w_local;
-static bool geometry,poison,enabled;
+static bool geometry,poison,enabled,pipeline_dirty;
 static bool pgraph_gpu_boost_gl(void){return enabled;}
 static unsigned promotions;
 static ShaderBinding *expected_binding;
@@ -42,6 +42,7 @@ static ShaderBinding *get_shader_binding_for_state(PGRAPHVkState *r,const Shader
  if(poison){pump_d=pump_w_local;memset(pump_jobs,0xcd,sizeof(pump_jobs));}
  return expected_binding;
 }
+static bool check_pipeline_dirty(PGRAPHState *pg){(void)pg;return pipeline_dirty;}
 /* PRODUCTION */
 static void flush_retry(PGRAPHState *pg){/* FLUSH */}
 int main(void){
@@ -92,6 +93,21 @@ int main(void){
   flush_retry(&pg);pg.program_data_dirty=false; /* restored serialized guest bit */
   assert(!r.sibling_retry&&!r.shader_binding);
   cases++;
+ }
+
+ /* A retained ready lighting sibling needs no cache lookup while its exact
+  * specialization is pending. Raster/VI/pass changes must end that lend. */
+ for(unsigned changed=0;changed<3;changed++) {
+  PGRAPHVkState r={0};PGRAPHState pg={.vk_renderer_state=&r};ShaderBinding binding={0};
+  pump_d=7;pump_w_local=8;memset(pump_jobs,0,sizeof(pump_jobs));
+  LibJob *job=&pump_jobs[7];job->full=true;job->state_hash=77;
+  r.sibling_retry=true;r.sibling_vertex_family=true;r.sibling_ticket=7;
+  r.sibling_generation=pgraph_glsl_dynamic_gen=9;r.shader_binding=&binding;
+  enabled=true;pipeline_dirty=changed==1;pg.program_data_dirty=changed==2;
+  promotions=0;bool selected=vk_try_pending_binding(&pg);
+  assert(selected==(changed==0));assert(!promotions);
+  assert(r.sibling_retry==(changed==0));assert(pg.program_data_dirty==(changed!=0));
+  pipeline_dirty=false;
  }
  printf("Pending key lend: %u ring wrap, expired/reused/non-full slot, generation, 21 native dirty-state classes, exact cache collision, poisoned-after-query and load invalidation cases PASS; %u successful lends, zero ShaderState snapshots in selection\n",cases,borrowed);
 }
