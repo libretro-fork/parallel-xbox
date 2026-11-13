@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Allow an already-complete GL dynamic-cover pipeline to draw while the exact specialization's stages are still pending. Keep exact-stage readiness in the flip-time setup service, with the same recipe reservation, eviction and cancellation rules. Native NGB output matches the parent; the NGB/DOA3 probes did not encounter pending exact stages, so a retail latency improvement from this change is not yet established. Other first-use shader/PSO misses remain open.
+
 - Keep the GL binding-pump regression test linked to the pipeline retirement uniform helper, so it continues testing eviction, load cancellation and exact-stage readiness with the current implementation. No runtime change.
 
 - OpenGL cache saves publish complete temporary files without truncating entries that loaders may still have mapped. Failed replacement preserves the previous entry. The two disk-writer slots reuse bounded path storage, removing formatted path allocations per save; stream internals, platform conversions and binary slab growth remain allocation work.

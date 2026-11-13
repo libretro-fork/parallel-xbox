@@ -1999,10 +1999,7 @@ static void spec_binding_pump(PGRAPHGLState *r)
         return;
     }
     if (!target->initialized) {
-        ShaderModuleCacheKey keys[3];
-        bool need_gs = state_module_keys(&target->state, keys);
-        if ((need_gs && !module_ready(r, &keys[0])) ||
-            !module_ready(r, &keys[1]) || !module_ready(r, &keys[2])) {
+        if (!state_modules_ready(r, &target->state)) {
             if (spec_binding_reservation(r) >= 0) {
                 spec_binding_cancel(r);
             }
@@ -2667,13 +2664,13 @@ void pgraph_gl_bind_shaders(PGRAPHState *pg)
             (r->spec_track[t].phase == SPEC_ADOPTED ||
              r->spec_track[t].phase == SPEC_PIPE_RESERVED) &&
             state_modules_known(r, &state)) {
-            /* Prepared stages alone are not a pipeline. Keep an exact-key
-             * ready cover drawing while flip-time setup finishes this one. */
-            ShaderBinding *cover = state_modules_ready(r, &state) ?
-                                    ready_cover_binding(r, &state) : NULL;
+            /* The complete cover owns its stages independently of this
+             * specialization's unfinished links. Use it now; the flip pump
+             * still requires every exact stage before setting up that recipe. */
+            ShaderBinding *cover = ready_cover_binding(r, &state);
             if (cover && spec_binding_track(r, binding)) {
                 r->spec_track[t].phase = SPEC_PIPE_RESERVED;
-                /* Keep ADOPTED until flip-time setup completes: unchanged
+                /* Keep the reservation until flip-time setup completes: unchanged
                  * draws must not enqueue another owned recipe snapshot. */
                 binding = cover;
                 nv2a_profile_inc_counter(NV2A_PROF_SHADER_FALLBACK);
