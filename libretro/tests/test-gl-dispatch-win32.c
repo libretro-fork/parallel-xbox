@@ -87,6 +87,19 @@ int main(int argc, char **argv)
     glDeleteBuffers(1,&buffer);
     assert(glGetError() == GL_NO_ERROR);
     glo_context_destroy(second); glo_context_destroy(first);
+    if (!frontend) {
+        /* The standalone share root must not outlive its owned context. */
+        for (unsigned cycle=0;cycle<3;cycle++) {
+            GloContext *restarted=glo_context_create();assert(restarted);
+            glo_set_current(restarted);assert(xemu_gl_version()>=40);
+            GLuint object=0;glGenBuffers(1,&object);glBindBuffer(GL_ARRAY_BUFFER,object);
+            glBufferData(GL_ARRAY_BUFFER,sizeof(value),&value,GL_STATIC_DRAW);
+            glGetBufferSubData(GL_ARRAY_BUFFER,0,sizeof(readback),&readback);
+            assert(readback==value && glGetError()==GL_NO_ERROR);
+            glDeleteBuffers(1,&object);glo_context_destroy(restarted);
+        }
+        puts("native-only: 3 complete share-root destroy/recreate lifecycles PASS");
+    }
     if (frontend) {
         wglMakeCurrent(NULL,NULL); wglDeleteContext(primary);
         ReleaseDC(window,dc); DestroyWindow(window);

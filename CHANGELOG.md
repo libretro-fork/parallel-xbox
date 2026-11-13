@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Clear the Windows standalone GL share root when its owning context is destroyed, so later contexts do not try to share with freed memory. Native GL dispatch tests now require three full destroy/recreate cycles.
+
 - Refresh the used libretro-common subset from RetroArch c7a5f6e, retaining clockless waits and bounded queue/borrowed-buffer extensions. Frontend-backed disc reads use VFS v6 positional I/O when available, avoiding cursor seeks without staging buffers; older frontends and unsupported handles retain seek/read. Native disc I/O is unchanged. Shader/PSO cold-play recovery remains unqualified; no gameplay speedup is claimed.
 
 - Pair RCU list traversal with release publication when unlinking a node and exposing its successor. Keep initialized callback fields ordered on weakly ordered hosts while preserving deferred reclamation and nonblocking unlink.
