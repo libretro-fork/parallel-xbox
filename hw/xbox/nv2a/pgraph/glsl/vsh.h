@@ -136,6 +136,16 @@ bool pgraph_glsl_vsh_canonicalize_lighting(VshState *vsh);
 MString *pgraph_glsl_gen_vsh(const VshState *state,
                              GenVshGlslOptions glsl_opts);
 
+/* Programmable-only source builder, independent of the microcode bytes.
+ * GL exposes a separate std140 XvsCode block (136 ivec4s); the native owner
+ * must bind and retain its final storage. Vulkan appends the same array to
+ * VshUniforms, outside VshUniformValues' ordinary ABI. Callers own that layout
+ * and must validate the live microcode before upload. Other VshState fields
+ * remain static. This API does not provide a ready native pipeline or a cache
+ * identity; ordinary keys and persistent-cache schemas are unchanged. */
+MString *pgraph_glsl_gen_vsh_interpreter(const VshState *state,
+                                      GenVshGlslOptions glsl_opts);
+
 void pgraph_glsl_set_vsh_uniform_values(PGRAPHState *pg, const VshState *state,
                                         const VshUniformLocs locs,
                                         VshUniformValues *values);

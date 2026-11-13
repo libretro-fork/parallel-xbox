@@ -26,7 +26,6 @@ def prepare(r, p, mutation=''):
     needle = '    DECL(S, surfaceSize, vec2, 1)'
     assert h.count(needle) == 1
     h = h.replace(needle, needle + ' \\\n    DECL(S, vpCode, ivec4, NV2A_MAX_TRANSFORM_PROGRAM_LENGTH)')
-    h = h.replace('\n#endif', '\nMString *pgraph_glsl_gen_vsh_interpreter(const VshState *, GenVshGlslOptions);\n#endif')
     (inc / 'glsl/vsh.h').write_text(h)
     (inc / 'spv/vsh.h').write_text((r / 'hw/xbox/nv2a/pgraph/spv/vsh.h').read_text())
 
@@ -39,6 +38,7 @@ def prepare(r, p, mutation=''):
         'lit_result': ('result=vec4(1.0,x,x>0.0?exp2(1.0*log2(y)):0.0,1.0);',
                        'result=vec4(1.0,x,0.0,1.0);'),
         'final_bit': ('if((t.w&1u)!=0u)break;', 'if(false && (t.w&1u)!=0u)break;'),
+        'point_written': ('irPointWritten=true;', 'irPointWritten=false;'),
     }
     if mutation in mutations:
         code = source.with_name('vsh-interpreter.inc').read_text()
@@ -51,17 +51,21 @@ def prepare(r, p, mutation=''):
     script = (r / 'libretro/tests/test-spv-vsh-gpu.py').read_text()
     needle = "ref+=function(r/'hw/xbox/nv2a/pgraph/glsl/vsh.c','pgraph_glsl_gen_vsh')+'\\n'"
     assert script.count(needle) == 1
-    old_call = '''        pgraph_glsl_gen_vsh_prog(
-            VSH_VERSION_XVS, (uint32_t *)state->programmable.program_data,
-            state->programmable.program_length, header, body);'''
-    replacement = '        pgraph_glsl_gen_vsh_prog_interpreter(header, body);'
-    extra = "\n base=function(r/'hw/xbox/nv2a/pgraph/glsl/vsh.c','pgraph_glsl_gen_vsh')\n"
-    extra += " assert base.count(" + repr(old_call) + ") == 1\n"
-    extra += " ref+=base.replace('const UniformInfo *info = &VshUniformInfo[i];', 'const UniformInfo *info = &VshUniformInfo[i]; if(i==VshUniform_vpCode)continue;')+'\\n'\n"
-    extra += " interpreted=base.replace('pgraph_glsl_gen_vsh(', 'pgraph_glsl_gen_vsh_interpreter(',1)\n"
-    if mutation != 'compile_program':
-        extra += ' interpreted=interpreted.replace(' + repr(old_call) + ', ' + repr(replacement) + ')\n'
+    extra = "\n impl=function(r/'hw/xbox/nv2a/pgraph/glsl/vsh.c','pgraph_glsl_gen_vsh_impl')\n"
+    extra += " assert impl.count('const UniformInfo *info = &VshUniformInfo[i];')==1\n"
+    # Test-only CPU values contain raw code. Production emits its declaration
+    # independently, so that extra test header field must not emit it twice.
+    extra += " impl=impl.replace('const UniformInfo *info = &VshUniformInfo[i];', 'const UniformInfo *info = &VshUniformInfo[i]; if(i==VshUniform_vpCode)continue;')\n"
+    if mutation == 'point_literal':
+        extra += " assert impl.count('irPointWritten ? oPts.x * pointScale : 0.0 * pointScale')==1\n"
+        extra += " impl=impl.replace('irPointWritten ? oPts.x * pointScale : 0.0 * pointScale','oPts.x * pointScale')\n"
+    extra += " ref+=impl+'\\n'\n"
+    extra += " interpreted=function(r/'hw/xbox/nv2a/pgraph/glsl/vsh.c','pgraph_glsl_gen_vsh_interpreter')\n"
+    if mutation == 'compile_program':
+        extra += " assert interpreted.count('state, opts, true')==1\n"
+        extra += " interpreted=interpreted.replace('state, opts, true','state, opts, false')\n"
     extra += " ref+=interpreted+'\\n'"
+    extra += "\n ref+=function(r/'hw/xbox/nv2a/pgraph/glsl/vsh.c','pgraph_glsl_gen_vsh',False)+'\\n'"
     script = script.replace(needle, extra)
     needle = "'-I'+str(d),'-I'+str(r)"
     assert script.count(needle) == 1

@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-or-later */
 /* One authoritative GLSL string; included by vsh-prog.c. */
 "// Programmable XVS interpreter; opcode helpers are shared with vsh-prog.c.\n"
+"bool irPointWritten=false;\n"
 "vec4 irRegs[12];\n"
 "vec4 irAttrs[16];\n"
 "vec4 irReadReg(uint reg) {\n"
@@ -32,7 +33,7 @@
 "        // Match the established generator's packed scalar fog write mask.\n"
 "        oFog.x=value.x;\n"
 "        break;\n"
-"    case 6u:oPts=irMask(oPts,value,mask);break;\n"
+"    case 6u:if((mask&8u)!=0u)irPointWritten=true;oPts=irMask(oPts,value,mask);break;\n"
 "    case 7u:oB0=irMask(oB0,value,mask);break;\n"
 "    case 8u:oB1=irMask(oB1,value,mask);break;\n"
 "    case 9u:oT0=irMask(oT0,value,mask);break;\n"

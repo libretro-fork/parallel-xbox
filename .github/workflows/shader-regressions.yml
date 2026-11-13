@@ -275,7 +275,7 @@ jobs:
       - name: Install software GPU and validation tools
         run: |
           sudo apt-get -qy update
-          sudo apt-get -qy install build-essential libvulkan-dev libvulkan1 mesa-vulkan-drivers vulkan-validationlayers
+          sudo apt-get -qy install build-essential libvulkan-dev libvulkan1 mesa-vulkan-drivers vulkan-validationlayers libegl-dev libgl-dev
       - name: Select the installed software ICD
         run: |
           python3 - <<'PY'
@@ -293,6 +293,15 @@ jobs:
           unset NO_VALIDATION
           mkdir -p results
           python3 libretro/tests/test-vsh-interpreter-gpu.py . cc 2>&1 | tee results/interpreter.log
+      - name: Check generated-source ownership across the full vertex corpus
+        run: |
+          set -euo pipefail
+          SHADER_OWNER_SANITIZE=1 python3 libretro/tests/test-vsh-source-owners.py . cc 2>&1 | tee results/source-owners.log
+      - name: Compare the GL code-buffer path and reject broken controls
+        run: |
+          set -euo pipefail
+          export LIBGL_ALWAYS_SOFTWARE=1
+          python3 libretro/tests/test-vsh-interpreter-gl.py . cc 2>&1 | tee results/interpreter-gl.log
       - uses: actions/upload-artifact@v4
         if: always()
         with:
