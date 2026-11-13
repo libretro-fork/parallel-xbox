@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Release separable OpenGL stage programs when their module-cache entries are evicted, instead of losing the native handles. Existing pipeline references retain each stage until their final use; drop its uniform memo entry before the GL name can be recycled. This fixes an object-lifetime leak, with no shader-stutter recovery claim.
+
 - Clear the Windows standalone GL share root when its owning context is destroyed, so later contexts do not try to share with freed memory. Native GL dispatch tests now require three full destroy/recreate cycles.
 
 - Publish OpenGL module/program cache files through private sibling files, preserving mapped readers and old valid entries when writes or replacement fail. Reuse bounded path storage in the existing two disk slots instead of allocating formatted paths for each save. Binary-slab growth, stream internals and platform path conversions can still allocate; cold-play recovery remains open.
