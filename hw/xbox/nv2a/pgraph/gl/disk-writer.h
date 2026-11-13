@@ -24,6 +24,8 @@ struct GLDiskSlot {
     void *data;
     void *scratch;
     size_t capacity;
+    char *path, *temporary_path;
+    size_t path_capacity;
     const char *base_path, *vendor, *version;
 };
 typedef struct GLDiskWriter {
@@ -86,7 +88,17 @@ static GLDiskWriter *gl_disk_writer_create(const char *base_path, const char *ve
     if (!metadata_size || metadata_size > SIZE_MAX - (alignment - 1)) return NULL;
     size_t stride = (metadata_size + alignment - 1) & ~(alignment - 1);
     if (stride > (SIZE_MAX - sizeof(GLDiskWriter)) / 2) return NULL;
-    GLDiskWriter *w=calloc(1,sizeof(*w) + 2 * stride);
+    /* Two final paths and two process/slot-private sibling temporary paths.
+     * Reserve only the base plus the longest finite cache suffix at startup. */
+    const size_t suffix = sizeof("/shader_modules/ffff/ffffffffffff") +
+                          1 + 3 * sizeof(uintmax_t) +
+                          1 + 2 * sizeof(uintptr_t) + sizeof(".tmp");
+    size_t base_len = strlen(base_path);
+    if (base_len > SIZE_MAX - suffix) return NULL;
+    size_t path_capacity = base_len + suffix;
+    size_t used = sizeof(GLDiskWriter) + 2 * stride;
+    if (path_capacity > (SIZE_MAX - used) / 4) return NULL;
+    GLDiskWriter *w=calloc(1,used + 4 * path_capacity);
     if (!w) return NULL;
     w->base_path=malloc(strlen(base_path)+1);
     w->vendor=malloc(strlen(vendor)+1);
@@ -98,6 +110,9 @@ static GLDiskWriter *gl_disk_writer_create(const char *base_path, const char *ve
     strcpy(w->vendor,vendor);strcpy(w->version,version);
     for (unsigned i=0;i<2;i++) {
         w->slots[i].data=w->jobs+i*stride;
+        w->slots[i].path=(char *)w->jobs+2*stride+2*i*path_capacity;
+        w->slots[i].temporary_path=w->slots[i].path+path_capacity;
+        w->slots[i].path_capacity=path_capacity;
         w->slots[i].base_path=w->base_path;
         w->slots[i].vendor=w->vendor;w->slots[i].version=w->version;
     }

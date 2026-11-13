@@ -46,6 +46,12 @@ int main(void)
     GLDiskSlot *first=gl_disk_writer_acquire(w);assert(first);submit_job(w,first,0);
     wait_flag(&entered,&entered_event);
     GLDiskSlot *second=gl_disk_writer_acquire(w);assert(second&&first!=second);
+    assert(first->path && first->temporary_path && second->path && second->temporary_path);
+    assert(first->path!=second->path && first->temporary_path!=second->temporary_path);
+    assert(first->path_capacity==second->path_capacity && first->path_capacity>strlen(first->base_path)+64);
+    strcpy(first->path,"first-path");strcpy(second->path,"second-path");
+    strcpy(first->temporary_path,"first-private");strcpy(second->temporary_path,"second-private");
+    assert(!strcmp(first->path,"first-path") && !strcmp(first->temporary_path,"first-private"));
     submit_job(w,second,1);
     /* This returns while the writer cannot progress. Nothing may overwrite
      * the slabs or require a live binding/renderer object for completion. */

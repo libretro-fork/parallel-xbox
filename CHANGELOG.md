@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Publish OpenGL module/program cache files through private sibling files, preserving mapped readers and old valid entries when writes or replacement fail. Reuse bounded path storage in the existing two disk slots instead of allocating formatted paths for each save. Binary-slab growth, stream internals and platform path conversions can still allocate; cold-play recovery remains open.
+
 - Let macOS build dependency downloads fall back to official MacPorts HTTPS mirrors when the primary index is unavailable. Preserve exact archive versions and existing pinned-key/signature verification, publish only completed downloads, and request only libepoxy plus its declared dependencies for the static core. No runtime downloads or renderer changes.
 
 - Prepare the OpenGL texture-touch program and VAO at renderer initialization, including for later changes to smoothing options. The first texture-touch flip no longer compiles, links or creates those objects. Reuse the existing cache writer's two metadata slots instead of allocating/freeing a record for each module/program save, retaining binary owners until completion. Binary growth, file paths, driver allocations and remaining draw-critical guest shader compilation stay open; no shader-stutter recovery is claimed.

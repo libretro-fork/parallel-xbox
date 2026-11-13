@@ -6,6 +6,11 @@
 #include <stdint.h>
 #include <stdarg.h>
 #include <stdio.h>
+#include <sys/stat.h>
+#ifdef _WIN32
+#include <direct.h>
+#include <windows.h>
+#endif
 #include <stdlib.h>
 #include <string.h>
 #include <retro_mpsc.h>
@@ -74,19 +79,25 @@ static FILE *qemu_fopen(const char *path,const char *mode)
     return fopen(path,mode);
 }
 #define qemu_unlink remove
-static void qemu_mkdir(const char *path) { (void)path; }
+static void qemu_mkdir(const char *path) {
+#ifdef _WIN32
+    _mkdir(path);
+#else
+    mkdir(path,0700);
+#endif
+}
 static char *g_strdup_printf(const char *format,...) {
     va_list ap,copy;va_start(ap,format);va_copy(copy,ap);
     int n=vsnprintf(NULL,0,format,copy);va_end(copy);assert(n>=0);
     char *p=malloc(n+1);assert(p);vsnprintf(p,n+1,format,ap);va_end(ap);return p;
 }
-static char *shader_get_bin_directory(uint64_t hash) { return strdup(directory); }
+static char *shader_get_bin_directory(uint64_t hash) { return g_strdup_printf("%s/shaders_boost/%04x",directory,(unsigned)(hash>>48)); }
 static char *shader_get_binary_path(const char *path, uint64_t hash)
 {
-    size_t size = strlen(directory) + 40;
+    size_t size = strlen(path) + 40;
     char *name = malloc(size);
     assert(name);
-    snprintf(name, size, "%s/%llu.bin", directory, (unsigned long long)hash);
+    snprintf(name, size, "%s/%012llx", path, (unsigned long long)(hash & UINT64_C(0xffffffffffff)));
     return name;
 }
 static bool shader_write_cache_version(FILE *file)
@@ -113,6 +124,12 @@ static void pgraph_clear_and_notify(unsigned *complete, unsigned *pending)
     *pending = 0;
     (*complete)++;
 }
+#ifdef _WIN32
+#define g_rename(a,b) (MoveFileExA(a,b,MOVEFILE_REPLACE_EXISTING)?0:-1)
+#else
+#define g_rename rename
+#endif
+#include "hw/xbox/nv2a/pgraph/gl/cache-file.h"
 #include "shader-cache-production.h"
 
 static void initialize(Lru *lru, LruNode *node, const void *key)
@@ -285,7 +302,8 @@ int main(int argc, char **argv)
     retro_eventcount_free(&save_entered_event);retro_eventcount_free(&save_release_event);
     assert(!live.program_owner.file.data);
     assert(retro_atomic_load_acquire_int(&renderer.shader_disk_mappings) == 0);
-    char *name = shader_get_binary_path(directory, 123);
+    char *dir = shader_get_bin_directory(123);
+    char *name = shader_get_binary_path(dir, 123);free(dir);
     FILE *file = fopen(name, "rb");
     assert(file);
     unsigned char bytes[256];
