@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Execute the geometry fixture's complete base and UI groups concurrently, using separate output owners and one shared 600-second watchdog. Retain all numerical cases, allocation checks, synchronization validation and SPIR-V validation; this removes native ARM64 test serialization without extending the limit.
+
 - Run each existing vertex numerical-test batch on at most four independent device owners under its original shared 300-second deadline. Preserve all 42,512 cases and value/validation checks; cap each software driver's worker pool to avoid oversubscription. No runtime changes or relaxed watchdogs.
 
 - Make the concurrent Vulkan handoff fixture wait for producer completion and a validated snapshot instead of assuming that two finite attempt loops overlap. Keep the full stress window and existing watchdog, so a scheduled-first reader cannot falsely report an empty test.
