@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Keep the GL binding-pump regression test linked to the pipeline retirement uniform helper, so it continues testing eviction, load cancellation and exact-stage readiness with the current implementation. No runtime change.
+
 - OpenGL cache saves publish complete temporary files without truncating entries that loaders may still have mapped. Failed replacement preserves the previous entry. The two disk-writer slots reuse bounded path storage, removing formatted path allocations per save; stream internals, platform conversions and binary slab growth remain allocation work.
 
 - Prepare the finite OpenGL texture-touch utility program and VAO at renderer startup, so flip maintenance only uses ready objects. Reuse two aligned disk-writer job records from startup storage after consumer release instead of allocating/freeing metadata for each save. Preserve binary ownership, bounded optional-save deferral and teardown. Shader binary slab growth and remaining shader/PSO misses can still allocate or compile; no global cold-play recovery is claimed.

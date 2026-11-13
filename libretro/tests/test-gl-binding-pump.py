@@ -11,7 +11,7 @@ def fn(text,name):
  while depth:depth+=(text[b]=='{')-(text[b]=='}');b+=1
  return text[m.start():b]
 key=re.search(r'typedef struct ShaderModuleCacheKey \{.*?\} ShaderModuleCacheKey;',h,re.S)[0]
-parts='\n'.join(fn(s,n) for n in ('state_module_keys','module_ready','spec_track_find','spec_binding_reservation','spec_binding_cancel','spec_binding_track','state_modules_ready','spec_binding_pump','shader_cache_entry_post_evict','pgraph_gl_uniform_sources_invalidate'))
+parts='\n'.join(fn(s,n) for n in ('state_module_keys','module_ready','spec_track_find','spec_binding_reservation','spec_binding_cancel','spec_binding_track','state_modules_ready','spec_binding_pump','forget_binding_program_uniforms','shader_cache_entry_post_evict','pgraph_gl_uniform_sources_invalidate'))
 parts=fn((r/'hw/xbox/nv2a/pgraph/glsl/geom.c').read_text(),'pgraph_glsl_need_geom')+'\n'+parts
 # Check actual call-site ordering: service after module/seed work, and cancel
 # the old lend before lookup can recycle its native cache slot.
@@ -44,7 +44,7 @@ typedef unsigned GLenum;typedef unsigned GLuint;
 #define container_of(p,t,m) ((t *)((char *)(p)-offsetof(t,m)))
 /* KEY */
 typedef struct {LruNode node;ShaderModuleCacheKey key;GLuint gl_stage_program;bool locs_pending;} ShaderModuleCacheEntry;
-typedef struct {LruNode node;ShaderState state;unsigned dyn_gen;bool initialized,cached;GLuint gl_program,gl_pipeline;void *program;int program_owner;} ShaderBinding;
+typedef struct {LruNode node;ShaderState state;unsigned dyn_gen;bool initialized,cached;GLuint gl_program,gl_pipeline,gl_prog_vs,gl_prog_fs,gl_prog_gs;void *program;int program_owner;} ShaderBinding;
 typedef struct {Lru shader_cache,shader_module_cache;ShaderBinding *shader_binding,*spec_binding;struct{uint64_t hash;int phase;}spec_track[2];bool wide_lines;struct{bool valid,ff_valid;}vsh_uni_src;bool uni_cache;} PGRAPHGLState;
 static PGRAPHGLState r;
 static ShaderBinding slots[2];static ShaderModuleCacheEntry modules[3];
@@ -54,6 +54,9 @@ unsigned pgraph_glsl_dynamic_gen;
 static bool gl_sso_enabled(void){return sso;}static bool first_meet_enabled(void){return boost;}
 static uint64_t fast_hash(const uint8_t *data,size_t n){(void)data;CHECK(n==sizeof(ShaderModuleCacheKey)||n==sizeof(PshState));return 42;}
 static void uniform_cache_invalidate(bool *v){*v=false;}
+/* Namespace lifetime semantics are covered by test-gl-program-namespace;
+ * this fixture checks the pump and its actual eviction helper together. */
+static void uniform_cache_forget(bool *v,GLuint program){(void)v;CHECK(program);}
 static void glUseProgram(GLuint p){CHECK(p==0);}
 static void glBindProgramPipeline(GLuint p){bound=p;restores++;}
 static void glDeleteProgram(GLuint p){(void)p;deleted++;}
