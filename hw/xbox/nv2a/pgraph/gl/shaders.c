@@ -687,13 +687,16 @@ static void shader_module_cache_entry_post_evict(Lru *lru, LruNode *node)
     ShaderModuleCacheEntry *module =
         container_of(node, ShaderModuleCacheEntry, node);
     if (module->gl_stage_program) {
-        /* Pipelines built from this stage still reference it; a linked
-         * program owned its own copy, a separable one does not. */
+        PGRAPHGLState *r = container_of(lru, PGRAPHGLState, shader_module_cache);
+        /* GL pipeline references keep this program alive until their last
+         * stage is detached. Drop the cache's ownership now rather than lose
+         * the name permanently; deletion also invalidates uniform memo state. */
         if (module->gl_shader) {
             /* Never finalized: drop the pending shader object too. */
             glDeleteShader(module->gl_shader);
             module->gl_shader = 0;
         }
+        delete_program(r, module->gl_stage_program);
         module->gl_stage_program = 0;
         module->locs_pending = false;
     } else {
