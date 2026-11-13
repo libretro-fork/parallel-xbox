@@ -23,6 +23,7 @@
 #include "qemu/osdep.h"
 #include "qemu/fast-hash.h"
 #include "qemu/file-map.h"
+#include <glib/gstdio.h>
 #include "qemu/mstring.h"
 #include <rthreads/rthreads.h>
 #include <rthreads/retro_eventcount.h>
@@ -35,6 +36,7 @@
 #include "debug.h"
 #include "renderer.h"
 #include "disk-writer.h"
+#include "cache-file.h"
 
 static const char *shader_gl_vendor = NULL;
 static void spec_binding_cancel(PGRAPHGLState *r);
@@ -383,23 +385,8 @@ typedef struct ModuleDiskSave {
 static void module_write_to_disk(GLDiskSlot *slot)
 {
     ModuleDiskSave *save=slot->data;
-    char *parent = g_strdup_printf("%s/shader_modules",
-                                   slot->base_path);
-    qemu_mkdir(parent);
-    g_free(parent);
-
-    char *dir = g_strdup_printf("%s/shader_modules/%04x",
-                                slot->base_path, (uint32_t)(save->hash >> 48));
-    qemu_mkdir(dir);
-    char *path = module_get_path(dir, save->hash);
-    g_free(dir);
-
-    FILE *f = qemu_fopen(path, "wb");
-    if (!f) {
-        g_free(path);
-        g_free(save);
-        return;
-    }
+    FILE *f = gl_cache_file_begin(slot, "shader_modules", save->hash);
+    if (!f) return;
 
     bool ok = shader_write_cache_version(f);
 #define WR(p, n) ok = ok && fwrite(p, n, 1, f) == 1
@@ -419,12 +406,7 @@ static void module_write_to_disk(GLDiskSlot *slot)
 
 #undef WR
 
-    ok = fclose(f) == 0 && ok;
-    if (!ok) {
-        qemu_unlink(path);
-    }
-    g_free(path);
-    g_free(save);
+    gl_cache_file_finish(slot, f, ok);
 }
 
 static bool module_save_to_disk(PGRAPHGLState *r,
@@ -440,12 +422,12 @@ static bool module_save_to_disk(PGRAPHGLState *r,
     GLenum format;
     glGetProgramBinary(module->gl_stage_program,size,&copied,&format,bin);
     if (glGetError()!=GL_NO_ERROR || copied<=0 || copied>size) return true;
-    ModuleDiskSave *save=g_new(ModuleDiskSave,1);
+    ModuleDiskSave *save=slot->data;
     save->key=module->key;
     save->hash=hash;
     save->format=format;
     save->size=copied;
-    slot->data=save;slot->write=module_write_to_disk;
+    slot->write=module_write_to_disk;
     gl_disk_writer_submit(r->cache_writer);
     return true;
 }
@@ -1288,6 +1270,36 @@ static void shader_capture_gl_identity(void)
     }
 }
 
+/* This finite utility belongs to the renderer, including when first-use
+ * smoothing is enabled later. Finish linking and allocate its VAO before
+ * guest execution; flips may only use these ready objects. */
+static void init_texture_touch(PGRAPHGLState *r)
+{
+    r->touch_prog = pgraph_gl_compile_shader(
+        "#version 400 core\n"
+        "void main() { gl_Position = vec4(0.0, 0.0, 0.0, 1.0); }\n",
+        "#version 400 core\n"
+        "uniform sampler2D s;\n"
+        "out vec4 o;\n"
+        "void main() { o = texture(s, vec2(0.5)); }\n");
+    glUseProgram(r->touch_prog);
+    glUniform1i(glGetUniformLocation(r->touch_prog, "s"), 0);
+    glUseProgram(0);
+
+    GLint previous_vao;
+    glGetIntegerv(GL_VERTEX_ARRAY_BINDING, &previous_vao);
+    glGenVertexArrays(1, &r->touch_vao);
+    glBindVertexArray(r->touch_vao);
+    glBindVertexArray(previous_vao);
+}
+
+static void finalize_texture_touch(PGRAPHGLState *r)
+{
+    glDeleteProgram(r->touch_prog);
+    glDeleteVertexArrays(1, &r->touch_vao);
+    r->touch_prog = r->touch_vao = 0;
+}
+
 void pgraph_gl_init_shaders(PGRAPHState *pg)
 {
     PGRAPHGLState *r = pg->gl_renderer_state;
@@ -1334,7 +1346,9 @@ void pgraph_gl_init_shaders(PGRAPHState *pg)
     r->shader_module_cache.post_node_evict = shader_module_cache_entry_post_evict;
 
     r->cache_writer=gl_disk_writer_create(xemu_settings_get_base_path(),
-                                                  shader_gl_vendor, shader_gl_version);
+                                                  shader_gl_vendor, shader_gl_version,
+                                                  MAX(sizeof(ModuleDiskSave), sizeof(ShaderDiskResult)));
+    init_texture_touch(r);
     r->seed.state = -1;
     r->prewarm.state = -1;
 }
@@ -1360,8 +1374,7 @@ void pgraph_gl_finalize_shaders(PGRAPHState *pg)
 
     /* What the flip services hold: the texture touch objects, the seed and
      * prewarm traversal. Links in flight stay for the next GL renderer. */
-    glDeleteProgram(r->touch_prog);
-    glDeleteVertexArrays(1, &r->touch_vao);
+    finalize_texture_touch(r);
     g_free(r->seed.mod_keys);
     g_free(r->seed.pipe_states);
     module_prewarm_finish(r);
@@ -1383,71 +1396,36 @@ static void shader_write_to_disk(GLDiskSlot *slot)
 {
     ShaderDiskResult *binding = slot->data;
 
-    char *shader_bin = g_strdup_printf("%s/shaders_boost/%04x", slot->base_path,
-                                       (uint32_t)(binding->hash >> 48));
-    char *shader_path = shader_get_binary_path(shader_bin, binding->hash);
-
     const uint64_t gl_vendor_len = strlen(slot->vendor) + 1;
     const uint64_t gl_version_len = strlen(slot->version) + 1;
+    FILE *shader_file = gl_cache_file_begin(slot, "shaders_boost", binding->hash);
+    if (shader_file) {
+        bool ok = shader_write_cache_version(shader_file);
+#define WRITE_OR_ERR(data, data_size) \
+        do { ok = ok && fwrite(data, data_size, 1, shader_file) == 1; } while (0)
+        WRITE_OR_ERR(&gl_vendor_len, sizeof(gl_vendor_len));
+        WRITE_OR_ERR(slot->vendor, gl_vendor_len);
 
-    qemu_mkdir(shader_bin);
-    g_free(shader_bin);
+        WRITE_OR_ERR(&gl_version_len, sizeof(gl_version_len));
+        WRITE_OR_ERR(slot->version, gl_version_len);
 
-    FILE *shader_file = qemu_fopen(shader_path, "wb");
-    if (!shader_file) {
-        goto error;
+        {
+            uint64_t state_size = sizeof(binding->state);
+            WRITE_OR_ERR(&state_size, sizeof(state_size));
+        }
+        WRITE_OR_ERR(&binding->program_format, sizeof(binding->program_format));
+        WRITE_OR_ERR(&binding->state, sizeof(binding->state));
+
+        WRITE_OR_ERR(&binding->program_size, sizeof(binding->program_size));
+        WRITE_OR_ERR(binding->program, binding->program_size);
+
+#undef WRITE_OR_ERR
+        if (!gl_cache_file_finish(slot, shader_file, ok)) {
+            fprintf(stderr, "nv2a: Failed to write shader binary file to %s\n",
+                    slot->path);
+        }
     }
-
-    size_t written;
-    #define WRITE_OR_ERR(data, data_size) \
-        do { \
-            written = fwrite(data, data_size, 1, shader_file); \
-            if (written != 1) { \
-                fclose(shader_file); \
-                goto error; \
-            } \
-        } while (0)
-
-    if (!shader_write_cache_version(shader_file)) {
-        fclose(shader_file);
-        goto error;
-    }
-
-    WRITE_OR_ERR(&gl_vendor_len, sizeof(gl_vendor_len));
-    WRITE_OR_ERR(slot->vendor, gl_vendor_len);
-
-    WRITE_OR_ERR(&gl_version_len, sizeof(gl_version_len));
-    WRITE_OR_ERR(slot->version, gl_version_len);
-
-    {
-        uint64_t state_size = sizeof(binding->state);
-        WRITE_OR_ERR(&state_size, sizeof(state_size));
-    }
-    WRITE_OR_ERR(&binding->program_format, sizeof(binding->program_format));
-    WRITE_OR_ERR(&binding->state, sizeof(binding->state));
-
-    WRITE_OR_ERR(&binding->program_size, sizeof(binding->program_size));
-    WRITE_OR_ERR(binding->program, binding->program_size);
-
-    #undef WRITE_OR_ERR
-
-    if (fclose(shader_file) != 0) {
-        goto error;
-    }
-
-    g_free(shader_path);
     shader_binary_release(binding->program, &binding->program_owner);
-    g_free(binding);
-
-    return;
-
-error:
-    fprintf(stderr, "nv2a: Failed to write shader binary file to %s\n", shader_path);
-    qemu_unlink(shader_path);
-    g_free(shader_path);
-    shader_binary_release(binding->program, &binding->program_owner);
-    g_free(binding);
-    return;
 }
 
 /* Publish an immutable snapshot; eviction never waits for a disk writer. */
@@ -1455,7 +1433,7 @@ static bool shader_start_disk_save(GLDiskWriter *writer, ShaderBinding *binding)
 {
     GLDiskSlot *slot=gl_disk_writer_acquire(writer);
     if (!slot) return false;
-    ShaderDiskResult *save=g_new(ShaderDiskResult,1);
+    ShaderDiskResult *save=slot->data;
     save->hash=binding->node.hash;
     save->state=binding->state;
     save->program_format=binding->program_format;
@@ -1464,7 +1442,7 @@ static bool shader_start_disk_save(GLDiskWriter *writer, ShaderBinding *binding)
     save->program_owner=binding->program_owner;
     binding->program=NULL;
     binding->program_owner=(ShaderBinaryOwner){0};
-    slot->data=save;slot->write=shader_write_to_disk;
+    slot->write=shader_write_to_disk;
     gl_disk_writer_submit(writer);
     return true;
 }
@@ -2567,18 +2545,7 @@ static void touch_fresh_textures(PGRAPHGLState *r, unsigned max_items)
     }
     unsigned items = 0;
 
-    if (!r->touch_prog) {
-        r->touch_prog = pgraph_gl_compile_shader(
-            "#version 400 core\n"
-            "void main() { gl_Position = vec4(0.0, 0.0, 0.0, 1.0); }\n",
-            "#version 400 core\n"
-            "uniform sampler2D s;\n"
-            "out vec4 o;\n"
-            "void main() { o = texture(s, vec2(0.5)); }\n");
-        glUseProgram(r->touch_prog);
-        glUniform1i(glGetUniformLocation(r->touch_prog, "s"), 0);
-        glUseProgram(0);
-    }
+    assert(r->touch_prog && r->touch_vao);
 
     GLint prev_vao = 0, prev_fbo = 0;
     GLint prev_tex0 = 0, prev_active = 0, sbox[4];
@@ -2595,9 +2562,6 @@ static void touch_fresh_textures(PGRAPHGLState *r, unsigned max_items)
     GLboolean scissor_was = glIsEnabled(GL_SCISSOR_TEST);
     glGetIntegerv(GL_SCISSOR_BOX, sbox);
 
-    if (!r->touch_vao) {
-        glGenVertexArrays(1, &r->touch_vao);
-    }
     glBindProgramPipeline(0);
     glUseProgram(r->touch_prog);
     glBindVertexArray(r->touch_vao);

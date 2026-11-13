@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- OpenGL cache saves publish complete temporary files without truncating entries that loaders may still have mapped. Failed replacement preserves the previous entry. The two disk-writer slots reuse bounded path storage, removing formatted path allocations per save; stream internals, platform conversions and binary slab growth remain allocation work.
+
+- Prepare the finite OpenGL texture-touch utility program and VAO at renderer startup, so flip maintenance only uses ready objects. Reuse two aligned disk-writer job records from startup storage after consumer release instead of allocating/freeing metadata for each save. Preserve binary ownership, bounded optional-save deferral and teardown. Shader binary slab growth and remaining shader/PSO misses can still allocate or compile; no global cold-play recovery is claimed.
 - Invalidate GL program uniform memos again when a shader binding releases its pipeline. Retained pipelines can repopulate a stage's memo after module eviction; clear that state before its final GL detach permits name reuse, preserving unrelated live-program entries. No driver query, compilation wait or allocation is added.
 
 - Release separable OpenGL stage programs when their module-cache entries are evicted, instead of losing the native handles. Existing pipeline references retain each stage until their final use; drop its uniform memo entry before the GL name can be recycled. This fixes an object-lifetime leak, with no shader-stutter recovery claim.

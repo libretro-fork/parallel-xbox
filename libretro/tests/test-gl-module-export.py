@@ -43,9 +43,9 @@ typedef struct {GLDiskSlot slot;bool busy;} GLDiskWriter;
 typedef struct {GLDiskWriter *cache_writer;} PGRAPHGLState;
 static bool defer_write;
 static GLDiskSlot *gl_disk_writer_acquire(GLDiskWriter *w){return w&&!w->busy?&w->slot:NULL;}
-static void finish_write(GLDiskWriter *w){w->slot.write(&w->slot);w->slot.data=NULL;w->busy=false;}
+static void finish_write(GLDiskWriter *w){w->slot.write(&w->slot);w->busy=false;}
 static void gl_disk_writer_submit(GLDiskWriter *w){w->busy=true;if(!defer_write)finish_write(w);}
-#define g_new(t,n) ((t*)malloc(sizeof(t)*(n)))
+#define g_new(t,n) FORBIDDEN_PER_SAVE_METADATA_ALLOCATION
 static unsigned allocations,exports,opens,unlinks,queries;
 static int query_size=100,copied_size=75,gl_error;
 static GLenum expected_format=0x12345678;static void *expected_binary;
@@ -54,10 +54,6 @@ static uint8_t captured[200000];static size_t captured_len;
 static const char *shader_gl_vendor="fixture vendor";
 static void *g_malloc(size_t n) {allocations++;void *p=malloc(n);assert(p);return p;}
 static void g_free(void *p) {free(p);}
-static char *g_strdup_printf(const char *fmt,...) {
- va_list ap,copy;va_start(ap,fmt);va_copy(copy,ap);int n=vsnprintf(NULL,0,fmt,copy);va_end(copy);
- assert(n>=0);char *p=malloc(n+1);assert(p);vsnprintf(p,n+1,fmt,ap);va_end(ap);return p;
-}
 #ifndef REAL_GL
 static void glGetProgramiv(unsigned program,unsigned what,GLint *value) {assert(program==7 && what==GL_PROGRAM_BINARY_LENGTH);queries++;*value=query_size;}
 static void glGetProgramBinary(unsigned program,GLsizei size,GLsizei *copied,GLenum *format,void *data) {
@@ -66,8 +62,6 @@ static void glGetProgramBinary(unsigned program,GLsizei size,GLsizei *copied,GLe
 }
 static GLenum glGetError(void) {return gl_error;}
 #endif
-static void qemu_mkdir(const char *path) {assert(path);}
-static char *module_get_path(const char *dir,uint64_t hash) {(void)dir;(void)hash;return g_strdup_printf("module.cache");}
 static FILE *qemu_fopen(const char *path,const char *mode) {
  assert(!strcmp(path,"module.cache") && !strcmp(mode,"wb"));opens++;if(fail_open)return NULL;
 #ifdef _WIN32
@@ -91,6 +85,8 @@ static int close_capture(FILE *file) {
 #define fwrite write_bytes
 #define fclose close_capture
 static bool shader_write_cache_version(FILE *file) {const uint32_t magic=0xaabbccdd;return fwrite(&magic,4,1,file)==1;}
+static FILE *gl_cache_file_begin(GLDiskSlot *slot,const char *family,uint64_t hash){(void)slot;(void)family;(void)hash;return qemu_fopen("module.cache","wb");}
+static bool gl_cache_file_finish(GLDiskSlot *slot,FILE *f,bool ok){(void)slot;ok=fclose(f)==0&&ok;if(!ok)qemu_unlink("module.cache");return ok;}
 /* PRODUCTION */
 static void check_blob(ShaderModuleCacheEntry *module) {
  size_t p=0;uint32_t magic,format;uint64_t len;
@@ -106,7 +102,8 @@ static void check_blob(ShaderModuleCacheEntry *module) {
 }
 #ifndef REAL_GL
 int main(void) {
- GLDiskWriter w={.slot={.base_path="fixture",.vendor=shader_gl_vendor}};
+ ModuleDiskSave metadata;
+ GLDiskWriter w={.slot={.data=&metadata,.base_path="fixture",.vendor=shader_gl_vendor}};
  PGRAPHGLState r={.cache_writer=&w};ShaderModuleCacheEntry module={.gl_stage_program=7};
  for(unsigned i=0;i<12;i++)module.key.words[i]=i*17;
  module_binary_reserve(&w.slot,65536);assert(allocations==1);
