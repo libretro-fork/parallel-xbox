@@ -677,6 +677,8 @@ MString *pgraph_glsl_gen_vsh(const VshState *state, GenVshGlslOptions opts)
             output, mstring_get_str(uniforms));
     }
 
+    mstring_unref(uniforms);
+
     mstring_append(output, mstring_get_str(header));
     mstring_unref(header);
 

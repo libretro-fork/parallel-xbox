@@ -113,6 +113,7 @@ jobs:
           python3 driver/libretro/tests/test-pipeline-seed-full.py candidate cc 2>&1 | tee results/pipeline-seed-full.log
           python3 driver/libretro/tests/test-dirty-range-owner.py candidate cc 2>&1 | tee results/dirty-range-owner.log
           python3 driver/libretro/tests/test-pvideo-dirty.py candidate cc 2>&1 | tee results/pvideo-dirty.log
+          SHADER_OWNER_SANITIZE=1 python3 driver/libretro/tests/test-vsh-source-owners.py candidate cc 2>&1 | tee results/vsh-source-owners.log
           python3 driver/libretro/tests/test-throughput-gate.py 2>&1 | tee results/throughput-gate.log
           python3 driver/libretro/tests/test-shader-compile-gate.py 2>&1 | tee results/compiler-gate.log
           python3 driver/libretro/tests/test-cold-play-frame-gate.py candidate 2>&1 | tee results/cold-play-frame-gate.log
