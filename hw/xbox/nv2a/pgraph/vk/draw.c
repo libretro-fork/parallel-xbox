@@ -2812,8 +2812,9 @@ static void prepare_bound_vertex_family(PGRAPHState *pg)
 }
 
 /* Before a compiler-capable binding lookup, require a complete exact PSO or
- * an exact lighting/combiner sibling. Cache-pressure misses retain the correct
- * uncovered path. Prepared words/modules alone are never a ready fallback. */
+ * an exact lighting/combiner sibling. This early selection has ended its old
+ * shader-binding lend, so native LRU replacement is safe. Prepared words/modules
+ * alone are never a ready fallback. */
 ShaderBinding *pgraph_vk_try_vertex_family(PGRAPHState *pg,
                                            const ShaderState *state)
 {
@@ -2824,7 +2825,7 @@ ShaderBinding *pgraph_vk_try_vertex_family(PGRAPHState *pg,
     PipelineKey key;
     init_pipeline_key_for_shader(pg, &key, state);
     uint64_t hash = fast_hash((const uint8_t *)&key, sizeof(key));
-    ShaderBinding *exact = pgraph_vk_materialize_ready_shader_binding(r, &key, hash);
+    ShaderBinding *exact = pgraph_vk_replace_ready_shader_binding(r, &key, hash);
     if (exact) {
         r->sibling_retry = false;
         return exact;
@@ -2841,7 +2842,7 @@ ShaderBinding *pgraph_vk_try_vertex_family(PGRAPHState *pg,
         source = ready_vertex_pipeline(r, &key, hash);
     }
     if (!source) return NULL;
-    ShaderBinding *sibling = pgraph_vk_materialize_ready_shader_binding(r, &key, hash);
+    ShaderBinding *sibling = pgraph_vk_replace_ready_shader_binding(r, &key, hash);
     if (!sibling) return NULL;
     /* Restore only metadata in this existing key, not a vertex-program clone. */
     memcpy(&key.shader_state.vsh.fixed_function, &state->vsh.fixed_function,

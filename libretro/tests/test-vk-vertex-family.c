@@ -55,7 +55,9 @@ static void pipeline_job_fill(PGRAPHState *pg,const ShaderState *s,const ShaderM
 }
 static void pump_submit(LibJob *j){assert(j==&pump_jobs[pump_w_local%PUMP_RING]);published++;pump_w_local++;}
 static PipelineBinding *ready_vertex_pipeline(PGRAPHVkState *,const PipelineKey *,uint64_t);
-static ShaderBinding *pgraph_vk_materialize_ready_shader_binding(PGRAPHVkState *r,const PipelineKey *key,uint64_t hash)
+/* The native-LRU fixture separately covers full-cache replacement.
+ * This mocked refusal represents an incomplete exact shader-cache entry. */
+static ShaderBinding *pgraph_vk_replace_ready_shader_binding(PGRAPHVkState *r,const PipelineKey *key,uint64_t hash)
 {
     if(pressure||!ready_vertex_pipeline(r,key,hash))return NULL;
     materialized.state=key->shader_state;return &materialized;

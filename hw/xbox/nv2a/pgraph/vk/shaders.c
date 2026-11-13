@@ -2092,8 +2092,8 @@ static void ready_binding_init(Lru *lru, LruNode *node, const void *key)
 
 /* Prove exact full-PSO readiness and publish a binding from retained module
  * metadata. A miss never invokes a module/compiler initializer. */
-ShaderBinding *pgraph_vk_materialize_ready_shader_binding(PGRAPHVkState *r,
-                                  const PipelineKey *key, uint64_t pipeline_hash)
+static ShaderBinding *materialize_ready_shader_binding(PGRAPHVkState *r,
+    const PipelineKey *key, uint64_t pipeline_hash, bool may_replace)
 {
     /* Exact full PSO identity owns the original module metadata. No compiler
      * or module-cache initializer is reachable from this ready query. */
@@ -2120,9 +2120,10 @@ ShaderBinding *pgraph_vk_materialize_ready_shader_binding(PGRAPHVkState *r,
     if (ready) {
         return ready;
     }
-    /* An incomplete hit is not a miss to initialize. Defer optional adoption
-     * under pressure without evicting a binding still borrowed by selection. */
-    if (!r->shader_cache.num_free) {
+    /* Preserve a live old-binding lend unless the caller has explicitly
+     * ended it at early selection. Exact incomplete entries are rejected
+     * separately below; they are never mistaken for initialized hits. */
+    if (!may_replace && !r->shader_cache.num_free) {
         return NULL;
     }
     bin = lru_hash_to_bin(&r->shader_cache, hash);
@@ -2148,6 +2149,28 @@ ShaderBinding *pgraph_vk_materialize_ready_shader_binding(PGRAPHVkState *r,
     };
     node = lru_lookup_with_ops(&r->shader_cache, hash, &input, &ops);
     return container_of(node, ShaderBinding, node);
+}
+
+/* Callers still lending the original binding may only use a free node. */
+ShaderBinding *pgraph_vk_materialize_ready_shader_binding(PGRAPHVkState *r,
+    const PipelineKey *key, uint64_t pipeline_hash)
+{
+    return materialize_ready_shader_binding(r, key, pipeline_hash, false);
+}
+
+/* Early shader selection has ended its old binding lend. Install the new
+ * owner before returning, including when the native LRU reuses its address.
+ * The immutable PSO retains every input owner through cache replacement. */
+ShaderBinding *pgraph_vk_replace_ready_shader_binding(PGRAPHVkState *r,
+    const PipelineKey *key, uint64_t pipeline_hash)
+{
+    ShaderBinding *binding = materialize_ready_shader_binding(
+        r, key, pipeline_hash, true);
+    if (binding) {
+        r->shader_binding = binding;
+        r->shader_bindings_changed = true;
+    }
+    return binding;
 }
 
 /* Called only after an exact ready pipeline and binding have been proven.

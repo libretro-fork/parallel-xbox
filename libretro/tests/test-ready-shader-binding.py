@@ -12,9 +12,9 @@ def fn(name):
     return s[m.start():end]
 types='\n'.join(re.search(r'typedef struct '+n+r' \{.*?\} '+n+r';',h,re.S)[0] for n in ('RenderPassState','PipelineKey','PipelineBinding'))
 types+='\n'+re.search(r'typedef struct ReadyBindingInput \{.*?\} ReadyBindingInput;',s,re.S)[0]
-names=('pgraph_vk_ready_shader_binding','ready_binding_compare','ready_binding_init','pgraph_vk_materialize_ready_shader_binding')
+names=('pgraph_vk_ready_shader_binding','ready_binding_compare','ready_binding_init','materialize_ready_shader_binding','pgraph_vk_materialize_ready_shader_binding','pgraph_vk_replace_ready_shader_binding')
 parts='\n'.join(fn(n) for n in names)
-body=fn('pgraph_vk_materialize_ready_shader_binding')
+body='\n'.join(fn(n) for n in ('materialize_ready_shader_binding','pgraph_vk_materialize_ready_shader_binding','pgraph_vk_replace_ready_shader_binding'))
 for forbidden in ('get_and_ref_shader_module_for_key','pgraph_vk_ref_state_modules','vkCreate','pump_drain','get_shader_binding_for_state'):
     assert forbidden not in body,forbidden
 code=Path(__file__).with_suffix('.c').read_text().replace('/* TYPES */',types).replace('/* PRODUCTION */',parts)
@@ -43,7 +43,10 @@ with tempfile.TemporaryDirectory(prefix='ready-shader-binding-') as d:
         ('incomplete exact cache entry reused',code.replace('if (node->hash == hash &&\n            !memcmp', 'if (false && node->hash == hash &&\n            !memcmp',1)),
         ('cache state not owned',code.replace('memcpy(&binding->state, input->state, sizeof(binding->state));','memset(&binding->state, 0, sizeof(binding->state));',1)),
         ('uniform locations not prepared',code.replace('update_shader_uniform_locs(binding);','(void)update_shader_uniform_locs;',1)),
-        ('current binding evicted under pressure',code.replace('if (!r->shader_cache.num_free)', 'if (false)',1)),
+        ('replacement not installed',code.replace('r->shader_binding = binding;','(void)binding;',1)),
+        ('replacement change not published',code.replace('r->shader_bindings_changed = true;','r->shader_bindings_changed = false;',1)),
+        ('safe replacement falsely deferred',code.replace('if (!may_replace && !r->shader_cache.num_free)', 'if (!r->shader_cache.num_free && (may_replace || !may_replace))',1)),
+        ('current binding evicted under pressure',code.replace('if (!may_replace && !r->shader_cache.num_free)', 'if (false && !may_replace && !r->shader_cache.num_free)',1)),
     ]
     for name,mutated in controls:
         assert mutated!=code,name

@@ -1247,6 +1247,11 @@ ShaderBinding *pgraph_vk_ready_shader_binding(PGRAPHVkState *r,
                                               uint64_t hash);
 ShaderBinding *pgraph_vk_materialize_ready_shader_binding(PGRAPHVkState *r,
                                   const PipelineKey *key, uint64_t pipeline_hash);
+/* Early shader selection only: ends the old binding lend and installs the
+ * returned owner. May replace a native shader-cache node under pressure. */
+ShaderBinding *pgraph_vk_replace_ready_shader_binding(PGRAPHVkState *r,
+    const PipelineKey *key, uint64_t pipeline_hash);
+
 void pgraph_vk_use_ready_shader_binding(PGRAPHState *pg, ShaderBinding *binding);
 /* Render-thread key lend: consume before draining or cache initialization. */
 const ShaderState *pgraph_vk_pending_shader_state(PGRAPHState *pg,

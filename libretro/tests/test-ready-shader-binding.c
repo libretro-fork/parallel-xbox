@@ -16,7 +16,7 @@ typedef struct ShaderBinding {
  struct { ShaderModuleInfo *module_info; } vsh,geom,psh;
 } ShaderBinding;
 /* TYPES */
-typedef struct PGRAPHVkState { Lru shader_cache,pipeline_cache; ShaderBinding *shader_binding; } PGRAPHVkState;
+typedef struct PGRAPHVkState { Lru shader_cache,pipeline_cache; ShaderBinding *shader_binding;bool shader_bindings_changed; } PGRAPHVkState;
 static bool geometry,collisions;
 static unsigned uniforms,ordinary,evictions;
 static ShaderModuleInfo *initial[3];
@@ -34,7 +34,7 @@ static void ordinary_init(Lru *l,LruNode *node,const void *key){
 }
 static bool ordinary_compare(Lru *l,LruNode *node,const void *key){return memcmp(&container_of(node,ShaderBinding,node)->state,key,sizeof(ShaderState));}
 static void binding_evict(Lru *l,LruNode *node){
- ShaderBinding *b=container_of(node,ShaderBinding,node);unref(b->vsh.module_info);unref(b->geom.module_info);unref(b->psh.module_info);evictions++;
+ ShaderBinding *b=container_of(node,ShaderBinding,node);unref(b->vsh.module_info);unref(b->geom.module_info);unref(b->psh.module_info);evictions++;memset(&b->state,0xcd,sizeof(b->state));b->vsh.module_info=b->geom.module_info=b->psh.module_info=NULL;
 }
 static void pipeline_init(Lru *l,LruNode *node,const void *key){PipelineBinding *p=container_of(node,PipelineBinding,node);p->key=*(const PipelineKey*)key;}
 static bool pipeline_compare(Lru *l,LruNode *node,const void *key){return memcmp(&container_of(node,PipelineBinding,node)->key,key,sizeof(PipelineKey));}
@@ -45,11 +45,12 @@ static void pipeline_evict(Lru *l,LruNode *node){
 /* PRODUCTION */
 int main(void){
  PGRAPHVkState *r=calloc(1,sizeof(*r));assert(r);unsigned cases=0;
+ for(unsigned replace=0;replace<2;replace++)
  for(unsigned gen=1;gen<=8;gen++)for(unsigned bits=0;bits<512;bits++){
   ShaderBinding entries[3]={0};PipelineBinding pipelines[2]={0};
   ShaderModuleInfo owners[6]={{1},{1},{1},{1},{1},{1}};
   ShaderState full={0},state,expected;PipelineKey key={0};
-  geometry=!!(bits&32);collisions=!!(gen&1);uniforms=ordinary=evictions=0;
+  geometry=!!(bits&32);collisions=!!(gen&1);uniforms=ordinary=evictions=0;r->shader_bindings_changed=false;
   full.vsh.programmable.program_data[0][0]=gen;full.psh.final_inputs_0=gen;full.psh.shader_stage_program=PS_TEXTUREMODES_PROJECT2D;
   state=full;state.psh.combiner_dynamic=true;state.psh.alpha_dynamic=true;state.psh.final_inputs_0=0;
   if(bits&8)state.vsh.programmable.program_data[0][0]^=0x8000;
@@ -75,18 +76,20 @@ int main(void){
   PipelineBinding *collision=container_of(lru_lookup(&r->pipeline_cache,ph,&other),PipelineBinding,node);collision->pipeline=(VkPipeline)(uintptr_t)18;
   uint64_t sh=fast_hash((const uint8_t*)&state,sizeof(state));
   if((bits&256)&&(bits&1)){initial[0]=initial[1]=initial[2]=NULL;lru_lookup(&r->shader_cache,sh,&state);ordinary--;}
-  bool ok=(bits&1)&&!(bits&(2|4|64|256))&&(!geometry||!(bits&128))&&!(gen&(2|4));
-  unsigned before=ordinary;ShaderBinding *b=pgraph_vk_materialize_ready_shader_binding(r,&key,ph);
-  assert((b!=NULL)==ok);assert(ordinary==before&&evictions==0&&uniforms==ok);
+  ShaderBinding *old=r->shader_binding;
+  bool ok=((bits&1)||replace)&&!((bits&256)&&(bits&1))&&!(bits&(2|4|64))&&(!geometry||!(bits&128))&&!(gen&(2|4));
+  unsigned before=ordinary;ShaderBinding *b=replace?pgraph_vk_replace_ready_shader_binding(r,&key,ph):pgraph_vk_materialize_ready_shader_binding(r,&key,ph);
+  assert((b!=NULL)==ok);assert(ordinary==before&&evictions==(unsigned)(ok&&replace&&!(bits&1))&&uniforms==ok);
+  assert(r->shader_binding==(replace&&ok?b:old)&&r->shader_bindings_changed==(bool)(replace&&ok));
   if(ok){
-   assert(b!=r->shader_binding&&!memcmp(&b->state,&state,sizeof(state)));
+   assert((replace||b!=old)&&!memcmp(&b->state,&state,sizeof(state)));
    assert(b->vsh.module_info==&owners[3]&&b->psh.module_info==&owners[4]&&b->geom.module_info==(geometry?&owners[5]:NULL));
    assert(owners[3].refs==2&&owners[4].refs==2&&(!geometry||owners[5].refs==2));
    assert(pgraph_vk_materialize_ready_shader_binding(r,&key,ph)==b&&uniforms==1);
    assert(owners[3].refs==2&&owners[4].refs==2);
    memset(&key,0xcd,sizeof(key));lru_flush(&r->pipeline_cache);
    assert(owners[3].refs==1&&owners[4].refs==1&&(!geometry||owners[5].refs==1));
-   lru_evict_node(&r->shader_cache,&r->shader_binding->node);
+   if(b!=old)lru_evict_node(&r->shader_cache,&old->node);
    assert(owners[0].refs==0&&owners[2].refs==0);
    assert(!memcmp(&b->state,&expected,sizeof(expected))&&b->vsh.module_info->refs==1&&b->psh.module_info->refs==1);
    lru_flush(&r->shader_cache);assert(owners[3].refs==0&&owners[4].refs==0&&(!geometry||owners[5].refs==0));
@@ -96,5 +99,33 @@ int main(void){
   }
   cases++;
  }
- printf("Ready PSO binding: %u exact full-key/collision, absent PSO/module, vertex+geometry variants, pressure, partial-entry and owner-eviction cases PASS; final state=%zu bytes, scoped pointers=%zu bytes\n",cases,sizeof(ShaderState),sizeof(ReadyBindingInput));free(r);
+
+ /* VS/PS metadata can be shared by the evicted shader binding and the
+  * resident PSO. A geometry-state change needs a new binding, not new VS/PS
+  * owners. Acquire the replacement before releasing that old cache owner. */
+ for(unsigned gen=1;gen<=128;gen++)for(unsigned geom=0;geom<2;geom++){
+  ShaderBinding entry={0};PipelineBinding pipeline={0};
+  ShaderModuleInfo owners[4]={{2},{geom},{2},{geom}};
+  ShaderState old_state={0};old_state.geom.primitive_mode=PRIM_TYPE_TRIANGLES;
+  ShaderState expected=old_state;expected.geom.primitive_mode=PRIM_TYPE_TRIANGLE_STRIP;
+  PipelineKey key={.shader_state=expected};key.regs[0]=gen;
+  geometry=geom;collisions=gen&1;uniforms=ordinary=evictions=0;r->shader_bindings_changed=false;
+  lru_init(&r->shader_cache);lru_init(&r->pipeline_cache);
+  r->shader_cache.init_node=ordinary_init;r->shader_cache.compare_nodes=ordinary_compare;r->shader_cache.post_node_evict=binding_evict;
+  r->pipeline_cache.init_node=pipeline_init;r->pipeline_cache.compare_nodes=pipeline_compare;r->pipeline_cache.post_node_evict=pipeline_evict;
+  lru_add_free(&r->shader_cache,&entry.node);
+  initial[0]=&owners[0];initial[1]=geom?&owners[1]:NULL;initial[2]=&owners[2];
+  r->shader_binding=container_of(lru_lookup(&r->shader_cache,fast_hash((const uint8_t*)&old_state,sizeof(old_state)),&old_state),ShaderBinding,node);
+  lru_add_free(&r->pipeline_cache,&pipeline.node);uint64_t hash=fast_hash((const uint8_t*)&key,sizeof(key));
+  PipelineBinding *native=container_of(lru_lookup(&r->pipeline_cache,hash,&key),PipelineBinding,node);
+  native->pipeline=(VkPipeline)(uintptr_t)19;native->shader_modules[0]=&owners[0];native->shader_modules[1]=geom?&owners[3]:NULL;native->shader_modules[2]=&owners[2];
+  assert(!pgraph_vk_materialize_ready_shader_binding(r,&key,hash)&&!evictions);
+  ShaderBinding *b=pgraph_vk_replace_ready_shader_binding(r,&key,hash);
+  assert(b==&entry&&r->shader_binding==b&&r->shader_bindings_changed&&evictions==1&&uniforms==1);
+  assert(owners[0].refs==2&&owners[2].refs==2&&(!geom||(!owners[1].refs&&owners[3].refs==2)));
+  lru_flush(&r->pipeline_cache);memset(&native->key,0xcd,sizeof(native->key));memset(&key,0xcd,sizeof(key));
+  assert(!memcmp(&b->state,&expected,sizeof(expected))&&owners[0].refs==1&&owners[2].refs==1&&(!geom||owners[3].refs==1));
+  lru_flush(&r->shader_cache);for(unsigned m=0;m<4;m++)assert(!owners[m].refs);cases++;
+ }
+ printf("Ready PSO binding: %u exact full-key/collision, absent PSO/module, vertex+geometry variants, guarded/replacement pressure, partial-entry and owner-eviction cases PASS; final state=%zu bytes, scoped pointers=%zu bytes\n",cases,sizeof(ShaderState),sizeof(ReadyBindingInput));free(r);
 }
