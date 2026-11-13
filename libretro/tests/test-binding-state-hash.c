@@ -91,6 +91,7 @@ static uint64_t counted_pair(const void *a,size_t na,const void *b,size_t nb,uin
 }
 #define xxh3_64_pair counted_pair
 #define fast_hash counted_hash
+static ShaderBinding *pgraph_vk_try_vertex_family(PGRAPHState *pg,const ShaderState *s){(void)pg;(void)s;return NULL;}
 /* FUNCTIONS */
 #undef fast_hash
 #undef xxh3_64_pair

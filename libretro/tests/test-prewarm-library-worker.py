@@ -9,8 +9,10 @@ def fn(name):
     end=s.index('{',m.start())+1;depth=1
     while depth:depth+=(s[end]=='{')-(s[end]=='}');end+=1
     return s[m.start():end]
+stage_options='\n'.join(re.search(r'typedef struct '+kind+r' \{.*?\} '+kind+r';',(r/('hw/xbox/nv2a/pgraph/spv/'+file)).read_text(),re.S)[0] for kind,file in [('SpvVshOptions','vsh.h'),('SpvPshOptions','psh.h')])
 job=re.search(r'typedef struct \{\n    bool frag;.*?\} LibJob;',s,re.S)[0]
 if 'S3tcPipelineJob' in job:job=re.search(r'typedef struct S3tcPipelineJob \{.*?\} S3tcPipelineJob;',(r/'hw/xbox/nv2a/pgraph/vk/s3tc-pipeline-job.h').read_text(),re.S)[0]+'\n'+job
+job=stage_options+'\n'+job
 
 parts='\n'.join(fn(n) for n in ('gpl_key_size','pipeline_job_reset','lib_job_link','pump_slot','pump_submit','library_land','pump_drain','pgraph_vk_pre_library_ready'))
 if 's3tc_pipeline_job_land(' in parts:parts='static void s3tc_pipeline_job_land(PGRAPHVkState *r,LibJob *job){(void)r;(void)job;assert(false); }\n'+parts

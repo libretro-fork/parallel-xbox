@@ -21,6 +21,8 @@
 #include "renderer.h"
 #include "ui/xemu-settings.h"
 #include "hw/xbox/nv2a/pgraph/spv/glslc.h"
+#include "hw/xbox/nv2a/pgraph/spv/vsh.h"
+#include "hw/xbox/nv2a/pgraph/spv/psh.h"
 
 #include <assert.h>
 #include <inttypes.h>
@@ -225,21 +227,80 @@ static ShaderModuleInfo *alloc_shader_module_info(const ShaderLayouts *layouts)
 }
 
 /* A module from SPIR-V the caller hands over (a worker compiled it) */
-ShaderModuleInfo *pgraph_vk_create_shader_module_from_spirv(PGRAPHVkState *r,
-                                                             ShaderSource *spirv)
+ShaderModuleInfo *pgraph_vk_create_owned_shader_module(VkDevice device, uint64_t identity,
+                                                     ShaderSource *spirv)
 {
     ShaderModuleInfo *info = alloc_shader_module_info(spirv->layouts);
     info->refcnt = 0;
-    assert(r->next_shader_module_identity != UINT64_MAX);
-    info->identity = ++r->next_shader_module_identity;
-    info->module = pgraph_vk_create_shader_module_from_words(
-        r, spirv->words, spirv->num_words);
+    assert(identity);
+    info->identity = identity;
+    VkShaderModuleCreateInfo create_info = {
+        .sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
+        .codeSize = spirv->num_words * sizeof(*spirv->words),
+        .pCode = spirv->words,
+    };
+    VK_CHECK(vkCreateShaderModule(device, &create_info, NULL, &info->module));
     info->layouts = spirv->layouts;
     if (info->layouts) {
         retro_atomic_fetch_add_int(&info->layouts->refs, 1);
     }
     pgraph_vk_shader_source_unref(spirv);
     return info;
+}
+
+ShaderModuleInfo *pgraph_vk_create_shader_module_from_spirv(PGRAPHVkState *r,
+                                                             ShaderSource *spirv)
+{
+    assert(r->next_shader_module_identity != UINT64_MAX);
+    return pgraph_vk_create_owned_shader_module(
+        r->device, ++r->next_shader_module_identity, spirv);
+}
+
+/* The final pipeline slot lends this state through both compiler passes and
+ * native creation. Only new final word/layout/module owners are allocated. */
+ShaderModuleInfo *pgraph_vk_prepare_vertex_module(VkDevice device,
+    uint64_t identity, const VshState *state, SpvVshOptions opts, bool geometry)
+{
+    GlslcResult result;
+    ShaderSource *source;
+    if (pgraph_spv_vsh(state, opts, &result)) {
+        source = pgraph_vk_shader_source_take(&result);
+    } else {
+        GenVshGlslOptions glsl = {
+            .vulkan = true, .prefix_outputs = geometry,
+            .use_push_constants_for_uniform_attrs = opts.push_constants,
+            .ubo_binding = opts.ubo_binding,
+        };
+        MString *text = pgraph_glsl_gen_vsh(state, glsl);
+        /* Device target globals are immutable until pipeline quiescence. */
+        assert(opts.spirv_1_6 == pgraph_vk_spirv_1_6);
+        source = pgraph_vk_compile_shader(VK_SHADER_STAGE_VERTEX_BIT,
+                                          mstring_get_str(text));
+        mstring_unref(text);
+    }
+    return pgraph_vk_create_owned_shader_module(device, identity, source);
+}
+
+/* The pipeline job owns this immutable state until completion. */
+ShaderModuleInfo *pgraph_vk_prepare_fragment_module(VkDevice device,
+    uint64_t identity, const PshState *state, SpvPshOptions opts)
+{
+    GlslcResult result;
+    ShaderSource *source;
+    if (pgraph_spv_psh(state, opts, &result)) {
+        source = pgraph_vk_shader_source_take(&result);
+    } else {
+        GenPshGlslOptions glsl = {
+            .vulkan = true, .ubo_binding = opts.ubo_binding,
+            .tex_binding = opts.tex_binding,
+        };
+        MString *text = pgraph_glsl_gen_psh(state, glsl);
+        assert(opts.spirv_1_6 == pgraph_vk_spirv_1_6);
+        source = pgraph_vk_compile_shader(VK_SHADER_STAGE_FRAGMENT_BIT,
+                                          mstring_get_str(text));
+        mstring_unref(text);
+    }
+    return pgraph_vk_create_owned_shader_module(device, identity, source);
 }
 
 ShaderModuleInfo *pgraph_vk_create_shader_module_from_glsl(

@@ -28,11 +28,14 @@ typedef struct PGRAPHVkState {
 struct PGRAPHState {PGRAPHVkState *vk_renderer_state;};
 static struct{struct{bool shader_seeding;}perf;}g_config;
 static bool pipe_started,pressure;
-static unsigned pump_d,pump_w_local,drains,probes,submits,bank_n;
+static unsigned pump_d,pump_w_local,drains,probes,submits,bank_n,lighting_preparations;
 static ShaderState states[40];static uint64_t hashes[40];static bool ready[40];
 static unsigned observed[6][40];
 static uint64_t fast_hash(const uint8_t *p,size_t n){uint64_t h=1469598103934665603ull;while(n--)h=(h^*p++)*1099511628211ull;return h;}
 static void pump_drain(PGRAPHState *pg){drains++;pump_d=pump_w_local;}
+/* Its readiness/queue behavior is checked by test-vk-vertex-family. Here
+ * require the owner service even when static seeding is ineligible. */
+static void prepare_bound_vertex_family(PGRAPHState *pg){assert(pg&&pump_d==pump_w_local);lighting_preparations++;}
 static const ShaderState *pgraph_vk_seed_pump_states(unsigned *n){*n=bank_n;return states;}
 static bool pgraph_vk_seed_spv_ready_hash(uint64_t h){probes++;for(unsigned i=0;i<bank_n;i++)if(h==hashes[i])return ready[i];abort();}
 static int pump_state(PGRAPHState *pg,const ShaderState *st,const RenderPassState *rp){
@@ -59,9 +62,9 @@ int main(void){
   r.render_passes=g_array_new(false,false,sizeof(RenderPass));r.live=(RenderPassState){VK_FORMAT_R32_SFLOAT,VK_FORMAT_D32_SFLOAT};
   for(unsigned i=0;i<count;i++){RenderPass pass={.state={i&1?VK_FORMAT_R8G8B8A8_UNORM:VK_FORMAT_B8G8R8A8_UNORM,i&2?VK_FORMAT_D16_UNORM:VK_FORMAT_UNDEFINED}};if(i>=4)pass.state.color_format=VK_FORMAT_R16G16B16A16_SFLOAT+i;g_array_append_val(r.render_passes,pass);}
   bank_n=40;for(unsigned i=0;i<bank_n;i++){memset(&states[i],0,sizeof(states[i]));states[i].psh.final_inputs_0=i+1;hashes[i]=fast_hash((const uint8_t *)&states[i],sizeof(states[i]));ready[i]=!(mode&2);}
-  memset(observed,0,sizeof(observed));g_config.perf.shader_seeding=!(mode&1);pipe_started=true;pump_d=0;pump_w_local=1;drains=0;pressure=mode&4;
+  memset(observed,0,sizeof(observed));g_config.perf.shader_seeding=!(mode&1);pipe_started=true;pump_d=0;pump_w_local=1;drains=lighting_preparations=0;pressure=mode&4;
   bank_n=0;probes=submits=0;pgraph_vk_libpump_step(&pg);
-  assert(!probes&&!submits&&!r.pump.n&&!r.pump.next_pass&&!r.pump.state_hash);
+  assert(!probes&&!submits&&!r.pump.n&&!r.pump.next_pass&&!r.pump.state_hash&&lighting_preparations==1);
   bank_n=40;cases++;
   for(unsigned flip=0;flip<160;flip++){
    if(flip==16){for(unsigned i=0;i<bank_n;i++)ready[i]=true;pressure=false;}
@@ -73,7 +76,7 @@ int main(void){
    if(!g_config.perf.shader_seeding||!count)assert(submits==0&&r.pump.n==0&&r.pump.next_pass==0);
    cases++;
   }
-  assert(drains==1);
+  assert(drains==1&&lighting_preparations==161);
   for(unsigned i=0;i<count&&i<4;i++)for(unsigned j=0;j<bank_n;j++)assert(observed[i][j]==(unsigned)g_config.perf.shader_seeding);
   /* A shortened native owner must normalize an old cursor before borrowing. */
   if(count){r.pump.next_pass=999;RenderPassState out;assert(pump_next_render_pass(&r,&out));assert(!memcmp(&out,&g_array_index(r.render_passes,RenderPass,0).state,sizeof(out)));}

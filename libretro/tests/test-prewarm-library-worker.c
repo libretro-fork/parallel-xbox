@@ -12,8 +12,9 @@
 #define PUMP_RING 64
 #define ARRAY_SIZE(a) (sizeof(a)/sizeof((a)[0]))
 typedef struct { VkShaderModule module;uint64_t identity;unsigned refs; } ShaderModuleInfo;
-typedef struct { VkVertexInputBindingDescription binding_descriptions[16];VkVertexInputAttributeDescription attribute_descriptions[16]; } PipelineKey;
 typedef struct { unsigned tag;bool geometry; } ShaderState;
+
+typedef struct {ShaderState shader_state; VkVertexInputBindingDescription binding_descriptions[16];VkVertexInputAttributeDescription attribute_descriptions[16]; } PipelineKey;
 typedef struct { unsigned tag; } RenderPassState;
 typedef struct { VkDevice device;VkPipelineCache vk_pipeline_cache;bool dyn_vertex_input; } PGRAPHVkState;
 typedef struct { PGRAPHVkState *vk_renderer_state; } PGRAPHState;
@@ -70,6 +71,8 @@ static int ahead_dynamic_states(PGRAPHVkState *r,const ShaderState *s,VkDynamicS
 static VkRenderPass get_render_pass(PGRAPHVkState *r,RenderPassState *rp) {assert(r && rp->tag==71);return (VkRenderPass)(uintptr_t)41;}
 static void vkDestroyPipeline(VkDevice d,VkPipeline p,const VkAllocationCallbacks *a) {assert(d && p==(VkPipeline)(uintptr_t)21 && !a);destroyed++;}
 static void vkDestroyPipelineLayout(VkDevice d,VkPipelineLayout p,const VkAllocationCallbacks *a) {assert(d && p==(VkPipelineLayout)(uintptr_t)31 && !a);layout_drops++;}
+static void pgraph_vk_adopt_vertex_module(PGRAPHVkState *r,const ShaderState *s,ShaderModuleInfo *m){(void)r;(void)s;(void)m;assert(false);}
+static void pgraph_vk_adopt_fragment_module(PGRAPHVkState *r,const ShaderState *s,ShaderModuleInfo *m){(void)r;(void)s;(void)m;assert(false);}
 /* PRODUCTION */
 int main(void) {
     (void)vkDestroyPipelineLayout;

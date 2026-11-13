@@ -17,7 +17,8 @@
 #define PGRAPH_VK_AUX_SLOTS 8
 #define ARRAY_SIZE(a) (sizeof(a)/sizeof((a)[0]))
 typedef struct {unsigned refs;} ShaderModuleInfo;
-typedef struct {uint8_t bytes[4096];VkVertexInputBindingDescription binding_descriptions[16];VkVertexInputAttributeDescription attribute_descriptions[16];} PipelineKey;
+typedef struct {unsigned unused;} ShaderState;
+typedef struct {ShaderState shader_state;uint8_t bytes[4096];VkVertexInputBindingDescription binding_descriptions[16];VkVertexInputAttributeDescription attribute_descriptions[16];} PipelineKey;
 typedef struct {uint8_t bytes[64];} GplPreKey;
 typedef struct {uint8_t bytes[64];} GplFragKey;
 /* JOB */
@@ -78,6 +79,12 @@ static void pipeline_land(PGRAPHState *pg,LibJob *j){CHECK(!j->compute&&pg);vkDe
 static void library_land(PGRAPHVkState *r,LibJob *j){CHECK(!j->compute);vkDestroyPipeline(r->device,j->result,NULL);j->result=VK_NULL_HANDLE;graphics_lands++;}
 static void pgraph_vk_unref_shader_module(PGRAPHVkState *r,ShaderModuleInfo *m){(void)r;(void)m;CHECK(false);}
 static void pgraph_vk_wait_for_aux(PGRAPHState *pg){CHECK(pg&&!pg->vk_renderer_state->s3tc_decode.pending_mask&&(unsigned)retro_atomic_load_acquire_int(&pump_r)==pump_w_local);}
+/* Graphics stage preparation/adoption is forbidden in this compute fixture;
+ * actual graphics interleavings have their own worker/module-owner fixtures. */
+static void pipeline_prepare_vertex(LibJob *j){(void)j;CHECK(false);}
+static void pipeline_prepare_fragment(LibJob *j){(void)j;CHECK(false);}
+static void pgraph_vk_adopt_vertex_module(PGRAPHVkState *r,const ShaderState *s,ShaderModuleInfo *m){(void)r;(void)s;(void)m;CHECK(false);}
+static void pgraph_vk_adopt_fragment_module(PGRAPHVkState *r,const ShaderState *s,ShaderModuleInfo *m){(void)r;(void)s;(void)m;CHECK(false);}
 /* FUNCTIONS */
 static void worker_step(void){CHECK(!worker_active);if(!setjmp(step)){worker_active=true;pipe_worker_fn(NULL);CHECK(false);}worker_active=false;}
 static void context_start(PGRAPHVkState *r,PGRAPHState *pg){memset(r,0,sizeof(*r));r->device=(VkDevice)(uintptr_t)7;r->vk_pipeline_cache=(VkPipelineCache)(uintptr_t)8;r->s3tc_decode.enabled=true;pg->vk_renderer_state=r;active_pg=pg;context_alive=true;}

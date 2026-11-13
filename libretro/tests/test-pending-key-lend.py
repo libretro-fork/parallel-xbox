@@ -9,7 +9,7 @@ def fn(s,name):
  end=s.index('{',m.start())+1;depth=1
  while depth:depth+=(s[end]=='{')-(s[end]=='}');end+=1
  return s[m.start():end]
-parts='\n'.join([fn(glsl,n) for n in ('shader_reg_dirty','signed_g8b8_address_dirty','pgraph_glsl_check_shader_state_dirty')]+[fn(draw,'pgraph_vk_pending_shader_state'),fn(shader,'pgraph_vk_ready_shader_binding'),fn(shader,'vk_try_pending_binding')])
+parts='\n'.join([fn(glsl,n) for n in ('shader_reg_dirty','signed_g8b8_address_dirty','pgraph_glsl_check_shader_state_dirty')]+[fn(draw,'pgraph_vk_pending_shader_state'),fn(draw,'pgraph_vk_pending_vertex_family'),fn(shader,'pgraph_vk_ready_shader_binding'),fn(shader,'vk_try_pending_binding')])
 borrow=fn(draw,'pgraph_vk_pending_shader_state');select=fn(shader,'vk_try_pending_binding')
 assert 'pump_drain' not in borrow and 'get_shader_binding_for_state(r, &binding->state,' in select
 assert 'pgraph_glsl_get_shader_state' not in select and 'memcpy' not in select
@@ -28,6 +28,7 @@ with tempfile.TemporaryDirectory(prefix='pending-key-lend-') as d:
   else:assert result.returncode==0,result.stdout.decode(errors='replace');print(result.stdout.decode(),end='')
  run(code)
  controls=[
+  ('changed raster/pass/VI keeps generic lend',code.replace('(r->sibling_vertex_family && check_pipeline_dirty(pg))','(check_pipeline_dirty(pg), false)',1)),
   ('expired/recycled slot lent',code.replace('ticket - pump_d >= pump_w_local - pump_d','false',1)),
   ('changed family generation ignored',code.replace('r->sibling_generation != pgraph_glsl_dynamic_gen','false',1)),
   ('feature disabled but old lend used',code.replace('!pgraph_gpu_boost_gl() ||','false ||',1)),

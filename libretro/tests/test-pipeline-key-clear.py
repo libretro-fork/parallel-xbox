@@ -7,11 +7,15 @@ Usage: python test-pipeline-key-clear.py CHECKOUT [GCC]
 from pathlib import Path
 import os,re,subprocess,sys,tempfile
 repo=Path(sys.argv[1]).resolve();cc=sys.argv[2] if len(sys.argv)>2 else 'gcc'
-s=(repo/'hw/xbox/nv2a/pgraph/vk/draw.c').read_text();a=s.index('static void init_pipeline_key(');b=s.index('{',a)+1;depth=1
-while depth:depth+=(s[b]=='{')-(s[b]=='}');b+=1
-current=s[a:b].replace('init_pipeline_key(', 'current(',1)
+s=(repo/'hw/xbox/nv2a/pgraph/vk/draw.c').read_text()
+def fn(name):
+ a=s.index(name+'(');a=s.rfind('\n',0,a)+1;b=s.index('{',a)+1;depth=1
+ while depth:depth+=(s[b]=='{')-(s[b]=='}');b+=1
+ return s[a:b]
+helper=fn('init_pipeline_key_for_shader')
+current=fn('init_pipeline_key').replace('init_pipeline_key(', 'current(',1)
 reference=Path(__file__).with_name('pipeline-key-init-reference.h').read_text().replace('init_pipeline_key(', 'reference(',1)
-functions='\n'.join(fn.replace('static void','__attribute__((noinline)) static void',1) for fn in [reference,current])
+functions=helper+'\n'+'\n'.join(fn.replace('static void','__attribute__((noinline)) static void',1) for fn in [reference,current])
 h=(repo/'hw/xbox/nv2a/pgraph/vk/renderer.h').read_text()
 types='\n'.join(re.search(r'typedef struct '+name+r' \{.*?\} '+name+r';',h,re.S)[0] for name in ['RenderPassState','PipelineKey'])
 code=Path(__file__).with_suffix('.c').read_text().replace('/* TYPES */',types).replace('/* FUNCTIONS */',functions)

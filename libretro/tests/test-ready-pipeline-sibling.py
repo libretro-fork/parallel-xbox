@@ -10,7 +10,7 @@ def fn(s,name):
  while depth:depth+=(s[end]=='{')-(s[end]=='}');end+=1
  return s[m.start():end]
 types='\n'.join(re.search(r'typedef struct '+n+r' \{.*?\} '+n+r';',h,re.S)[0] for n in ('RenderPassState','PipelineKey','PipelineBinding'))
-parts='\n'.join([fn(psh,n) for n in ('psh_zero_alpha_fields','psh_zero_combiner_fields','pgraph_glsl_psh_canonicalize_dynamic')]+[fn(shader,n) for n in ('pgraph_vk_ready_shader_binding','pgraph_vk_use_ready_shader_binding')]+['static ShaderBinding *pgraph_vk_materialize_ready_shader_binding(PGRAPHVkState *r,const ShaderState *s,uint64_t h){return pgraph_vk_ready_shader_binding(r,s,h);}']+[fn(draw,n) for n in ('pipeline_ready','pipeline_use_ready_sibling')])
+parts='\n'.join([fn(psh,n) for n in ('psh_zero_alpha_fields','psh_zero_combiner_fields','pgraph_glsl_psh_canonicalize_dynamic')]+[fn(shader,n) for n in ('pgraph_vk_ready_shader_binding','pgraph_vk_use_ready_shader_binding')]+['static bool pipeline_ready(PGRAPHVkState*,uint64_t,const PipelineKey*); static ShaderBinding *pgraph_vk_materialize_ready_shader_binding(PGRAPHVkState *r,const PipelineKey *k,uint64_t h){if (!pipeline_ready(r,h,k))return NULL;return pgraph_vk_ready_shader_binding(r,&k->shader_state,fast_hash((const uint8_t*)&k->shader_state,sizeof(k->shader_state)));}']+[fn(draw,n) for n in ('pipeline_ready','pipeline_use_ready_sibling')])
 create=fn(draw,'create_pipeline');prefix=create[:create.index('    /* The job holds')]
 prefix+='    sync_calls++;sync_key=key;snode->pipeline=(VkPipeline)(uintptr_t)0x123;r->pipeline_binding=snode;\n}\n'
 assert create.index('pipeline_use_ready_sibling(pg, &key, hash)')<create.index('vkCreateGraphicsPipelines(')
@@ -24,7 +24,7 @@ with tempfile.TemporaryDirectory(prefix='ready-pipeline-sibling-') as d:
  cmd=[cc,'-O2','-std=gnu11','-Wall','-Wextra','-Werror','-Wno-sign-compare','-fsanitize=undefined','-fsanitize-undefined-trap-on-error','-I'+str(p),'-I'+str(r),'-I'+str(r/'include'),'-I'+str(r/'libretro-common/include'),'-I'+str(r/'deps/vulkan-headers'),str(src),'-o',str(exe)]
  src.write_text(code);subprocess.run(cmd,env=env,check=True);subprocess.run([str(exe)],env=env,check=True,timeout=60)
  controls=[
-  ('missing pipeline readiness',code.replace('if (pipeline_ready(r, sibling_hash, key)) {','if (true) {',1)),
+  ('missing pipeline readiness',code.replace('if (!pipeline_ready(r,h,k))return NULL;','(void)pipeline_ready;(void)h;if (false)return NULL;',1)),
   ('shader hash collision accepted',code.replace('!memcmp(&binding->state, state, sizeof(*state))','state != NULL',1)),
   ('pipeline hash collision accepted',code.replace('!memcmp(&binding->key, key, sizeof(*key))','key != NULL',1)),
   ('unready vertex binding accepted',code.replace('binding->vsh.module_info && binding->psh.module_info','binding->psh.module_info',1)),

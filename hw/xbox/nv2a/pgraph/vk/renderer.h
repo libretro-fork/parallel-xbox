@@ -94,6 +94,8 @@ typedef struct PipelineBinding {
     PipelineKey key;
     VkPipelineLayout layout; /* borrowed from renderer graphics/clear table */
     VkPipeline pipeline;
+    /* VS/GS/PS metadata remains available for ready-only binding adoption. */
+    struct ShaderModuleInfo *shader_modules[3];
     VkRenderPass render_pass;
     unsigned int draw_time;
     bool has_dynamic_line_width;
@@ -764,6 +766,7 @@ typedef struct PGRAPHVkState {
     unsigned sibling_ticket, sibling_generation;
     bool ahead_valid;
     bool sibling_retry;
+    bool sibling_vertex_family; /* keep a ready native lighting PSO until completion */
 
     VkDescriptorPool descriptor_pool;
     VkDescriptorSetLayout descriptor_set_layout;
@@ -890,6 +893,8 @@ typedef struct PGRAPHVkState {
     } blit_formats[8];
     int blit_formats_n;
 
+    /* Render-thread context for exact ready-PSO adoption on binding misses. */
+    PGRAPHState *shader_cache_owner;
     Lru shader_cache;
     ShaderBinding *shader_cache_entries;
     ShaderBinding *shader_binding;
@@ -1020,6 +1025,19 @@ VkShaderModule pgraph_vk_create_shader_module_from_words(
 /* Only for fixed programs whose descriptor/push layout is defined by the host. */
 VkShaderModule pgraph_vk_create_utility_shader_module(
     PGRAPHVkState *r, enum SpvUtilityShader shader);
+ShaderModuleInfo *pgraph_vk_create_owned_shader_module(VkDevice device,
+    uint64_t identity, ShaderSource *spirv);
+struct SpvVshOptions;
+ShaderModuleInfo *pgraph_vk_prepare_vertex_module(VkDevice device,
+    uint64_t identity, const VshState *state, struct SpvVshOptions opts,
+    bool geometry);
+struct SpvPshOptions;
+ShaderModuleInfo *pgraph_vk_prepare_fragment_module(VkDevice device,
+    uint64_t identity, const PshState *state, struct SpvPshOptions opts);
+ShaderModuleInfo *pgraph_vk_ready_fragment_module(PGRAPHVkState *r,
+                                                 const ShaderState *state);
+void pgraph_vk_adopt_fragment_module(PGRAPHVkState *r, const ShaderState *state,
+                                      ShaderModuleInfo *module);
 ShaderModuleInfo *pgraph_vk_create_shader_module_from_spirv(PGRAPHVkState *r,
                                                              ShaderSource *spirv);
 ShaderModuleInfo *pgraph_vk_create_shader_module_from_glsl(
@@ -1029,6 +1047,15 @@ ShaderModuleInfo *pgraph_vk_create_static_shader_module(
     PGRAPHVkState *r, const uint32_t *words, size_t num_words,
     const ShaderUniform *push_constants, size_t count, size_t size);
 void pgraph_vk_ref_shader_module(ShaderModuleInfo *info);
+ShaderModuleInfo *pgraph_vk_ready_vertex_module(PGRAPHVkState *r,
+                                               const ShaderState *state);
+void pgraph_vk_adopt_vertex_module(PGRAPHVkState *r, const ShaderState *state,
+                                    ShaderModuleInfo *module);
+ShaderBinding *pgraph_vk_try_vertex_family(PGRAPHState *pg,
+                                           const ShaderState *state);
+bool pgraph_vk_pending_vertex_family(PGRAPHState *pg);
+bool pgraph_vk_ref_ready_pipeline_modules(PGRAPHState *pg,
+                                           ShaderBinding *binding);
 void pgraph_vk_unref_shader_module(PGRAPHVkState *r, ShaderModuleInfo *info);
 void pgraph_vk_destroy_shader_module(PGRAPHVkState *r, ShaderModuleInfo *info);
 
@@ -1219,7 +1246,12 @@ ShaderBinding *pgraph_vk_ready_shader_binding(PGRAPHVkState *r,
                                               const ShaderState *state,
                                               uint64_t hash);
 ShaderBinding *pgraph_vk_materialize_ready_shader_binding(PGRAPHVkState *r,
-                                  const ShaderState *state, uint64_t hash);
+                                  const PipelineKey *key, uint64_t pipeline_hash);
+/* Early shader selection only: ends the old binding lend and installs the
+ * returned owner. May replace a native shader-cache node under pressure. */
+ShaderBinding *pgraph_vk_replace_ready_shader_binding(PGRAPHVkState *r,
+    const PipelineKey *key, uint64_t pipeline_hash);
+
 void pgraph_vk_use_ready_shader_binding(PGRAPHState *pg, ShaderBinding *binding);
 /* Render-thread key lend: consume before draining or cache initialization. */
 const ShaderState *pgraph_vk_pending_shader_state(PGRAPHState *pg,

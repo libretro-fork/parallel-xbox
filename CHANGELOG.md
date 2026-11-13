@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+- Allow early Vulkan shader selection to replace a full native shader-binding cache node using an exact ready PSO's retained metadata. Install the replacement before returning and preserve the older non-evicting API for callers still borrowing their original binding. Reuse final cache storage and prepare no new shaders or programs during adoption. The private two-node NGB stress comparison matches the parent image; production capacity stays unchanged and global cold-play recovery remains unqualified.
+
+- Extend ready Vulkan fixed-function pipeline families to the existing dynamic fragment combiner. Missing vertex/fragment stages compile on the same worker from the final job key, retain exact native stage-cache identities and reserve module IDs before publication. Reuse live source stage owners after cache eviction; deduplicate pending fragment work. Update the compute/GPL/reset and module-identity fixtures for the shared stage schema without permitting graphics preparation on their unrelated paths. Native NGB restore images match the parent, but cold-driver first-play recovery and release performance remain unqualified; uncovered draws still compile synchronously.
+
+- Keep the render-pass pump fixture linked to the optional lighting preparation service, checking that it runs after ordered drain even when static seeding is disabled. Preserve its existing preparation budget and mutation controls. No runtime change.
+
+- Prepare Vulkan fixed-function lighting siblings as complete native pipelines on the existing worker. Select them only when their entire pass/register/vertex-input key and retained module owners are ready, while exact specializations compile in the final job slot. Reuse prepared vertex modules across PSOs and defer duplicate stage preparation; preserve synchronous handling for uncovered configurations. NGB exercises the path and matches the parent image in the local restore check; cold first-play stall recovery and overall performance remain unqualified.
+
+- On Vulkan shader-binding cache misses, reuse the exact ready full pipeline's retained module metadata before reaching compiler-capable module lookup. Reuse the native final cache node under pressure without an extra shader-state copy or hot-hit query; uncovered PSOs retain the correct synchronous path. This does not establish cold-play recovery.
+
+- Keep full Vulkan PSOs' existing vertex/geometry/fragment metadata owners alive until their final CPU consumers finish. Ready shader binding adoption checks the exact full PSO key and uses those owners without a module-cache/compiler initializer, including for differing vertex shaders. Preserve GPU fence retirement and pressure deferral. This is readiness infrastructure; generic family coverage, remaining draw-critical compilation, allocation reductions and cold-play recovery remain open.
+
 - Invalidate GL program uniform memos again when a shader binding releases its pipeline. Retained pipelines can repopulate a stage's memo after module eviction; clear that state before its final GL detach permits name reuse, preserving unrelated live-program entries. No driver query, compilation wait or allocation is added.
 
 - Release separable OpenGL stage programs when their module-cache entries are evicted, instead of losing the native handles. Existing pipeline references retain each stage until their final use; drop its uniform memo entry before the GL name can be recycled. This fixes an object-lifetime leak, with no shader-stutter recovery claim.

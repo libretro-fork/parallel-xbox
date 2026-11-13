@@ -21,7 +21,7 @@ code=code.replace('/* PRODUCTION */','\n'.join([state]+[function(s,n) for n in [
 types='\n'.join(re.search(r'typedef struct '+name+r' \{.*?\} '+name+r';',h,re.S)[0] for name in ['ShaderLayouts','ShaderSource'])
 code=code.replace('/* SOURCE TYPES */',types).replace('/* SOURCE FUNCTIONS */','\n'.join(function(g,n) for n in ['pgraph_vk_shader_source_new','pgraph_vk_shader_source_take','pgraph_vk_shader_source_ref','pgraph_vk_shader_layouts_unref','pgraph_vk_shader_source_unref']))
 module_types=re.search(r'typedef struct ShaderUniformLayout \{.*?\} ShaderUniformLayout;',h,re.S)[0]
-code=code.replace('/* MODULE TYPES */',module_types).replace('/* MODULE FUNCTIONS */','\n'.join(function(g,n) for n in ['init_uniform_layout','alloc_shader_module_info','pgraph_vk_create_shader_module_from_spirv','pgraph_vk_destroy_shader_module']))
+code=code.replace('/* MODULE TYPES */',module_types).replace('/* MODULE FUNCTIONS */','\n'.join(function(g,n) for n in ['init_uniform_layout','alloc_shader_module_info','pgraph_vk_create_owned_shader_module','pgraph_vk_create_shader_module_from_spirv','pgraph_vk_destroy_shader_module']))
 env=os.environ.copy();env['PATH']=str(Path(cc).resolve().parent)+os.pathsep+env.get('PATH','')
 with tempfile.TemporaryDirectory(prefix='vk-worker-modules-',dir=repo.parent) as directory:
  p=Path(directory);(p/'test.c').write_text(code);exe=p/('test.exe' if os.name=='nt' else 'test')

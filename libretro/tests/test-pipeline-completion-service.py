@@ -23,6 +23,7 @@ static unsigned pump_d,pump_w_local;
 static struct { struct { bool shader_seeding; } perf; } g_config;
 static unsigned drains, pumped;
 static void pump_drain(PGRAPHState *pg) { (void)pg; drains++; }
+static void prepare_bound_vertex_family(PGRAPHState *pg){(void)pg;}
 /* PRODUCTION */
     pumped++;
 }

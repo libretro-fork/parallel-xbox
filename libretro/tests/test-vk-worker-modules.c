@@ -25,8 +25,13 @@ typedef struct {
  ShaderUniformLayout uniforms,push_constants;
 } ShaderModuleInfo;
 static const uint32_t *expected_words;
-static unsigned pgraph_vk_create_shader_module_from_words(PGRAPHVkState *r,const uint32_t *words,size_t count)
-{ (void)r; assert(words==expected_words && count==16); return 7; }
+typedef unsigned VkDevice;
+typedef struct {unsigned sType;size_t codeSize;const uint32_t *pCode;} VkShaderModuleCreateInfo;
+#define VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO 16
+#define VK_CHECK(call) assert(!(call))
+static unsigned expected_device;
+static int vkCreateShaderModule(VkDevice device,const VkShaderModuleCreateInfo *info,void *allocator,unsigned *module)
+{ assert(device==expected_device&&!allocator&&info->sType==16&&info->pCode==expected_words&&info->codeSize==64);*module=7;return 0; }
 static void vkDestroyShaderModule(unsigned device,unsigned module,void *allocator)
 { (void)device; assert(module==7 && !allocator); }
 /* MODULE FUNCTIONS */
@@ -200,6 +205,14 @@ int main(void)
  ShaderModuleInfo *one=pgraph_vk_create_shader_module_from_spirv(&renderer,pgraph_vk_shader_source_ref(a));
  ShaderModuleInfo *two=pgraph_vk_create_shader_module_from_spirv(&renderer,a);
  assert(one->identity==1 && two->identity==2);
+ /* An explicitly reserved worker identity must not mutate the renderer's
+  * identity allocator; words and immutable layouts keep their own lifetimes. */
+ expected_device=19;
+ ShaderSource *worker_source=pgraph_vk_shader_source_new(malloc(64),16);expected_words=worker_source->words;
+ ShaderModuleInfo *worker=pgraph_vk_create_owned_shader_module(expected_device,UINT64_C(0x123456789),worker_source);
+ assert(worker->identity==UINT64_C(0x123456789)&&renderer.next_shader_module_identity==2);
+ expected_device=0;pgraph_vk_destroy_shader_module(&renderer,worker);
+
  assert(one->uniforms.uniforms==two->uniforms.uniforms && one->layouts==two->layouts);
  vk_spec_modules_clear(); /* destroys words/source but keeps shared layouts */
  /* One shared immutable layout and one allocation per mutable module. */
