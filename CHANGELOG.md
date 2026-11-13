@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Prepare the OpenGL texture-touch program and VAO at renderer initialization, including for later changes to smoothing options. The first texture-touch flip no longer compiles, links or allocates those objects; guest shader misses remain open.
+
 - Extend staging visibility tests to require both uniform and vertex-input consumers of the shared constant-attribute buffer. Retain exact ranges, coherency and copy ordering, and reject missing access/stage scopes. No runtime change.
 
 - Reuse the OpenGL cache writer's two metadata slots instead of allocating/freeing a job record for each program/module save. Queue saturation still defers optional saves; binary payload owners remain retained until the disk callback finishes. Binary slab growth, file paths and host-driver allocations remain separate optimization work.
