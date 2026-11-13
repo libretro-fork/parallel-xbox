@@ -17,7 +17,7 @@ typedef struct {unsigned value;} ShaderState;
 typedef struct {unsigned format;} RenderPassState;
 typedef struct {bool clear;RenderPassState render_pass_state;ShaderState shader_state;VkVertexInputBindingDescription binding_descriptions[16];VkVertexInputAttributeDescription attribute_descriptions[16];uint32_t regs[9];} PipelineKey;
 typedef struct {unsigned unused;} Lru, LruNode;
-typedef struct {LruNode node;PipelineKey key;VkPipelineLayout layout;VkPipeline pipeline;unsigned draw_time;bool has_dynamic_line_width;} PipelineBinding;
+typedef struct {LruNode node;PipelineKey key;VkPipelineLayout layout;VkPipeline pipeline;unsigned draw_time;bool has_dynamic_line_width;void *shader_modules[3];} PipelineBinding;
 typedef struct {ShaderState state;} ShaderBinding;
 typedef struct {
     PipelineBinding *pipeline_binding;ShaderBinding *shader_binding;bool shader_bindings_changed,texture_bindings_changed,ahead_valid;

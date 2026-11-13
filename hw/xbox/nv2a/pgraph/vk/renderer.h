@@ -893,6 +893,8 @@ typedef struct PGRAPHVkState {
     } blit_formats[8];
     int blit_formats_n;
 
+    /* Render-thread context for exact ready-PSO adoption on binding misses. */
+    PGRAPHState *shader_cache_owner;
     Lru shader_cache;
     ShaderBinding *shader_cache_entries;
     ShaderBinding *shader_binding;
@@ -1037,6 +1039,8 @@ ShaderModuleInfo *pgraph_vk_create_static_shader_module(
     PGRAPHVkState *r, const uint32_t *words, size_t num_words,
     const ShaderUniform *push_constants, size_t count, size_t size);
 void pgraph_vk_ref_shader_module(ShaderModuleInfo *info);
+bool pgraph_vk_ref_ready_pipeline_modules(PGRAPHState *pg,
+                                           ShaderBinding *binding);
 void pgraph_vk_unref_shader_module(PGRAPHVkState *r, ShaderModuleInfo *info);
 void pgraph_vk_destroy_shader_module(PGRAPHVkState *r, ShaderModuleInfo *info);
 

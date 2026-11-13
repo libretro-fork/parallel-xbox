@@ -941,7 +941,9 @@ static bool check_pipeline_dirty(PGRAPHState *pg)
     return false;
 }
 
-static void init_pipeline_key(PGRAPHState *pg, PipelineKey *key)
+static inline void init_pipeline_key_for_shader(PGRAPHState *pg,
+                                                 PipelineKey *key,
+                                                 const ShaderState *state)
 {
     PGRAPHVkState *r = pg->vk_renderer_state;
 
@@ -952,7 +954,7 @@ static void init_pipeline_key(PGRAPHState *pg, PipelineKey *key)
                                 sizeof(key->shader_state);
     memset((char *)key + after_shader, 0, sizeof(*key) - after_shader);
     init_render_pass_state(pg, &key->render_pass_state);
-    memcpy(&key->shader_state, &r->shader_binding->state,
+    memcpy(&key->shader_state, state,
            sizeof(ShaderState));
     if (!r->dyn_vertex_input) {
         memcpy(key->binding_descriptions, r->vertex_binding_descriptions,
@@ -964,6 +966,49 @@ static void init_pipeline_key(PGRAPHState *pg, PipelineKey *key)
     }
 
     pipeline_reg_values(pg, key->regs);
+}
+
+static void init_pipeline_key(PGRAPHState *pg, PipelineKey *key)
+{
+    PGRAPHVkState *r = pg->vk_renderer_state;
+    init_pipeline_key_for_shader(pg, key, &r->shader_binding->state);
+}
+
+/* Only the native shader-cache miss initializer calls this. Its final binding
+ * owns the state already, so no temporary binding or recursive LRU lookup is
+ * needed. The render thread cannot evict a pipeline during these acquisitions. */
+bool pgraph_vk_ref_ready_pipeline_modules(PGRAPHState *pg, ShaderBinding *binding)
+{
+    PGRAPHVkState *r = pg->vk_renderer_state;
+    PipelineKey key;
+    init_pipeline_key_for_shader(pg, &key, &binding->state);
+    uint64_t hash = fast_hash((const uint8_t *)&key, sizeof(key));
+    unsigned bin = lru_hash_to_bin(&r->pipeline_cache, hash);
+    LruNode *node;
+    QTAILQ_FOREACH(node, &r->pipeline_cache.bins[bin], next_bin) {
+        PipelineBinding *pipeline = container_of(node, PipelineBinding, node);
+        if (node->hash != hash || !pipeline->pipeline || pipeline->key.clear ||
+            memcmp(&pipeline->key, &key, sizeof(key))) {
+            continue;
+        }
+        ShaderModuleInfo *vsh = pipeline->shader_modules[0];
+        ShaderModuleInfo *geom = pipeline->shader_modules[1];
+        ShaderModuleInfo *psh = pipeline->shader_modules[2];
+        if (!vsh || !psh ||
+            (pgraph_glsl_need_geom(&binding->state.geom) && !geom)) {
+            return false;
+        }
+        pgraph_vk_ref_shader_module(vsh);
+        if (geom) {
+            pgraph_vk_ref_shader_module(geom);
+        }
+        pgraph_vk_ref_shader_module(psh);
+        binding->vsh.module_info = vsh;
+        binding->geom.module_info = geom;
+        binding->psh.module_info = psh;
+        return true;
+    }
+    return false;
 }
 
 /* Line widths are set per draw where the device has wide lines. */

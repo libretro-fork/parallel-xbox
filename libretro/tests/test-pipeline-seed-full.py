@@ -17,7 +17,7 @@ except AssertionError:print('Required negative control rejected: topology from u
 else:raise AssertionError('live topology escaped')
 types='\n'.join(re.search(r'typedef struct '+n+r' \{.*?\} '+n+r';',h,re.S)[0] for n in ('RenderPassState','PipelineKey'))
 registers=re.search(r'^static const unsigned pipeline_registers\[\] = \{.*?^\};',s,re.M|re.S)[0]
-code=Path(__file__).with_suffix('.c').read_text().replace('/* TYPES */',types).replace('/* REGISTERS */',registers).replace('/* FUNCTIONS */','\n'.join(fn(n) for n in ('pipeline_reg_values','init_pipeline_key','pump_state')))
+code=Path(__file__).with_suffix('.c').read_text().replace('/* TYPES */',types).replace('/* REGISTERS */',registers).replace('/* FUNCTIONS */','\n'.join(fn(n) for n in ('pipeline_reg_values','init_pipeline_key_for_shader','init_pipeline_key','pump_state')))
 env=os.environ.copy();env['PATH']=str(Path(cc).resolve().parent)+os.pathsep+env.get('PATH','')
 with tempfile.TemporaryDirectory(prefix='seed-full-') as d:
     p=Path(d);(p/'qemu').mkdir();(p/'qemu/osdep.h').write_text('#include <stdint.h>\n#include <stdbool.h>\n#include <stddef.h>\n');(p/'qemu/mstring.h').write_text('typedef struct MString MString;\n')

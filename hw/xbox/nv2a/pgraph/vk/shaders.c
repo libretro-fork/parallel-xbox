@@ -477,9 +477,15 @@ static inline QEMU_ALWAYS_INLINE void shader_cache_entry_init_modules(
     NV2A_VK_DPRINTF("cache miss");
     nv2a_profile_inc_counter(NV2A_PROF_SHADER_GEN);
 
-    pgraph_vk_ref_state_modules(r, &binding->state, &binding->geom.module_info,
-                                &binding->vsh.module_info,
-                                &binding->psh.module_info);
+    /* The final LRU node already owns this state. A live full PSO retains
+     * its metadata even after the module/binding caches evict their entries.
+     * Acquire those owners before invoking any compiler-capable initializer. */
+    if (!pgraph_vk_ref_ready_pipeline_modules(r->shader_cache_owner, binding)) {
+        pgraph_vk_ref_state_modules(r, &binding->state,
+                                   &binding->geom.module_info,
+                                   &binding->vsh.module_info,
+                                   &binding->psh.module_info);
+    }
 
     update_shader_uniform_locs(binding);
 }
@@ -592,6 +598,7 @@ static void shader_cache_init(PGRAPHState *pg)
     /* A cache smaller than a game's working set of shader states
      * recompiles forever. */
     const size_t shader_cache_size = 16384;
+    r->shader_cache_owner = pg;
     lru_init(&r->shader_cache);
     r->shader_cache_entries = g_malloc_n(shader_cache_size, sizeof(ShaderBinding));
     assert(r->shader_cache_entries != NULL);
@@ -626,6 +633,7 @@ static void shader_cache_finalize(PGRAPHState *pg)
     lru_flush(&r->shader_cache);
     g_free(r->shader_cache_entries);
     r->shader_cache_entries = NULL;
+    r->shader_cache_owner = NULL;
 
     lru_flush(&r->shader_module_cache);
     g_free(r->shader_module_cache_entries);

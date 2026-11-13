@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- On Vulkan shader-binding cache misses, reuse the exact ready full pipeline's retained module metadata before reaching compiler-capable module lookup. Reuse the native final cache node under pressure without an extra shader-state copy or hot-hit query; uncovered PSOs retain the correct synchronous path. This does not establish cold-play recovery.
+
 - Keep full Vulkan PSOs' existing vertex/geometry/fragment metadata owners alive until their final CPU consumers finish. Ready shader binding adoption checks the exact full PSO key and uses those owners without a module-cache/compiler initializer, including for differing vertex shaders. Preserve GPU fence retirement and pressure deferral. This is readiness infrastructure; generic family coverage, remaining draw-critical compilation, allocation reductions and cold-play recovery remain open.
 
 - Keep the clear/pass regression fixture connected after constant vertex binding moved into draw setup. Require attachment and masked clears to avoid vertex-input consumption while normal draws still bind their inputs; retain all existing clear/pipeline and lifecycle checks.
