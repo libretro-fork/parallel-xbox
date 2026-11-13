@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Execute the unchanged fragment numerical batches on at most four independent device owners, keeping every 300-second watchdog and the lost-stage rejection control. Reuse driver compilation only in numerical runs; opt-in compiler/PSO timing stays sequential and uncached.
+
 - Execute the geometry fixture's complete base and UI groups concurrently, using separate output owners and one shared 600-second watchdog. Retain all numerical cases, allocation checks, synchronization validation and SPIR-V validation; this removes native ARM64 test serialization without extending the limit.
 
 - Run each existing vertex numerical-test batch on at most four independent device owners under its original shared 300-second deadline. Preserve all 42,512 cases and value/validation checks; cap each software driver's worker pool to avoid oversubscription. No runtime changes or relaxed watchdogs.
