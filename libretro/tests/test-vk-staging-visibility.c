@@ -53,12 +53,12 @@ VKAPI_ATTR void VKAPI_CALL vkCmdPipelineBarrier(VkCommandBuffer cmd,VkPipelineSt
  for(unsigned j=0;j<3;j++)if(batch_mask&(1u<<j)){
   const VkBufferMemoryBarrier *b=&buffers[n++];
   assert(b->buffer==(VkBuffer)(uintptr_t)(2*j+2)&&!b->offset&&b->size==expected_size);
-  assert(b->srcAccessMask==VK_ACCESS_TRANSFER_WRITE_BIT&&b->dstAccessMask==(j==0?VK_ACCESS_INDEX_READ_BIT:j==1?VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT:VK_ACCESS_UNIFORM_READ_BIT));
+  assert(b->srcAccessMask==VK_ACCESS_TRANSFER_WRITE_BIT&&b->dstAccessMask==(j==0?VK_ACCESS_INDEX_READ_BIT:j==1?VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT:(VK_ACCESS_UNIFORM_READ_BIT|VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT)));
   assert(b->srcQueueFamilyIndex==VK_QUEUE_FAMILY_IGNORED&&b->dstQueueFamilyIndex==VK_QUEUE_FAMILY_IGNORED);
-  stages|=j==2?VK_PIPELINE_STAGE_VERTEX_SHADER_BIT|VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT:VK_PIPELINE_STAGE_VERTEX_INPUT_BIT;
+  stages|=j==2?VK_PIPELINE_STAGE_VERTEX_INPUT_BIT|VK_PIPELINE_STAGE_VERTEX_SHADER_BIT|VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT:VK_PIPELINE_STAGE_VERTEX_INPUT_BIT;
  }
  assert(count==n&&dst==stages&&copies==batch_copy_base+n);barriers++;return;
-}assert(cmd==(VkCommandBuffer)(uintptr_t)4&&src==VK_PIPELINE_STAGE_TRANSFER_BIT&&!flags&&!memory_count&&!memory&&count==1&&!image_count&&!images);VkAccessFlags access=expected_dst==BUFFER_INDEX?VK_ACCESS_INDEX_READ_BIT:expected_dst==BUFFER_VERTEX_INLINE?VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT:VK_ACCESS_UNIFORM_READ_BIT;VkPipelineStageFlags stages=expected_dst==BUFFER_UNIFORM?(VK_PIPELINE_STAGE_VERTEX_SHADER_BIT|VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT):VK_PIPELINE_STAGE_VERTEX_INPUT_BIT;assert(dst==stages&&buffers[0].srcAccessMask==VK_ACCESS_TRANSFER_WRITE_BIT&&buffers[0].dstAccessMask==access&&buffers[0].size==expected_size&&!buffers[0].offset&&buffers[0].srcQueueFamilyIndex==VK_QUEUE_FAMILY_IGNORED&&buffers[0].dstQueueFamilyIndex==VK_QUEUE_FAMILY_IGNORED);barriers++;}
+}assert(cmd==(VkCommandBuffer)(uintptr_t)4&&src==VK_PIPELINE_STAGE_TRANSFER_BIT&&!flags&&!memory_count&&!memory&&count==1&&!image_count&&!images);VkAccessFlags access=expected_dst==BUFFER_INDEX?VK_ACCESS_INDEX_READ_BIT:expected_dst==BUFFER_VERTEX_INLINE?VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT:(VK_ACCESS_UNIFORM_READ_BIT|VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT);VkPipelineStageFlags stages=expected_dst==BUFFER_UNIFORM?(VK_PIPELINE_STAGE_VERTEX_INPUT_BIT|VK_PIPELINE_STAGE_VERTEX_SHADER_BIT|VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT):VK_PIPELINE_STAGE_VERTEX_INPUT_BIT;assert(dst==stages&&buffers[0].srcAccessMask==VK_ACCESS_TRANSFER_WRITE_BIT&&buffers[0].dstAccessMask==access&&buffers[0].size==expected_size&&!buffers[0].offset&&buffers[0].srcQueueFamilyIndex==VK_QUEUE_FAMILY_IGNORED&&buffers[0].dstQueueFamilyIndex==VK_QUEUE_FAMILY_IGNORED);barriers++;}
 /* PRODUCTION */
 int main(void){quiet_test_errors();unsigned cases=0,batch_cases=0;
  for(unsigned mask=0;mask<8;mask++){
@@ -117,4 +117,4 @@ int main(void){quiet_test_errors();unsigned cases=0,batch_cases=0;
  }
  printf("Staging batches: %u active-buffer/coherency combinations; all copies before one exact-range visibility batch, empty batches skipped\n",batch_cases);
  printf("Unswizzle visibility: %u source/ring dependency schedules passed\n",unswizzle_barriers);
- printf("Staging visibility: %u coherent/non-coherent copy and recreation cases passed; flush-before-copy, vertex/fragment UBO barriers, empty skips, payload bytes, readback invalidation/recreation and imported-RAM-only upload barriers verified\n",cases);return 0;}
+ printf("Staging visibility: %u coherent/non-coherent copy and recreation cases passed; flush-before-copy, vertex-input and vertex/fragment UBO barriers, empty skips, payload bytes, readback invalidation/recreation and imported-RAM-only upload barriers verified\n",cases);return 0;}

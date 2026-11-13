@@ -21,5 +21,15 @@ parts.append('static void unswizzle_source_barriers(PGRAPHVkState *r,VkCommandBu
 code=Path(__file__).with_suffix('.c').read_text().replace('/* PRODUCTION */','\n'.join(parts));q=(r/'libretro/tests/test-spv-geom.c').read_text();a=q.index('#ifdef _WIN32\nstatic void quiet_test_abort');b=q.index('int line_tests(',a);code=code.replace('/* QUIET ERRORS */',q[a:b])
 with tempfile.TemporaryDirectory(prefix='vk-staging-visibility-') as tmp:
  d=Path(tmp);(d/'test.c').write_text(code);exe=d/('test.exe' if os.name=='nt' else 'test')
- subprocess.run([cc,'-O2','-std=gnu11','-Wall','-Wextra','-Werror','-Wno-sign-compare','-Wno-misleading-indentation','-fsanitize=undefined','-fsanitize-undefined-trap-on-error','-I'+str(r/'deps/vulkan-headers'),str(d/'test.c'),'-o',str(exe)],check=True,env=env)
+ flags=[cc,'-O2','-std=gnu11','-Wall','-Wextra','-Werror','-Wno-sign-compare','-Wno-misleading-indentation','-fsanitize=undefined','-fsanitize-undefined-trap-on-error','-I'+str(r/'deps/vulkan-headers'),str(d/'test.c'),'-o',str(exe)]
+ subprocess.run(flags,check=True,env=env)
  subprocess.run([str(exe)],check=True,timeout=30,env=env)
+ start=code.index('case BUFFER_UNIFORM:');end=code.index('break;',start)
+ block=code[start:end]
+ for label,token in [('uniform read','VK_ACCESS_UNIFORM_READ_BIT'),('constant vertex read','VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT'),('vertex input stage','VK_PIPELINE_STAGE_VERTEX_INPUT_BIT')]:
+  assert block.count(token)==1,label
+  (d/'test.c').write_text(code[:start]+block.replace(token,'0',1)+code[end:])
+  subprocess.run(flags,check=True,env=env)
+  bad=subprocess.run([str(exe)],capture_output=True,timeout=30,env=env)
+  assert bad.returncode,label
+  print('Required staging visibility control rejected:',label)

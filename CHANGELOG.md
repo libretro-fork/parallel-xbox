@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Extend staging visibility tests to require both uniform and vertex-input consumers of the shared constant-attribute buffer. Retain exact ranges, coherency and copy ordering, and reject missing access/stage scopes. No runtime change.
+
 - Reuse the OpenGL cache writer's two metadata slots instead of allocating/freeing a job record for each program/module save. Queue saturation still defers optional saves; binary payload owners remain retained until the disk callback finishes. Binary slab growth, file paths and host-driver allocations remain separate optimization work.
 
 - On Vulkan devices with dynamic vertex input, supply constant attributes through zero-stride vertex bindings instead of specializing shaders by the constant/array mask. Reuse the existing uniform upload/device buffer owners and retain the previous path without dynamic vertex input. This is under qualification; remaining draw-critical compilation and cold-play stutter recovery stay open.
