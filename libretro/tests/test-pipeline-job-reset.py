@@ -15,8 +15,10 @@ functions='\n'.join(fn.replace('static void','__attribute__((noinline)) static v
 h=(repo/'hw/xbox/nv2a/pgraph/vk/renderer.h').read_text()
 types='\n'.join(re.search(r'typedef struct '+name+r' \{.*?\} '+name+r';',h,re.S)[0] for name in ['RenderPassState','PipelineKey'])
 types+='\n'+'\n'.join(re.search(r'typedef struct '+name+r' \{.*?\} '+name+r';',s,re.S)[0] for name in ('GplPreKey','GplFragKey'))
+stage_options='\n'.join(re.search(r'typedef struct '+kind+r' \{.*?\} '+kind+r';',(repo/('hw/xbox/nv2a/pgraph/spv/'+file)).read_text(),re.S)[0] for kind,file in [('SpvVshOptions','vsh.h'),('SpvPshOptions','psh.h')])
 job=re.search(r'typedef struct \{\n    bool frag;.*?\} LibJob;',s,re.S)[0]
 if 'S3tcPipelineJob' in job:job=re.search(r'typedef struct S3tcPipelineJob \{.*?\} S3tcPipelineJob;',(repo/'hw/xbox/nv2a/pgraph/vk/s3tc-pipeline-job.h').read_text(),re.S)[0]+'\n'+job
+job=stage_options+'\n'+job
 
 code=Path(__file__).with_suffix('.c').read_text().replace('/* TYPES */',types+'\ntypedef struct ShaderModuleInfo ShaderModuleInfo;\n'+job).replace('/* FUNCTIONS */',functions)
 env=os.environ.copy();env['PATH']=str(Path(cc).resolve().parent)+os.pathsep+env.get('PATH','')

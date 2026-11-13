@@ -13,9 +13,10 @@ def fn(name):
 parts='\n'.join(fn(n) for n in ('pipeline_hold_modules','gpl_key_size','pump_take_library','pump_take_pipeline','library_land','pump_drain'))
 types='\n'.join(re.search(r'typedef struct '+n+r' \{.*?\} '+n+r';',h,re.S)[0] for n in ('RenderPassState','PipelineKey','PipelineBinding'))
 types+='\n'+'\n'.join(re.search(r'typedef struct '+n+r' \{.*?\} '+n+r';',s,re.S)[0] for n in ('GplPreKey','GplFragKey'))
+psh_opts=re.search(r'typedef struct SpvPshOptions \{.*?\} SpvPshOptions;',(r/'hw/xbox/nv2a/pgraph/spv/psh.h').read_text(),re.S)[0]
 job=re.search(r'typedef struct \{\n    bool frag;.*?\} LibJob;',s,re.S)[0]
 if 'S3tcPipelineJob' in job:job=re.search(r'typedef struct S3tcPipelineJob \{.*?\} S3tcPipelineJob;',(r/'hw/xbox/nv2a/pgraph/vk/s3tc-pipeline-job.h').read_text(),re.S)[0]+'\n'+job
-types+='\n'+re.search(r'typedef struct SpvVshOptions \{.*?\} SpvVshOptions;',(r/'hw/xbox/nv2a/pgraph/spv/vsh.h').read_text(),re.S)[0]+'\n'+job
+types+='\n'+re.search(r'typedef struct SpvVshOptions \{.*?\} SpvVshOptions;',(r/'hw/xbox/nv2a/pgraph/spv/vsh.h').read_text(),re.S)[0]+'\n'+psh_opts+'\n'+job
 if 's3tc_pipeline_job_land(' in parts:parts='static void s3tc_pipeline_job_land(PGRAPHVkState *r,LibJob *job){(void)r;(void)job;CHECK(false); }\n'+parts
 for name in ('pump_take_library','pump_take_pipeline'):
  for banned in ('vkCreate','Wait','memcpy(','g_new','malloc','realloc','pump_d++','pump_drain('):assert banned not in fn(name),(name,banned)
@@ -52,7 +53,9 @@ static void pgraph_vk_ref_shader_module(ShaderModuleInfo *m){CHECK(m&&m->refs);m
 static void pgraph_vk_unref_shader_module(PGRAPHVkState *r,ShaderModuleInfo *m){CHECK(r&&m->refs);m->refs--;releases++;}
 static void pgraph_vk_spec_pipeline_landed(uint64_t hash){marker=hash;markers++;}
 static unsigned adopted;
+static unsigned fragment_adopted;
 static void pgraph_vk_adopt_vertex_module(PGRAPHVkState *r,const ShaderState *state,ShaderModuleInfo *module){CHECK(r&&state&&module&&module->refs);pgraph_vk_ref_shader_module(module);adopted++;}
+static void pgraph_vk_adopt_fragment_module(PGRAPHVkState *r,const ShaderState *state,ShaderModuleInfo *module){CHECK(r&&state&&module&&module->refs);pgraph_vk_ref_shader_module(module);fragment_adopted++;}
 /* PRODUCTION */
 int main(void){unsigned cases=0;uint32_t random=13;
  for(unsigned trial=0;trial<64;trial++)for(unsigned kind=0;kind<3;kind++)for(unsigned mode=0;mode<12;mode++)for(unsigned dynamic=0;dynamic<2;dynamic++){
@@ -95,6 +98,25 @@ int main(void){unsigned cases=0;uint32_t random=13;
   CHECK(owners[0].refs==(unsigned)!cancelled);if(!cancelled)CHECK(!owners[1].refs);
   if(adopted)pgraph_vk_unref_shader_module(&r,&owners[0]);CHECK(!owners[0].refs);
  }
+
+ for(unsigned missing=1;missing<4;missing++)for(unsigned geom=0;geom<2;geom++)
+ for(unsigned cancelled=0;cancelled<2;cancelled++)for(unsigned transferred=0;transferred<2;transferred++) {
+  memset(pump_jobs,0,sizeof(pump_jobs));pump_d=0;pump_w_local=pump_r=1;pipe_started=true;
+  PGRAPHVkState r={0};PGRAPHState pg={.vk_renderer_state=&r};ShaderModuleInfo owners[3]={{1},{1},{1}};
+  LibJob *j=&pump_jobs[0];j->full=true;j->prepare_vertex=missing&1;j->prepare_fragment=missing&2;j->ci.stageCount=2+geom;
+  if(!cancelled||!j->prepare_vertex)j->mods[j->nmods++]=&owners[0];
+  if(geom)j->mods[j->nmods++]=&owners[1];
+  if(!cancelled||!j->prepare_fragment)j->mods[j->nmods++]=&owners[2];
+  j->result=cancelled||transferred?VK_NULL_HANDLE:(VkPipeline)(uintptr_t)3;
+  adopted=fragment_adopted=0;pump_drain(&pg);
+  CHECK(adopted==(unsigned)(!cancelled&&j->prepare_vertex));
+  CHECK(fragment_adopted==(unsigned)(!cancelled&&j->prepare_fragment));
+  if(!cancelled){CHECK(owners[0].refs==adopted&&owners[2].refs==fragment_adopted);if(geom)CHECK(!owners[1].refs);}
+  else for(int i=0;i<j->nmods;i++)CHECK(!j->mods[i]->refs);
+  if(adopted)pgraph_vk_unref_shader_module(&r,&owners[0]);
+  if(fragment_adopted)pgraph_vk_unref_shader_module(&r,&owners[2]);
+  cases++;
+ }
  printf("Completed pipeline take: %u native-key/publication/type/collision/owner/drain/wrap cases PASS\n",cases);
 }
 '''.replace('/* TYPES */',types).replace('/* PRODUCTION */',parts)
@@ -113,9 +135,10 @@ with tempfile.TemporaryDirectory(prefix='pipeline-completed-') as tmp:
  d=Path(tmp);(d/'qemu').mkdir();(d/'qemu/osdep.h').write_text('#include <stdint.h>\n#include <stdbool.h>\n#include <stddef.h>\n');(d/'qemu/mstring.h').write_text('typedef struct MString MString;\n')
  c=d/'test.c';exe=d/('test.exe' if os.name=='nt' else 'test')
  cmd=[cc,'-O2','-std=gnu11','-Wall','-Wextra','-Werror','-Wno-misleading-indentation','-fsanitize=undefined','-fsanitize-undefined-trap-on-error','-I'+str(d),'-I'+str(r),'-I'+str(r/'deps/vulkan-headers'),str(c),'-o',str(exe)]
+ if os.name!='nt':cmd+=['-fsanitize=address','-fno-omit-frame-pointer']
  env=os.environ.copy();env['PATH']=str(Path(cc).resolve().parent)+os.pathsep+env.get('PATH','')
  c.write_text(code);subprocess.run(cmd,check=True,env=env);subprocess.run([str(exe)],check=True,env=env)
- for name,mutant in [('missing PSO metadata reference',code.replace('pgraph_vk_ref_shader_module(binding->shader_modules[i]);','(void)pgraph_vk_ref_shader_module;',1)),('wrapped result lost',code.replace('i != done','i < done',1)),('unfinished result',code.replace('retro_atomic_load_acquire_int(&pump_r)','pump_w_local',1)),('double ownership',code.replace('job->result = VK_NULL_HANDLE;','/* stale handle retained */',1)),('library hash-only match',code.replace('!memcmp(owned, key, gpl_key_size(r, frag))','((void)owned,(void)key,true)',1)),('pipeline hash-only match',code.replace('!memcmp(&job->key, key, sizeof(*key))','((void)key,true)',1))]:
+ for name,mutant in [('completed fragment owner not adopted',code.replace('if (job->prepare_fragment && job->nmods == (int)job->ci.stageCount)', 'if (false && job->prepare_fragment && job->nmods == (int)job->ci.stageCount)',1)),('missing PSO metadata reference',code.replace('pgraph_vk_ref_shader_module(binding->shader_modules[i]);','(void)pgraph_vk_ref_shader_module;',1)),('wrapped result lost',code.replace('i != done','i < done',1)),('unfinished result',code.replace('retro_atomic_load_acquire_int(&pump_r)','pump_w_local',1)),('double ownership',code.replace('job->result = VK_NULL_HANDLE;','/* stale handle retained */',1)),('library hash-only match',code.replace('!memcmp(owned, key, gpl_key_size(r, frag))','((void)owned,(void)key,true)',1)),('pipeline hash-only match',code.replace('!memcmp(&job->key, key, sizeof(*key))','((void)key,true)',1))]:
   assert mutant!=code,name;c.write_text(mutant);subprocess.run(cmd,check=True,env=env)
   assert subprocess.run([str(exe)],env=env,capture_output=True).returncode!=0,name
  if 'S3tcPipelineJob' in job:

@@ -27,6 +27,7 @@
 #include "libretro/dsp-ownership.h"
 #include "hw/xbox/nv2a/pgraph/spv/clear.h"
 #include "hw/xbox/nv2a/pgraph/spv/vsh.h"
+#include "hw/xbox/nv2a/pgraph/spv/psh.h"
 #include "hw/xbox/nv2a/pgraph/blend.h"
 #include <math.h>
 #include <retro_atomic.h>
@@ -1098,7 +1099,8 @@ typedef struct {
     bool frag;
     bool compute; /* uses the existing padding before hash */
     bool full;     /* a whole pipeline, for the pipeline cache */
-    bool prepare_vertex; /* only the worker creates this missing stage */
+    bool prepare_vertex : 1; /* worker creates missing stages before publication */
+    bool prepare_fragment : 1;
     uint64_t hash; /* a library's; a whole pipeline's key hash */
     uint64_t state_hash; /* full: the shader state it was met as */
     VkDevice device;
@@ -1108,6 +1110,8 @@ typedef struct {
     int nmods;
     uint64_t vertex_identity; /* reserved by the render-thread owner */
     SpvVshOptions vertex_options;
+    uint64_t fragment_identity;
+    SpvPshOptions fragment_options;
     VkGraphicsPipelineCreateInfo ci;
     VkGraphicsPipelineLibraryCreateInfoEXT lib_info;
     VkPipelineShaderStageCreateInfo stages[3];
@@ -1199,12 +1203,12 @@ static retro_eventcount_t pipe_ec_work, pipe_ec_done;
 static QemuThread pipe_thread;
 static bool pipe_started;
 
-/* Worker-only, before completion publication. Geometry/fragment references
- * already belong to this job; prepend the newly created final vertex owner. */
+/* Worker-only, before completion publication. Ready stages already belong
+ * to this job; prepend the newly created final vertex owner. */
 static void pipeline_prepare_vertex(LibJob *job)
 {
     assert(job->prepare_vertex && job->vertex_identity);
-    assert(job->nmods == (int)job->ci.stageCount - 1);
+    assert(job->nmods == (int)job->ci.stageCount - 1 - job->prepare_fragment);
     ShaderModuleInfo *vertex = pgraph_vk_prepare_vertex_module(
         job->device, job->vertex_identity,
         &job->key.shader_state.vsh, job->vertex_options,
@@ -1222,6 +1226,21 @@ static void pipeline_prepare_vertex(LibJob *job)
     job->stages[0].module = vertex->module;
 }
 
+/* Append a missing fragment owner only after any missing vertex was prepended.
+ * The final create-info stage array still owns the immutable native recipe. */
+static void pipeline_prepare_fragment(LibJob *job)
+{
+    assert(job->prepare_fragment && job->fragment_identity);
+    assert(job->nmods == (int)job->ci.stageCount - 1);
+    ShaderModuleInfo *fragment = pgraph_vk_prepare_fragment_module(
+        job->device, job->fragment_identity, &job->key.shader_state.psh,
+        job->fragment_options);
+    pgraph_vk_ref_shader_module(fragment);
+    assert(job->nmods < ARRAY_SIZE(job->mods));
+    job->mods[job->nmods++] = fragment;
+    job->stages[job->ci.stageCount - 1].module = fragment->module;
+}
+
 static void *pipe_worker_fn(void *opaque)
 {
     unsigned pr = 0;
@@ -1235,6 +1254,7 @@ static void *pipe_worker_fn(void *opaque)
                                          &job->s3tc,&job->result);
             } else {
                 if (job->prepare_vertex) pipeline_prepare_vertex(job);
+                if (job->prepare_fragment) pipeline_prepare_fragment(job);
                 VK_CHECK(vkCreateGraphicsPipelines(job->device, job->cache, 1,
                                                    &job->ci, NULL,
                                                    &job->result));
@@ -1684,6 +1704,10 @@ static void pump_drain(PGRAPHState *pg)
             /* A transferred result still retains its module here. Cancelled
              * jobs that never prepared a vertex have fewer stage owners. */
             pgraph_vk_adopt_vertex_module(r, &job->key.shader_state, job->mods[0]);
+        }
+        if (job->prepare_fragment && job->nmods == (int)job->ci.stageCount) {
+            pgraph_vk_adopt_fragment_module(r, &job->key.shader_state,
+                                            job->mods[job->nmods - 1]);
         }
         for (int i = 0; i < job->nmods; i++) {
             pgraph_vk_unref_shader_module(r, job->mods[i]);
@@ -2243,9 +2267,11 @@ static void pipeline_job_fill(PGRAPHState *pg, const ShaderState *st,
         (VkPipelineShaderStageCreateInfo){
             .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
             .stage = VK_SHADER_STAGE_FRAGMENT_BIT,
-            .module = psh->module,
+            .module = psh ? psh->module : VK_NULL_HANDLE,
             .pName = "main",
         };
+
+    assert(psh || job->prepare_fragment);
 
     /* The vertex input as the key holds it: nothing of it where the
      * device takes it dynamically. */
@@ -2659,8 +2685,9 @@ static PipelineBinding *ready_vertex_pipeline(PGRAPHVkState *r,
     return NULL;
 }
 
-/* Capture directly into the existing final slot and pin ready fragment and
- * geometry owners before publication. No foreground compiler or native module
+/* Capture directly into the existing final slot and pin ready stage
+ * owners before publication. Missing VS/FS stages are prepared by the same
+ * worker from that slot. No foreground compiler or native module
  * creation. A full ring defers preparation while the correct source draws. */
 static bool queue_vertex_pipeline(PGRAPHState *pg, const PipelineKey *key,
                                    uint64_t hash, PipelineBinding *source,
@@ -2687,15 +2714,25 @@ static bool queue_vertex_pipeline(PGRAPHState *pg, const PipelineKey *key,
             return false;
         }
     }
+    for (unsigned i = pump_d; i < pump_w_local; i++) {
+        const LibJob *pending = &pump_jobs[i % PUMP_RING];
+        if (!pending->compute && pending->full && pending->prepare_fragment &&
+            !memcmp(&pending->key.shader_state.psh, &key->shader_state.psh,
+                    sizeof(key->shader_state.psh))) return false;
+    }
     LibJob *job = pump_slot();
     if (!job) return false;
     assert(!memcmp(&source->key.shader_state.geom, &key->shader_state.geom,
                    sizeof(key->shader_state.geom)));
-    assert(!memcmp(&source->key.shader_state.psh, &key->shader_state.psh,
-                   sizeof(key->shader_state.psh)));
-    ShaderModuleInfo *vertex = pgraph_vk_ready_vertex_module(r, &key->shader_state);
+    ShaderModuleInfo *vertex =
+        !memcmp(&source->key.shader_state.vsh, &key->shader_state.vsh,
+                sizeof(key->shader_state.vsh)) ? source->shader_modules[0] :
+        pgraph_vk_ready_vertex_module(r, &key->shader_state);
     ShaderModuleInfo *geometry = source->shader_modules[1];
-    ShaderModuleInfo *fragment = source->shader_modules[2];
+    ShaderModuleInfo *fragment =
+        !memcmp(&source->key.shader_state.psh, &key->shader_state.psh,
+                sizeof(key->shader_state.psh)) ? source->shader_modules[2] :
+        pgraph_vk_ready_fragment_module(r, &key->shader_state);
     if (vertex) {
         pgraph_vk_ref_shader_module(vertex);
         job->mods[job->nmods++] = vertex;
@@ -2714,8 +2751,19 @@ static bool queue_vertex_pipeline(PGRAPHState *pg, const PipelineKey *key,
         pgraph_vk_ref_shader_module(geometry);
         job->mods[job->nmods++] = geometry;
     }
-    pgraph_vk_ref_shader_module(fragment);
-    job->mods[job->nmods++] = fragment;
+    if (fragment) {
+        pgraph_vk_ref_shader_module(fragment);
+        job->mods[job->nmods++] = fragment;
+    } else {
+        job->prepare_fragment = true;
+        assert(r->next_shader_module_identity != UINT64_MAX);
+        job->fragment_identity = ++r->next_shader_module_identity;
+        job->fragment_options = (SpvPshOptions){
+            .spirv_1_6 = pgraph_vk_spirv_1_6,
+            .ubo_binding = PSH_UBO_BINDING,
+            .tex_binding = PSH_TEX_BINDING,
+        };
+    }
     if (&job->key != key) memcpy(&job->key, key, sizeof(job->key));
     job->hash = hash;
     job->state_hash = fast_hash((const uint8_t *)&key->shader_state,
@@ -2732,9 +2780,11 @@ static bool queue_vertex_pipeline(PGRAPHState *pg, const PipelineKey *key,
 static void prepare_vertex_family(PGRAPHState *pg, PipelineKey *key,
                                    PipelineBinding *source)
 {
-    if (!pgraph_gpu_boost_gl() || !key->shader_state.vsh.is_fixed_function ||
-        key->shader_state.vsh.fixed_function.csv0c_dynamic) return;
+    if (!pgraph_gpu_boost_gl() || !key->shader_state.vsh.is_fixed_function) return;
+    bool changed = !key->shader_state.vsh.fixed_function.csv0c_dynamic;
     pgraph_glsl_vsh_canonicalize_lighting(&key->shader_state.vsh);
+    changed |= pgraph_glsl_psh_canonicalize_dynamic(&key->shader_state.psh);
+    if (!changed) return;
     uint64_t hash = fast_hash((const uint8_t *)key, sizeof(*key));
     if (!pipeline_ready(pg->vk_renderer_state, hash, key)) {
         queue_vertex_pipeline(pg, key, hash, source, NULL);
@@ -2750,7 +2800,8 @@ static void prepare_bound_vertex_family(PGRAPHState *pg)
     PipelineBinding *source = r->pipeline_binding;
     if (!pgraph_gpu_boost_gl() || !source || !source->pipeline ||
         source->key.clear || !source->key.shader_state.vsh.is_fixed_function ||
-        source->key.shader_state.vsh.fixed_function.csv0c_dynamic ||
+        (source->key.shader_state.vsh.fixed_function.csv0c_dynamic &&
+         source->key.shader_state.psh.combiner_dynamic) ||
         !source->shader_modules[0] || !source->shader_modules[2] ||
         (pgraph_glsl_need_geom(&source->key.shader_state.geom) &&
          !source->shader_modules[1]) || check_pipeline_dirty(pg)) return;
@@ -2761,14 +2812,15 @@ static void prepare_bound_vertex_family(PGRAPHState *pg)
 }
 
 /* Before a compiler-capable binding lookup, require a complete exact PSO or
- * an exact lighting sibling. Cache-pressure misses retain the correct
+ * an exact lighting/combiner sibling. Cache-pressure misses retain the correct
  * uncovered path. Prepared words/modules alone are never a ready fallback. */
 ShaderBinding *pgraph_vk_try_vertex_family(PGRAPHState *pg,
                                            const ShaderState *state)
 {
     PGRAPHVkState *r = pg->vk_renderer_state;
     if (!pgraph_gpu_boost_gl() || !state->vsh.is_fixed_function ||
-        state->vsh.fixed_function.csv0c_dynamic) return NULL;
+        (state->vsh.fixed_function.csv0c_dynamic &&
+         state->psh.combiner_dynamic)) return NULL;
     PipelineKey key;
     init_pipeline_key_for_shader(pg, &key, state);
     uint64_t hash = fast_hash((const uint8_t *)&key, sizeof(key));
@@ -2778,8 +2830,16 @@ ShaderBinding *pgraph_vk_try_vertex_family(PGRAPHState *pg,
         return exact;
     }
     pgraph_glsl_vsh_canonicalize_lighting(&key.shader_state.vsh);
+    pgraph_glsl_psh_canonicalize_dynamic(&key.shader_state.psh);
     hash = fast_hash((const uint8_t *)&key, sizeof(key));
     PipelineBinding *source = ready_vertex_pipeline(r, &key, hash);
+    if (!source) {
+        /* A lighting-only sibling remains correct if already ready while
+         * its combined fragment family is still being prepared. */
+        memcpy(&key.shader_state.psh, &state->psh, sizeof(state->psh));
+        hash = fast_hash((const uint8_t *)&key, sizeof(key));
+        source = ready_vertex_pipeline(r, &key, hash);
+    }
     if (!source) return NULL;
     ShaderBinding *sibling = pgraph_vk_materialize_ready_shader_binding(r, &key, hash);
     if (!sibling) return NULL;
@@ -2789,6 +2849,7 @@ ShaderBinding *pgraph_vk_try_vertex_family(PGRAPHState *pg,
     key.shader_state.vsh.specular_enable = state->vsh.specular_enable;
     key.shader_state.vsh.separate_specular = state->vsh.separate_specular;
     key.shader_state.vsh.ignore_specular_alpha = state->vsh.ignore_specular_alpha;
+    memcpy(&key.shader_state.psh, &state->psh, sizeof(state->psh));
     hash = fast_hash((const uint8_t *)&key, sizeof(key));
     r->sibling_retry = queue_vertex_pipeline(pg, &key, hash, source,
                                              &r->sibling_ticket);

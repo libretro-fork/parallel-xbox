@@ -9,9 +9,9 @@ def fn(name):
  end=s.index('{',m.start())+1;depth=1
  while depth:depth+=(s[end]=='{')-(s[end]=='}');end+=1
  return s[m.start():end]
-types='\n'.join(re.search(r'typedef struct '+n+r' \{.*?\} '+n+r';',source,re.S)[0] for n,source in [('SpvVshOptions',(r/'hw/xbox/nv2a/pgraph/spv/vsh.h').read_text()),('S3tcPipelineJob',(r/'hw/xbox/nv2a/pgraph/vk/s3tc-pipeline-job.h').read_text()),('RenderPassState',h),('PipelineKey',h),('GplPreKey',s),('GplFragKey',s)])
+types='\n'.join(re.search(r'typedef struct '+n+r' \{.*?\} '+n+r';',source,re.S)[0] for n,source in [('SpvPshOptions',(r/'hw/xbox/nv2a/pgraph/spv/psh.h').read_text()),('SpvVshOptions',(r/'hw/xbox/nv2a/pgraph/spv/vsh.h').read_text()),('S3tcPipelineJob',(r/'hw/xbox/nv2a/pgraph/vk/s3tc-pipeline-job.h').read_text()),('RenderPassState',h),('PipelineKey',h),('GplPreKey',s),('GplFragKey',s)])
 types+='\n'+re.search(r'typedef struct \{\n    bool frag;.*?\} LibJob;',s,re.S)[0]
-production=fn('pipeline_prepare_vertex')+'\n'+fn('pipe_worker_fn')
+production=fn('pipeline_prepare_vertex')+'\n'+fn('pipeline_prepare_fragment')+'\n'+fn('pipe_worker_fn')
 code=Path(__file__).with_suffix('.c').read_text().replace('/* TYPES */',types).replace('/* PRODUCTION */',production)
 env=dict(os.environ);env['PATH']=str(Path(cc).resolve().parent)+os.pathsep+env.get('PATH','')
 with tempfile.TemporaryDirectory(prefix='vertex-worker-') as tmp:
@@ -26,6 +26,8 @@ with tempfile.TemporaryDirectory(prefix='vertex-worker-') as tmp:
   else:assert not result.returncode,result.stderr.decode(errors='replace');print(result.stdout.decode(),end='')
  run(code)
  for label,before,after in [
+  ('lost new fragment owner','pgraph_vk_ref_shader_module(fragment);','(void)fragment;'),
+  ('fragment not prepared before native creation','if (job->prepare_fragment) pipeline_prepare_fragment(job);','if (false) pipeline_prepare_fragment(job);'),
   ('lost new vertex owner','pgraph_vk_ref_shader_module(vertex);','(void)pgraph_vk_ref_shader_module;'),
   ('wrong native vertex handle','job->stages[0].module = vertex->module;','job->stages[0].module = VK_NULL_HANDLE;'),
   ('lost fragment owner on prepend','job->mods[i] = job->mods[i - 1];','job->mods[i] = vertex;'),

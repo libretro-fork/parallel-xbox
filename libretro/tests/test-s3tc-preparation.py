@@ -9,6 +9,7 @@ def fn(source,name):
  while depth:depth+=(source[p]=='{')-(source[p]=='}');p+=1
  return source[m.start():p]
 meta=re.search(r'typedef struct S3tcPipelineJob \{.*?\} S3tcPipelineJob;',header,re.S)[0]
+stage_options='\n'.join(re.search(r'typedef struct '+kind+r' \{.*?\} '+kind+r';',(r/('hw/xbox/nv2a/pgraph/spv/'+file)).read_text(),re.S)[0] for kind,file in [('SpvVshOptions','vsh.h'),('SpvPshOptions','psh.h')])
 job=re.search(r'typedef struct \{\n    bool frag;.*?\} LibJob;',s,re.S)[0]
 names=['pipeline_job_reset','pipe_worker_fn','s3tc_pipeline_job_land','pump_drain','pump_quiesce','pump_slot','pump_submit','pgraph_vk_s3tc_pipeline_ready','pgraph_vk_s3tc_pipeline_uncovered','pgraph_vk_quiesce_pipeline_worker']
 parts='\n'.join(fn(s,n) for n in names)
@@ -21,7 +22,7 @@ preflight=(r/'hw/xbox/nv2a/pgraph/vk/s3tc-decode.h').read_text()
 assert preflight.index('pgraph_vk_s3tc_pipeline_ready(pg,volume)')<preflight.index('pgraph_vk_staging_alloc(pg, total')
 finalize=fn(preflight,'s3tc_decode_finalize');assert finalize.index('pgraph_vk_quiesce_pipeline_worker(pg)')<finalize.index('if (!r->s3tc_decode.set_layout)')
 prototypes='bool pgraph_vk_s3tc_pipeline_ready(PGRAPHState*,unsigned);\n'
-code=Path(__file__).with_suffix('.c').read_text().replace('/* JOB */',meta+'\n'+job).replace('/* BUILDER */',fn(header,'s3tc_pipeline_job_create')).replace('/* FUNCTIONS */',parts+'\n'+finalize)
+code=Path(__file__).with_suffix('.c').read_text().replace('/* JOB */',meta+'\n'+stage_options+'\n'+job).replace('/* BUILDER */',fn(header,'s3tc_pipeline_job_create')).replace('/* FUNCTIONS */',parts+'\n'+finalize)
 code=code.replace('static VkResult vkCreateComputePipelines',prototypes+'static VkResult vkCreateComputePipelines',1)
 if os.name!='nt':
  import resource

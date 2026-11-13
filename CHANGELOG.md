@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Extend ready Vulkan fixed-function pipeline families to the existing dynamic fragment combiner. Missing vertex/fragment stages compile on the same worker from the final job key, retain exact native stage-cache identities and reserve module IDs before publication. Reuse live source stage owners after cache eviction; deduplicate pending fragment work. Update the compute/GPL/reset and module-identity fixtures for the shared stage schema without permitting graphics preparation on their unrelated paths. Native NGB restore images match the parent, but cold-driver first-play recovery and release performance remain unqualified; uncovered draws still compile synchronously.
+
 - Keep the render-pass pump fixture linked to the optional lighting preparation service, checking that it runs after ordered drain even when static seeding is disabled. Preserve its existing preparation budget and mutation controls. No runtime change.
 
 - Prepare Vulkan fixed-function lighting siblings as complete native pipelines on the existing worker. Select them only when their entire pass/register/vertex-input key and retained module owners are ready, while exact specializations compile in the final job slot. Reuse prepared vertex modules across PSOs and defer duplicate stage preparation; preserve synchronous handling for uncovered configurations. NGB exercises the path and matches the parent image in the local restore check; cold first-play stall recovery and overall performance remain unqualified.

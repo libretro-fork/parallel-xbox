@@ -1031,6 +1031,13 @@ struct SpvVshOptions;
 ShaderModuleInfo *pgraph_vk_prepare_vertex_module(VkDevice device,
     uint64_t identity, const VshState *state, struct SpvVshOptions opts,
     bool geometry);
+struct SpvPshOptions;
+ShaderModuleInfo *pgraph_vk_prepare_fragment_module(VkDevice device,
+    uint64_t identity, const PshState *state, struct SpvPshOptions opts);
+ShaderModuleInfo *pgraph_vk_ready_fragment_module(PGRAPHVkState *r,
+                                                 const ShaderState *state);
+void pgraph_vk_adopt_fragment_module(PGRAPHVkState *r, const ShaderState *state,
+                                      ShaderModuleInfo *module);
 ShaderModuleInfo *pgraph_vk_create_shader_module_from_spirv(PGRAPHVkState *r,
                                                              ShaderSource *spirv);
 ShaderModuleInfo *pgraph_vk_create_shader_module_from_glsl(

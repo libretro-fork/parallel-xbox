@@ -10,7 +10,7 @@ def fn(source,name):
  while depth:depth+=(source[end]=='{')-(source[end]=='}');end+=1
  return source[m.start():end]
 parts=s[s.index('enum {\n    VK_VERTEX_KEY_HEAD'):s.index('/* Prewarming needs only geometry and vertex keys;')]
-parts+=fn(s,'vk_pre_state_module_keys')+'\n'+fn(v,'pgraph_glsl_vsh_canonicalize_lighting')
+parts+=fn(s,'vk_pre_state_module_keys')+'\n'+fn(s,'vk_state_module_keys')+'\n'+fn(v,'pgraph_glsl_vsh_canonicalize_lighting')
 for name in ('pgraph_vk_ready_vertex_module','vertex_module_adopt','pgraph_vk_adopt_vertex_module'):
  for forbidden in ('get_and_ref','pgraph_vk_ref_state_modules','vkCreate','pump_drain','g_malloc'):
   assert forbidden not in fn(s,name),(name,forbidden)
@@ -35,5 +35,13 @@ with tempfile.TemporaryDirectory(prefix='vertex-module-view-') as tmp:
   ('wrong collision identity','memcmp(&entry->key.vsh.state, view->state, sizeof(*view->state))','false'),
   ('lighting normalization remains specialized','    f->normalization = false;','    (void)f;'),
  ]:
-  assert code.count(before)==1,(label,code.count(before))
+  assert code.count(before)>=1,(label,code.count(before))
   run(code.replace(before,after,1),True);print('Required negative control rejected:',label)
+
+ for label,name,before,after in [
+  ('fragment header hash omitted','fragment_module_view','xxh3_update(&hash, view->head, sizeof(view->head));','(void)0;'),
+  ('fragment tail comparison omitted','fragment_module_compare','memcmp((const uint8_t *)&entry->key + VK_FRAGMENT_KEY_END,\n                  fragment_key_zero, sizeof(fragment_key_zero))','false'),
+  ('fragment options comparison omitted','fragment_module_compare','memcmp(&entry->key.psh.glsl_opts, &view->options, sizeof(view->options))','false'),
+  ('fragment owner not retained','fragment_module_adopt','pgraph_vk_ref_shader_module(view->module);','(void)pgraph_vk_ref_shader_module;'),
+ ]:
+  body=fn(s,name);assert body.count(before)==1;run(code.replace(body,body.replace(before,after,1),1),True);print('Required fragment control rejected:',label)

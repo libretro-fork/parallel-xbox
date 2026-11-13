@@ -22,6 +22,7 @@
 #include "ui/xemu-settings.h"
 #include "hw/xbox/nv2a/pgraph/spv/glslc.h"
 #include "hw/xbox/nv2a/pgraph/spv/vsh.h"
+#include "hw/xbox/nv2a/pgraph/spv/psh.h"
 
 #include <assert.h>
 #include <inttypes.h>
@@ -274,6 +275,28 @@ ShaderModuleInfo *pgraph_vk_prepare_vertex_module(VkDevice device,
         /* Device target globals are immutable until pipeline quiescence. */
         assert(opts.spirv_1_6 == pgraph_vk_spirv_1_6);
         source = pgraph_vk_compile_shader(VK_SHADER_STAGE_VERTEX_BIT,
+                                          mstring_get_str(text));
+        mstring_unref(text);
+    }
+    return pgraph_vk_create_owned_shader_module(device, identity, source);
+}
+
+/* The pipeline job owns this immutable state until completion. */
+ShaderModuleInfo *pgraph_vk_prepare_fragment_module(VkDevice device,
+    uint64_t identity, const PshState *state, SpvPshOptions opts)
+{
+    GlslcResult result;
+    ShaderSource *source;
+    if (pgraph_spv_psh(state, opts, &result)) {
+        source = pgraph_vk_shader_source_take(&result);
+    } else {
+        GenPshGlslOptions glsl = {
+            .vulkan = true, .ubo_binding = opts.ubo_binding,
+            .tex_binding = opts.tex_binding,
+        };
+        MString *text = pgraph_glsl_gen_psh(state, glsl);
+        assert(opts.spirv_1_6 == pgraph_vk_spirv_1_6);
+        source = pgraph_vk_compile_shader(VK_SHADER_STAGE_FRAGMENT_BIT,
                                           mstring_get_str(text));
         mstring_unref(text);
     }

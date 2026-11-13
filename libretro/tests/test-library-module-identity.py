@@ -12,7 +12,7 @@ def fn(source,name):
 h=(r/'hw/xbox/nv2a/pgraph/vk/renderer.h').read_text()
 types=re.search(r'typedef struct RenderPassState \{.*?\} RenderPassState;',h,re.S)[0]
 types+='\n'+'\n'.join(re.search(r'typedef struct '+n+r' \{.*?\} '+n+r';',draw,re.S)[0] for n in ('GplPreKey','GplFragKey'))
-constructor=fn(glsl,'pgraph_vk_create_shader_module_from_spirv')
+constructor=fn(glsl,'pgraph_vk_create_owned_shader_module')+'\n'+fn(glsl,'pgraph_vk_create_shader_module_from_spirv')
 parts='\n'.join(fn(draw,n) for n in ('topology_class','gpl_pre_hash','gpl_frag_hash','gpl_get_pre','gpl_get_frag'))+'\n'+constructor
 code=Path(__file__).with_suffix('.c').read_text().replace('/* TYPES */',types).replace('/* FUNCTIONS */',parts).replace('/* REFERENCE */',Path(__file__).with_name('library-handle-key-reference.h').read_text())
 env=os.environ.copy();env['PATH']=str(Path(cc).resolve().parent)+os.pathsep+env.get('PATH','')
@@ -22,7 +22,7 @@ with tempfile.TemporaryDirectory(prefix='library-module-identity-') as d:
     cmd=[cc,'-O2','-std=gnu11','-Wall','-Wextra','-Werror',*sanitizer,'-I'+str(r/'deps/vulkan-headers'),'-I'+str(r/'libretro-common/include'),'-I'+str(r/'include'),str(src),str(r/'util/fast-hash.c'),str(r/'libretro-common/encodings/encoding_xxh3.c'),'-o',str(exe)]
     src.write_text(code);subprocess.run(cmd,env=env,check=True);subprocess.run([str(exe)],env=env,check=True,timeout=30)
     controls=[
-        ('identity reused',code.replace('info->identity = ++r->next_shader_module_identity;','info->identity = 1;',1)),
+        ('identity reused',code.replace('info->identity = identity;','info->identity = 1;',1)),
         ('vertex identity omitted',code.replace('k->vsh = vsh;','k->vsh = 0; (void)vsh;',1)),
         ('geometry identity omitted',code.replace('k->geom = geom;','k->geom = 0; (void)geom;',1)),
         ('fragment identity omitted',code.replace('k->psh = psh;','k->psh = 0; (void)psh;',1)),

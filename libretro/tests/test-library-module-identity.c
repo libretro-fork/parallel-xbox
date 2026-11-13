@@ -24,7 +24,11 @@ typedef struct {RenderPassState render_pass_state;uint32_t shader_state;} Pipeli
 static unsigned allocations,driver_calls,source_drops;
 static uint32_t words[8];
 static ShaderModuleInfo *alloc_shader_module_info(const ShaderLayouts *layouts) {assert(!layouts);allocations++;return calloc(1,sizeof(ShaderModuleInfo));}
-static VkShaderModule pgraph_vk_create_shader_module_from_words(PGRAPHVkState *r,const uint32_t *data,size_t count) {assert(r && data==words && count==8);driver_calls++;return (VkShaderModule)(uintptr_t)0x5151;}
+static VkDevice expected_device;
+static VkResult vkCreateShaderModule(VkDevice device,const VkShaderModuleCreateInfo *info,const VkAllocationCallbacks *alloc,VkShaderModule *out) {
+    assert(device==expected_device&&!alloc&&info->sType==VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO);
+    assert(info->pCode==words&&info->codeSize==sizeof(words));driver_calls++;*out=(VkShaderModule)(uintptr_t)0x5151;return VK_SUCCESS;
+}
 static void pgraph_vk_shader_source_unref(ShaderSource *source) {assert(source->refs==1);source->refs--;source_drops++;}
 static struct {bool frag;uint64_t hash;VkPipeline pipeline;} libraries[16];
 static unsigned library_count,library_calls;
@@ -62,7 +66,7 @@ static uint64_t identity_frag_hash(PGRAPHVkState *r,uint64_t p,const VkPipelineD
 #define gpl_pre_hash identity_pre_hash
 #define gpl_frag_hash identity_frag_hash
 static ShaderModuleInfo *create(PGRAPHVkState *r,unsigned code) {
-    words[0]=code;ShaderSource source={.words=words,.num_words=8,.refs=1};
+    expected_device=r->device;words[0]=code;ShaderSource source={.words=words,.num_words=8,.refs=1};
     unsigned before=allocations;ShaderModuleInfo *m=pgraph_vk_create_shader_module_from_spirv(r,&source);
     assert(m && m->identity && !m->refcnt && m->module==(VkShaderModule)(uintptr_t)0x5151);
     assert(allocations==before+1 && !source.refs);return m;

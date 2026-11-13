@@ -461,6 +461,99 @@ void pgraph_vk_adopt_vertex_module(PGRAPHVkState *r, const ShaderState *state,
     lru_lookup_with_ops(&r->shader_module_cache, hash, &view, &ops);
 }
 
+/* The fragment union's unused vertex-program region stays in the core
+ * image as zeros. Hash/compare it without a stack-sized empty vertex key. */
+enum {
+    VK_FRAGMENT_KEY_HEAD = offsetof(ShaderModuleCacheKey, psh.state),
+    VK_FRAGMENT_KEY_END = offsetof(ShaderModuleCacheKey, psh.glsl_opts) +
+                          sizeof(GenPshGlslOptions),
+    VK_FRAGMENT_KEY_ZERO = sizeof(ShaderModuleCacheKey) - VK_FRAGMENT_KEY_END,
+};
+_Static_assert(offsetof(ShaderModuleCacheKey, psh.glsl_opts) ==
+               VK_FRAGMENT_KEY_HEAD + sizeof(PshState),
+               "fragment view covers every native key byte");
+static const uint8_t fragment_key_zero[VK_FRAGMENT_KEY_ZERO];
+typedef struct FragmentModuleView {
+    uint8_t head[VK_FRAGMENT_KEY_HEAD];
+    const PshState *state;
+    GenPshGlslOptions options;
+    ShaderModuleInfo *module;
+} FragmentModuleView;
+
+static uint64_t fragment_module_view(const ShaderState *state,
+                                      FragmentModuleView *view)
+{
+    memset(view, 0, sizeof(*view));
+    VkShaderStageFlagBits kind = VK_SHADER_STAGE_FRAGMENT_BIT;
+    memcpy(view->head, &kind, sizeof(kind));
+    view->state = &state->psh;
+    view->options.vulkan = true;
+    view->options.ubo_binding = PSH_UBO_BINDING;
+    view->options.tex_binding = PSH_TEX_BINDING;
+    xxh3_state_t hash;
+    xxh3_reset(&hash, 0);
+    xxh3_update(&hash, view->head, sizeof(view->head));
+    xxh3_update(&hash, view->state, sizeof(*view->state));
+    xxh3_update(&hash, &view->options, sizeof(view->options));
+    xxh3_update(&hash, fragment_key_zero, sizeof(fragment_key_zero));
+    return xxh3_digest(&hash);
+}
+
+static bool fragment_module_compare(Lru *lru, LruNode *node, const void *key)
+{
+    const FragmentModuleView *view = key;
+    const ShaderModuleCacheEntry *entry =
+        container_of(node, ShaderModuleCacheEntry, node);
+    return memcmp(&entry->key, view->head, sizeof(view->head)) ||
+           memcmp(&entry->key.psh.state, view->state, sizeof(*view->state)) ||
+           memcmp(&entry->key.psh.glsl_opts, &view->options, sizeof(view->options)) ||
+           memcmp((const uint8_t *)&entry->key + VK_FRAGMENT_KEY_END,
+                  fragment_key_zero, sizeof(fragment_key_zero));
+}
+
+ShaderModuleInfo *pgraph_vk_ready_fragment_module(PGRAPHVkState *r,
+                                                 const ShaderState *state)
+{
+    FragmentModuleView view;
+    uint64_t hash = fragment_module_view(state, &view);
+    unsigned bin = lru_hash_to_bin(&r->shader_module_cache, hash);
+    LruNode *node;
+    QTAILQ_FOREACH(node, &r->shader_module_cache.bins[bin], next_bin) {
+        if (node->hash == hash &&
+            !fragment_module_compare(&r->shader_module_cache, node, &view)) {
+            return container_of(node, ShaderModuleCacheEntry, node)->module_info;
+        }
+    }
+    return NULL;
+}
+
+static void fragment_module_adopt(Lru *lru, LruNode *node, const void *key)
+{
+    const FragmentModuleView *view = key;
+    ShaderModuleCacheEntry *entry =
+        container_of(node, ShaderModuleCacheEntry, node);
+    memset(&entry->key, 0, sizeof(entry->key));
+    memcpy(&entry->key, view->head, sizeof(view->head));
+    memcpy(&entry->key.psh.state, view->state, sizeof(*view->state));
+    memcpy(&entry->key.psh.glsl_opts, &view->options, sizeof(view->options));
+    assert(view->module);
+    pgraph_vk_ref_shader_module(view->module);
+    entry->module_info = view->module;
+}
+
+void pgraph_vk_adopt_fragment_module(PGRAPHVkState *r, const ShaderState *state,
+                                      ShaderModuleInfo *module)
+{
+    FragmentModuleView view;
+    uint64_t hash = fragment_module_view(state, &view);
+    view.module = module;
+    static const LruKeyOps ops = {
+        .init_node = fragment_module_adopt,
+        .compare_nodes = fragment_module_compare,
+    };
+    lru_lookup_with_ops(&r->shader_module_cache, hash, &view, &ops);
+}
+
 /* Prewarming needs only geometry and vertex keys; no fragment key or
  * fragment-module lookup is constructed on this path. */
 void pgraph_vk_ref_pre_state_modules(PGRAPHVkState *r, const ShaderState *st,

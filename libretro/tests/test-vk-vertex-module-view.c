@@ -13,6 +13,8 @@
 #include <encodings/xxh3.h>
 #define container_of(p,t,m) ((t *)((char *)(p)-offsetof(t,m)))
 #define VSH_UBO_BINDING 0
+#define PSH_UBO_BINDING 1
+#define PSH_TEX_BINDING 2
 /* Scalar/default ISA identity oracle; backend equivalence has its own suite. */
 uint64_t cpu_features_get(void){return 0;}
 /* TYPES */
@@ -70,5 +72,35 @@ int main(void){
   owner.refs--;duplicate.refs--;lru_flush(&r->shader_module_cache);
   assert(!owner.refs&&!duplicate.refs);
  }
+
+ for(unsigned trial=0;trial<4096;trial++){
+  ShaderModuleCacheEntry entries[2];memset(entries,0xa5,sizeof(entries));
+  ShaderModuleInfo owner={1},duplicate={1};ShaderState state;
+  for(size_t i=0;i<sizeof(state);i++)((uint8_t*)&state)[i]=(uint8_t)next();
+  geometry=trial&1;r->use_push_constants_for_uniform_attrs=trial&2;
+  lru_init(&r->shader_module_cache);r->shader_module_cache.post_node_evict=evict;
+  for(unsigned i=0;i<2;i++)lru_add_free(&r->shader_module_cache,&entries[i].node);
+  ShaderModuleCacheKey keys[3];int n=vk_state_module_keys(&state,r->use_push_constants_for_uniform_attrs,keys);assert(n==2+geometry);
+  FragmentModuleView view;uint64_t hash=fragment_module_view(&state,&view);
+  assert(view.state==&state.psh&&hash==fast_hash((const uint8_t*)&keys[n-1],sizeof(keys[0])));
+  assert(!pgraph_vk_ready_fragment_module(r,&state));
+  pgraph_vk_adopt_fragment_module(r,&state,&owner);
+  assert(owner.refs==2&&pgraph_vk_ready_fragment_module(r,&state)==&owner);
+  ShaderModuleCacheEntry *entry=container_of(QTAILQ_FIRST(&r->shader_module_cache.global),ShaderModuleCacheEntry,node);
+  assert(!memcmp(&entry->key,&keys[n-1],sizeof(entry->key)));
+  pgraph_vk_adopt_fragment_module(r,&state,&duplicate);
+  assert(duplicate.refs==1&&owner.refs==2);
+  switch(trial%4){
+   case 0:entry->key.psh.state.final_inputs_0^=1;break;
+   case 1:entry->key.psh.glsl_opts.tex_binding++;break;
+   case 2:entry->key.kind=VK_SHADER_STAGE_VERTEX_BIT;break;
+   case 3:((uint8_t*)&entry->key)[sizeof(entry->key)-1]^=1;break;
+  }
+  assert(!pgraph_vk_ready_fragment_module(r,&state));
+  pgraph_vk_adopt_fragment_module(r,&state,&duplicate);
+  assert(duplicate.refs==2&&pgraph_vk_ready_fragment_module(r,&state)==&duplicate);
+  owner.refs--;duplicate.refs--;lru_flush(&r->shader_module_cache);assert(!owner.refs&&!duplicate.refs);
+ }
+ puts("Fragment module view: 4096 exact native-key/hash, stage/options/state/zero-tail collisions, duplicate ownership and poisoned eviction cases PASS");
  free(r);puts("Vertex module view: 100000 frozen lighting projections and 4096 exact full-key/hash, poisoned final-node, collision, duplicate-owner and eviction lifetimes PASS");
 }
