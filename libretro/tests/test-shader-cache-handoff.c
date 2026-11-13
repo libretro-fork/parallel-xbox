@@ -266,8 +266,10 @@ int main(int argc, char **argv)
     memset(live.program, 0xab, 16);
     retro_atomic_int_init(&hold_save,1);retro_atomic_int_init(&save_entered,0);
     retro_eventcount_init(&save_entered_event);retro_eventcount_init(&save_release_event);
-    GLDiskWriter *writer=gl_disk_writer_create(directory,shader_gl_vendor,shader_gl_version);
+    GLDiskWriter *writer=gl_disk_writer_create(directory,shader_gl_vendor,shader_gl_version,sizeof(ShaderDiskResult));
+    unsigned save_allocations=poisoned_allocations;
     assert(writer && shader_start_disk_save(writer,&live));
+    assert(poisoned_allocations==save_allocations);
     assert(!live.program);
     while(!retro_atomic_load_acquire_int(&save_entered)) {
         int key=retro_eventcount_prepare_wait(&save_entered_event);

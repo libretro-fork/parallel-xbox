@@ -17,7 +17,8 @@ int main(void) {
  glGetProgramiv(program,GL_PROGRAM_BINARY_LENGTH,&query_size);assert(query_size>0);
  expected_binary=malloc(query_size);assert(expected_binary);
  glGetProgramBinary(program,query_size,&copied_size,&expected_format,expected_binary);assert(glGetError()==GL_NO_ERROR);
- GLDiskWriter w={.slot={.base_path="fixture",.vendor=shader_gl_vendor}};
+ ModuleDiskSave metadata;
+ GLDiskWriter w={.slot={.data=&metadata,.base_path="fixture",.vendor=shader_gl_vendor}};
  PGRAPHGLState r={.cache_writer=&w};ShaderModuleCacheEntry module={.gl_stage_program=program};
  for(unsigned i=0;i<12;i++)module.key.words[i]=i*17;
  assert(module_save_to_disk(&r,&module,17));check_blob(&module);

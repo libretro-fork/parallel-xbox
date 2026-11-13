@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Prepare the OpenGL texture-touch program and VAO at renderer initialization, including for later changes to smoothing options. The first texture-touch flip no longer compiles, links or creates those objects. Reuse the existing cache writer's two metadata slots instead of allocating/freeing a record for each module/program save, retaining binary owners until completion. Binary growth, file paths, driver allocations and remaining draw-critical guest shader compilation stay open; no shader-stutter recovery is claimed.
+
 - Refresh the used libretro-common subset from RetroArch c7a5f6e, retaining clockless waits and bounded queue/borrowed-buffer extensions. Frontend-backed disc reads use VFS v6 positional I/O when available, avoiding cursor seeks without staging buffers; older frontends and unsupported handles retain seek/read. Native disc I/O is unchanged. Shader/PSO cold-play recovery remains unqualified; no gameplay speedup is claimed.
 
 - Pair RCU list traversal with release publication when unlinking a node and exposing its successor. Keep initialized callback fields ordered on weakly ordered hosts while preserving deferred reclamation and nonblocking unlink.

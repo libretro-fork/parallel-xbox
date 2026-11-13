@@ -43,9 +43,9 @@ typedef struct {GLDiskSlot slot;bool busy;} GLDiskWriter;
 typedef struct {GLDiskWriter *cache_writer;} PGRAPHGLState;
 static bool defer_write;
 static GLDiskSlot *gl_disk_writer_acquire(GLDiskWriter *w){return w&&!w->busy?&w->slot:NULL;}
-static void finish_write(GLDiskWriter *w){w->slot.write(&w->slot);w->slot.data=NULL;w->busy=false;}
+static void finish_write(GLDiskWriter *w){w->slot.write(&w->slot);w->busy=false;}
 static void gl_disk_writer_submit(GLDiskWriter *w){w->busy=true;if(!defer_write)finish_write(w);}
-#define g_new(t,n) ((t*)malloc(sizeof(t)*(n)))
+#define g_new(t,n) FORBIDDEN_PER_SAVE_METADATA_ALLOCATION
 static unsigned allocations,exports,opens,unlinks,queries;
 static int query_size=100,copied_size=75,gl_error;
 static GLenum expected_format=0x12345678;static void *expected_binary;
@@ -106,7 +106,8 @@ static void check_blob(ShaderModuleCacheEntry *module) {
 }
 #ifndef REAL_GL
 int main(void) {
- GLDiskWriter w={.slot={.base_path="fixture",.vendor=shader_gl_vendor}};
+ ModuleDiskSave metadata;
+ GLDiskWriter w={.slot={.data=&metadata,.base_path="fixture",.vendor=shader_gl_vendor}};
  PGRAPHGLState r={.cache_writer=&w};ShaderModuleCacheEntry module={.gl_stage_program=7};
  for(unsigned i=0;i<12;i++)module.key.words[i]=i*17;
  module_binary_reserve(&w.slot,65536);assert(allocations==1);
