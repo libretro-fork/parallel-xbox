@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- OpenGL cache saves publish complete temporary files without truncating entries that loaders may still have mapped. Failed replacement preserves the previous entry. The two disk-writer slots reuse bounded path storage, removing formatted path allocations per save; stream internals, platform conversions and binary slab growth remain allocation work.
+
 - Prepare the finite OpenGL texture-touch utility program and VAO at renderer startup, so flip maintenance only uses ready objects. Reuse two aligned disk-writer job records from startup storage after consumer release instead of allocating/freeing metadata for each save. Preserve binary ownership, bounded optional-save deferral and teardown. Shader binary slab growth and remaining shader/PSO misses can still allocate or compile; no global cold-play recovery is claimed.
 
 - Allow early Vulkan shader selection to replace a full native shader-binding cache node using an exact ready PSO's retained metadata. Install the replacement before returning and preserve the older non-evicting API for callers still borrowing their original binding. Reuse final cache storage and prepare no new shaders or programs during adoption. The private two-node NGB stress comparison matches the parent image; production capacity stays unchanged and global cold-play recovery remains unqualified.
