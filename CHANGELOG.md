@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Prepare the finite OpenGL texture-touch utility program and VAO at renderer startup, so flip maintenance only uses ready objects. Reuse two aligned disk-writer job records from startup storage after consumer release instead of allocating/freeing metadata for each save. Preserve binary ownership, bounded optional-save deferral and teardown. Shader binary slab growth and remaining shader/PSO misses can still allocate or compile; no global cold-play recovery is claimed.
+
 - Allow early Vulkan shader selection to replace a full native shader-binding cache node using an exact ready PSO's retained metadata. Install the replacement before returning and preserve the older non-evicting API for callers still borrowing their original binding. Reuse final cache storage and prepare no new shaders or programs during adoption. The private two-node NGB stress comparison matches the parent image; production capacity stays unchanged and global cold-play recovery remains unqualified.
 
 - Extend ready Vulkan fixed-function pipeline families to the existing dynamic fragment combiner. Missing vertex/fragment stages compile on the same worker from the final job key, retain exact native stage-cache identities and reserve module IDs before publication. Reuse live source stage owners after cache eviction; deduplicate pending fragment work. Update the compute/GPL/reset and module-identity fixtures for the shared stage schema without permitting graphics preparation on their unrelated paths. Native NGB restore images match the parent, but cold-driver first-play recovery and release performance remain unqualified; uncovered draws still compile synchronously.
