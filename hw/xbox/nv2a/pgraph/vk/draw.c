@@ -2741,8 +2741,10 @@ static void sync_staging_buffers(PGRAPHState *pg, VkCommandBuffer cmd)
             dst_stage_mask = VK_PIPELINE_STAGE_VERTEX_INPUT_BIT;
             break;
         case BUFFER_UNIFORM:
-            dst_access_mask = VK_ACCESS_UNIFORM_READ_BIT;
-            dst_stage_mask = VK_PIPELINE_STAGE_VERTEX_SHADER_BIT |
+            dst_access_mask = VK_ACCESS_UNIFORM_READ_BIT |
+                              VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT;
+            dst_stage_mask = VK_PIPELINE_STAGE_VERTEX_INPUT_BIT |
+                             VK_PIPELINE_STAGE_VERTEX_SHADER_BIT |
                              VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
             break;
         default:
@@ -3792,6 +3794,40 @@ static float clamp_line_width_to_device_limits(PGRAPHState *pg, float width)
     return fminf(fmaxf(min_width, width), max_width);
 }
 
+/* Added after the ordinary attribute uploads/remaps have consumed their
+ * descriptions. Dynamic vertex input supplies the same constant float4 to
+ * every vertex without specializing the shader by the constant/array mask. */
+static void bind_constant_vertex_descriptions(PGRAPHState *pg)
+{
+    PGRAPHVkState *r = pg->vk_renderer_state;
+    if (!r->constant_vertex_mask) {
+        return;
+    }
+    unsigned binding = r->num_active_vertex_binding_descriptions++;
+    assert(binding < NV2A_VERTEXSHADER_ATTRIBUTES);
+    r->vertex_binding_descriptions[binding] =
+        (VkVertexInputBindingDescription){
+            .binding = binding,
+            .stride = 0,
+            .inputRate = VK_VERTEX_INPUT_RATE_VERTEX,
+        };
+    unsigned offset = 0;
+    for (unsigned i = 0; i < NV2A_VERTEXSHADER_ATTRIBUTES; i++) {
+        if (!(r->constant_vertex_mask & (1u << i))) {
+            continue;
+        }
+        r->vertex_attribute_descriptions[
+            r->num_active_vertex_attribute_descriptions++] =
+            (VkVertexInputAttributeDescription){
+                .location = i,
+                .binding = binding,
+                .format = VK_FORMAT_R32G32B32A32_SFLOAT,
+                .offset = offset,
+            };
+        offset += 4 * sizeof(float);
+    }
+}
+
 static void begin_draw(PGRAPHState *pg)
 {
     PGRAPHVkState *r = pg->vk_renderer_state;
@@ -3918,6 +3954,9 @@ static void begin_draw(PGRAPHState *pg)
 
     emit_dynamic_state(pg, must_bind_pipeline);
     if (r->dyn_vertex_input) {
+        if (!pg->clearing) {
+            bind_constant_vertex_descriptions(pg);
+        }
         emit_dynamic_vertex_input(pg);
     }
 
@@ -4664,7 +4703,10 @@ static void bind_vertex_buffer(PGRAPHState *pg, uint16_t inline_map,
 
     for (int i = 0; i < r->num_active_vertex_binding_descriptions; i++) {
         int attr_idx = r->vertex_attribute_descriptions[i].location;
-        if (inline_map & (1 << attr_idx)) {
+        if (r->constant_vertex_mask & (1u << attr_idx)) {
+            buffers[i] = r->storage_buffers[BUFFER_UNIFORM].buffer;
+            offsets[i] = r->constant_vertex_staged_offset;
+        } else if (inline_map & (1 << attr_idx)) {
             buffers[i] = r->storage_buffers[BUFFER_VERTEX_INLINE].buffer;
             offsets[i] = offset + r->vertex_attribute_offsets[attr_idx];
         } else if (r->vertex_attr_cow[attr_idx]) {

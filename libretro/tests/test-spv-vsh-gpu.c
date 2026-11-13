@@ -152,6 +152,8 @@ static void unselected_output(uint32_t t[4], unsigned variant, bool invalid)
 }
 
 int main(int argc, char **argv) {
+ bool constant_vertex_input=getenv("VSH_CONSTANT_VERTEX_INPUT")!=NULL;
+ bool bad_constant_stride=getenv("VSH_CONSTANT_VERTEX_BAD_STRIDE")!=NULL;
  assert(argc==1 || argc==3);
  unsigned first=argc==3?strtoul(argv[1],NULL,10):0, limit=argc==3?strtoul(argv[2],NULL,10):42512;
  assert(first<limit && limit<=42512);
@@ -196,7 +198,7 @@ int main(int argc, char **argv) {
  VkDescriptorSetAllocateInfo dai={.sType=VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,.descriptorPool=descriptor_pool,.descriptorSetCount=1,.pSetLayouts=&set_layout};VkDescriptorSet set;CHECK(vkAllocateDescriptorSets(device,&dai,&set));
  VkSubpassDescription sub={.pipelineBindPoint=VK_PIPELINE_BIND_POINT_GRAPHICS};VkRenderPassCreateInfo ri={.sType=VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO,.subpassCount=1,.pSubpasses=&sub};VkRenderPass pass;CHECK(vkCreateRenderPass(device,&ri,NULL,&pass));
  VkFramebufferCreateInfo fbi={.sType=VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO,.renderPass=pass,.width=1,.height=1,.layers=1};VkFramebuffer framebuffer;CHECK(vkCreateFramebuffer(device,&fbi,NULL,&framebuffer));
- enum{VERTICES=32};Buffer input=buffer(VERTICES*256,VK_BUFFER_USAGE_VERTEX_BUFFER_BIT),output=buffer(VERTICES*240,VK_BUFFER_USAGE_TRANSFORM_FEEDBACK_BUFFER_BIT_EXT),uniform=buffer(16384,VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT);
+ enum{VERTICES=32};Buffer input=buffer(VERTICES*256,VK_BUFFER_USAGE_VERTEX_BUFFER_BIT),output=buffer(VERTICES*240,VK_BUFFER_USAGE_TRANSFORM_FEEDBACK_BUFFER_BIT_EXT),uniform=buffer(16384,VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT|VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
  VkDescriptorBufferInfo info={uniform.handle,0,VK_WHOLE_SIZE};VkWriteDescriptorSet write={.sType=VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,.dstSet=set,.descriptorCount=1,.descriptorType=VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,.pBufferInfo=&info};vkUpdateDescriptorSets(device,1,&write,0,NULL);
  VkVertexInputBindingDescription binding={0,256,VK_VERTEX_INPUT_RATE_VERTEX};VkVertexInputAttributeDescription attrs[16];
  for(unsigned i=0;i<16;i++)attrs[i]=(VkVertexInputAttributeDescription){i,0,VK_FORMAT_R32G32B32A32_SFLOAT,i*16};
@@ -443,7 +445,9 @@ int main(int argc, char **argv) {
   SpvVshOptions unavailable=opts;unavailable.preserve_float32=false;
   assert(!pgraph_spv_vsh_supported(&excluded,unavailable));
   uint64_t prepared_hash=fixture_key_hash(&state,&opts);
-  GlslcResult modules[2];clock_t before=clock();assert(pgraph_spv_vsh(&state,opts,&modules[1]));direct_ticks+=clock()-before;direct_words+=modules[1].num_words;before=clock();
+  VshState direct_state=state;SpvVshOptions direct_opts=opts;
+  if(constant_vertex_input){direct_state.uniform_attrs=0;direct_opts.push_constants=false;}
+  GlslcResult modules[2];clock_t before=clock();assert(pgraph_spv_vsh(&direct_state,direct_opts,&modules[1]));direct_ticks+=clock()-before;direct_words+=modules[1].num_words;before=clock();
   MString *text=pgraph_glsl_gen_vsh(&state,(GenVshGlslOptions){.vulkan=true,.use_push_constants_for_uniform_attrs=opts.push_constants});
   GlslcOptions glopts={.emit_layout=true};if(!glslc_compile(GLSLC_STAGE_VERTEX,mstring_get_str(text),&glopts,&modules[0])){fprintf(stderr,"%s\n",modules[0].error);abort();}mstring_unref(text);reference_ticks+=clock()-before;reference_words+=modules[0].num_words;
   VshUniformValues values={0};values.clipRange[0][1]=65535;values.surfaceSize[0][0]=720;values.surfaceSize[0][1]=480;values.pointSizeReg[0]=1;values.pointScale[0]=1;values.texgenMode[0]=(test*37u & 4095u) | (test&8?4096u:0u);values.fogCtl[0]=1|((test%8)<<1);values.fogParam[0][0]=1.5f;values.fogParam[0][1]=-.01f;
@@ -587,6 +591,10 @@ int main(int argc, char **argv) {
    for(unsigned k=0;k<4;k++)values.inlineValue[packed][k]=a==0?(k==3?1:k==2?100:40):(a==15?2:((int)(a+k)%7-3)*.5f);
    if(state.is_fixed_function && state.fixed_function.skinning!=SKINNING_OFF && a==1)for(unsigned k=0;k<4;k++)values.inlineValue[packed][k]=skin_weights[(test/16)%7][k];
    if(test>=39440 && test<40464 && a==15)for(unsigned k=0;k<4;k++)values.inlineValue[packed][k]=-96.0f+((test-39440)/192)%32;
+   if(constant_vertex_input && a!=0 && !(test>=39440 && test<40464 && a==15)){
+    static const uint32_t edge[]={0,0x80000000u,1,0x80000001u,0x007fffffu,0x807fffffu,0x7f800000u,0xff800000u,0x7fc0abcdu,0xffc01234u,0x3f800000u,0xbf800000u};
+    for(unsigned k=0;k<4;k++){uint32_t bits=edge[(test+a+k)%12];memcpy(&values.inlineValue[packed][k],&bits,4);}
+   }
    packed++;
   }
   const float samples[]={0,-0.0f,1,-1,2,-2,.5f,-.5f,4,8,16,-32,INFINITY,-INFINITY,NAN,0x1p-100f};
@@ -598,6 +606,31 @@ int main(int argc, char **argv) {
   }
   for(unsigned path=0;path<2;path++) {
    pack(uniform.mapped,&modules[path].uniforms,&values);memset(output.mapped,0xa5,VERTICES*240);
+   VkVertexInputBindingDescription constant_bindings[16];
+   VkVertexInputAttributeDescription constant_attrs[16];
+   VkBuffer constant_buffers[16];VkDeviceSize constant_offsets[16];
+   VkPipelineVertexInputStateCreateInfo constant_vi=vi;
+   bool use_vertex_constants=path && constant_vertex_input;
+   unsigned constant_binding_count=0;
+   if(use_vertex_constants){
+    assert(modules[path].uniforms.size<=8192);
+    memcpy(uniform.mapped+8192,values.inlineValue,packed*16);
+    unsigned attributes=0,slot=0;
+    for(unsigned a=0;a<16;a++)if(!(state.uniform_attrs&(1u<<a))){
+     unsigned binding=constant_binding_count++;
+     constant_bindings[binding]=(VkVertexInputBindingDescription){binding,256,VK_VERTEX_INPUT_RATE_VERTEX};
+     constant_attrs[attributes++]=(VkVertexInputAttributeDescription){a,binding,attrs[a].format,0};
+     constant_buffers[binding]=input.handle;constant_offsets[binding]=16*a;
+    }
+    if(state.uniform_attrs){
+     unsigned binding=constant_binding_count++;
+     constant_bindings[binding]=(VkVertexInputBindingDescription){binding,bad_constant_stride?16:0,VK_VERTEX_INPUT_RATE_VERTEX};
+     constant_buffers[binding]=uniform.handle;constant_offsets[binding]=8192;
+     for(unsigned a=0;a<16;a++)if(state.uniform_attrs&(1u<<a))constant_attrs[attributes++]=(VkVertexInputAttributeDescription){a,binding,VK_FORMAT_R32G32B32A32_SFLOAT,16*slot++};
+    }
+    assert(attributes==16);
+    constant_vi.vertexBindingDescriptionCount=constant_binding_count;constant_vi.pVertexBindingDescriptions=constant_bindings;constant_vi.pVertexAttributeDescriptions=constant_attrs;
+   }
    assert(prepared_hash==fixture_key_hash(&state,&opts));
    size_t words;GlslcResult reference_module=modules[path];
    if(!path && (state.point_params_enable || state.is_fixed_function))reference_module.words=preserve_float(&modules[path],&reference_module.num_words);
@@ -606,10 +639,12 @@ int main(int argc, char **argv) {
    VkShaderModuleCreateInfo smi={.sType=VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,.codeSize=words*4,.pCode=code};VkShaderModule shader;CHECK(vkCreateShaderModule(device,&smi,NULL,&shader));free(code);
    VkPipelineShaderStageCreateInfo stage={.sType=VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,.stage=VK_SHADER_STAGE_VERTEX_BIT,.module=shader,.pName="main"};
    if(!pipeline_cache){VkPipelineCacheCreateInfo ci={.sType=VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO};CHECK(vkCreatePipelineCache(device,&ci,NULL,&pipeline_cache));}
-   VkGraphicsPipelineCreateInfo gp={.sType=VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,.stageCount=1,.pStages=&stage,.pVertexInputState=&vi,.pInputAssemblyState=&ia,.pRasterizationState=&rs,.pMultisampleState=&ms,.layout=layout,.renderPass=pass};VkPipeline pipeline;CHECK(vkCreateGraphicsPipelines(device,pipeline_cache,1,&gp,NULL,&pipeline));
+   VkGraphicsPipelineCreateInfo gp={.sType=VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,.stageCount=1,.pStages=&stage,.pVertexInputState=use_vertex_constants?&constant_vi:&vi,.pInputAssemblyState=&ia,.pRasterizationState=&rs,.pMultisampleState=&ms,.layout=layout,.renderPass=pass};VkPipeline pipeline;CHECK(vkCreateGraphicsPipelines(device,pipeline_cache,1,&gp,NULL,&pipeline));
    VkCommandBufferBeginInfo bi={.sType=VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};CHECK(vkBeginCommandBuffer(cmd,&bi));VkRenderPassBeginInfo rb={.sType=VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,.renderPass=pass,.framebuffer=framebuffer,.renderArea.extent={1,1}};
    vkCmdBeginRenderPass(cmd,&rb,VK_SUBPASS_CONTENTS_INLINE);vkCmdBindPipeline(cmd,VK_PIPELINE_BIND_POINT_GRAPHICS,pipeline);vkCmdBindDescriptorSets(cmd,VK_PIPELINE_BIND_POINT_GRAPHICS,layout,0,1,&set,0,NULL);
-   VkDeviceSize zero=0;vkCmdBindVertexBuffers(cmd,0,1,&input.handle,&zero);
+   VkDeviceSize zero=0;
+   if(use_vertex_constants)vkCmdBindVertexBuffers(cmd,0,constant_binding_count,constant_buffers,constant_offsets);
+   else vkCmdBindVertexBuffers(cmd,0,1,&input.handle,&zero);
    if(modules[path].push_constants.count){uint8_t push[256];pack(push,&modules[path].push_constants,&values);vkCmdPushConstants(cmd,layout,VK_SHADER_STAGE_VERTEX_BIT,0,(uint32_t)modules[path].push_constants.size,push);}
    bind(cmd,0,1,&output.handle,&zero,NULL);begin(cmd,0,0,NULL,NULL);vkCmdDraw(cmd,VERTICES,1,0,0);end(cmd,0,0,NULL,NULL);vkCmdEndRenderPass(cmd);
    VkBufferMemoryBarrier barrier={.sType=VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,.srcAccessMask=VK_ACCESS_TRANSFORM_FEEDBACK_WRITE_BIT_EXT,.dstAccessMask=VK_ACCESS_HOST_READ_BIT,.srcQueueFamilyIndex=VK_QUEUE_FAMILY_IGNORED,.dstQueueFamilyIndex=VK_QUEUE_FAMILY_IGNORED,.buffer=output.handle,.size=VK_WHOLE_SIZE};
@@ -628,6 +663,7 @@ int main(int argc, char **argv) {
   release(&modules[0]);release(&modules[1]);
  }
  drop(input);drop(output);drop(uniform);vkDestroyFramebuffer(device,framebuffer,NULL);vkDestroyRenderPass(device,pass,NULL);vkDestroyDescriptorPool(device,descriptor_pool,NULL);vkDestroyPipelineLayout(device,layout,NULL);vkDestroyDescriptorSetLayout(device,set_layout,NULL);vkDestroyCommandPool(device,pool,NULL);if(pipeline_cache)vkDestroyPipelineCache(device,pipeline_cache,NULL);vkDestroyDevice(device,NULL);if(validated)destroy(instance,messenger,NULL);vkDestroyInstance(instance,NULL);
+ printf("Vertex constant fetch: %s; wrong-stride control=%u\n",constant_vertex_input?"zero-stride":"legacy",bad_constant_stride);
  printf("Independent relative constants: %u exact output checks\n",constant_checks);
  printf("Translation CPU clock: GLSL %.3f ms, direct %.3f ms; emitted words GLSL=%zu direct=%zu (work counts; not frame latency)\n",1000.0*reference_ticks/CLOCKS_PER_SEC,1000.0*direct_ticks/CLOCKS_PER_SEC,reference_words,direct_words);
  printf("Direct VSH Vulkan: %u scalar results, %u differences, %u validation errors; validation=%s\n",compared,failures,errors,validated?"enabled":"DISABLED");return failures||errors?1:0;

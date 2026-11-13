@@ -34,6 +34,8 @@ typedef struct {
     uint8_t vertex_format_conversion[VK_FORMAT_R32G32B32A32_SFLOAT+1];
     bool vertex_conversion_required;
     bool vertex_native_bgra;
+    bool constant_vertex_inputs;
+    uint16_t constant_vertex_mask;
     VkVertexInputAttributeDescription vertex_attribute_descriptions[16];
     VkVertexInputBindingDescription vertex_binding_descriptions[16];
     int vertex_attribute_to_description_location[16];
@@ -216,6 +218,23 @@ int main(void) {
         assert(!memcmp(last,pg->vertex_attributes[0].inline_value,sizeof(last)));
         assert(pg->inline_array_external==(borrowed?(uint32_t *)ram:NULL));
         cases++;
+    }
+    for(unsigned constants=0;constants<2;constants++) for(unsigned mask=0;mask<65536;mask++) {
+        PGRAPHVkState r;NV2AState d;reset(&r,&d);
+        r.constant_vertex_inputs=constants;
+        for(unsigned a=0;a<16;a++) {
+            d.pgraph.vertex_attributes[a]=(VertexAttribute){
+                .format=NV097_SET_VERTEX_DATA_ARRAY_FORMAT_TYPE_F,
+                .count=mask&(1u<<a)?0:4,.size=4,.stride=16,.offset=a*16,.inline_array_offset=a*16,
+            };
+        }
+        unsigned before=queries;
+        pgraph_vk_bind_vertex_attributes(&d,0,0,true,256,0);
+        assert(queries==before);
+        assert(d.pgraph.uniform_attrs==(constants?0:mask));
+        assert(r.constant_vertex_mask==(constants?mask:0));
+        assert(r.num_active_vertex_attribute_descriptions==16-__builtin_popcount(mask));
+        assert(d.pgraph.compressed_attrs==0 && d.pgraph.swizzle_attrs==0);
     }
     PGRAPHVkState r;NV2AState d;reset(&r,&d);memset(supported,1,sizeof(supported));
     supported[VK_FORMAT_R32_SFLOAT]=false;Error *err=NULL;pgraph_vk_init_vertex_formats(&d.pgraph,&err);assert(err);

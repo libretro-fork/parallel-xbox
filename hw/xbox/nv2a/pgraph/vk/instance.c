@@ -328,6 +328,18 @@ get_available_device_extensions(VkPhysicalDevice device)
     return extensions;
 }
 
+/* Portability-subset devices can forbid zero binding stride or attributes
+ * beyond it (VUIDs 04456/04457). Keep their existing uniform/push path. */
+static bool constant_vertex_inputs_supported(PGRAPHVkState *r)
+{
+    if (!r->dyn_vertex_input) {
+        return false;
+    }
+    g_autoptr(VkExtensionPropertiesArray) extensions =
+        get_available_device_extensions(r->physical_device);
+    return !is_extension_available(extensions, "VK_KHR_portability_subset");
+}
+
 static StringArray *get_required_device_extension_names(void)
 {
     StringArray *extensions =
@@ -626,6 +638,7 @@ static bool create_logical_device(PGRAPHState *pg, Error **errp)
                    eds3_query.extendedDynamicState3ColorWriteMask;
     r->dyn_vertex_input = r->vertex_input_dynamic_extension_enabled &&
                           vids_query.vertexInputDynamicState;
+    r->constant_vertex_inputs = constant_vertex_inputs_supported(r);
     r->pipeline_library = r->pipeline_library_extension_enabled &&
                           gpl_query.graphicsPipelineLibrary;
     fprintf(stderr,
@@ -807,6 +820,7 @@ static bool adopt_frontend_device(PGRAPHState *pg, Error **errp)
     r->eds3_extension_enabled = r->dyn_blend = s->dyn_blend;
     r->vertex_input_dynamic_extension_enabled = r->dyn_vertex_input =
         s->dyn_vertex_input;
+    r->constant_vertex_inputs = constant_vertex_inputs_supported(r);
     r->pipeline_library_extension_enabled = r->pipeline_library =
         s->pipeline_library;
     r->host_query_reset = s->host_query_reset;

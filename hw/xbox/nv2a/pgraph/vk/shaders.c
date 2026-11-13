@@ -186,6 +186,73 @@ static bool uniform_snapshot_valid(PGRAPHVkState *r, ShaderModuleInfo *mod)
            mod->uniforms.total_size <= end - mod->uniform_staged_offset;
 }
 
+/* The mapped staging owner is also the exact comparison source. No second
+ * copy of constant payloads is retained, and reset/rotation ends this lend. */
+static bool constant_vertex_snapshot_valid(PGRAPHState *pg)
+{
+    PGRAPHVkState *r = pg->vk_renderer_state;
+    StorageBuffer *b = &r->storage_buffers[BUFFER_UNIFORM_STAGING];
+    uint16_t mask = r->constant_vertex_mask;
+    VkDeviceSize size = __builtin_popcount(mask) * 4 * sizeof(float);
+    if (r->constant_vertex_staged_mask != mask ||
+        r->constant_vertex_staged_epoch != r->uniform_upload_epoch ||
+        r->constant_vertex_staged_offset > b->buffer_offset ||
+        size > b->buffer_offset - r->constant_vertex_staged_offset) {
+        return false;
+    }
+    const uint8_t *row = b->mapped + r->constant_vertex_staged_offset;
+    for (unsigned i = 0; i < NV2A_VERTEXSHADER_ATTRIBUTES; i++) {
+        if (mask & (1u << i)) {
+            if (memcmp(row, pg->vertex_attributes[i].inline_value,
+                       4 * sizeof(float))) {
+                return false;
+            }
+            row += 4 * sizeof(float);
+        }
+    }
+    return true;
+}
+
+static void stage_constant_vertex_values(PGRAPHState *pg)
+{
+    PGRAPHVkState *r = pg->vk_renderer_state;
+    void *data[NV2A_VERTEXSHADER_ATTRIBUTES];
+    VkDeviceSize sizes[NV2A_VERTEXSHADER_ATTRIBUTES];
+    unsigned count = 0;
+    for (unsigned i = 0; i < NV2A_VERTEXSHADER_ATTRIBUTES; i++) {
+        if (r->constant_vertex_mask & (1u << i)) {
+            data[count] = pg->vertex_attributes[i].inline_value;
+            sizes[count++] = 4 * sizeof(float);
+        }
+    }
+    r->constant_vertex_staged_offset = pgraph_vk_append_to_buffer(
+        pg, BUFFER_UNIFORM_STAGING, data, sizes, count, sizeof(float));
+    r->constant_vertex_staged_mask = r->constant_vertex_mask;
+    r->constant_vertex_staged_epoch = r->uniform_upload_epoch;
+}
+
+/* Include each actual alignment pad, including a constants-only append.
+ * Passing the final span with alignment one avoids reserving a UBO-sized
+ * pad for a float4 row and works with every legal device UBO alignment. */
+static VkDeviceSize uniform_staging_span(PGRAPHVkState *r,
+                                        ShaderUniformLayout *const layouts[2],
+                                        unsigned uploads, bool constants)
+{
+    VkDeviceSize start = r->storage_buffers[BUFFER_UNIFORM_STAGING].buffer_offset;
+    VkDeviceSize end = start;
+    for (unsigned i = 0; i < 2; i++) {
+        if (uploads & (1u << i)) {
+            end = ROUND_UP(end, r->device_props.limits.minUniformBufferOffsetAlignment);
+            end += layouts[i]->total_size;
+        }
+    }
+    if (constants) {
+        end = ROUND_UP(end, sizeof(float));
+        end += __builtin_popcount(r->constant_vertex_mask) * 4 * sizeof(float);
+    }
+    return end - start;
+}
+
 void pgraph_vk_update_descriptor_sets(PGRAPHState *pg)
 {
     PGRAPHVkState *r = pg->vk_renderer_state;
@@ -198,7 +265,10 @@ void pgraph_vk_update_descriptor_sets(PGRAPHState *pg)
         r->uniform_upload_epoch++;
         resolve = 3;
     }
-    if (!resolve && !r->shader_bindings_changed && !r->texture_bindings_changed &&
+    bool need_constants = r->constant_vertex_mask &&
+                          !constant_vertex_snapshot_valid(pg);
+    if (!resolve && !need_constants &&
+        !r->shader_bindings_changed && !r->texture_bindings_changed &&
         r->descriptor_set_index != r->descriptor_set_base) {
         return;
     }
@@ -228,26 +298,17 @@ void pgraph_vk_update_descriptor_sets(PGRAPHState *pg)
         r->descriptor_uniform_sizes[0] != layouts[0]->total_size ||
         r->descriptor_uniform_sizes[1] != layouts[1]->total_size;
 
-    if (!need_uniform_write && !need_descriptor_write) {
+    if (!need_uniform_write && !need_descriptor_write && !need_constants) {
         r->uniforms_changed = 0;
         return;
     }
 
-    VkDeviceSize ubo_buffer_total_size = 0;
-    /* Each uploaded stage starts at its own alignment boundary. */
-    for (int i = 0; i < ARRAY_SIZE(layouts); i++) {
-        if (uniform_uploads & (1u << i)) {
-            ubo_buffer_total_size = ROUND_UP(
-                ubo_buffer_total_size,
-                r->device_props.limits.minUniformBufferOffsetAlignment);
-            ubo_buffer_total_size += layouts[i]->total_size;
-        }
-    }
+    VkDeviceSize ubo_buffer_total_size = uniform_staging_span(
+        r, layouts, uniform_uploads, need_constants);
     bool need_ubo_staging_buffer_reset =
-        need_uniform_write &&
+        (need_uniform_write || need_constants) &&
         !pgraph_vk_buffer_has_space_for(pg, BUFFER_UNIFORM_STAGING,
-                                        ubo_buffer_total_size,
-                                        r->device_props.limits.minUniformBufferOffsetAlignment);
+                                        ubo_buffer_total_size, 1);
 
     /* the slot's half of the sets used up: a synchronous finish, after
      * which the next begin starts the slot's half over */
@@ -262,6 +323,7 @@ void pgraph_vk_update_descriptor_sets(PGRAPHState *pg)
         need_uniform_write = true;
         uniform_uploads = 3;
         need_descriptor_write = true;
+        need_constants = r->constant_vertex_mask != 0;
     }
 
     VkWriteDescriptorSet descriptor_writes[2 + NV2A_MAX_TEXTURES];
@@ -280,6 +342,9 @@ void pgraph_vk_update_descriptor_sets(PGRAPHState *pg)
             modules[i]->uniform_staged_epoch = r->uniform_upload_epoch;
             modules[i]->uniform_staged_valid = true;
         }
+    }
+    if (need_constants) {
+        stage_constant_vertex_values(pg);
     }
     r->uniforms_changed = 0;
 
@@ -1584,7 +1649,7 @@ const ShaderState *pgraph_vk_seed_pump_states(unsigned *count)
  * time, per flip (vk_seed_step), as the ring frees. */
 static unsigned vk_seed_next;
 
-static void vk_seed_siblings(void)
+static void vk_seed_siblings(bool constant_vertices)
 {
     if (!g_config.perf.shader_seeding) {
         return;
@@ -1615,6 +1680,13 @@ static void vk_seed_siblings(void)
         unsigned cnt = src ? n_local : n;
         for (unsigned i = 0; arr && i < cnt; i++) {
             pgraph_glsl_psh_migrate_seed(&arr[i].psh);
+            /* Old recipes describe the uniform/push attribute route. The
+             * decoded array is owned here: project only that shader field
+             * to the current vertex-fetch route before covers and dedup.
+             * Old driver blobs keep their original, valid key semantics. */
+            if (constant_vertices) {
+                arr[i].vsh.uniform_attrs = 0;
+            }
             ShaderState fb = arr[i];
             if (!pgraph_glsl_psh_canonicalize_dynamic(&fb.psh)) {
                 continue;
@@ -2131,7 +2203,7 @@ void pgraph_vk_seed_service(PGRAPHState *pg)
     vk_pre_service(pg);
     if (!vk_seed_done && g_config.perf.shader_seeding && pgraph_seed_game_tag()) {
         vk_seed_done = true;
-        vk_seed_siblings();
+        vk_seed_siblings(pg->vk_renderer_state->constant_vertex_inputs);
     }
     if (g_config.perf.shader_seeding) {
         vk_seed_step();

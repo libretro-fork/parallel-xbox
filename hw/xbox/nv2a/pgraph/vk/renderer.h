@@ -522,6 +522,7 @@ typedef struct PGRAPHVkState {
     bool dyn_cull_front;
     bool dyn_blend;
     bool dyn_vertex_input;
+    bool constant_vertex_inputs; /* dynamic input without portability stride restrictions */
     /* Pipeline libraries: shader halves compiled once, linked per draw,
      * kept for the renderer's life (draw.c). */
     GArray *gpl_pre, *gpl_frag;
@@ -912,6 +913,11 @@ typedef struct PGRAPHVkState {
     VshUniformSource vsh_uni_src;
     uint64_t uniform_epoch;
     uint64_t uniform_upload_epoch;
+    /* Constant attributes use typed, zero-stride vertex fetch on dynamic-input
+     * devices. Their rows borrow the ordinary uniform upload/device owners. */
+    uint16_t constant_vertex_mask, constant_vertex_staged_mask;
+    uint64_t constant_vertex_staged_epoch;
+    VkDeviceSize constant_vertex_staged_offset;
     const ShaderModuleInfo *uni_last_pushed[2];
 
     VkQueryPool query_pool;

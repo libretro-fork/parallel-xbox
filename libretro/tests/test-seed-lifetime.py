@@ -20,14 +20,14 @@ code=r'''
 #define TRUE true
 #define CHECK(x) do{if(!(x)){fprintf(stderr,"FAIL seed lifetime line=%d\n",__LINE__);_Exit(1);}}while(0)
 typedef struct {unsigned generation;} GArray;
-typedef struct {unsigned seed_writeback_complete;} PGRAPHVkState;
+typedef struct {unsigned seed_writeback_complete;bool constant_vertex_inputs;} PGRAPHVkState;
 typedef struct {PGRAPHVkState *vk_renderer_state;} PGRAPHState;
 static struct {struct {bool shader_seeding;} perf;} g_config;
 static bool vk_seed_done,tag,quiesced,pipeline_quiesced;
 static GArray *vk_pump_states,bank;
 static unsigned initialized,steps,freed;
 static const char *pgraph_seed_game_tag(void){CHECK(g_config.perf.shader_seeding);return tag?"fixture":NULL;}
-static void vk_seed_siblings(void){CHECK(!vk_pump_states);initialized++;bank.generation=initialized;vk_pump_states=&bank;}
+static void vk_seed_siblings(bool constant_vertices){CHECK(constant_vertices==bank.generation%2);CHECK(!vk_pump_states);initialized++;bank.generation=initialized;vk_pump_states=&bank;}
 static void vk_seed_step(void){CHECK(g_config.perf.shader_seeding);steps++;}
 static void vk_pre_service(PGRAPHState *pg){CHECK(pg&&pg->vk_renderer_state);}
 static void vk_seed_write(PGRAPHState *pg){(void)pg;}
@@ -43,6 +43,7 @@ int main(void){
  PGRAPHVkState r={0};PGRAPHState pg={&r};
  for(unsigned generation=0;generation<3;generation++){
   CHECK(!vk_pump_states&&!vk_seed_done);
+  r.constant_vertex_inputs=generation%2;bank.generation=generation;
   quiesced=pipeline_quiesced=false;g_config.perf.shader_seeding=false;tag=true;
   unsigned old_steps=steps;
   pgraph_vk_seed_service();CHECK(initialized==generation&&steps==old_steps&&!vk_seed_done);

@@ -82,7 +82,7 @@ jobs:
           set -euo pipefail
           export SPV_FAMILY_REQUIRE_IN_PROCESS=1
           mkdir -p results
-          for test in test-pipeline-key-clear test-pipeline-job-view test-pipeline-ahead-key test-pipeline-completion-service test-seed-lifetime test-pipeline-register-key test-surface-blend test-vk-recording-epoch test-inline-upload-writer test-inline-index-bounds test-vk-vertex-formats test-frame-completion test-block-memory test-gl-dynamic-pair test-glslgen-queue test-worker-drain test-vk-worker-modules test-shader-cache-handoff test-file-retained-view test-pipeline-cache-export test-shader-layout test-spv-prefix-view test-gpl-lookup-cache test-pipeline-layout-lends test-ready-pipeline-sibling test-ready-shader-binding test-render-pass-pump test-pending-key-lend test-shader-control-dirty test-spv-vsh test-spv-psh test-spv-display test-spv-utility test-s3tc-preparation test-s3tc-stream test-vk-ring-pressure test-vsh-constant-lend test-vsh-integer-lend test-vsh-layout-names test-seed-convolution test-seed-inplace test-seed-dictionary test-psh-uniform-map; do
+          for test in test-pipeline-key-clear test-pipeline-job-view test-pipeline-ahead-key test-pipeline-completion-service test-seed-lifetime test-pipeline-register-key test-surface-blend test-vk-recording-epoch test-inline-upload-writer test-inline-index-bounds test-vk-vertex-formats test-vk-constant-vertex test-frame-completion test-block-memory test-gl-dynamic-pair test-glslgen-queue test-worker-drain test-vk-worker-modules test-shader-cache-handoff test-file-retained-view test-pipeline-cache-export test-shader-layout test-spv-prefix-view test-gpl-lookup-cache test-pipeline-layout-lends test-ready-pipeline-sibling test-ready-shader-binding test-render-pass-pump test-pending-key-lend test-shader-control-dirty test-spv-vsh test-spv-psh test-spv-display test-spv-utility test-s3tc-preparation test-s3tc-stream test-vk-ring-pressure test-vsh-constant-lend test-vsh-integer-lend test-vsh-layout-names test-seed-convolution test-seed-inplace test-seed-dictionary test-psh-uniform-map; do
             python3 "driver/libretro/tests/$test.py" candidate cc 2>&1 | tee "results/$test.log"
           done
           python3 driver/libretro/tests/test-vfs-read-at.py candidate cc 2>&1 | tee results/vfs-read-at.log
@@ -254,10 +254,44 @@ jobs:
           name: shader-software-gpu-${{ matrix.commit }}-${{ matrix.kind }}
           path: results/
 
+  constant-vertex-gpu:
+    name: Constant vertex fetch numerical and lifetime validation
+    needs: revisions
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.revisions.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: driver
+          fetch-depth: 0
+          filter: blob:none
+      - env:
+          COMMIT: ${{ matrix.commit }}
+        run: git -C driver worktree add --detach ../candidate "$COMMIT"
+      - name: Install test-only Vulkan and validation tools
+        run: |
+          sudo apt-get -qy update
+          sudo apt-get -qy install build-essential libvulkan-dev libvulkan1 mesa-vulkan-drivers vulkan-validationlayers
+      - name: Compare the complete vertex corpus with legacy attribute constants
+        run: |
+          set -euo pipefail
+          mkdir -p results
+          unset SPV_VSH_GPU_RANGE NO_VALIDATION VSH_CONSTANT_VERTEX_BAD_STRIDE
+          python3 driver/libretro/tests/test-vk-constant-vertex.py candidate cc 2>&1 | tee results/constant-owners.log
+          python3 driver/libretro/tests/test-vk-constant-vertex-gpu.py candidate cc 2>&1 | tee results/constant-fetch.log
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: shader-constant-vertex-${{ matrix.commit }}-${{ matrix.kind }}
+          path: results/
+
   shader-gate:
     name: Shader and PSO required gate
     if: always()
-    needs: [revisions, contracts, compilation, software-gpu]
+    needs: [revisions, contracts, compilation, software-gpu, constant-vertex-gpu]
     runs-on: ubuntu-24.04
     steps:
       - name: Require every revision and reference job to pass

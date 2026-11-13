@@ -439,6 +439,11 @@ void pgraph_vk_bind_vertex_attributes(NV2AState *d, unsigned int min_element,
         NV2A_VK_DGROUP_END();
     }
 
+    r->constant_vertex_mask = r->constant_vertex_inputs ? pg->uniform_attrs : 0;
+    if (r->constant_vertex_inputs) {
+        pg->uniform_attrs = 0;
+    }
+
     NV2A_VK_DGROUP_END();
 }
 
@@ -484,5 +489,9 @@ void pgraph_vk_bind_vertex_attributes_inline(NV2AState *d)
             r->vertex_attribute_to_description_location[i] = -1;
             pg->uniform_attrs |= 1 << i;
         }
+    }
+    r->constant_vertex_mask = r->constant_vertex_inputs ? pg->uniform_attrs : 0;
+    if (r->constant_vertex_inputs) {
+        pg->uniform_attrs = 0;
     }
 }

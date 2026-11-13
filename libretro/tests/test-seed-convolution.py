@@ -14,6 +14,7 @@ assert 'if (key->kind == GL_FRAGMENT_SHADER)' in load and 'pgraph_glsl_psh_migra
 assert load.index('pgraph_seed_read_first(')<load.index('pgraph_glsl_psh_migrate_seed(')<load.index('seed_compact_dynamic_states(')
 load=vk[vk.index('static void vk_seed_siblings('):vk.index('static void vk_seed_step(')]
 assert load.index('pgraph_seed_read(')<load.index('pgraph_glsl_psh_migrate_seed(&arr[i].psh);')<load.index('ShaderState fb = arr[i];')<load.index('fast_hash(')
+assert load.index('if (constant_vertices)') < load.index('arr[i].vsh.uniform_attrs = 0;') < load.index('ShaderState fb = arr[i];')
 assert gl.count('pgraph_glsl_psh_migrate_seed(')==2 and vk.count('pgraph_glsl_psh_migrate_seed(')==1
 # Include the production helper in isolation so mutation controls cannot change
 # any unrelated declaration or constructor.
