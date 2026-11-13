@@ -71,7 +71,7 @@ def run_batch(executable, first, limit, workers):
             result = child.wait(timeout=max(0, deadline - time.monotonic()))
             stream.seek(0)
             raw = stream.read(65537)
-            text = raw.decode(errors='replace')
+            text = raw.decode(errors='replace').replace('\r\n', '\n')
             print(text, end='', flush=True)
             assert len(raw) <= 65536, 'child log exceeded its bound'
             if result:

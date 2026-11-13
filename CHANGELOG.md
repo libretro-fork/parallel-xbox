@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- Fix the shader CI ownership check's unnecessary Vulkan loader dependency. Distribute the complete software-GPU corpus across utility, vertex and eight fragment jobs. Split each original fragment batch across up to four existing worker slots under one shared 300-second watchdog, then run the original C coverage assertions on the combined results. Balance the vertex batch workers with disjoint interleaved case indices. Preserve all 42,512 vertex and 82,704 fragment cases and add checks for lost coverage, child failure, cleanup and deadline renewal. This repairs validation infrastructure; gameplay compilation stutters remain open.
+- Fix the shader CI ownership check's unnecessary Vulkan loader dependency. Distribute the complete software-GPU corpus across utility, vertex and eight fragment jobs. Split each original fragment batch across up to four existing worker slots under one shared 300-second watchdog, then run the original C coverage assertions on the combined results. Balance the vertex batch workers with disjoint interleaved case indices. Preserve all 42,512 vertex and 82,704 fragment cases and add checks for lost coverage, child failure, cleanup and deadline renewal. Accept both Unix and Windows child-log line endings. This repairs validation infrastructure; gameplay compilation stutters remain open.
 
 - Release temporary vertex-shader uniform declarations after their text reaches the returned source. This removes a CPU memory leak during shader generation; generated shader text and rendering behavior are unchanged. Shader generation still allocates, and gameplay compilation stutters remain open.
 

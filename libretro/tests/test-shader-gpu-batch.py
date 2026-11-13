@@ -40,6 +40,8 @@ def exercise(fault=''):
                 text = text.replace(f'{pixels} 0', '0 0')
             if fault == 'numeric':
                 text = text.replace('0 differences', '1 differences')
+            if self.index & 1:
+                text = text.replace('\n', '\r\n')
             stdout.write(text.encode())
             stdout.flush()
 
