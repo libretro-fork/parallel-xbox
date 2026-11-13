@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 """Compare native programmable vertex emission against the production GLSL path on Vulkan."""
 from pathlib import Path
-import os, subprocess, sys, tempfile
+import os, subprocess, sys, tempfile, time
 r=Path(sys.argv[1]).resolve();cc=sys.argv[2] if len(sys.argv)>2 else 'cc'
 def function(path,name):
  s=path.read_text();start=s.index('MString *'+name+'(');p=s.index('{',start);depth=1;p+=1
@@ -49,4 +49,21 @@ DEF_UNIFORM_INFO_ARR(VshUniform,VSH_UNIFORM_DECL_X)
   assert 0<=first<limit<=42512
   batches=[(first,limit)]
  for first,limit in batches:
-  subprocess.run([str(exe),str(first),str(limit)],check=True,timeout=300)
+  # Independent devices/buffers let the numerical corpus use available CPUs.
+  # Keep one shared watchdog for the original batch, never 300s per child.
+  cpus=len(os.sched_getaffinity(0)) if hasattr(os,'sched_getaffinity') else (os.cpu_count() or 1)
+  workers=min(4,cpus,limit-first);children=[];deadline=time.monotonic()+300
+  env=dict(os.environ);env['LP_NUM_THREADS']='1'
+  print(f'Vertex batch [{first}, {limit}): {workers} independent workers, shared 300s deadline',flush=True)
+  try:
+   for i in range(workers):
+    start=first+(limit-first)*i//workers;end=first+(limit-first)*(i+1)//workers
+    command=[str(exe),str(start),str(end)]
+    children.append((command,subprocess.Popen(command,env=env)))
+   for command,child in children:
+    result=child.wait(timeout=max(0,deadline-time.monotonic()))
+    if result:raise subprocess.CalledProcessError(result,command)
+  finally:
+   for command,child in children:
+    if child.poll() is None:child.kill()
+   for command,child in children:child.wait()
