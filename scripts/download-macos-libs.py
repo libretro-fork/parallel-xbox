@@ -5,19 +5,28 @@ Downloads required libraries for xemu builds on macOS from MacPorts repositories
 # Based on https://github.com/tpoechtrager/osxcross/blob/master/tools/osxcross-macports
 # which is based on https://github.com/maci0/pmmacports
 from urllib.request import urlopen
+from http.client import HTTPException
 import re
 import os.path
+import shutil
+import tempfile
 from tarfile import TarFile
 import subprocess
 
-MIRROR = 'https://packages.macports.org'
+# Official archive mirrors, in MacPorts' own archive_sites.tcl. Keep TLS and
+# the independently pinned public key/signature checks on every mirror.
+# https://github.com/macports/macports-ports/blob/master/_resources/port1.0/fetch/archive_sites.tcl
+MIRRORS = ('https://packages.macports.org',
+           'https://nue.de.packages.macports.org',
+           'https://fra.de.packages.macports.org')
+URL_TIMEOUT = 30
+REQUIRED_PACKAGES = ('libepoxy',)
 
 # FIXME: Inline macports key
 # FIXME: Move packages to archive directory to track used vs unused
-# FIXME: Support multiple mirrors
 
 class LibInstaller:
-	DARWIN_TARGET_X64="darwin_21" # macOS 11
+	DARWIN_TARGET_X64="darwin_21" # macOS 12
 	DARWIN_TARGET_ARM64="darwin_23" # macOS 14.x
 
 	def __init__(self, arch):
@@ -40,15 +49,33 @@ class LibInstaller:
 			os.makedirs(self._pkgs_path)
 
 	def get_latest_pkg_filename_url(self, pkg_name):
-		pkg_base_url = f'{MIRROR}/{pkg_name}'
-		pkg_list = urlopen(pkg_base_url).read().decode('utf-8')
-		pkgs = re.findall(pkg_name + r'[\w\.\-\_\+]*?\.(?:any_any|darwin_any|' + self._darwin_target + r')\.(?:noarch|' + self._arch + r')\.tbz2', pkg_list)
-		if len(pkgs) < 1:
-			print(f'    [*] [ERROR] Unable to find version of {pkg_name} compatible with {self._darwin_target}.{self._arch}')
-			exit(1)
+		errors = []
+		for mirror in MIRRORS:
+			pkg_base_url = f'{mirror}/{pkg_name}'
+			try:
+				with urlopen(pkg_base_url + '/', timeout=URL_TIMEOUT) as response:
+					pkg_list = response.read().decode('utf-8')
+				pkgs = re.findall(re.escape(pkg_name) + r'[\w\.\-\_\+]*?\.(?:any_any|darwin_any|' + self._darwin_target + r')\.(?:noarch|' + self._arch + r')\.tbz2', pkg_list)
+				if pkgs:
+					pkg_filename = pkgs[-1]
+					print(f'    [*] Using archive mirror {mirror}')
+					return pkg_filename, f'{pkg_base_url}/{pkg_filename}'
+				errors.append(f'{mirror}: no compatible {self._darwin_target}.{self._arch} archive')
+			except (OSError, HTTPException, UnicodeError) as error:
+				errors.append(f'{mirror}: {error}')
+		raise RuntimeError(f'Unable to find {pkg_name}: ' + '; '.join(errors))
 
-		pkg_filename = pkgs[-1]
-		return pkg_filename, f'{pkg_base_url}/{pkg_filename}'
+	def download_urls(self, url):
+		# Retrying an archive keeps its exact filename/version, never silently
+		# selects a different package or changes the public-key trust root.
+		yield url
+		for source in MIRRORS:
+			if url.startswith(source + '/'):
+				suffix = url[len(source):]
+				for mirror in MIRRORS:
+					if mirror != source:
+						yield mirror + suffix
+				break
 
 	def is_pkg_installed(self, pkg_name):
 		if not os.path.exists(self._installed_path):
@@ -64,15 +91,41 @@ class LibInstaller:
 			f.write(f'{pkg_name}={pkg_version}\n')
 
 	def download_file(self, desc, url, dst):
-		if os.path.exists(dst):
+		if os.path.exists(dst) and os.path.getsize(dst):
 			print(f'    [+] Already have {desc}')
-		else:
-			print(f'    [+] Downloading {desc}')
-			with open(dst, 'wb') as f:
-				f.write(urlopen(url).read())
+			return
+		print(f'    [+] Downloading {desc}')
+		errors = []
+		for candidate in self.download_urls(url):
+			temporary = None
+			try:
+				with urlopen(candidate, timeout=URL_TIMEOUT) as response:
+					header = response.headers.get('Content-Length')
+					try:
+						length = int(header) if header is not None else None
+					except ValueError as error:
+						raise OSError('Invalid download Content-Length') from error
+					if length is not None and length < 0:
+						raise OSError('Negative download Content-Length')
+					with tempfile.NamedTemporaryFile(dir=os.path.dirname(dst) or '.',
+							prefix=os.path.basename(dst) + '.', suffix='.tmp', delete=False) as output:
+						temporary = output.name
+						shutil.copyfileobj(response, output, 64 * 1024)
+						# Bounded HTTPResponse.read(n) can return EOF early without
+						# raising IncompleteRead. Never cache that truncated body.
+						if length is not None and output.tell() != length:
+							raise OSError('Incomplete download body')
+				os.replace(temporary, dst)
+				return
+			except (OSError, HTTPException) as error:
+				errors.append(f'{candidate}: {error}')
+			finally:
+				if temporary and os.path.exists(temporary):
+					os.unlink(temporary)
+		raise RuntimeError(f'Unable to download {desc}: ' + '; '.join(errors))
 
 	def verify_pkg(self, pkg_path, sig_path):
-		PUBKEYURL="https://svn.macports.org/repository/macports/trunk/base/macports-pubkey.pem"
+		PUBKEYURL="https://raw.githubusercontent.com/macports/macports-base/master/macports-pubkey.pem"
 		PUBKEYRMD160="d3a22f5be7184d6575afcc1be6fdb82fd25562e8"
 		PUBKEYSHA1="214baa965af76ff71187e6c1ac91c559547f48ab"
 		key_filename = 'macports-pubkey.pem'
@@ -180,15 +233,10 @@ def main():
 	ap.add_argument('arch', choices=('arm64', 'x86_64'))
 	args = ap.parse_args()
 	li = LibInstaller(args.arch)
-	li.install_pkgs([
-		'SDL3',
-		'glib2',
-		'libsamplerate',
-		'libpixman',
-		'libepoxy',
-		'libpcap',
-		'libslirp',
-		'libusb'])
+	# The static core vendors GLib/libslirp and has no SDL, host audio or USB
+	# dependency. Keep only epoxy and the signed dependencies it declares.
+	li.install_pkgs(REQUIRED_PACKAGES)
+
 
 if __name__ == '__main__':
 	main()

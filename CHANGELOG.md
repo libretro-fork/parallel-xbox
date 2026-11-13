@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Let macOS build dependency downloads fall back to official MacPorts HTTPS mirrors when the primary index is unavailable. Preserve exact archive versions and existing pinned-key/signature verification, publish only completed downloads, and request only libepoxy plus its declared dependencies for the static core. No runtime downloads or renderer changes.
+
 - Clear the Windows standalone GL share root when its owning context is destroyed, so later contexts do not try to share with freed memory. Native GL dispatch tests now require three full destroy/recreate cycles.
 
 - Refresh the used libretro-common subset from RetroArch c7a5f6e, retaining clockless waits and bounded queue/borrowed-buffer extensions. Frontend-backed disc reads use VFS v6 positional I/O when available, avoiding cursor seeks without staging buffers; older frontends and unsupported handles retain seek/read. Native disc I/O is unchanged. Shader/PSO cold-play recovery remains unqualified; no gameplay speedup is claimed.

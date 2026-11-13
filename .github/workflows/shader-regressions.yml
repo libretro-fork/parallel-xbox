@@ -86,6 +86,7 @@ jobs:
             python3 "driver/libretro/tests/$test.py" candidate cc 2>&1 | tee "results/$test.log"
           done
           python3 driver/libretro/tests/test-vfs-read-at.py candidate cc 2>&1 | tee results/vfs-read-at.log
+          python3 driver/libretro/tests/test-macos-deps.py candidate 2>&1 | tee results/macos-deps.log
           SPV_UTILITY_RUNNER="qemu-aarch64 -L /usr/aarch64-linux-gnu" python3 driver/libretro/tests/test-spv-utility.py candidate aarch64-linux-gnu-gcc 2>&1 | tee results/static-utility-arm64.log
           VSH_CONSTANT_RUNNER="qemu-aarch64 -L /usr/aarch64-linux-gnu" python3 driver/libretro/tests/test-vsh-constant-lend.py candidate aarch64-linux-gnu-gcc 2>&1 | tee results/constant-lend-arm64.log
           VSH_CONSTANT_RUNNER="qemu-aarch64 -L /usr/aarch64-linux-gnu" python3 driver/libretro/tests/test-vsh-integer-lend.py candidate aarch64-linux-gnu-gcc 2>&1 | tee results/integer-lend-arm64.log
