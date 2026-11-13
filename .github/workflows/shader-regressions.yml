@@ -13,6 +13,7 @@ jobs:
     runs-on: ubuntu-24.04
     outputs:
       matrix: ${{ steps.revisions.outputs.matrix }}
+      software: ${{ steps.revisions.outputs.software }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -47,8 +48,12 @@ jobs:
               rows.append(dict(commit=commit, reference=parent, kind='parent'))
               if accepted and accepted != parent:
                   rows.append(dict(commit=commit, reference=accepted, kind='accepted'))
+          software = [dict(**row, suite=suite) for row in rows for suite in ['utilities', 'vertex']+['fragment-'+str(i) for i in range(8)]]
+          if len(software) > 256:
+              raise SystemExit('Unqualified: software matrix exceeds 256 jobs; split this push')
           with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
               f.write('matrix='+json.dumps(dict(include=rows))+'\n')
+              f.write('software='+json.dumps(dict(include=software))+'\n')
           with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as f:
               f.write('Every new commit in this push is compared, not just its tip.\n\n')
               f.write('Pinned accepted reference: '+(accepted or '**UNQUALIFIED: not configured; parent comparison only**')+'\n\n')
@@ -114,6 +119,7 @@ jobs:
           python3 driver/libretro/tests/test-dirty-range-owner.py candidate cc 2>&1 | tee results/dirty-range-owner.log
           python3 driver/libretro/tests/test-pvideo-dirty.py candidate cc 2>&1 | tee results/pvideo-dirty.log
           SHADER_OWNER_SANITIZE=1 python3 driver/libretro/tests/test-vsh-source-owners.py candidate cc 2>&1 | tee results/vsh-source-owners.log
+          python3 driver/libretro/tests/test-shader-gpu-shards.py candidate 2>&1 | tee results/gpu-shards.log
           python3 driver/libretro/tests/test-throughput-gate.py 2>&1 | tee results/throughput-gate.log
           python3 driver/libretro/tests/test-shader-compile-gate.py 2>&1 | tee results/compiler-gate.log
           python3 driver/libretro/tests/test-cold-play-frame-gate.py candidate 2>&1 | tee results/cold-play-frame-gate.log
@@ -217,12 +223,12 @@ jobs:
             results/*.txt
 
   software-gpu:
-    name: Software Vulkan PSO and numerical validation
+    name: Software GPU ${{ matrix.suite }} (${{ matrix.commit }})
     needs: revisions
     runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
-      matrix: ${{ fromJSON(needs.revisions.outputs.matrix) }}
+      matrix: ${{ fromJSON(needs.revisions.outputs.software) }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -236,7 +242,8 @@ jobs:
         run: |
           sudo apt-get -qy update
           sudo apt-get -qy install build-essential libvulkan-dev libvulkan1 mesa-vulkan-drivers vulkan-validationlayers spirv-tools libegl-dev libgl-dev libegl-mesa0 libgl1-mesa-dri
-      - name: Create actual test pipelines and execute numerical controls
+      - name: Create actual utility pipelines and execute numerical controls
+        if: matrix.suite == 'utilities'
         run: |
           set -euo pipefail
           mkdir -p results
@@ -248,14 +255,28 @@ jobs:
           python3 driver/libretro/tests/test-vulkan-depth-clear.py candidate cc 2>&1 | tee results/attachment-clear.log
           python3 driver/libretro/tests/test-spv-geom.py candidate cc --gpu 2>&1 | tee results/geometry.log
           python3 driver/libretro/tests/test-display-gamma.py candidate --cc cc --gpu --output results/display 2>&1 | tee results/display.log
-          python3 driver/libretro/tests/test-spv-vsh-gpu.py candidate cc 2>&1 | tee results/direct-vertex.log
           python3 driver/libretro/tests/test-vulkan-s3tc-decode.py candidate cc 2>&1 | tee results/static-s3tc.log
           VK_S3TC_SPIRV_16=1 python3 driver/libretro/tests/test-vulkan-s3tc-decode.py candidate cc 2>&1 | tee results/static-s3tc-16.log
-          python3 driver/libretro/tests/test-spv-psh-gpu.py candidate cc 2>&1 | tee results/direct-fragment.log
+      - name: Execute the complete vertex corpus
+        if: matrix.suite == 'vertex'
+        run: |
+          set -euo pipefail
+          mkdir -p results
+          python3 driver/libretro/tests/test-spv-vsh-gpu.py candidate cc 2>&1 | tee results/direct-vertex.log
+      - name: Execute unchanged fragment batches with an independent driver owner
+        if: startsWith(matrix.suite, 'fragment-')
+        env:
+          SUITE: ${{ matrix.suite }}
+        run: |
+          set -euo pipefail
+          mkdir -p results
+          shard="${SUITE#fragment-}/8"
+          python3 driver/libretro/tests/test-spv-psh-gpu.py candidate cc --shard "$shard" --workers 1 --list-batches | tee results/fragment-manifest.json
+          python3 driver/libretro/tests/test-spv-psh-gpu.py candidate cc --shard "$shard" --workers 1 2>&1 | tee results/direct-fragment.log
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: shader-software-gpu-${{ matrix.commit }}-${{ matrix.kind }}
+          name: shader-software-gpu-${{ matrix.commit }}-${{ matrix.kind }}-${{ matrix.suite }}
           path: results/
 
   shader-gate:

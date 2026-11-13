@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Fix the shader CI ownership check's unnecessary Vulkan loader dependency. Distribute the complete software-GPU corpus across utility, vertex and eight fragment jobs; each fragment job runs one driver owner at a time to avoid CPU contention. Preserve all 82,704 fragment cases, original batch boundaries, numerical/validation checks and 300-second batch watchdogs. This repairs validation infrastructure; gameplay compilation stutters remain open.
+
 - Release temporary vertex-shader uniform declarations after their text reaches the returned source. This removes a CPU memory leak during shader generation; generated shader text and rendering behavior are unchanged. Shader generation still allocates, and gameplay compilation stutters remain open.
 
 - Keep the GL binding-pump regression test linked to the pipeline retirement uniform helper, so it continues testing eviction, load cancellation and exact-stage readiness with the current implementation. No runtime change.

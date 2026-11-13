@@ -2,8 +2,30 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 """Compare native fragment color/depth/discard against production GLSL on Vulkan."""
 from pathlib import Path
-import os, re, subprocess, sys, tempfile, time
-r=Path(sys.argv[1]).resolve();cc=sys.argv[2] if len(sys.argv)>2 else 'cc'
+import argparse, json, os, re, subprocess, sys, tempfile, time
+parser=argparse.ArgumentParser(description=__doc__)
+parser.add_argument('root',type=Path)
+parser.add_argument('compiler',nargs='?',default='cc')
+parser.add_argument('--shard',default='0/1',help='zero-based INDEX/COUNT of unchanged corpus batches')
+parser.add_argument('--workers',type=int,default=4,choices=range(1,5))
+parser.add_argument('--list-batches',action='store_true',help='emit the exact selected corpus without compiling or using a GPU')
+args=parser.parse_args();r=args.root.resolve();cc=args.compiler
+try:
+ shard,shards=map(int,args.shard.split('/'))
+ assert 0<=shard<shards<=160
+except (ValueError,AssertionError):parser.error('--shard requires 0 <= INDEX < COUNT <= 160')
+batches=[(first,first+512) for first in range(0,79360,512)]+[(79360,80656)]+[(first,first+512) for first in range(80656,82704,512)]
+if os.environ.get('SPV_PSH_GPU_RANGE'):
+ first,limit=map(int,os.environ['SPV_PSH_GPU_RANGE'].split(':'))
+ assert 0<=first<limit<=82704
+ if shards!=1:parser.error('an explicit range cannot be combined with sharding')
+ batches=[(first,limit)]
+batches=batches[shard::shards]
+assert batches
+composition_control=any(first<=80640 and limit>=80656 for first,limit in batches)
+if args.list_batches:
+ print(json.dumps(dict(shard=shard,shards=shards,batches=batches,composition_control=composition_control,workers=args.workers,deadline_seconds=300)))
+ sys.exit(0)
 def function(path,name):
  s=path.read_text();start=s.index('MString *'+name+'(');p=s.index('{',start);depth=1;p+=1
  # These production functions have balanced braces within strings as well.
@@ -38,16 +60,11 @@ with tempfile.TemporaryDirectory(prefix='spv-psh-gpu-') as tmp:
  drop=os.environ.get('SPV_COMPOSITION_DROP_T3')=='1'
  if drop:flags+=['-DCOMPOSITION_DROP_T3']
  subprocess.run(flags+list(map(str,sources))+['-Wl,--gc-sections','-lm',*([str(Path(os.environ.get('WINDIR','C:/Windows'))/'System32/vulkan-1.dll')] if os.name=='nt' else ['-lvulkan']),'-o',str(exe)],check=True)
- batches=[(first,first+512) for first in range(0,79360,512)]+[(79360,80656)]+[(first,first+512) for first in range(80656,82704,512)]
- if os.environ.get('SPV_PSH_GPU_RANGE'):
-  first,limit=map(int,os.environ['SPV_PSH_GPU_RANGE'].split(':'))
-  assert 0<=first<limit<=82704
-  batches=[(first,limit)]
  if not drop and 'PSH_COMPILER_TIMINGS' not in os.environ:
   # Preserve every original batch and its 300-second watchdog. Only device
   # owners run concurrently; numerical inputs remain indexed identically.
   cpus=len(os.sched_getaffinity(0)) if hasattr(os,'sched_getaffinity') else (os.cpu_count() or 1)
-  workers=min(4,cpus);pending=iter(batches);active={};exhausted=False
+  workers=min(args.workers,cpus);pending=iter(batches);active={};exhausted=False
   env=dict(os.environ,LP_NUM_THREADS='1')
   try:
    while active or not exhausted:
@@ -80,6 +97,6 @@ with tempfile.TemporaryDirectory(prefix='spv-psh-gpu-') as tmp:
    match=re.search(r'(\d+) differences, 0 validation errors',result.stdout)
    assert result.returncode==1 and match and int(match[1])>0,'GPU lost-stage control was not rejected'
    print('Required numerical negative control rejected: native loses stage-three contribution')
- if not drop and any(limit>79360 for first,limit in batches):
+ if not drop and composition_control:
   env=dict(os.environ,SPV_COMPOSITION_DROP_T3='1',SPV_PSH_GPU_RANGE='80640:80656')
   subprocess.run([sys.executable,str(Path(__file__).resolve()),str(r),cc],env=env,check=True)

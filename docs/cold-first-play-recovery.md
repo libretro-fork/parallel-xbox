@@ -251,6 +251,14 @@ Implemented in `.github/workflows/shader-regressions.yml`:
 5. Use software Vulkan to create real test PSOs and run numerical geometry,
    clear and local-initialization checks. This catches API/semantic errors;
    lavapipe timing is not hardware PSO or gameplay performance.
+   Utility and vertex tests have separate jobs. Eight fragment jobs partition
+   the original 160 batches, covering all 82,704 cases exactly once, with one
+   driver owner at a time in each job. Batch boundaries and the 300-second
+   watchdog are unchanged. Each fragment artifact includes its exact batch
+   manifest; the contracts check rejects gaps, overlaps, lost numerical
+   controls and invalid shard/worker settings. A revision/reference expansion
+   over GitHub's 256-job matrix limit fails explicitly and requires splitting
+   the push. The required gate still depends on every software job.
 6. Retain versioned logs, CSV, manifests and JSON for every revision/reference.
    Compare to both parent and the separately pinned accepted SHA when configured.
 

@@ -34,6 +34,12 @@ void mstring_test_free(void *p){unsigned i=0;while(i<128 && owners[i]!=p)i++;ass
 size_t mstring_test_live(MString *returned){size_t n=0;bool found=false;for(unsigned i=0;i<128;i++)if(owners[i]){n++;if(owners[i]==returned)found=true;}assert(!returned || found);return n;}
 ''')
     script = (root/'libretro/tests/test-spv-vsh-gpu.py').read_text()
+    # This fixture emits source on the CPU and discards the GPU driver body.
+    # Keep the vendored headers, but do not inherit the GPU fixture's loader
+    # dependency: the contracts runner intentionally has no Vulkan SDK.
+    loader = "*([str(Path(os.environ.get('WINDIR','C:/Windows'))/'System32/vulkan-1.dll')] if os.name=='nt' else ['-lvulkan']),"
+    assert script.count(loader)==1
+    script = script.replace(loader, '')
     needle = " (d/'reference.c').write_text(ref)"
     assert script.count(needle)==1
     has_interpreter='MString *pgraph_glsl_gen_vsh_interpreter(' in (root/'hw/xbox/nv2a/pgraph/glsl/vsh.c').read_text()
