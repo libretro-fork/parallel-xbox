@@ -27,6 +27,7 @@
 #include "vsh.h"
 #include "vsh-ff.h"
 #include "vsh-prog.h"
+#include "vsh-controls.inc"
 
 DEF_UNIFORM_INFO_ARR(VshUniform, VSH_UNIFORM_DECL_X)
 
@@ -326,8 +327,10 @@ void pgraph_glsl_vsh_dynamic_ready(const VshState *state)
 }
 
 static MString *pgraph_glsl_gen_vsh_impl(const VshState *state,
-                                      GenVshGlslOptions opts, bool interpreter)
+                                      GenVshGlslOptions opts, bool interpreter,
+                                      bool dynamic_controls)
 {
+    assert(!dynamic_controls || interpreter);
     assert(!interpreter || !state->is_fixed_function);
     MString *uniforms = mstring_new();
     const char *u = opts.vulkan ? "" : "uniform ";
@@ -352,6 +355,9 @@ static MString *pgraph_glsl_gen_vsh_impl(const VshState *state,
         /* The Vulkan caller's final uniform owner includes this trailing code
          * array. It is deliberately not part of the ordinary uniform ABI. */
         mstring_append(uniforms, "ivec4 vpCode[136];\n");
+        if (dynamic_controls) {
+            mstring_append(uniforms, "uint vpFlags;\n");
+        }
     }
 
     MString *header = mstring_from_str(
@@ -481,8 +487,13 @@ static MString *pgraph_glsl_gen_vsh_impl(const VshState *state,
             if (!opts.vulkan) {
                 /* Separate storage preserves the GL 4.1 default-uniform
                  * budget. The native owner assigns its binding before use. */
-                mstring_append(header,
-                    "layout(std140) uniform XvsCode { ivec4 vpCode[136]; };\n");
+                if (dynamic_controls) {
+                    mstring_append(header,
+                        "layout(std140) uniform XvsCode { ivec4 vpCode[136]; uint vpFlags; };\n");
+                } else {
+                    mstring_append(header,
+                        "layout(std140) uniform XvsCode { ivec4 vpCode[136]; };\n");
+                }
             }
             pgraph_glsl_gen_vsh_prog_interpreter(header, body);
         } else {
@@ -490,7 +501,9 @@ static MString *pgraph_glsl_gen_vsh_impl(const VshState *state,
                 VSH_VERSION_XVS, (uint32_t *)state->programmable.program_data,
                 state->programmable.program_length, header, body);
         }
-        if (!state->point_params_enable) {
+        if (dynamic_controls) {
+            mstring_append(body, vsh_interpreter_point_controls);
+        } else if (!state->point_params_enable) {
             mstring_append(
                 body,
                 "  oPts.x = (pointSizeReg <= 0.0 ? 1.0 : pointSizeReg) * pointScale;\n");
@@ -506,7 +519,9 @@ static MString *pgraph_glsl_gen_vsh_impl(const VshState *state,
         }
     }
 
-    if (state->fog_dynamic) {
+    if (dynamic_controls) {
+        mstring_append(body, vsh_interpreter_fog_controls);
+    } else if (state->fog_dynamic) {
         if (!state->is_fixed_function) {
             mstring_append(body, "  float fogDistance = oFog.x;\n");
         }
@@ -635,7 +650,9 @@ static MString *pgraph_glsl_gen_vsh_impl(const VshState *state,
                    "  gl_PointSize = oPts.x;\n"
     );
 
-    if (state->is_fixed_function && state->fixed_function.csv0c_dynamic) {
+    if (dynamic_controls) {
+        mstring_append(body, vsh_interpreter_specular_controls);
+    } else if (state->is_fixed_function && state->fixed_function.csv0c_dynamic) {
         mstring_append(body,
             "  if ((csv0cCtl & 4096u) != 0u) {\n"
             "    vtxD1 = clamp(NaNToOne(oD1), 0.0, 1.0);\n"
@@ -722,13 +739,19 @@ static MString *pgraph_glsl_gen_vsh_impl(const VshState *state,
 
 MString *pgraph_glsl_gen_vsh(const VshState *state, GenVshGlslOptions opts)
 {
-    return pgraph_glsl_gen_vsh_impl(state, opts, false);
+    return pgraph_glsl_gen_vsh_impl(state, opts, false, false);
 }
 
 MString *pgraph_glsl_gen_vsh_interpreter(const VshState *state,
                                       GenVshGlslOptions opts)
 {
-    return pgraph_glsl_gen_vsh_impl(state, opts, true);
+    return pgraph_glsl_gen_vsh_impl(state, opts, true, false);
+}
+
+MString *pgraph_glsl_gen_vsh_interpreter_dynamic(const VshState *state,
+                                              GenVshGlslOptions opts)
+{
+    return pgraph_glsl_gen_vsh_impl(state, opts, true, true);
 }
 
 void pgraph_glsl_set_vsh_uniform_values(PGRAPHState *pg, const VshState *state,

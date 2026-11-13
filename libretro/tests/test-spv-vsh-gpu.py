@@ -35,6 +35,8 @@ with tempfile.TemporaryDirectory(prefix='spv-vsh-gpu-') as tmp:
 const char *uniform_element_type_to_str[]={UNIFORM_ELEMENT_TYPE_X(DECL_NAME)};
 DEF_UNIFORM_INFO_ARR(VshUniform,VSH_UNIFORM_DECL_X)
 '''
+ controls=r/'hw/xbox/nv2a/pgraph/glsl/vsh-controls.inc'
+ if controls.is_file():ref+='#include "'+controls.as_posix()+'"\n'
  ref+=function(r/'hw/xbox/nv2a/pgraph/glsl/common.c','pgraph_glsl_get_vtx_header')+'\n'
  ref+=function(r/'hw/xbox/nv2a/pgraph/glsl/vsh.c','pgraph_glsl_gen_vsh')+'\n'
  (d/'reference.c').write_text(ref)

@@ -35,6 +35,12 @@ int main(int argc,char **argv)
                 assert(mstring_test_live(text)==1);
                 assert(mstring_get_length(text)>0);
                 mstring_unref(text);assert(mstring_test_live(NULL)==0);compared++;
+#ifdef TEST_DYNAMIC_INTERPRETER_OWNERS
+                text=pgraph_glsl_gen_vsh_interpreter_dynamic(&state,options);
+                assert(mstring_test_live(text)==1);
+                assert(mstring_get_length(text)>0);
+                mstring_unref(text);assert(mstring_test_live(NULL)==0);compared++;
+#endif
             }
 #endif
         }

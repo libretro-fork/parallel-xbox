@@ -146,6 +146,36 @@ MString *pgraph_glsl_gen_vsh(const VshState *state,
 MString *pgraph_glsl_gen_vsh_interpreter(const VshState *state,
                                       GenVshGlslOptions glsl_opts);
 
+enum VshInterpreterControl {
+    VSH_INTERPRETER_POINT_PARAMS = 1u,
+    VSH_INTERPRETER_SPECULAR = 2u,
+    VSH_INTERPRETER_IGNORE_SPECULAR_ALPHA = 4u,
+    VSH_INTERPRETER_FOG_ENABLE = 8u,
+    VSH_INTERPRETER_FOG_DYNAMIC = 16u,
+    VSH_INTERPRETER_FOG_MODE_SHIFT = 5u,
+    VSH_INTERPRETER_FLAGS_OFFSET = NV2A_MAX_TRANSFORM_PROGRAM_LENGTH * 16,
+    VSH_INTERPRETER_BUFFER_SIZE = VSH_INTERPRETER_FLAGS_OFFSET + 16,
+};
+
+/* Encode already-validated programmable controls, without copying code.
+ * The GL std140 code block has one trailing uint at FLAGS_OFFSET and rounds
+ * up to BUFFER_SIZE. Vulkan appends that uint after vpCode in VshUniforms.
+ * Other vertex formats and interface options remain static. Native Vulkan
+ * owners must distinguish the FP32 execution targets (point on/off); a single
+ * shader source does not imply a single native PSO or a ready pipeline. */
+static inline uint32_t pgraph_glsl_vsh_interpreter_flags(const VshState *state)
+{
+    return (state->point_params_enable ? VSH_INTERPRETER_POINT_PARAMS : 0u) |
+           (state->specular_enable ? VSH_INTERPRETER_SPECULAR : 0u) |
+           (state->ignore_specular_alpha ? VSH_INTERPRETER_IGNORE_SPECULAR_ALPHA : 0u) |
+           (state->fog_enable ? VSH_INTERPRETER_FOG_ENABLE : 0u) |
+           (state->fog_dynamic ? VSH_INTERPRETER_FOG_DYNAMIC : 0u) |
+           (((uint32_t)state->fog_mode & 7u) << VSH_INTERPRETER_FOG_MODE_SHIFT);
+}
+
+MString *pgraph_glsl_gen_vsh_interpreter_dynamic(const VshState *state,
+                                              GenVshGlslOptions glsl_opts);
+
 void pgraph_glsl_set_vsh_uniform_values(PGRAPHState *pg, const VshState *state,
                                         const VshUniformLocs locs,
                                         VshUniformValues *values);

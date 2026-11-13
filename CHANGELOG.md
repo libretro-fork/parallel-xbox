@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Prepare a reusable programmable-vertex interpreter with uniform point, specular and fog controls, reducing its source variants without changing ordinary shader keys or caches. Exact GL/Vulkan numerical and ownership checks cover both interface modes and changing controls. This builder is not selected by gameplay yet; full pipeline readiness and cold-play stutters remain open.
+
 - Release temporary vertex-shader uniform declarations after their text reaches the returned source. Shader generation still allocates, but this temporary owner no longer leaks on every generation; the ordinary generated shader text is unchanged.
 
 - Prepare the programmable interpreter's full shader wrapper and separate GL code buffer, preserving the specialized shader's handling of unwritten point size. The shared builder passes exact numerical checks; it is still not selected by gameplay. Native pipeline readiness, code-buffer ownership through real draws, remaining allocations and cold-play recovery remain open.

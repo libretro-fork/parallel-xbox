@@ -40,6 +40,9 @@ size_t mstring_test_live(MString *returned){size_t n=0;bool found=false;for(unsi
     addition = ''
     if has_interpreter:
         addition += " ref+=function(r/'hw/xbox/nv2a/pgraph/glsl/vsh.c','pgraph_glsl_gen_vsh_interpreter')+'\\n'\n"
+    has_dynamic='MString *pgraph_glsl_gen_vsh_interpreter_dynamic(' in (root/'hw/xbox/nv2a/pgraph/glsl/vsh.c').read_text()
+    if has_dynamic:
+        addition += " ref+=function(r/'hw/xbox/nv2a/pgraph/glsl/vsh.c','pgraph_glsl_gen_vsh_interpreter_dynamic')+'\\n'\n"
     if mutation:
         addition += " assert ref.count('mstring_unref(uniforms);')==1\n ref=ref.replace('mstring_unref(uniforms);','(void)uniforms;')\n"
     shim = '''#include "qemu/osdep.h"
@@ -62,6 +65,10 @@ size_t mstring_test_live(MString *);
         needle=" flags=[cc,'-O2',"
         assert script.count(needle)==1
         script=script.replace(needle," flags=[cc,'-DTEST_INTERPRETER_OWNERS','-O2',")
+    if has_dynamic:
+        needle=" flags=[cc,"
+        assert script.count(needle)==1
+        script=script.replace(needle," flags=[cc,'-DTEST_DYNAMIC_INTERPRETER_OWNERS',")
     if os.environ.get('SHADER_OWNER_SANITIZE'):
         needle = " flags=[cc,"
         assert script.count(needle)==1
