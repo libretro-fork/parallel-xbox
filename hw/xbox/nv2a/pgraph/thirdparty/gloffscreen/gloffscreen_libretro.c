@@ -265,6 +265,9 @@ void glo_context_destroy(GloContext *context)
         ReleaseDC(context->hwnd, context->hdc);
         DestroyWindow(context->hwnd);
     }
+    if (context == g_standalone_root_ctx) {
+        g_standalone_root_ctx = NULL;
+    }
     free(context);
 }
 

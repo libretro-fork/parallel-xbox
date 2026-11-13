@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Clear the Windows standalone GL share root when its owning context is destroyed, so later contexts do not try to share with freed memory. Native GL dispatch tests now require three full destroy/recreate cycles.
+
 - Publish OpenGL module/program cache files through private sibling files, preserving mapped readers and old valid entries when writes or replacement fail. Reuse bounded path storage in the existing two disk slots instead of allocating formatted paths for each save. Binary-slab growth, stream internals and platform path conversions can still allocate; cold-play recovery remains open.
 
 - Let macOS build dependency downloads fall back to official MacPorts HTTPS mirrors when the primary index is unavailable. Preserve exact archive versions and existing pinned-key/signature verification, publish only completed downloads, and request only libepoxy plus its declared dependencies for the static core. No runtime downloads or renderer changes.
