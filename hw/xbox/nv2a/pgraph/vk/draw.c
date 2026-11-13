@@ -132,12 +132,33 @@ static VkPrimitiveTopology topology_class(VkPrimitiveTopology t)
     }
 }
 
+/* Full PSOs retain module metadata for their last CPU uniform consumer.
+ * Native pipeline retirement remains independent in the GPU slot trash. */
+static void pipeline_hold_modules(PipelineBinding *binding,
+                                  ShaderModuleInfo *const modules[],
+                                  unsigned count)
+{
+    assert(count == 2 || count == 3);
+    assert(modules[0] && modules[count - 1]);
+    assert(!binding->shader_modules[0] && !binding->shader_modules[1] &&
+           !binding->shader_modules[2]);
+    binding->shader_modules[0] = modules[0];
+    binding->shader_modules[1] = count == 3 ? modules[1] : NULL;
+    binding->shader_modules[2] = modules[count - 1];
+    for (unsigned i = 0; i < ARRAY_SIZE(binding->shader_modules); i++) {
+        if (binding->shader_modules[i]) {
+            pgraph_vk_ref_shader_module(binding->shader_modules[i]);
+        }
+    }
+}
+
 static void pipeline_cache_entry_init(Lru *lru, LruNode *node,
                                       const void *state)
 {
     PipelineBinding *snode = container_of(node, PipelineBinding, node);
     snode->layout = VK_NULL_HANDLE;
     snode->pipeline = VK_NULL_HANDLE;
+    memset(snode->shader_modules, 0, sizeof(snode->shader_modules));
     snode->draw_time = 0;
     snode->has_dynamic_line_width = false;
 }
@@ -160,6 +181,12 @@ static void pipeline_cache_entry_post_evict(Lru *lru, LruNode *node)
     }
     snode->pipeline = VK_NULL_HANDLE;
     snode->layout = VK_NULL_HANDLE;
+    for (unsigned i = 0; i < ARRAY_SIZE(snode->shader_modules); i++) {
+        if (snode->shader_modules[i]) {
+            pgraph_vk_unref_shader_module(r, snode->shader_modules[i]);
+            snode->shader_modules[i] = NULL;
+        }
+    }
     /* The node goes to another key (a pipeline the worker made landing,
      * pipeline_land): the next draw looks its pipeline up again rather
      * than binding what the node holds then */
@@ -1505,6 +1532,7 @@ static void pipeline_land(PGRAPHState *pg, LibJob *job)
     if (snode->pipeline == VK_NULL_HANDLE) {
         memcpy(&snode->key, &job->key, sizeof(job->key));
         snode->pipeline = job->result;
+        pipeline_hold_modules(snode, job->mods, job->nmods);
         snode->layout = job->layout;
         snode->render_pass = job->ci.renderPass;
         snode->has_dynamic_line_width = job->has_dynamic_line_width;
@@ -1597,6 +1625,7 @@ static bool pump_take_pipeline(PGRAPHState *pg, PipelineBinding *binding,
         if (!job->compute && job->full && job->result && job->hash == hash &&
             !memcmp(&job->key, key, sizeof(*key))) {
             binding->pipeline = job->result;
+            pipeline_hold_modules(binding, job->mods, job->nmods);
             binding->layout = job->layout;
             binding->render_pass = job->ci.renderPass;
             binding->has_dynamic_line_width = job->has_dynamic_line_width;
@@ -2451,14 +2480,11 @@ static bool pipeline_use_ready_sibling(PGRAPHState *pg, PipelineKey *key,
         memcpy(&key->shader_state.psh, &original, sizeof(original));
         return false;
     }
-    uint64_t shader_hash = fast_hash((const uint8_t *)&key->shader_state,
-                                     sizeof(key->shader_state));
     uint64_t sibling_hash = fast_hash((const uint8_t *)key, sizeof(*key));
-    ShaderBinding *sibling = NULL;
-    if (pipeline_ready(r, sibling_hash, key)) {
-        sibling = pgraph_vk_materialize_ready_shader_binding(r,
-                                        &key->shader_state, shader_hash);
-    }
+    /* Materialization proves exact full-PSO readiness itself; do not scan
+     * and compare the same full key a second time here. */
+    ShaderBinding *sibling = pgraph_vk_materialize_ready_shader_binding(
+        r, key, sibling_hash);
     bool ready = sibling != NULL;
     PshState projected;
     if (ready) {
@@ -2612,6 +2638,10 @@ static void create_pipeline(PGRAPHState *pg)
                                            &job.ci, NULL, &pipeline));
     }
 
+    ShaderModuleInfo *modules[] = { r->shader_binding->vsh.module_info,
+                                    r->shader_binding->geom.module_info,
+                                    r->shader_binding->psh.module_info };
+    pipeline_hold_modules(snode, modules, ARRAY_SIZE(modules));
     snode->pipeline = pipeline;
     snode->layout = layout;
     snode->render_pass = job.ci.renderPass;

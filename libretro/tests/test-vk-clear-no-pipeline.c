@@ -33,7 +33,7 @@ typedef struct {
     struct { unsigned width,height; } surface_binding_dim;
     struct { unsigned clip_x,clip_y,clip_width,clip_height; } surface_shape;
 } PGRAPHState;
-static unsigned creations,binds,query_ends,descriptors,pushes;
+static unsigned creations,binds,query_ends,descriptors,pushes,constant_inputs;
 static bool rotate_slot;
 static PipelineBinding owned_pipeline;
 static PGRAPHVkState *active;
@@ -72,6 +72,7 @@ static void pgraph_apply_scaling_factor(PGRAPHState *pg,unsigned *a,unsigned *b)
 static void pgraph_apply_anti_aliasing_factor(PGRAPHState *pg,unsigned *a,unsigned *b){(void)pg;(void)a;(void)b;}
 static float clamp_line_width_to_device_limits(PGRAPHState *pg,float width){(void)pg;return width;}
 static void emit_dynamic_state(PGRAPHState *pg,bool force){(void)force;pg->vk_renderer_state->dyn_last.valid=!pg->clearing;}
+static void bind_constant_vertex_descriptions(PGRAPHState *pg){assert(!pg->clearing);constant_inputs++;}
 static void emit_dynamic_vertex_input(PGRAPHState *pg){pg->vk_renderer_state->vi_last.valid=!pg->clearing;}
 static void bind_descriptor_sets(PGRAPHState *pg){assert(!pg->clearing);descriptors++;}
 static void push_vertex_attr_values(PGRAPHState *pg){assert(!pg->clearing);pushes++;}
@@ -92,7 +93,7 @@ int main(void){
             .surface_binding_dim={8,8},.surface_shape={.clip_width=8,.clip_height=8}};
         if(bits&128)r.render_pass=expected_pass(&pg);
         r.new_query_needed=!!(bits&512);
-        active=&r;rotate_slot=!!(bits&64);creations=binds=query_ends=descriptors=pushes=0;
+        active=&r;rotate_slot=!!(bits&64);creations=binds=query_ends=descriptors=pushes=constant_inputs=0;
         /* The oracle uses the guest color-nibble, independent of the helper. */
         bool partial=(surfaces&1)&&((mask>>4)&15)&&((mask>>4)&15)!=15;
         bool needs_pipeline=!clearing||partial;
@@ -101,14 +102,14 @@ int main(void){
         assert(r.in_command_buffer&&r.in_render_pass&&r.in_draw);
         assert(r.query_in_flight==(!clearing&&pg.zpass_pixel_count_enable));
         assert(!color.in_shader_read||!r.color_binding);assert(!depth.in_shader_read||!r.zeta_binding);
-        assert(descriptors==(unsigned)!clearing&&pushes==(unsigned)!clearing);
+        assert(descriptors==(unsigned)!clearing&&pushes==(unsigned)!clearing&&constant_inputs==(unsigned)!clearing);
         if(clearing){assert(!r.dyn_last.valid&&!r.vi_last.valid);}
         if(!needs_pipeline)assert(r.pipeline_binding==((bits&1)?&old:NULL));
         end_draw(&pg);assert(!r.in_draw&&r.in_render_pass==!clearing);
         if(clearing&&!needs_pipeline){
-            pg.clearing=false;creations=binds=descriptors=pushes=0;
+            pg.clearing=false;creations=binds=descriptors=pushes=constant_inputs=0;
             begin_pre_draw(&pg);begin_draw(&pg);
-            assert(creations==1&&binds==1&&descriptors==1&&pushes==1);
+            assert(creations==1&&binds==1&&descriptors==1&&pushes==1&&constant_inputs==1);
             assert(r.in_draw&&r.in_render_pass&&r.dyn_last.valid&&r.vi_last.valid);
             end_draw(&pg);
         }

@@ -15,6 +15,7 @@ with tempfile.TemporaryDirectory(prefix='clear-no-pso-') as d:
     cmd=[cc,'-O2','-std=gnu11','-Wall','-Wextra','-Werror','-Wno-misleading-indentation','-fsanitize=undefined','-fsanitize-undefined-trap-on-error','-I'+str(r),'-I'+str(r/'deps/vulkan-headers'),str(src),'-o',str(exe)]
     src.write_text(code);subprocess.run(cmd,check=True);subprocess.run([str(exe)],check=True)
     mutants=[
+        ('clear consumes vertex inputs',code.replace('if (!pg->clearing) {\n            bind_constant_vertex_descriptions(pg);','if (true) {\n            bind_constant_vertex_descriptions(pg);',1)),
         ('attachment clear creates PSO',code.replace('if (pg->clearing && !clear_needs_color_draw(r)) {','if (false) {',1)),
         ('lost vertex-input invalidation',code.replace('        r->vi_last.valid = false;','        r->vi_last.valid = true;',1)),
         ('stale render pass',code.replace('r->render_pass = render_pass;','(void)render_pass;',1)),

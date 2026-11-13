@@ -94,6 +94,8 @@ typedef struct PipelineBinding {
     PipelineKey key;
     VkPipelineLayout layout; /* borrowed from renderer graphics/clear table */
     VkPipeline pipeline;
+    /* VS/GS/PS metadata remains available for ready-only binding adoption. */
+    struct ShaderModuleInfo *shader_modules[3];
     VkRenderPass render_pass;
     unsigned int draw_time;
     bool has_dynamic_line_width;
@@ -1225,7 +1227,7 @@ ShaderBinding *pgraph_vk_ready_shader_binding(PGRAPHVkState *r,
                                               const ShaderState *state,
                                               uint64_t hash);
 ShaderBinding *pgraph_vk_materialize_ready_shader_binding(PGRAPHVkState *r,
-                                  const ShaderState *state, uint64_t hash);
+                                  const PipelineKey *key, uint64_t pipeline_hash);
 void pgraph_vk_use_ready_shader_binding(PGRAPHState *pg, ShaderBinding *binding);
 /* Render-thread key lend: consume before draining or cache initialization. */
 const ShaderState *pgraph_vk_pending_shader_state(PGRAPHState *pg,

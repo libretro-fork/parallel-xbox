@@ -22,7 +22,8 @@
 #define g_renew(t,p,n) ((t *)realloc(p,sizeof(t)*(n)))
 typedef struct { int unused; } Lru;
 typedef struct { int unused; } LruNode;
-typedef struct { LruNode node; unsigned draw_time; VkPipeline pipeline; VkPipelineLayout layout; } PipelineBinding;
+typedef struct ShaderModuleInfo { unsigned refs; } ShaderModuleInfo;
+typedef struct { LruNode node; unsigned draw_time; VkPipeline pipeline; VkPipelineLayout layout; ShaderModuleInfo *shader_modules[3]; } PipelineBinding;
 struct XemuVkTrashEntry { VkPipeline pipeline; VkPipelineLayout layout; unsigned retire_after,display_after; };
 enum { BUFFER_INDEX_STAGING, BUFFER_INDEX, BUFFER_VERTEX_INLINE_STAGING,
        BUFFER_VERTEX_INLINE, BUFFER_UNIFORM_STAGING, BUFFER_UNIFORM };
@@ -119,6 +120,7 @@ static void vkCmdResetQueryPool(VkCommandBuffer cmd,VkQueryPool pool,unsigned fi
     (void)cmd;(void)pool;assert(first==xemu_cost_segn && count==XEMU_COST_SEGS-first);
 }
 static const int finish_reason_to_counter_enum[VK_FINISH_REASON_EAGER+1]={0};
+static void pgraph_vk_unref_shader_module(PGRAPHVkState *r,ShaderModuleInfo *m){(void)r;assert(m&&m->refs);m->refs--;}
 /* PRODUCTION */
 int main(void) {
     quiet_test_errors();unsigned cases=0;
@@ -173,13 +175,14 @@ int main(void) {
             /* A pipeline from the old recording may be evicted now, but its
              * pipeline must remain queued for deferred fence-based deletion;
              * its shared layout belongs to the renderer, not this entry. */
-            PipelineBinding pipeline={.draw_time=stamp,
+            ShaderModuleInfo module={.refs=2};
+            PipelineBinding pipeline={.shader_modules={&module,NULL,NULL},.draw_time=stamp,
                 .pipeline=(VkPipeline)(uintptr_t)51,.layout=(VkPipelineLayout)(uintptr_t)52};
             r.pipeline_binding=&pipeline;
             unsigned n=r.trash_n;
             pipeline_cache_entry_post_evict(&r.pipeline_cache,&pipeline.node);
             assert(r.trash_n==n+1 && r.pipeline_binding==NULL);
-            assert(pipeline.pipeline==VK_NULL_HANDLE && pipeline.layout==VK_NULL_HANDLE);
+            assert(pipeline.pipeline==VK_NULL_HANDLE && pipeline.layout==VK_NULL_HANDLE && module.refs==1 && !pipeline.shader_modules[0]);
             assert(r.trash[n].pipeline==(VkPipeline)(uintptr_t)51);
             assert(r.trash[n].layout==VK_NULL_HANDLE);
             assert(r.trash[n].retire_after==r.submit_count+1);

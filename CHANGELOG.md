@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Keep full Vulkan PSOs' existing vertex/geometry/fragment metadata owners alive until their final CPU consumers finish. Ready shader binding adoption checks the exact full PSO key and uses those owners without a module-cache/compiler initializer, including for differing vertex shaders. Preserve GPU fence retirement and pressure deferral. This is readiness infrastructure; generic family coverage, remaining draw-critical compilation, allocation reductions and cold-play recovery remain open.
+
+- Keep the clear/pass regression fixture connected after constant vertex binding moved into draw setup. Require attachment and masked clears to avoid vertex-input consumption while normal draws still bind their inputs; retain all existing clear/pipeline and lifecycle checks.
+
 - Prepare the OpenGL texture-touch program and VAO at renderer initialization, including for later changes to smoothing options. The first texture-touch flip no longer compiles, links or allocates those objects; guest shader misses remain open.
 
 - Extend staging visibility tests to require both uniform and vertex-input consumers of the shared constant-attribute buffer. Retain exact ranges, coherency and copy ordering, and reject missing access/stage scopes. No runtime change.
