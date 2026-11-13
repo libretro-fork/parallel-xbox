@@ -13,6 +13,7 @@ jobs:
     runs-on: ubuntu-24.04
     outputs:
       matrix: ${{ steps.revisions.outputs.matrix }}
+      candidates: ${{ steps.revisions.outputs.candidates }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -49,6 +50,7 @@ jobs:
                   rows.append(dict(commit=commit, reference=accepted, kind='accepted'))
           with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
               f.write('matrix='+json.dumps(dict(include=rows))+'\n')
+              f.write('candidates='+json.dumps(dict(commit=commits))+'\n')
           with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as f:
               f.write('Every new commit in this push is compared, not just its tip.\n\n')
               f.write('Pinned accepted reference: '+(accepted or '**UNQUALIFIED: not configured; parent comparison only**')+'\n\n')
@@ -257,10 +259,50 @@ jobs:
           name: shader-software-gpu-${{ matrix.commit }}-${{ matrix.kind }}
           path: results/
 
+  interpreter-gpu:
+    name: Programmable interpreter numerics (${{ matrix.commit }})
+    needs: revisions
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.revisions.outputs.candidates) }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ matrix.commit }}
+          filter: blob:none
+      - name: Install software GPU and validation tools
+        run: |
+          sudo apt-get -qy update
+          sudo apt-get -qy install build-essential libvulkan-dev libvulkan1 mesa-vulkan-drivers vulkan-validationlayers
+      - name: Select the installed software ICD
+        run: |
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+          paths = sorted(Path('/usr/share/vulkan/icd.d').glob('lvp_icd*.json'))
+          if not paths:
+              raise SystemExit('UNQUALIFIED: software Vulkan ICD missing')
+          with open(os.environ['GITHUB_ENV'], 'a') as stream:
+              stream.write('VK_ICD_FILENAMES='+str(paths[0])+'\n')
+          PY
+      - name: Compare all programmable cases and reject broken controls
+        run: |
+          set -euo pipefail
+          unset NO_VALIDATION
+          mkdir -p results
+          python3 libretro/tests/test-vsh-interpreter-gpu.py . cc 2>&1 | tee results/interpreter.log
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: programmable-interpreter-${{ matrix.commit }}
+          path: results/
+
   shader-gate:
     name: Shader and PSO required gate
     if: always()
-    needs: [revisions, contracts, compilation, software-gpu]
+    needs: [revisions, contracts, compilation, software-gpu, interpreter-gpu]
     runs-on: ubuntu-24.04
     steps:
       - name: Require every revision and reference job to pass
