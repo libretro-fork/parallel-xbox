@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Restore the RGB655 Vulkan fixture's dependency on the production VRAM-level eligibility helper and model its renderer/RAM bounds. Preserve the complete conversion, swizzle, staging, pixel and validation checks; no runtime changes.
+
 - Execute the unchanged fragment numerical batches on at most four independent device owners, keeping every 300-second watchdog and the lost-stage rejection control. Reuse driver compilation only in numerical runs; opt-in compiler/PSO timing stays sequential and uncached.
 
 - Execute the geometry fixture's complete base and UI groups concurrently, using separate output owners and one shared 600-second watchdog. Retain all numerical cases, allocation checks, synchronization validation and SPIR-V validation; this removes native ARM64 test serialization without extending the limit.

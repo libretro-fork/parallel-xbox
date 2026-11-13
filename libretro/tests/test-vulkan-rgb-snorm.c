@@ -10,8 +10,10 @@
 #include "hw/xbox/nv2a/nv2a_regs.h"
 #define CHECK(x) assert((x) == VK_SUCCESS)
 #define container_of(p,t,m) ((t *)((char *)(p) - offsetof(t,m)))
-typedef struct { uint8_t *arena; size_t head, capacity; } PGRAPHState;
-typedef struct { uint8_t *vram_ptr; PGRAPHState pgraph; } NV2AState;
+typedef struct { VkBuffer vram_buffer; } PGRAPHVkState;
+typedef struct { uint8_t *arena; size_t head, capacity; PGRAPHVkState *vk_renderer_state; } PGRAPHState;
+typedef struct { uint8_t *vram_ptr; size_t *vram; PGRAPHState pgraph; } NV2AState;
+static size_t memory_region_size(const size_t *size) { return *size; }
 typedef struct {
     unsigned color_format, width, height, pitch, levels;
     bool cubemap;
@@ -164,8 +166,11 @@ int main(void)
         free(linear);
         Buffer upload = buffer(count * 6 + 128), output = buffer(count * 4);
         memset(upload.mapped, 0xa5, count * 6 + 128);
-        NV2AState d = { .vram_ptr = (uint8_t *)guest,
-            .pgraph = { upload.mapped, 32, count * 6 + 128 } };
+        size_t guest_bytes = count * 2;
+        PGRAPHVkState renderer = {0};
+        NV2AState d = { .vram_ptr = (uint8_t *)guest, .vram = &guest_bytes,
+            .pgraph = { .arena = upload.mapped, .head = 32,
+                        .capacity = count * 6 + 128, .vk_renderer_state = &renderer } };
         TextureLevel level;
         stage_swizzled(&d.pgraph, cmd, &level, &shape, (uint8_t *)guest, NULL, width, height, 1, 2);
         assert(level.crop_offset == 0);
