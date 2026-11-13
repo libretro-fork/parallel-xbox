@@ -457,6 +457,9 @@ jobs:
         with:
           python-version: '3.12'
 
+      - name: Test dependency failover and download ownership
+        run: python3 libretro/tests/test-macos-deps.py .
+
       - name: Install dependencies
         run: |
           brew install coreutils pkgconf
