@@ -32,6 +32,7 @@ with tempfile.TemporaryDirectory(prefix='render-pass-pump-') as d:
   else:assert result.returncode==0,result.stdout.decode(errors='replace');print(result.stdout.decode(),end='')
  run(code)
  controls=[
+  ('lighting owner service skipped',code.replace('    prepare_bound_vertex_family(pg);','    (void)prepare_bound_vertex_family;',1)),
   ('only final bound pass prepared',code.replace('*rp = pass->state;','(void)pass; *rp = r->live;',1)),
   ('round-robin cursor stuck',code.replace('r->pump.next_pass++','r->pump.next_pass',1)),
   ('preparation budget inflated',code.replace('unsigned budget = 4, checks = 32;','unsigned budget = 8, checks = 32;',1)),

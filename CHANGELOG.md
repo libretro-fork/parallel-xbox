@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Keep the render-pass pump fixture linked to the optional lighting preparation service, checking that it runs after ordered drain even when static seeding is disabled. Preserve its existing preparation budget and mutation controls. No runtime change.
+
 - Prepare Vulkan fixed-function lighting siblings as complete native pipelines on the existing worker. Select them only when their entire pass/register/vertex-input key and retained module owners are ready, while exact specializations compile in the final job slot. Reuse prepared vertex modules across PSOs and defer duplicate stage preparation; preserve synchronous handling for uncovered configurations. NGB exercises the path and matches the parent image in the local restore check; cold first-play stall recovery and overall performance remain unqualified.
 
 - On Vulkan shader-binding cache misses, reuse the exact ready full pipeline's retained module metadata before reaching compiler-capable module lookup. Reuse the native final cache node under pressure without an extra shader-state copy or hot-hit query; uncovered PSOs retain the correct synchronous path. This does not establish cold-play recovery.
