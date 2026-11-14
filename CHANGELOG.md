@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Experimental GL pipeline readiness: validate eighteen native VS/GS/FS combinations before guest execution, borrowing slots from the existing binding pool and retaining them through the existing pipeline-owner index. Partial failures return all slots. Existing uncovered states still create pipelines during gameplay; this is not complete coverage or qualified stutter recovery.
+
+- Experimental fragment execution probes use constant-index register-bank accesses and exact single-product/final-combiner paths with a full-interpreter fallback. The initial generic implementation regresses actual guest-Present throughput despite lower callback times. Product-path throughput improves in the rejection probe but remains below its matched parent; literal register operands restore the measured guest-Present count and reduce matched GPU execution cost. A modest throughput/tail gap, first-use startup spike and full cold/warm qualification remain open. Legacy shader text stays byte-identical; prepared source-owner release is checked separately.
+
 - Experimental GL fragment integration (unqualified): reserve two existing module slots for linked generic fragments, borrow typed texture aliases, and retain uniform/alias ownership through cache eviction and texture name reuse. Only the experimental GL renderer captures helper-preserving keys after both stages become ready; default builds and Vulkan capture stay unchanged. Native complete-pipeline readiness and cold gameplay qualification remain open.
 
 - Experimental GL fragment-source preparation: two interpolation variants carry regular 2D/3D/cube sampling, clipping and depth controls in bounded uniforms. Reject uncovered texture modes and formats before publishing controls. Legacy ordinary source remains unchanged; an explicit helper-liveness key flag lets the experimental reference and prepared source retain texture helper lanes through sampling. It is not enabled by guest-state capture or seed migration. The follow-up above integrates native owners/aliases experimentally; default builds do not select this generator and performance qualification remains pending.

@@ -73,6 +73,67 @@ static PshState state_for(unsigned test)
         if(s.combiner_control)reg=PS_REGISTER_R0;
     }
     s.final_inputs_0=0x20000000u|(reg<<16);s.final_inputs_1=(reg|16u)<<8;
+    if(test>=912){
+        unsigned k=test-912,shape=(k/8)%9;
+        memset(&s,0,sizeof(s));s.depth_format=DEPTH_FORMAT_D16;s.smooth_shading=k&1;
+        s.combiner_dynamic=!!(k&2);s.combiner_control=1+k%8;if(k&4)s.combiner_control|=0x100;
+        s.shader_stage_program=4u|(4u<<5)|(4u<<10)|(4u<<15);
+        for(unsigned i=0;i<4;i++)s.dim_tex[i]=2;
+        for(unsigned j=0;j<8;j++){
+            unsigned a=(PS_REGISTER_T0+(k+j)%4)|(((k/8+j)%8)<<5);
+            unsigned b=(j&1?PS_REGISTER_V0:PS_REGISTER_C0)|(((k/2+j)%8)<<5);
+            s.rgb_inputs[j]=(a<<24)|(b<<16)|(PS_REGISTER_V1<<8)|PS_REGISTER_C1;
+            s.alpha_inputs[j]=((a|16u)<<24)|((b|16u)<<16)|((PS_REGISTER_V1|16u)<<8)|(PS_REGISTER_C1|16u);
+            unsigned ro=12u<<4,ao=12u<<4;
+            if(shape==1)ao=13u<<4;
+            if(shape==2)ro=ao=12;
+            if(shape==3)ro=ao=12u<<8;
+            if(shape==4){ro=(12u<<4)|13u|(12u<<8);ao=(13u<<4)|12u|(13u<<8);}
+            if(shape==5)s.alpha_inputs[j]^=16u<<24;
+            if(shape==6)ro=ao=0;
+            if(shape==7){ro|=0x80u<<12;ao=0;}
+            if(shape==8){ro=12u|(0x40u<<12);ao=13u<<4;}
+            unsigned rm=(k/3+j)%8,am=shape==0?rm:(k/7+j)%8;
+            s.rgb_outputs[j]=ro|(((k/8+j)%4)<<12)|(rm<<15)|((k&8)?1u<<14:0);
+            s.alpha_outputs[j]=ao|(am<<15)|((k&16)?1u<<14:0);
+        }
+        unsigned out=PS_REGISTER_R0+((k/2)&1);s.final_inputs_0=0x20000000u|(out<<16);s.final_inputs_1=(out|16u)<<8;
+    }
+    if(test>=1020){
+        unsigned k=test-1020,kind=k%6;
+        static const uint32_t words[6][4]={
+            {0x08040000,0x00000c00,0x18140000,0x00000c00},
+            {0x08040000,0x00000c00,0x00002014,0x00000c00},
+            {0x00000804,0x00000c00,0x00001814,0x00000c00},
+            {0x08040000,0x000000c0,0x00001814,0x0000000c},
+            {0x08040020,0x00000c00,0x18140020,0x00000c00},
+            {0x08042020,0x00000c00,0x18142020,0x00000c00},
+        };
+        memset(&s,0,sizeof(s));s.depth_format=DEPTH_FORMAT_D16;s.smooth_shading=(k/6)&1;
+        s.combiner_control=1+(k/6)%8;s.combiner_dynamic=!!(k&2);
+        s.shader_stage_program=1u|(1u<<5);
+        for(unsigned i=0;i<4;i++)s.dim_tex[i]=2;
+        for(unsigned j=0;j<8;j++){
+            s.rgb_inputs[j]=words[kind][0];s.alpha_inputs[j]=words[kind][2];
+            if((k/48)&1){
+                if((s.rgb_inputs[j]&65535u)==0)s.rgb_inputs[j]|=0xc0c0u;
+                if((s.alpha_inputs[j]&65535u)==0)s.alpha_inputs[j]|=0xc0c0u;
+            }
+            unsigned rm=(k/24+j)%8,am=(k/18+j)%8;
+            s.rgb_outputs[j]=words[kind][1]|(rm<<15);s.alpha_outputs[j]=words[kind][3]|(am<<15);
+        }
+        s.final_inputs_0=0x200c0000;s.final_inputs_1=0x1c00;
+    }
+    if(test>=1164){
+        unsigned k=test-1164; s=state_for(1020+k%144);
+        static const uint32_t finals[]={0x0000000c,0x130c0300,0x130e0300,
+                                       0x13050300,0x130f0300,0x0000000e};
+        s.final_inputs_0=finals[(k/24)%6];
+        s.final_inputs_1=0x1c00|((k&1)?0x80:0);
+        /* Complement flags and nonzero E/F must stay on the general path. */
+        if(k&4)s.final_inputs_1|=0x60;
+        if(k&8)s.final_inputs_1|=0x04050000;
+    }
     s.depth_format |= DEPTH_FORMAT_HELPER_LIVENESS;
     return s;
 }
@@ -170,7 +231,7 @@ int main(void)
     GLuint vs[2],ready[2];MString *ready_source[2];
     for(unsigned i=0;i<2;i++){MString *v=vertex(i);vs[i]=program(GL_VERTEX_SHADER,v);mstring_unref(v);PshState s={.depth_format=DEPTH_FORMAT_HELPER_LIVENESS,.combiner_dynamic=true,.smooth_shading=i};ready_source[i]=pgraph_glsl_gen_psh_ready(&s,(GenPshGlslOptions){.locations=true});REQUIRE(ready_source[i]);ready[i]=program(GL_FRAGMENT_SHADER,ready_source[i]);}
     uint64_t checked=0;unsigned written=0,discarded=0;
-    for(unsigned test=0;test<912;test++){
+    for(unsigned test=0;test<1308;test++){
         static const GLint filters[]={GL_NEAREST,GL_LINEAR,GL_NEAREST_MIPMAP_NEAREST,GL_LINEAR_MIPMAP_NEAREST,GL_NEAREST_MIPMAP_LINEAR,GL_LINEAR_MIPMAP_LINEAR};
         static const GLint wraps[]={GL_REPEAT,GL_CLAMP_TO_EDGE,GL_CLAMP_TO_BORDER,GL_MIRRORED_REPEAT};
         for(unsigned i=0;i<12;i++){
@@ -222,6 +283,6 @@ int main(void)
     glDeleteProgram(oracle_exact);
     puts("PASS independent half-plane/window/volume oracle: eight live pixels and exact color/depth on each path");
     REQUIRE(written>0&&discarded>0);
-    printf("PASS ready fragment: 912 cases, %llu exact color/depth checks, written=%u discarded=%u, two invariant native fragments\n",(unsigned long long)checked,written,discarded);
+    printf("PASS ready fragment: 1308 cases (912 original + 108 rich + 144 product + 144 final shapes), %llu exact color/depth checks, written=%u discarded=%u, two invariant native fragments\n",(unsigned long long)checked,written,discarded);
     for(unsigned i=0;i<2;i++){glDeleteProgram(ready[i]);glDeleteProgram(vs[i]);mstring_unref(ready_source[i]);}glDeleteTextures(12,tex);glDeleteProgramPipelines(1,&pipeline);glDeleteVertexArrays(1,&vao);glDeleteRenderbuffers(2,rb);glDeleteFramebuffers(1,&fb);return 0;
 }

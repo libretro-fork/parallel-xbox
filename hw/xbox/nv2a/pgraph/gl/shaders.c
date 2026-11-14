@@ -719,6 +719,7 @@ GLuint pgraph_gl_separable_program(GLenum kind, const char *src,
 #include "ready-geom.inc"
 #include "ready-psh.inc"
 #include "pipeline-owners.inc"
+#include "ready-pipelines.inc"
 #endif
 
 /* The module keys of a state: geometry (kind 0 unless the state needs one),
@@ -846,6 +847,14 @@ static void generate_shaders(PGRAPHGLState *r, ShaderBinding *binding)
             pipeline_owner_publish(r, binding);
 #ifdef XEMU_READY_VSH_DIAGNOSTICS
             r->pipeline_owner_created++;
+            fprintf(stderr, "READY_PIPELINE_MISS vsh=%d geom=%d psh=%d ff=%d compressed=%04x uniform=%04x swizzle=%04x constant_dynamic=%d\n",
+                    ready_vsh_find(r, &keys[1]) != NULL,
+                    !binding->gl_prog_gs || ready_geom_find(r, &keys[0]) != NULL,
+                    binding->ready_psh, binding->state.vsh.is_fixed_function,
+                    binding->state.vsh.compressed_attrs,
+                    binding->state.vsh.uniform_attrs,
+                    binding->state.vsh.swizzle_attrs,
+                    binding->state.vsh.const_attrs_dynamic);
 #endif
         }
 #ifdef XEMU_READY_VSH_DIAGNOSTICS
@@ -1385,7 +1394,17 @@ void pgraph_gl_init_shaders(PGRAPHState *pg)
     lru_init(&r->shader_cache);
     r->shader_cache_entries = malloc(shader_cache_size * sizeof(ShaderBinding));
     assert(r->shader_cache_entries != NULL);
-    for (int i = 0; i < shader_cache_size; i++) {
+    unsigned reserved_bindings = 0;
+#ifdef XEMU_EXPERIMENTAL_READY_VSH
+    if (gl_sso_enabled()) {
+        reserved_bindings = 18; /* Existing capacity, not an additional pool. */
+        assert(reserved_bindings <= shader_cache_size);
+        r->ready_pipelines = r->shader_cache_entries;
+        memset(r->ready_pipelines, 0,
+               reserved_bindings * sizeof(*r->ready_pipelines));
+    }
+#endif
+    for (int i = reserved_bindings; i < shader_cache_size; i++) {
         lru_add_free(&r->shader_cache, &r->shader_cache_entries[i].node);
     }
 
@@ -1437,6 +1456,7 @@ void pgraph_gl_init_shaders(PGRAPHState *pg)
     ready_vsh_init(r);
     ready_geom_init(r);
     ready_psh_init(r);
+    ready_pipelines_init(r);
 #endif
     r->seed.state = -1;
     r->prewarm.state = -1;
@@ -1471,6 +1491,9 @@ void pgraph_gl_finalize_shaders(PGRAPHState *pg)
     // Clear out shader cache
     pgraph_gl_shader_write_cache_reload_list(pg); // FIXME: also flushes, rename for clarity
     lru_flush(&r->shader_cache);
+#ifdef XEMU_EXPERIMENTAL_READY_VSH
+    ready_pipelines_finalize(r); /* After borrowers, before pool/stage owners. */
+#endif
     free(r->shader_cache_entries);
     r->shader_cache_entries = NULL;
 

@@ -468,6 +468,7 @@ typedef struct PGRAPHGLState {
     ShaderBinding *shader_binding;
 #ifdef XEMU_EXPERIMENTAL_READY_VSH
     ShaderBinding *pipeline_owners[GL_PIPELINE_OWNER_BUCKETS];
+    ShaderBinding *ready_pipelines; /* 18 slots borrowed from the binding pool. */
     uint64_t pipeline_owner_created, pipeline_owner_reused; /* Diagnostic writes only. */
     /* Four finite GL interface variants; not members of the persistent LRU. */
     struct {

@@ -364,7 +364,9 @@ jobs:
       - name: Validate native ready-stage ownership and bounded uploads
         run: python3 libretro/tests/test-ready-vsh-owner.py . cc
       - name: Native pipeline identity and shared retirement
-        run: python3 libretro/tests/test-gl-pipeline-owners.py . cc
+        run: |
+          python3 libretro/tests/test-gl-pipeline-owners.py . cc
+          python3 libretro/tests/test-ready-pipelines.py . cc
       - name: Compare all programmable cases and reject broken controls
         run: |
           set -euo pipefail

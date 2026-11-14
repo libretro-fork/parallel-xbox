@@ -1278,9 +1278,96 @@ static void define_colorkey_comparator(MString *preflight)
 /* Register-driven combiner: the stage programs stay in PGRAPH register form
  * (combCtl/combRgbIn/...) and one generated shader interprets them, exactly as
  * the hardware does. Emitted only for states flagged combiner_dynamic. */
+/* The ready shader must not index its mutable per-fragment register bank
+ * dynamically. Keep bank accesses constant so the GPU compiler can retain
+ * them as scalar registers instead of a local-memory array. Selection uses
+ * uniform register numbers; no arithmetic or component-write order changes.
+ * This is source assembly from immutable spans, not a second payload owner. */
+static void psh_ready_combiner_helpers(MString *out, const char *source)
+{
+    static const char declaration[] = "vec4 cregs[16];\n";
+    assert(!strncmp(source, declaration, sizeof(declaration) - 1));
+    mstring_append(out, declaration);
+    mstring_append(out, "bool cbfast(uint ri,uint ro,uint ai,uint ao,int s);\n"
+                        "bool cbfinal();\n");
+    mstring_append(out, "vec4 cbget(uint reg) { switch(reg) {\n");
+    for (unsigned i = 0; i < 16; i++)
+        mstring_append_fmt(out, "case %uu: return cregs[%u];\n", i, i);
+    mstring_append(out, "default: return vec4(0.0); } }\n");
+    for (unsigned component = 0; component < 3; component++) {
+        const char *type = component == 0 ? "vec3" : component == 1 ? "float" : "vec4";
+        const char *field = component == 0 ? "rgb" : component == 1 ? "a" : "rgba";
+        unsigned width = component == 0 ? 3 : component == 1 ? 1 : 4;
+        mstring_append_fmt(out, "void cbset%u(uint reg,%s x) { switch(reg) {\n", width, type);
+        for (unsigned i = 1; i < 16; i++)
+            mstring_append_fmt(out, "case %uu: cregs[%u].%s=x; break;\n", i, i, field);
+        mstring_append(out, "default: break; } }\n");
+    }
+    static const struct { const char *before, *after; } edits[] = {
+        {"return cregs[reg];", "return cbget(reg);"},
+        {"cregs[reg].rgb = x;", "cbset3(reg,x);"},
+        {"cregs[reg].a = x;", "cbset1(reg,x);"},
+        {"void comb_stage(int s) {\n", "void comb_stage(int s) {\n"
+         " if(cbfast(combRgbIn[s],combRgbOut[s],combAlphaIn[s],combAlphaOut[s],s))return;\n"},
+        {"void comb_final() {\n", "void comb_final() {\n if(cbfinal())return;\n"},
+    };
+    const char *cursor = source + sizeof(declaration) - 1;
+    for (unsigned i = 0; i < ARRAY_SIZE(edits); i++) {
+        const char *end = strstr(cursor, edits[i].before);
+        assert(end);
+        g_string_append_len(out->gstr, cursor, end - cursor);
+        mstring_append(out, edits[i].after);
+        cursor = end + strlen(edits[i].before);
+    }
+    mstring_append(out, cursor);
+    /* Uniform descriptors select this exact RGBA modulation shape before any
+     * bank mutation. Other shapes retain the complete interpreter. */
+    mstring_append(out,
+        "vec4 cbin4(uint b,int s){vec4 v=comb_fetch(b&15u,s);uint m=(b>>5u)&7u;\n"
+        " vec4 x=m==1u?clamp(v,0.0,1.0):(m>=6u?v:max(v,0.0));return x*cmap_s[m]+cmap_b[m];}\n"
+        "bool cbzero(uint pair){uint a=(pair>>13u)&7u;uint b=(pair>>5u)&7u;\n"
+        " return (pair&0x0f0fu)==0u&&(a==0u||a==6u)&&(b==0u||b==6u); }\n"
+        "uvec4 cbprod(uint ins,uint outs,bool rgb){uint d=outs&0xfffu;uint f=outs>>12u;\n"
+        " if(rgb&&(((d&0xf0u)!=0u&&(f&128u)!=0u)||((d&15u)!=0u&&(f&64u)!=0u)))return uvec4(0u);\n"
+        " uint a=ins>>24u;uint b=(ins>>16u)&255u;uint flag=rgb&&((f&2u)!=0u)?2u:0u;\n"
+        " if((d&0xf0fu)==0u)return uvec4((d>>4u)&15u,a,b,flag);\n"
+        " a=(ins>>8u)&255u;b=ins&255u;flag=rgb&&((f&1u)!=0u)?2u:0u;\n"
+        " if((d&0xff0u)==0u)return uvec4(d&15u,a,b,flag);\n"
+        " if((d&255u)!=0u||(f&4u)!=0u)return uvec4(0u);\n"
+        " if(cbzero(ins>>16u))return uvec4((d>>8u)&15u,a,b,flag|5u);\n"
+        " if(cbzero(ins&65535u))return uvec4((d>>8u)&15u,ins>>24u,(ins>>16u)&255u,1u|(rgb&&((f&2u)!=0u)?2u:0u));\n"
+        " return uvec4(0u); }\n"
+        "bool cbfast(uint ri,uint ro,uint ai,uint ao,int s){\n"
+        " uint dest=(ro>>4u)&15u;uint rf=ro>>12u;uint af=ao>>12u;\n"
+        " if(dest!=0u&&(ro&0xf0fu)==0u&&(ao&0xfffu)==(dest<<4u)&&\n"
+        "    (rf&0xc2u)==0u&&((rf^af)&0x38u)==0u&&(ri&0x10100000u)==0u&&(ai>>16u)==((ri>>16u)|0x1010u)){\n"
+        "  vec4 x=cbin4(ri>>24u,s)*cbin4((ri>>16u)&255u,s);uint m=(rf>>3u)&7u;\n"
+        "  x=clamp((x+omap_b[m])*omap_s[m],-1.0,1.0);cbset4(dest,x);return true; }\n"
+        " uvec4 r=cbprod(ri,ro,true);uvec4 a=cbprod(ai,ao,false);if(r.x==0u||a.x==0u)return false;\n"
+        " vec3 ra=comb_in_rgb(r.y,s);vec3 rb=comb_in_rgb(r.z,s);\n"
+        " vec3 rgb=(r.w&2u)!=0u?vec3(dot(ra,rb)):ra*rb;\n"
+        " float alpha=comb_in_a(a.y,s)*comb_in_a(a.z,s);\n"
+        " if((r.w&1u)!=0u)rgb=(r.w&4u)!=0u?vec3(0.0)+rgb:rgb+vec3(0.0);\n"
+        " if((a.w&1u)!=0u)alpha=(a.w&4u)!=0u?0.0+alpha:alpha+0.0;\n"
+        " rgb=clamp(comb_map3(rgb,(rf>>3u)&7u),-1.0,1.0);alpha=clamp(comb_map1(alpha,(af>>3u)&7u),-1.0,1.0);\n"
+        " cbset3(r.x,rgb);cbset1(a.x,alpha);return true;}\n"
+        /* These final descriptors do not read E/F. Keep the original input
+         * mappings, sum clamp, mix order and zero additions exactly. */
+        "bool cbfinal(){if((combFinal1&~128u)!=0x1c00u)return false;\n"
+        " if(combFinal0!=0x0000000cu&&combFinal0!=0x130c0300u&&combFinal0!=0x130e0300u)return false;\n"
+        " if(combFinal0==0x0000000cu){\n"
+        "  fragColor.rgb=comb_in_rgb(12u,8)+mix(comb_in_rgb(0u,8),comb_in_rgb(0u,8),comb_in_rgb(0u,8));\n"
+        " }else{vec3 b;\n"
+        "  if(combFinal0==0x130c0300u)b=comb_in_rgb(12u,8);\n"
+        "  else{vec3 sum=cregs[5].rgb+cregs[12].rgb;\n"
+        "   if((combFinal1&128u)!=0u)sum=clamp(sum,0.0,1.0);cregs[14]=vec4(sum,0.0);b=comb_in_rgb(14u,8); }\n"
+        "  fragColor.rgb=comb_in_rgb(0u,8)+mix(comb_in_rgb(3u,8),b,comb_in_rgb(0x13u,8));\n"
+        " }fragColor.a=comb_in_a(0x1cu,8);return true;}\n");
+}
+
 static void emit_dynamic_combiner(struct PixelShader *ps, MString *preflight)
 {
-    mstring_append(preflight,
+    static const char helpers[] =
         "vec4 cregs[16];\n"
         "vec4 comb_fetch(uint reg, int stage) {\n"
         "    if (reg == 1u) {\n"
@@ -1395,7 +1482,9 @@ static void emit_dynamic_combiner(struct PixelShader *ps, MString *preflight)
         "    vec3 fd = comb_in_rgb(combFinal0 & 0xFFu, 8);\n"
         "    fragColor.rgb = fd + mix(fc, fb, fa);\n"
         "    fragColor.a = comb_in_a((combFinal1 >> 8) & 0xFFu, 8);\n"
-        "}\n");
+        "}\n";
+    if (ps->ready) psh_ready_combiner_helpers(preflight, helpers);
+    else mstring_append(preflight, helpers);
 
     mstring_append(ps->code, "// Dynamic combiner\n");
     for (int i = 0; i < 16; i++) {

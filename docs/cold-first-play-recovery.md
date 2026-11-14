@@ -761,3 +761,97 @@ qualify timings. Fourteen native pipeline objects still get created during the
 DOA3 run; startup/full-pipeline readiness, clean matched-parent/cold-warm timing,
 GPU execution costs, Linux full builds and default-build regression checks
 remain required before promotion.
+
+
+The exact-parent e1b7b12420 release ABBA probe initially appears faster by
+callback time (fight p99 6.893/7.323 ms versus 11.321/10.193 ms), but this is
+REJECTED as a speedup. A private harness observes the published instruction
+clock and DOA3 USA's actual CDevice Present/completion counters, using the
+verified device pointer at 0x1c3390 and frame fields +0x2b60/+0x2518. Over 600
+live callbacks, both builds advance 9,993,316,667 ns; the parent advances 599
+Presents/completions and the candidate only 82. A video callback per run and
+valid end images do not prove preserved game-frame progress. Core clock reads
+are acquire loads of published time; guest observations are bounded borrowed
+reads while the CPU is gated, not a RAM snapshot or image readback.
+
+The next source probe removes dynamic indexing of the mutable combiner bank
+from prepared fragments, testing GPU execution cost as the cause. Constant
+selector branches preserve every component write and arithmetic order. The
+legacy emitter still appends its identical immutable helper text in one call;
+prepared source is assembled from borrowed constant spans into its final
+existing owner, without a whole-source clone. These probes remain experimental and
+unqualified for release until the full cold-play requirements pass. Do not
+promote e1b7 to libretro or describe its callback result as recovery.
+
+
+Follow-up execution probes keep the full interpreter while adding constant-bank
+selection, packed modulation, SUM-with-known-zero products and E/F-independent
+final descriptors. The product probe passes 1,164 cases / 372,480 color/depth
+values on NVIDIA and llvmpipe, including nine deliberately broken controls.
+Actual Present throughput is 100.635 FPS (246 Presents/completions), compared
+with 119.81 FPS for a347 and 53.83 FPS for the initial e1b7 integration. These
+are unpaced, uncontrolled-driver-cache rejection probes, not recovery evidence.
+The product probe's 1,149.932 ms startup spike remains recorded. Final-descriptor
+coverage adds 144 cases without dropping the original 912 or rich/product cases.
+An initial EF negative control was inadequate; the strengthened mutation must
+falsely accept both EF-dependent input and nonzero EF fields to expose the
+missing dependency. Retain the failed test attempt, not a manufactured pass.
+
+Eighteen fully linked/validated prepared native pipeline tuples now borrow
+binding slots from the existing 51,200-entry pool. Interpolation and geometry
+prefix conventions determine the valid combinations; unsupported tuples keep
+the correct existing path. Anchors use the same exact native-tuple owner index
+and borrower rings, survive normal binding eviction, and retire after cached
+borrowers and before backing slots/native stages. Thirty-six creation/validation
+failure points return every reserved slot, and unavailable stages do likewise.
+Mocked native APIs verify 36,000 acquisitions without creation and six mandatory
+bad controls. This establishes ownership, not physical-GPU compilation latency.
+
+A fresh DOA3 diagnostic run validates all eighteen tuples before guest execution
+but still creates eleven uncovered pipelines. Opt-in creation-site stage
+diagnostics in a subsequent run identify two uncovered fragments and seven
+fixed-function vertex stages; varying game progress changes counts, so these
+are not a matched-workload reduction claim. The new first-fight image was
+visually inspected; fighters, textures, shadows and HUD are present. NGB's
+restored image remains byte-exact and both GL/Vulkan reset/restore checks match
+the prior output. Driver caches remain uncontrolled, all these runtime checks
+are functional, and GL reload remains unsupported. Default builds do not select
+this experimental architecture. Full ready coverage, Vulkan readiness, clean
+parent/cold-warm timing and GPU execution cost remain unqualified.
+
+
+The final-descriptor fast path now uses literal register operands for its three
+recognized programs; it retains input maps, sum clamps, mix arithmetic and
+zero additions. The complete updated runner passes 1,308 cases / 418,560 exact
+color/depth values on both NVIDIA and llvmpipe, plus all ten mandatory negative
+controls. The original 912 cases remain intact. Real MString/GString ownership
+and ASan/UBSan retain the 73,728-source / 614,644,992-byte legacy comparison;
+256 additional prepared builds retain only the final owner and release all
+storage, with a fifth mandatory deliberate ready-source leak rejected.
+
+Clean experimental release ABBA runs after this change advance 599 guest
+Presents/completions in every 600-live-callback window, with the same 9.993 s
+of guest time. Parent throughput is 122.699 / 124.600 guest Presents/sec versus
+119.392 / 120.390 for the candidate. Fight callback p99 is 9.614 / 9.634 ms
+versus 10.018 / 9.979 ms; no fight callbacks exceed 16.683 ms. The modest
+remaining gap is not declared recovered or an accepted regression. A separate
+first-use run's 1,105.093 ms frame-zero startup spike remains recorded; later
+uncontrolled-driver-cache runs are not substituted for genuinely cold startup.
+
+A matched, warmed native GPU execution fixture uses the same final descriptor,
+textures, 1,048,576-pixel target and source-independent driver for the a347 and
+current prepared generators. Twelve alternating batches of sixteen draws,
+preceded by four warm draws and glFinish, use GL_TIME_ELAPSED without timed
+readbacks. Prepared 0/1/4/8-stage medians fall from 126.794/133.124/148.860/175.220
+microseconds to 16.640/22.334/51.226/91.494. Four-stage volume/cube medians fall
+from 148.534/148.564 to 51.124/51.170. This is a simple execution fixture, not a
+retail distribution or cold-play claim; the exact generated shader simplifies
+heavily and remains about 12.8 microseconds. Generic shader GPU overhead remains
+an open issue even after this measured improvement.
+
+Clean Windows default/experimental/diagnostic and Linux default/experimental
+builds pass. Default GL/Vulkan lifecycle output matches the prior captures.
+The a347 public CI rerun passes unchanged thresholds after its initial compiler
+stage timing was inconclusive; this is evidence for that source checkpoint,
+not a pass for the current commit or physical-GPU cold-play qualification.
+The feature remains disabled by default and is not merged to libretro.
