@@ -121,6 +121,7 @@ jobs:
           python3 driver/libretro/tests/test-dirty-range-owner.py candidate cc 2>&1 | tee results/dirty-range-owner.log
           python3 driver/libretro/tests/test-pvideo-dirty.py candidate cc 2>&1 | tee results/pvideo-dirty.log
           SHADER_OWNER_SANITIZE=1 python3 driver/libretro/tests/test-vsh-source-owners.py candidate cc 2>&1 | tee results/vsh-source-owners.log
+          SHADER_OWNER_SANITIZE=1 python3 driver/libretro/tests/test-psh-source-owners.py candidate cc 2>&1 | tee results/psh-source-owners.log
           python3 driver/libretro/tests/test-shader-gpu-shards.py candidate 2>&1 | tee results/gpu-shards.log
           python3 driver/libretro/tests/test-shader-gpu-batch.py 2>&1 | tee results/gpu-batch.log
           python3 driver/libretro/tests/test-vsh-worker-partition.py candidate cc 2>&1 | tee results/vsh-worker-partition.log

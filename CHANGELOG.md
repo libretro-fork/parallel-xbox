@@ -2,11 +2,14 @@
 
 ## Unreleased
 
+- Release temporary clipping-source storage after fragment generation. Each generated source previously retained one MString/GString and its buffer (up to 4,136 bytes in the ownership corpus). Use immutable normalization-function names instead of allocating formatted names for texture stages, shadow sampling and convolution. Generated GL and Vulkan shader text stays byte-identical; this fixes retained CPU allocations, not draw-time compilation or shader stutters.
+
 - Experimental GL geometry preparation shares quad and quad-strip native programs, reducing the prepared set from 22 to 16 without dropping states. A packed strip bit preserves the exact plane/vertex ordering and odd-strip suppression; last-vertex quad color selection remains constant. Clean startup improves over the 22-stage attempt but remains slower than the parent; the feature stays disabled and stutter recovery remains unqualified.
 
 - Experimental GL geometry coverage: prepare the finite native stage set before guest execution, using slots from the existing module pool. Carry winding, provoking-vertex, depth and atlas-stage controls in bounded uniform updates. Preserve the specialized path on unsupported states or failed initialization. Ordinary shader keys and source output remain unchanged; fragment/full-pipeline coverage, startup and GPU-cost qualification remain open.
 
 - Experimental GL coverage shares completed native pipeline objects across bindings with identical stage programs, avoiding repeated driver creation for different guest microcode. Existing binding nodes retain the shared owners through eviction and context teardown; no extra resource pool or payload snapshot is added. First-use and uncovered compilation remain open.
+
 
 - Repair the vertex-emitter regression fixture after removal of standalone Vulkan device creation; it still requires float-control publication for the frontend-owned device.
 
