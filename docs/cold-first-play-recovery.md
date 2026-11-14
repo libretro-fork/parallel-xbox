@@ -498,3 +498,360 @@ Reference: https://github.com/libretro/parallel-gx1/blob/master/AGENTS.md
   independently verified quotations or a hardware performance result.
 - `parallel_cores_implementation_plan.pdf`: proposed mechanisms requiring
   the audit and corrections above, not authoritative descriptions of either core.
+
+## Experimental programmable vertex readiness, 2026-11-14
+
+The `XEMU_EXPERIMENTAL_READY_VSH` build flag prepares four completed GL
+separable vertex programs before guest execution: smooth/flat shading times
+ordinary/geometry-prefixed interfaces. It is disabled in release builds.
+Selection currently covers programmable shaders with ordinary streamed vertex
+attributes only. It reuses the allocation-free instruction validator; malformed
+or unsupported input keeps the existing correct path. Fixed-function vertices,
+other attribute encodings and the non-SSO path remain uncovered.
+
+A device-generation owner holds the programs and one 2,192-byte code/control
+UBO. The existing immutable binding owns an upload's source bytes. Repeated
+bindings or byte-identical code reuse the current contents; eviction cancels
+the witness before that cache node can be reused. No second microcode payload
+snapshot is retained. `glBufferSubData` still permits driver copies, stalls or
+allocations; this is not a global zero-copy or allocation-free claim.
+
+Ordinary shader keys, source output, persistent-cache formats and savestate
+layouts are unchanged. These native generic owners bypass persistent module
+storage. Current native checks include the complete programmable numerical
+corpus and negative controls, ordinary source-text equivalence, NGB restore
+images and a DOA3 first fight. They do not establish general cold-play recovery.
+The callback ABBA probe uses an uncontrolled driver cache and does not measure
+GPU execution or displayed-frame latency. The full target above remains open.
+
+Next integrate ready complete pipeline ownership and optional exact promotion.
+Native GL pipelines are now shared by the exact three native stage-program
+handles within one context generation. A ring of existing binding nodes owns
+each pipeline; its indexed representative transfers before eviction, and the
+last binding deletes it. This adds three pointers per existing binding and an
+8 KiB index on 64-bit hosts, with no increased resource capacity or extra
+payload storage. Lookup collisions compare all three stage handles. Different
+guest microcode can reuse a completed pipeline when its selected programs are
+identical; genuinely new stage tuples still create a native object. This does
+not establish driver-lazy-compilation freedom. Fragment/geometry misses and
+utility paths can still block required draws.
+Do not promote permanent interpreter selection as a complete or performance-
+qualified solution merely because its stage links moved to startup.
+
+
+### Experimental finite geometry readiness
+
+The opt-in GL build also prepares 16 finite geometry stages before guest execution. Winding rotations, provoking-vertex selection, depth perspective
+and the atlas-stage tag travel as four packed integers. Topology, output
+primitive type and interpolation remain native stage variants. The stages
+reserve slots from the existing 51,200-slot module pool; no logical module
+capacity is added. A partial startup failure deletes all native owners and
+returns every reservation to the ordinary LRU. Normal teardown flushes shader
+bindings before native owners, and owners before the backing module pool.
+Ordinary geometry state/options, cache keys, serialized formats and emitted
+specialized source bytes remain unchanged. Finished shader objects detach after
+linking; native program owners retain their executables through the last
+binding.
+
+The geometry source builder changes its private final buffer in place to
+lower indirect input reads to constant-indexed selectors. The equal-length
+substitutions happen after all appends and before publication; no second
+whole source payload is created. Driver compilation may still allocate or
+copy internally. Runtime control packing/shadows are 16 bytes per native
+stage, allocated with renderer metadata; this is not an allocation-free
+renderer claim. A borrowed last-binding witness is cancelled before node
+reuse. Controls are uploaded only when their normalized values change.
+
+Native NVIDIA and llvmpipe correctness checks cover the full 12,960-state
+matrix and 50,872,320 scalar outputs, including signed zero, subnormal,
+degenerate, NaN and infinity inputs, with 38,880 ordinary source comparisons
+across GL/Vulkan targets and an
+independent emitted-color CPU oracle. llvmpipe also miscompiles indirect
+inputs in some ordinary reference states. The test-only reference lowers
+those reads independently with ternary selectors after checking original
+source bytes against the pinned parent. Do not count the unlowered failing
+reference or an arbitrary exception as a pass. Required bad depth, provoking,
+winding and atlas controls must still fail. These GL checks do not qualify
+Vulkan native readiness or general rendering/GPU execution performance.
+
+The initial 94-stage prototype was correct but produced a 707.13 ms DOA3
+startup callback. Retain that observed startup spike as a possible regression, not an accepted
+baseline: it came from a functional diagnostic run, not clean timing
+qualification.
+Moving atlas selection into controls reduces the finite domain to 22 stages.
+Functional checks restore byte-identical NGB images, reach 600 live DOA3 first-
+fight callbacks with exact audio cadence, and pass GL reset/restore. DOA3 still
+records roughly 468 ms startup callbacks in diagnostic runs. Startup and GPU
+execution costs remain unqualified; this is not accepted stutter recovery. Fragment misses, complete pipeline
+creation, fixed-function vertex coverage and utility paths remain separate
+open work. No permanent generic-stage selection is performance-qualified
+without GPU-cost evidence and optional complete exact-pipeline promotion.
+
+
+The 22-stage clean ABBA callback probe (diagnostics/readbacks disabled) did
+not establish a fight-window speedup: parent p99 10.815/10.181 ms, candidate
+11.383/10.152 ms. All four runs preserve 600 live callbacks, audio cadence
+and video delivery. Startup maxima regress consistently: parent 71.297/73.943
+ms versus candidate 94.801/97.302 ms. Driver cache state is uncontrolled;
+retain this rejection evidence rather than accepting the increase as normal.
+
+The next experimental reduction shares quad and quad-strip stages: their
+native layouts match, while packed control bit 4 selects the exact old emitted
+order, plane association and odd-strip suppression. The finite set becomes
+16 programs. The complete existing state/value corpus is retained, plus a
+required strip-bit mutation and same-owner uniform-switch lifetime checks.
+Quad provoking selection is always vertex 3, so it is emitted as a constant
+rather than a uniform-dependent input selector. This is a work reduction,
+not yet a qualified startup or gameplay latency improvement.
+
+
+The 16-stage follow-up at c5c88f424b passes the complete native NVIDIA and
+llvmpipe matrix, all six negative controls, and Windows/Linux ownership checks.
+The corrected strip negative control reports a mismatched emitted-vertex count
+explicitly instead of an ordinary assert; the positive corpus is unchanged.
+Clean Windows default/experimental and Linux experimental builds pass. The
+Linux private checkout required a corrected LF-only version stamp; the initial
+malformed private stamp and build failure are retained in its logs.
+NGB fresh-process restores and GL reset/restore retain the exact prior images.
+DOA3 reaches 600 first-fight callbacks with exact audio cadence and no missing
+video; the rendered image was checked visually, not claimed byte-equivalent.
+Three padded boot audio callbacks remain. Functional tests overlapped builds,
+so their roughly 475 ms maximum is retained but is not clean timing evidence.
+
+The clean c5c88f424b ABBA probe uses four fresh processes, empty private app
+caches, no build/benchmark overlap, no diagnostics and zero image readbacks or
+readback allocations. At 8x, fight p99 is 10.554/11.379 ms for f3d5d52760 and
+11.719/11.087 ms for the 16-stage candidate; maxima are 11.042/12.633 and
+12.115/12.079 ms. These tails overlap run spread; all four 600-callback fight
+windows have zero callback deadline misses. No GPU execution or displayed-frame
+latency improvement is established. Startup maxima remain consistently higher:
+parent 72.270/77.582 ms versus candidate 89.069/88.326 ms. This improves on
+the 22-stage observation but still fails recovery against the parent. Driver
+cache state remains uncontrolled, and total boot callback counts differ.
+No stutter-recovery gate or acceptance budget has been relaxed. The feature
+stays disabled; fragment misses, full native pipeline creation and Vulkan
+readiness remain open violations. Fewer shader objects alone are not recovery.
+
+
+### Experimental regular fragment source preparation
+
+The source API generates two location-matched native GL 4.1 fragment variants,
+smooth and flat, carrying regular texture/depth/clipping controls in uniforms.
+Controls are eight 32-bit words of metadata, packed only after all supported
+state checks succeed. Rejection leaves caller storage untouched. At the source-preparation checkpoint no native
+fragment owners or sampler aliases were selected by gameplay; this is not
+stutter recovery, complete pipeline readiness or an allocation-free renderer.
+
+NONE, PROJECT2D, PROJECT3D, CUBEMAP, PASSTHRU and CLIPPLANE use typed 2D, 3D
+and cube sampler parameters. Integration must assign twelve distinct units,
+query unit capacity, borrow existing texture objects without a payload clone,
+track alias invalidation/name reuse and disabled stages, and prepare both
+native fragment links before readiness publication. Existing uniform caches
+are indexed by native program, not guest binding; preserve that ownership.
+Shadows, convolution, signed G8B8 and bump/dot modes remain uncovered.
+Static all-zero final-combiner keys are rejected because their legacy output
+is unset; dynamic zero-final keys have an explicitly zero output. There is
+no prepared Vulkan fragment/PSO path in this API.
+
+#### Explicit helper-liveness semantics and compatibility
+
+The first 912-case mipmapped llvmpipe comparison failed at case 141. Raw texels,
+coordinates and LOD queries agreed, but conditional volume sampling differed
+and changed an alpha kill. Sampler unrolling, re-binding, control masking,
+projection expansion and gradients computed inside the helper did not fix it.
+Deferring ready-path kills fixed the isolated case, but the complete comparison
+then failed at case 30 on both NVIDIA and llvmpipe against legacy eager kills.
+Those runs remain failed evidence, not accepted baselines.
+
+The GLSL specification makes derivatives after nonuniform discard undefined:
+https://registry.khronos.org/OpenGL/specs/gl/GLSLangSpec.4.60.html
+The replacement must preserve helper execution in both the ordinary reference
+and the ready path; merely blessing a different output is insufficient.
+
+DEPTH_FORMAT_HELPER_LIVENESS (bit 9 in the existing depth-format word) explicitly
+versions the new semantic domain. Its GLSL accumulates window, depth, clip-plane,
+texture alpha and color-key kill conditions and discards after texture work.
+No shader image stores or atomics are emitted, so killed invocations publish no
+framebuffer/depth result. Native SPIR-V 1.5 uses a Function-local boolean and one
+final OpKill; 1.6 retains its existing OpDemoteToHelperInvocation behavior.
+Legacy bit-clear keys, source and seeds retain their previous behavior. Struct
+size is unchanged, but the bit is part of exact/hash shader and linked-program
+keys, so compiled legacy programs cannot be adopted for helper-preserving keys.
+The source-preparation checkpoint did not capture the flag from guest state
+or add it to seed metadata; the pending opt-in integration is described below. No
+release default or cache default changes. Ready controls reject bit-clear keys.
+
+The source domain has no conditional per-pixel texture dispatch other than its
+kill predicates: sampler/type/mode controls are uniform. Delayed kills can
+increase work for ultimately discarded pixels. GPU-cost and cold gameplay
+qualification are still required before renderer adoption; no throughput or
+latency improvement is claimed.
+
+#### Numerical checks
+
+The GL fixture compares 912 constructed helper-preserving ordinary/ready
+programs per device: 291,840 exact color/depth values, all four texture stages,
+zero through eight observable chained combiners, volume slices, cube faces,
+zero/negative projective q, interpolation modes, three mip levels, six
+minification modes, both magnification filters, addressing modes, LOD bias,
+and reserved-bit poisoning. The two ready sources must remain invariant.
+NaN payload differences are ignored only when both results are NaN.
+An independent half-plane/window/constant-volume oracle requires exactly eight
+live pixels and analytic color/depth on both paths. Per-device raster coverage
+may differ; comparisons use that device's own reference, not a cross-vendor
+raster-equivalence claim. Wrong depth/mode/cube/volume/clip/alpha/combiner
+controls and removal of the reference helper-liveness flag must fail. Eleven
+unsupported-state checks require atomic rejection without a source owner.
+
+Native SPIR-V contracts add 128 explicit helper-preserving 1.5/1.6 modules:
+1.5 must have exactly one kill after the final image operation; 1.6 must retain
+byte-identical demotion code. The legacy 65,024-module corpus remains intact.
+Four 512-case Vulkan numerical subsets exercise both versions against
+helper-preserving GLSL; it supplements, never replaces, the full legacy suite.
+Ordinary 73,728-source byte/lifetime checks remain required against pinned
+396d8f1f0a. Readbacks, reference compilation and comparison storage are test-only
+correctness work, not gameplay allocation or timing evidence. Public CI and
+local checks do not qualify full native pipeline readiness or cold first play.
+
+
+### Pending experimental native fragment integration
+
+The follow-up worktree reserves two slots from the existing module pool for
+native fragment programs and borrows 3D/cube texture names on units 4..11.
+It remains experimental and unqualified for cold-play recovery. Guest GL capture adds the helper-liveness
+flag only for covered states, after both programs, uniform locations and all
+typed sampler routes are ready. Uncovered exact shaders retain legacy keys
+and source instead of needlessly recompiling under different semantics. Default builds and Vulkan state capture do not enable the flag.
+Legacy seed keys retain eager semantics; they do not silently become current
+helper-preserving bindings. No seed migration is enabled yet.
+
+Retirement invalidates only aliases naming the retiring native texture, before
+the pool can delete/reuse it. Primary-unit helpers and flip resets preserve
+reserved alias bindings; their surface entry points enforce guest units 0..3. Updates preserve the previous active texture
+unit; disabled stages never borrow stale TextureBinding pointers. Shader
+finalization follows binding/pipeline flush and clears aliases before texture
+teardown. Per-native-program control shadows and binding witnesses are
+invalidated before LRU node reuse. These ownership claims still need executable
+lifetime/failure tests, native rendering, reset/restore/unload tests and cold
+first-play measurements. Draw-time native pipeline composition remains an
+explicit violation even when a covered fragment no longer compiles.
+
+
+Current integration evidence (still unqualified for recovery): the actual
+native-owner orchestration passes 29 partial-startup failures and eleven
+mutation controls on Windows and Linux, including exact slot return, shader
+object retirement, binding witness reuse, typed aliases, same-name/CPU-slot
+reuse, and primary-versus-reserved-unit independence. Native GL diagnostic NGB
+restores match the prior image exactly with 77,766 prepared-fragment binds.
+Preserving reserved units reduces alias calls from 10,016 to 12 in the matching
+restored window; this is a work reduction, not a latency claim. Initial copied
+harness scripts accidentally retained old DLL paths; those runs are invalid
+integration evidence. Corrected drivers require the expected commit log and
+positive READY_PSH native-path counters, and retain exact binary hashes.
+
+Fresh-boot DOA3 plus 600 live fight callbacks completes with 1,721,350 covered
+fragment binds and 12 alias calls. Both the earlier and latest integration images were visually
+inspected and show correct fighters, stage textures, shadows and HUD; different
+poses/camera positions do not establish pixel equivalence between fight runs. Actual OpenGL and
+Vulkan 360-callback restore/reset/restore/unload checks match the prior images;
+Vulkan reload also remains covered, while GL reload remains unsupported.
+Functional maxima of 477.75 and 492.87 ms are retained as failures/unqualified
+stutter evidence. Diagnostics, readbacks and uncontrolled driver caches do not
+qualify timings. Fourteen native pipeline objects still get created during the
+DOA3 run; startup/full-pipeline readiness, clean matched-parent/cold-warm timing,
+GPU execution costs, Linux full builds and default-build regression checks
+remain required before promotion.
+
+
+The exact-parent e1b7b12420 release ABBA probe initially appears faster by
+callback time (fight p99 6.893/7.323 ms versus 11.321/10.193 ms), but this is
+REJECTED as a speedup. A private harness observes the published instruction
+clock and DOA3 USA's actual CDevice Present/completion counters, using the
+verified device pointer at 0x1c3390 and frame fields +0x2b60/+0x2518. Over 600
+live callbacks, both builds advance 9,993,316,667 ns; the parent advances 599
+Presents/completions and the candidate only 82. A video callback per run and
+valid end images do not prove preserved game-frame progress. Core clock reads
+are acquire loads of published time; guest observations are bounded borrowed
+reads while the CPU is gated, not a RAM snapshot or image readback.
+
+The next source probe removes dynamic indexing of the mutable combiner bank
+from prepared fragments, testing GPU execution cost as the cause. Constant
+selector branches preserve every component write and arithmetic order. The
+legacy emitter still appends its identical immutable helper text in one call;
+prepared source is assembled from borrowed constant spans into its final
+existing owner, without a whole-source clone. These probes remain experimental and
+unqualified for release until the full cold-play requirements pass. Do not
+promote e1b7 to libretro or describe its callback result as recovery.
+
+
+Follow-up execution probes keep the full interpreter while adding constant-bank
+selection, packed modulation, SUM-with-known-zero products and E/F-independent
+final descriptors. The product probe passes 1,164 cases / 372,480 color/depth
+values on NVIDIA and llvmpipe, including nine deliberately broken controls.
+Actual Present throughput is 100.635 FPS (246 Presents/completions), compared
+with 119.81 FPS for a347 and 53.83 FPS for the initial e1b7 integration. These
+are unpaced, uncontrolled-driver-cache rejection probes, not recovery evidence.
+The product probe's 1,149.932 ms startup spike remains recorded. Final-descriptor
+coverage adds 144 cases without dropping the original 912 or rich/product cases.
+An initial EF negative control was inadequate; the strengthened mutation must
+falsely accept both EF-dependent input and nonzero EF fields to expose the
+missing dependency. Retain the failed test attempt, not a manufactured pass.
+
+Eighteen fully linked/validated prepared native pipeline tuples now borrow
+binding slots from the existing 51,200-entry pool. Interpolation and geometry
+prefix conventions determine the valid combinations; unsupported tuples keep
+the correct existing path. Anchors use the same exact native-tuple owner index
+and borrower rings, survive normal binding eviction, and retire after cached
+borrowers and before backing slots/native stages. Thirty-six creation/validation
+failure points return every reserved slot, and unavailable stages do likewise.
+Mocked native APIs verify 36,000 acquisitions without creation and six mandatory
+bad controls. This establishes ownership, not physical-GPU compilation latency.
+
+A fresh DOA3 diagnostic run validates all eighteen tuples before guest execution
+but still creates eleven uncovered pipelines. Opt-in creation-site stage
+diagnostics in a subsequent run identify two uncovered fragments and seven
+fixed-function vertex stages; varying game progress changes counts, so these
+are not a matched-workload reduction claim. The new first-fight image was
+visually inspected; fighters, textures, shadows and HUD are present. NGB's
+restored image remains byte-exact and both GL/Vulkan reset/restore checks match
+the prior output. Driver caches remain uncontrolled, all these runtime checks
+are functional, and GL reload remains unsupported. Default builds do not select
+this experimental architecture. Full ready coverage, Vulkan readiness, clean
+parent/cold-warm timing and GPU execution cost remain unqualified.
+
+
+The final-descriptor fast path now uses literal register operands for its three
+recognized programs; it retains input maps, sum clamps, mix arithmetic and
+zero additions. The complete updated runner passes 1,308 cases / 418,560 exact
+color/depth values on both NVIDIA and llvmpipe, plus all ten mandatory negative
+controls. The original 912 cases remain intact. Real MString/GString ownership
+and ASan/UBSan retain the 73,728-source / 614,644,992-byte legacy comparison;
+256 additional prepared builds retain only the final owner and release all
+storage, with a fifth mandatory deliberate ready-source leak rejected.
+
+Clean experimental release ABBA runs after this change advance 599 guest
+Presents/completions in every 600-live-callback window, with the same 9.993 s
+of guest time. Parent throughput is 122.699 / 124.600 guest Presents/sec versus
+119.392 / 120.390 for the candidate. Fight callback p99 is 9.614 / 9.634 ms
+versus 10.018 / 9.979 ms; no fight callbacks exceed 16.683 ms. The modest
+remaining gap is not declared recovered or an accepted regression. A separate
+first-use run's 1,105.093 ms frame-zero startup spike remains recorded; later
+uncontrolled-driver-cache runs are not substituted for genuinely cold startup.
+
+A matched, warmed native GPU execution fixture uses the same final descriptor,
+textures, 1,048,576-pixel target and source-independent driver for the a347 and
+current prepared generators. Twelve alternating batches of sixteen draws,
+preceded by four warm draws and glFinish, use GL_TIME_ELAPSED without timed
+readbacks. Prepared 0/1/4/8-stage medians fall from 126.794/133.124/148.860/175.220
+microseconds to 16.640/22.334/51.226/91.494. Four-stage volume/cube medians fall
+from 148.534/148.564 to 51.124/51.170. This is a simple execution fixture, not a
+retail distribution or cold-play claim; the exact generated shader simplifies
+heavily and remains about 12.8 microseconds. Generic shader GPU overhead remains
+an open issue even after this measured improvement.
+
+Clean Windows default/experimental/diagnostic and Linux default/experimental
+builds pass. Default GL/Vulkan lifecycle output matches the prior captures.
+The a347 public CI rerun passes unchanged thresholds after its initial compiler
+stage timing was inconclusive; this is evidence for that source checkpoint,
+not a pass for the current commit or physical-GPU cold-play qualification.
+The feature remains disabled by default and is not merged to libretro.

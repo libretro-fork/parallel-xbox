@@ -186,6 +186,11 @@ typedef struct ShaderModuleCacheEntry {
     } locs;
 } ShaderModuleCacheEntry;
 
+#ifdef XEMU_EXPERIMENTAL_READY_VSH
+/* Index only: pipeline resources remain bounded by the existing binding LRU. */
+#define GL_PIPELINE_OWNER_BUCKETS 1024
+#endif
+
 typedef struct ShaderBinding {
     LruNode node;
     bool initialized;
@@ -203,6 +208,11 @@ typedef struct ShaderBinding {
     GLuint gl_program;
     GLuint gl_pipeline;
     GLuint gl_prog_vs, gl_prog_fs, gl_prog_gs;
+#ifdef XEMU_EXPERIMENTAL_READY_VSH
+    struct ShaderBinding *pipeline_next, *pipeline_prev, *pipeline_hash_next;
+    int ready_geom_variant;
+    bool ready_psh;
+#endif
     GLenum gl_primitive_mode;
     unsigned long uses;
 
@@ -456,6 +466,42 @@ typedef struct PGRAPHGLState {
     Lru shader_cache;
     ShaderBinding *shader_cache_entries;
     ShaderBinding *shader_binding;
+#ifdef XEMU_EXPERIMENTAL_READY_VSH
+    ShaderBinding *pipeline_owners[GL_PIPELINE_OWNER_BUCKETS];
+    ShaderBinding *ready_pipelines; /* 18 slots borrowed from the binding pool. */
+    uint64_t pipeline_owner_created, pipeline_owner_reused; /* Diagnostic writes only. */
+    /* Four finite GL interface variants; not members of the persistent LRU. */
+    struct {
+        ShaderModuleCacheEntry stage[4];
+        GLuint code_buffer;
+        const ShaderBinding *uploaded_binding; /* cancelled before node reuse */
+        bool ready;
+        uint64_t covered_binds, code_uploads; /* Opt-in diagnostic writes only. */
+    } ready_vsh;
+    struct {
+        ShaderModuleCacheEntry *stages; /* Reserved in the existing module pool. */
+        GLint control_locs[GEOM_DYNAMIC_VARIANTS];
+        int controls[GEOM_DYNAMIC_VARIANTS][4];
+        bool controls_valid[GEOM_DYNAMIC_VARIANTS];
+        const ShaderBinding *uploaded_binding; /* Cancelled before node reuse. */
+        bool ready;
+        uint64_t covered_binds, control_uploads; /* Diagnostic writes only. */
+    } ready_geom;
+    struct {
+        ShaderModuleCacheEntry *stages; /* Two reserved existing module slots. */
+        GLint control_locs[2];
+        uint32_t controls[2][8];
+        bool controls_valid[2];
+        const ShaderBinding *uploaded_binding; /* Invalidated before LRU reuse. */
+        GLuint aliases[8]; /* Borrowed 3D/cube names; no texture payload owner. */
+        uint8_t aliases_valid;
+        bool aliases_bound;
+        bool ready;
+#ifdef XEMU_READY_VSH_DIAGNOSTICS
+        uint64_t covered_binds, control_uploads, alias_binds;
+#endif
+    } ready_psh;
+#endif
     /* Borrowed native cache slot; eviction/flush cancels before reuse. */
     ShaderBinding *spec_binding;
     /* Disk worker publishes immutable binaries; only render owns the LRU. */

@@ -2,11 +2,34 @@
 
 ## Unreleased
 
+- Retain the prepared-renderer work on libretro behind the disabled-by-default XEMU_EXPERIMENTAL_READY_VSH build flag. Normal builds retain the existing renderer. Experimental cold-play recovery remains unqualified, with incomplete coverage, software-GPU timeout and measured performance gaps still open. The numerically failing fixed-function prototype and uncommitted balanced-write experiment are excluded.
+
+- Shader CI runs the new complete-tuple ownership contract for every pushed revision containing that implementation. Earlier revisions keep their existing interpreter tests instead of failing because a later fixture did not exist yet. Missing tuple fixtures in applicable revisions still fail, and the tuple job is required by the final gate. Manual replay accepts a pinned base SHA and retains the same per-commit matrix, corpora and limits.
+
+- Experimental GL pipeline readiness: validate eighteen native VS/GS/FS combinations before guest execution, borrowing slots from the existing binding pool and retaining them through the existing pipeline-owner index. Partial failures return all slots. Existing uncovered states still create pipelines during gameplay; this is not complete coverage or qualified stutter recovery.
+
+- Experimental fragment execution probes use constant-index register-bank accesses and exact single-product/final-combiner paths with a full-interpreter fallback. The initial generic implementation regresses actual guest-Present throughput despite lower callback times. Product-path throughput improves in the rejection probe but remains below its matched parent; literal register operands restore the measured guest-Present count and reduce matched GPU execution cost. A modest throughput/tail gap, first-use startup spike and full cold/warm qualification remain open. Legacy shader text stays byte-identical; prepared source-owner release is checked separately.
+
+- Experimental GL fragment integration (unqualified): reserve two existing module slots for linked generic fragments, borrow typed texture aliases, and retain uniform/alias ownership through cache eviction and texture name reuse. Only the experimental GL renderer captures helper-preserving keys after both stages become ready; default builds and Vulkan capture stay unchanged. Native complete-pipeline readiness and cold gameplay qualification remain open.
+
+- Experimental GL fragment-source preparation: two interpolation variants carry regular 2D/3D/cube sampling, clipping and depth controls in bounded uniforms. Reject uncovered texture modes and formats before publishing controls. Legacy ordinary source remains unchanged; an explicit helper-liveness key flag lets the experimental reference and prepared source retain texture helper lanes through sampling. It is not enabled by guest-state capture or seed migration. The follow-up above integrates native owners/aliases experimentally; default builds do not select this generator and performance qualification remains pending.
+
 - Assemble fragment GLSL directly in its declaration buffer and transfer that owner to the caller, avoiding a separate final MString/GString and whole-prefix copy. Shader source stays byte-identical; remaining source assembly and driver allocations are unchanged.
 
 - Release temporary clipping-source storage after fragment generation. Each generated source previously retained one MString/GString and its buffer (up to 4,136 bytes in the ownership corpus). Use immutable normalization-function names instead of allocating formatted names for texture stages, shadow sampling and convolution. Generated GL and Vulkan shader text stays byte-identical; this fixes retained CPU allocations, not draw-time compilation or shader stutters.
 
 - Repair the vertex-emitter regression fixture after removal of standalone Vulkan device creation; it still requires float-control publication for the frontend-owned device.
+
+- Experimental GL geometry preparation shares quad and quad-strip native programs, reducing the prepared set from 22 to 16 without dropping states. A packed strip bit preserves the exact plane/vertex ordering and odd-strip suppression; last-vertex quad color selection remains constant. Clean startup improves over the 22-stage attempt but remains slower than the parent; the feature stays disabled and stutter recovery remains unqualified.
+
+- Experimental GL geometry coverage: prepare the finite native stage set before guest execution, using slots from the existing module pool. Carry winding, provoking-vertex, depth and atlas-stage controls in bounded uniform updates. Preserve the specialized path on unsupported states or failed initialization. Ordinary shader keys and source output remain unchanged; fragment/full-pipeline coverage, startup and GPU-cost qualification remain open.
+
+- Experimental GL coverage shares completed native pipeline objects across bindings with identical stage programs, avoiding repeated driver creation for different guest microcode. Existing binding nodes retain the shared owners through eviction and context teardown; no extra resource pool or payload snapshot is added. First-use and uncovered compilation remain open.
+
+
+- Repair the vertex-emitter regression fixture after removal of standalone Vulkan device creation; it still requires float-control publication for the frontend-owned device.
+
+- Experimental programmable vertex coverage: add uniform-controlled interpreter builders and opt-in native GL stages with bounded code upload ownership. Ordinary cache keys and formats remain unchanged. Failed or incomplete startup stages retain the existing exact path after releasing partial owners. Complete pipeline, fragment/geometry, unsupported vertex-format coverage and performance qualification remain open; this path is not enabled in release builds.
 
 - Repair index/constant-upload, reset and GL surface tests after trace removal: assert guest values, bounds, memory reads and ownership rather than diagnostic callbacks, and extract functions without trace anchors. Remove orphaned register-log wrappers, Kelvin method-name metadata, DSP trace buffers/helpers, unused debugger code and MMIO trace helpers. Keep the DSP instruction-length decoder and existing savestate padding.
 

@@ -35,6 +35,10 @@ enum PshDepthFormat {
     /* Sampling flag in the existing enum word; legacy keys/layout stay intact. */
     DEPTH_FORMAT_MASK = 3,
     DEPTH_FORMAT_UI_CLAMP = 1 << 8,
+    /* Explicit source semantics: keep lanes alive until all texture derivatives
+     * have been evaluated. Legacy keys retain eager kills. Experimental GL
+     * capture adds it only with ready native owners; old seeds stay unchanged. */
+    DEPTH_FORMAT_HELPER_LIVENESS = 1 << 9,
 };
 
 typedef struct PshState {
@@ -177,6 +181,12 @@ typedef struct GenPshGlslOptions {
 } GenPshGlslOptions;
 
 MString *pgraph_glsl_gen_psh(const PshState *state, GenPshGlslOptions opts);
+
+/* Experimental native GL 4.1 source coverage (locations=true, vulkan=false).
+ * No native owner is selected until
+ * both variants and twelve typed sampler bindings have been made ready. */
+MString *pgraph_glsl_gen_psh_ready(const PshState *state, GenPshGlslOptions opts);
+bool pgraph_glsl_psh_ready_controls(const PshState *state, uint32_t controls[8]);
 
 void pgraph_glsl_set_psh_uniform_values(PGRAPHState *pg,
                                         const PshUniformLocs locs,

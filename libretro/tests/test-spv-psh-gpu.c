@@ -816,6 +816,10 @@ int main(int argc,char **argv){
    const float colors[4][4]={{.1f,.3f,.7f,.6f},{.9f,.2f,.4f,.8f},{.3f,.6f,.1f,.7f},{.5f,.8f,.2f,.4f}};memcpy(data,colors,sizeof(colors));
    float plane[3][4]={{0,0,100,1},{4,0,200,1},{0,4,300,1}};memcpy(data[4],plane,sizeof(plane));data[7][2]=1;
   }
+#ifdef PSH_HELPER_LIVENESS
+  /* Opt-in semantic domain; the unchanged legacy corpus remains mandatory. */
+  state.depth_format|=DEPTH_FORMAT_HELPER_LIVENESS;
+#endif
   const PshState *native_state=&state;
 #ifdef COMPOSITION_DROP_T3
   /* Bounded test-only metadata mutation; prove the GPU comparison notices

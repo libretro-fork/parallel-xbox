@@ -70,6 +70,10 @@ void mstring_test_cleanup(unsigned g){for(unsigned i=0;i<256;i++)if(owners[i].p&
     prefix='#include "hw/xbox/nv2a/pgraph/glsl/psh.h"\n#include "hw/xbox/nv2a/nv2a_regs.h"\n#include "hw/xbox/nv2a/pgraph/glsl/g8b8-lod.h"\n#define NV2A_UNIMPLEMENTED(...) ((void)0)\ngchar *mstring_test_strdup_printf(const gchar *,...);\n#define g_strdup_printf mstring_test_strdup_printf\n'
     source=(root/'hw/xbox/nv2a/pgraph/glsl/psh.c').read_text(encoding='utf-8')
     body=source[source.index('struct InputInfo {'):source.index('void pgraph_glsl_set_psh_uniform_values(')]
+    if mutation=='ready_leak':
+        needle='struct PixelShader ps = { .opts=opts, .state=&canonical, .ready=true };\n    return psh_convert(&ps);'
+        assert body.count(needle)==1
+        body=body.replace(needle,'struct PixelShader ps = { .opts=opts, .state=&canonical, .ready=true };\n    (void)mstring_from_str("retained ready owner");\n    return psh_convert(&ps);')
     if mutation=='missing_release':
         assert body.count('mstring_unref(clip);')==1
         body=body.replace('mstring_unref(clip);','(void)clip;')
@@ -108,7 +112,7 @@ void mstring_test_cleanup(unsigned g){for(unsigned i=0;i<256;i++)if(owners[i].p&
     result=subprocess.run([str(exe)],env=env,capture_output=True,text=True,timeout=180)
     (directory/'result.log').write_text(result.stdout+result.stderr)
     if mutation:
-        wanted={'missing_release':'mstring_test_live(1)==1','premature_release':'source-owner use after release','norm_format_alloc':'mstring_test_norm_formats(1)==0','prefix_clone':'candidate_created+1==parent_created'}[mutation]
+        wanted={'missing_release':'mstring_test_live(1)==1','premature_release':'source-owner use after release','norm_format_alloc':'mstring_test_norm_formats(1)==0','prefix_clone':'candidate_created+1==parent_created','ready_leak':'mstring_test_live(1)==1'}[mutation]
         assert result.returncode!=0 and wanted in result.stdout+result.stderr,(mutation,result.returncode,result.stdout,result.stderr)
         print('Required fragment-owner control rejected:',mutation,flush=True)
     else:
@@ -123,7 +127,7 @@ def main():
     baseline=blob.decode('utf-8')
     with tempfile.TemporaryDirectory(prefix='psh-source-owners-') as temporary:
         directory=args.keep.resolve() if args.keep else Path(temporary);directory.mkdir(parents=True,exist_ok=True)
-        for mutation in ['', 'missing_release', 'premature_release', 'norm_format_alloc', 'prefix_clone']:
+        for mutation in ['', 'missing_release', 'premature_release', 'norm_format_alloc', 'prefix_clone', 'ready_leak']:
             target=directory/(mutation or 'positive');target.mkdir()
             run(root,args.cc,target,baseline,mutation)
 if __name__=='__main__':main()

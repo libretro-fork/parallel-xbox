@@ -14,7 +14,7 @@ with tempfile.TemporaryDirectory(prefix='direct-psh-') as tmp:
  validator=shutil.which('spirv-val')
  if not validator:raise SystemExit('UNQUALIFIED: spirv-val unavailable')
  for path in d.glob('*.spv'):subprocess.run([validator,'--target-env','vulkan1.3',str(path)],check=True)
- print('65024 direct fragment modules validated as Vulkan SPIR-V')
+ print('65024 legacy + 128 helper-preserving direct fragment modules validated as Vulkan SPIR-V')
 
 # Keep family eligibility coverage in the existing CPU contract/CI entry point.
 subprocess.run([sys.executable,str(Path(__file__).with_name("test-spv-psh-families.py")),str(r),cc],check=True)

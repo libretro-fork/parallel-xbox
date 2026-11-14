@@ -86,5 +86,19 @@ int main(void)
     printf("Historical clip owner leak: %zu aggregate bytes, %zu maximum bytes per source (real MString/GString capacities)\n",leaked,maximum);
     printf("Normalization-name format calls: parent %zu, candidate %zu\n",mstring_test_norm_formats(0),mstring_test_norm_formats(1));
     printf("MString record allocations: parent %zu, candidate %zu\n",mstring_test_created(0),mstring_test_created(1));
+    /* The new ready builder uses the same final owner. Vary live metadata
+     * without retaining a second source payload or hiding a candidate leak. */
+    for(unsigned n=0;n<256;n++){
+        PshState state={.smooth_shading=!!(n&1),.combiner_dynamic=true,
+                       .depth_format=DEPTH_FORMAT_HELPER_LIVENESS,
+                       .shader_stage_program=n%6,.dim_tex={2,2,2,2}};
+        mstring_test_group(1);
+        MString *source=pgraph_glsl_gen_psh_ready(&state,(GenPshGlslOptions){.locations=true});
+        REQUIRE(source&&mstring_get_length(source)>0);
+        REQUIRE(mstring_test_live(1)==1);
+        mstring_unref(source);
+        REQUIRE(mstring_test_live(1)==0&&mstring_test_retained_bytes(1)==0);
+    }
+    puts("PASS ready fragment source owners: 256 builds retain only their final owner and release all storage");
     return 0;
 }

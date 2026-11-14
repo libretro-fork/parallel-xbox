@@ -174,6 +174,7 @@ typedef struct Context {
     uint32_t region_array,const_array,ubo_type,ubo_ptr,ubo,entry,ext;
     uint32_t si[32],ui32[32],cf[FLOATS],u127,u313,yes,no,ui_marker,ui_rect;
     uint32_t inputs[9],frag_coord,front,color,depth;
+    uint32_t kill_ptr,kill_flag; /* Function-local helper-liveness owner. */
     uint32_t tex_inputs[4],samplers[4],image_t,sampled_t,sampler_ptr,scale_array,min_q,point_coord,in_v2;
     uint32_t image_other[3],sampled_other[3],sampler_other_ptr[3];
     uint32_t r[16],ef,z,positions[3],coord,clip;
@@ -226,7 +227,8 @@ static uint32_t unif(Context *c,unsigned which,unsigned index)
 static void discard_if(Context *c,uint32_t test)
 {
     uint32_t yes=id(c->w),next=id(c->w);op(c->w,SpvOpSelectionMerge,2,next,0u);op(c->w,SpvOpBranchConditional,3,test,yes,next);op(c->w,SpvOpLabel,1,yes);
-    if(c->opts.spirv_1_6){op(c->w,SpvOpDemoteToHelperInvocation,0);op(c->w,SpvOpBranch,1,next);}else op(c->w,SpvOpKill,0);
+    if(c->kill_flag){op(c->w,SpvOpStore,2,c->kill_flag,c->yes);op(c->w,SpvOpBranch,1,next);}
+    else if(c->opts.spirv_1_6){op(c->w,SpvOpDemoteToHelperInvocation,0);op(c->w,SpvOpBranch,1,next);}else op(c->w,SpvOpKill,0);
     op(c->w,SpvOpLabel,1,next);
 }
 static uint32_t area(Context *c,uint32_t sample,uint32_t b,uint32_t d)
@@ -607,6 +609,11 @@ static void allocate(Context *c)
     if(c->state->combiner_dynamic)dynamic_allocate(c);
     texture_allocate(c);dot_allocate(c);
     if(c->state->depth_format&DEPTH_FORMAT_UI_CLAMP)c->ui_marker=id(c->w);
+    /* SPIR-V 1.6 already keeps killed invocations as helpers via demotion.
+     * The explicit source-semantic key also supports 1.5 without an extension. */
+    if(!c->opts.spirv_1_6 && (c->state->depth_format&DEPTH_FORMAT_HELPER_LIVENESS)){
+        c->kill_ptr=id(c->w);c->kill_flag=id(c->w);
+    }
 }
 static void emit(Writer *w,const PshState *state,SpvPshOptions opts,const UniformMap *map)
 {
@@ -667,6 +674,7 @@ static void emit(Writer *w,const PshState *state,SpvPshOptions opts,const Unifor
     uint32_t fields[]={c.v4,c.region_array,c.const_array,c.f,c.f,c.v4,c.iv2,c.u,c.i,c.i,c.i,c.scale_array,c.u,c.u,c.u,c.u,c.comb_array,c.comb_array,c.comb_array,c.comb_array,c.border_array,c.border_array,c.key_array,c.key_array,c.bump_array,c.scale_array,c.scale_array};for(unsigned j=0;j<UNIFORMS;j++)if(map->members[j+1]!=map->members[j])word(w,fields[j]);
     uint32_t pointers[][3]={{c.in_f,SpvStorageClassInput,c.f},{c.in_v4,SpvStorageClassInput,c.v4},{c.in_b,SpvStorageClassInput,c.b},{c.out_f,SpvStorageClassOutput,c.f},{c.out_v4,SpvStorageClassOutput,c.v4},{c.uf,SpvStorageClassUniform,c.f},{c.uv4,SpvStorageClassUniform,c.v4},{c.uiv2,SpvStorageClassUniform,c.iv2},{c.uiv4,SpvStorageClassUniform,c.iv4},{c.ui,SpvStorageClassUniform,c.i},{c.uu,SpvStorageClassUniform,c.u},{c.ubo_ptr,SpvStorageClassUniform,c.ubo_type}};
     for(unsigned j=0;j<sizeof(pointers)/sizeof(pointers[0]);j++)op(w,SpvOpTypePointer,3,pointers[j][0],pointers[j][1],pointers[j][2]);
+    if(c.kill_ptr)op(w,SpvOpTypePointer,3,c.kill_ptr,(uint32_t)SpvStorageClassFunction,c.b);
     if(state->combiner_dynamic)dynamic_types(&c);
     texture_types(&c);dot_types(&c);
     for(unsigned j=0;j<9;j++)op(w,SpvOpVariable,3,j==4||j==8?c.in_f:c.in_v4,c.inputs[j],(uint32_t)SpvStorageClassInput);
@@ -680,6 +688,7 @@ static void emit(Writer *w,const PshState *state,SpvPshOptions opts,const Unifor
     if(state->combiner_dynamic)dynamic_helpers(&c);
     texture_helpers(&c);dot_helpers(&c);
     op(w,SpvOpFunction,4,c.void_t,c.entry,0u,c.fn);op(w,SpvOpLabel,1,id(w));
+    if(c.kill_flag)op(w,SpvOpVariable,4,c.kill_ptr,c.kill_flag,(uint32_t)SpvStorageClassFunction,c.no);
     c.coord=unary(&c,SpvOpLoad,c.v4,c.frag_coord);c.clip=unif(&c,CLIP,0);for(unsigned j=0;j<3;j++)c.positions[j]=unary(&c,SpvOpLoad,c.v4,c.inputs[j+5]);
     window_clip(&c);barycentric(&c);uint32_t color=combiners(&c);alpha_test(&c,color);op(w,SpvOpStore,2,c.color,color);
     uint32_t depth;
@@ -688,7 +697,13 @@ static void emit(Writer *w,const PshState *state,SpvPshOptions opts,const Unifor
     case DEPTH_FORMAT_D24:{uint32_t z=divf(&c,ext1(&c,GLSLstd450Floor,c.f,c.z),c.cf[F_D24_SCALE]);depth=unary(&c,SpvOpBitcast,c.f,binary(&c,SpvOpIAdd,c.u,unary(&c,SpvOpBitcast,c.u,z),c.ui32[1]));break;}
     default:depth=divf(&c,c.z,extract(&c,c.clip,1));break;
     }
-    op(w,SpvOpStore,2,c.depth,depth);op(w,SpvOpReturn,0);op(w,SpvOpFunctionEnd,0);if(w->words)w->words[3]=w->next;
+    op(w,SpvOpStore,2,c.depth,depth);
+    if(c.kill_flag){
+        uint32_t test=unary(&c,SpvOpLoad,c.b,c.kill_flag),yes=id(w),next=id(w);
+        op(w,SpvOpSelectionMerge,2,next,0u);op(w,SpvOpBranchConditional,3,test,yes,next);
+        op(w,SpvOpLabel,1,yes);op(w,SpvOpKill,0);op(w,SpvOpLabel,1,next);
+    }
+    op(w,SpvOpReturn,0);op(w,SpvOpFunctionEnd,0);if(w->words)w->words[3]=w->next;
 }
 static GlslcLayout layout(const PshState *state,const UniformMap *map)
 {

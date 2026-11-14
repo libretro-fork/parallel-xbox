@@ -19,7 +19,9 @@ def test_source(r):
  types+='\n'+'\n'.join(re.search(r'typedef struct (?:\w+ )?\{[^{}]*\} '+n+r';',h)[0] for n in ['GeomState','GenGeomGlslOptions'])
  g=(r/'hw/xbox/nv2a/pgraph/glsl/geom.c').read_text();c=(r/'hw/xbox/nv2a/pgraph/glsl/common.c').read_text()
  source=Path(__file__).with_suffix('.c').read_text().replace('/* TYPES */',types)
- source=source.replace('/* GENERATORS */',function(c,'MString *pgraph_glsl_get_vtx_header(')+'\n'+function(g,'static const char *get_vertex_order(')+'\n'+function(g,'static void append_ui_prepare(')+'\n'+function(g,'MString *pgraph_glsl_gen_geom('))
+ ui_helpers=(function(g,'static void append_ui_prepare_impl(')+'\n'+function(g,'static void append_ui_prepare(')+'\n'+function(g,'static void append_ui_prepare_dynamic(')) if 'static void append_ui_prepare_impl(' in g else function(g,'static void append_ui_prepare(')
+ helper=(function(g,'static void geom_rewrite_inputs(')+'\n'+function(g,'static MString *pgraph_glsl_gen_geom_impl(')+'\n') if 'static MString *pgraph_glsl_gen_geom_impl(' in g else ''
+ source=source.replace('/* GENERATORS */',function(c,'MString *pgraph_glsl_get_vtx_header(')+'\n'+function(g,'static const char *get_vertex_order(')+'\n'+ui_helpers+'\n'+helper+function(g,'MString *pgraph_glsl_gen_geom('))
  s=(r/'hw/xbox/nv2a/pgraph/vk/shaders.c').read_text()
  return source.replace('/* SELECTOR */',function(s,'static bool vk_module_line_options(')+'\n'+function(s,'static bool vk_module_triangle_options(')+'\n'+function(s,'static bool vk_module_quad_options('))
 

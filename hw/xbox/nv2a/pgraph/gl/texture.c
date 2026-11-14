@@ -231,8 +231,21 @@ static void apply_texture_parameters(PGRAPHGLState *r,
     }
 }
 
-/* External binds make every unit unknown. Normal texture binding establishes
- * units independently; a helper can invalidate earlier units mid-pass. */
+#ifdef XEMU_EXPERIMENTAL_READY_VSH
+static void ready_psh_alias_retire(PGRAPHGLState *r, GLuint name)
+{
+    /* Only the retired native object can be unbound/deleted by this pool put.
+     * Unrelated 2D texture turnover must not force eight typed alias rebinds. */
+    for (unsigned i = 0; i < 8; i++) {
+        if (r->ready_psh.aliases[i] == name)
+            r->ready_psh.aliases_valid &= ~(1u << i);
+    }
+}
+#endif
+
+/* Helpers touch the four guest texture units only. Reserved 3D/cube aliases
+ * on units 4..11 are independent; their native owners/retirement control their
+ * validity. Normal binding establishes primary units independently. */
 void pgraph_gl_tex_shadow_invalidate(PGRAPHGLState *r)
 {
     r->tex_shadow_valid_mask = 0;
@@ -599,6 +612,9 @@ void bind_textures(NV2AState *d, bool highres_depth)
                 }
                 GLenum logo_err = glGetError();
                 if (logo_err == GL_NO_ERROR) {
+#ifdef XEMU_EXPERIMENTAL_READY_VSH
+                    ready_psh_alias_retire(r, key_out->binding->gl_texture);
+#endif
                     glDeleteTextures(1, &key_out->binding->gl_texture);
                     key_out->binding->gl_texture = logo_tex;
                     sampled_texture_key_store(key_out->binding->recycle_key, 0);
@@ -1249,6 +1265,11 @@ static void texture_binding_destroy(gpointer data)
     assert(binding->refcnt > 0);
     binding->refcnt--;
     if (binding->refcnt == 0) {
+#ifdef XEMU_EXPERIMENTAL_READY_VSH
+        /* The pool may delete the name. Invalidate before name/CPU-slot reuse,
+         * including a driver recycling the same GLuint for a different object. */
+        ready_psh_alias_retire(g_nv2a->pgraph.gl_renderer_state, binding->gl_texture);
+#endif
         sampled_texture_put(
             &g_nv2a->pgraph.gl_renderer_state->sampled_texture_pool,
             sampled_texture_key_load(binding->recycle_key), binding->gl_texture);

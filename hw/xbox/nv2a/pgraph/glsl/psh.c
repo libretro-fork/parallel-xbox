@@ -624,6 +624,7 @@ struct PSStageInfo {
 struct PixelShader {
     GenPshGlslOptions opts;
     const PshState *state;
+    bool ready; /* Experimental generator mode, never a persistent key field. */
 
     int num_stages, flags;
     struct PSStageInfo stage[8];
@@ -1178,13 +1179,30 @@ static void psh_append_shadowmap(const struct PixelShader *ps, int i, bool compa
     }
 }
 
+/* No shader image stores or atomics are emitted. Delaying framebuffer/depth
+ * suppression preserves texture helper lanes without publishing killed pixels.
+ * The key flag is explicit so legacy compiled binaries cannot match this mode. */
+static bool psh_preserve_helpers(const struct PixelShader *ps)
+{
+    return ps->ready || (ps->state->depth_format & DEPTH_FORMAT_HELPER_LIVENESS);
+}
+static const char *psh_kill_statement(const struct PixelShader *ps)
+{
+    return psh_preserve_helpers(ps) ? "fsKill=true;" : "discard;";
+}
+
 static void psh_append_depth_range_test(const struct PixelShader *ps,
                                         MString *out)
 {
-    if (ps->state->depth_clipping) {
-        mstring_append(out, "if (zvalue < clipRange.z || clipRange.w < zvalue) {\n"
-                            "  discard;\n"
-                            "}\n");
+    if (ps->ready) {
+        mstring_append(out,
+            "if((fsControl[0].x&4u)!=0u){\n"
+            "if(zvalue<clipRange.z||clipRange.w<zvalue)fsKill=true;\n"
+            "}else{zvalue=clamp(zvalue,clipRange.z,clipRange.w); }\n");
+    } else if (ps->state->depth_clipping) {
+        mstring_append(out, psh_preserve_helpers(ps) ?
+            "if (zvalue < clipRange.z || clipRange.w < zvalue) {\n  fsKill=true;\n}\n" :
+            "if (zvalue < clipRange.z || clipRange.w < zvalue) {\n  discard;\n}\n");
     } else {
         mstring_append(out, "zvalue = clamp(zvalue, clipRange.z, clipRange.w);\n");
     }
@@ -1260,9 +1278,96 @@ static void define_colorkey_comparator(MString *preflight)
 /* Register-driven combiner: the stage programs stay in PGRAPH register form
  * (combCtl/combRgbIn/...) and one generated shader interprets them, exactly as
  * the hardware does. Emitted only for states flagged combiner_dynamic. */
+/* The ready shader must not index its mutable per-fragment register bank
+ * dynamically. Keep bank accesses constant so the GPU compiler can retain
+ * them as scalar registers instead of a local-memory array. Selection uses
+ * uniform register numbers; no arithmetic or component-write order changes.
+ * This is source assembly from immutable spans, not a second payload owner. */
+static void psh_ready_combiner_helpers(MString *out, const char *source)
+{
+    static const char declaration[] = "vec4 cregs[16];\n";
+    assert(!strncmp(source, declaration, sizeof(declaration) - 1));
+    mstring_append(out, declaration);
+    mstring_append(out, "bool cbfast(uint ri,uint ro,uint ai,uint ao,int s);\n"
+                        "bool cbfinal();\n");
+    mstring_append(out, "vec4 cbget(uint reg) { switch(reg) {\n");
+    for (unsigned i = 0; i < 16; i++)
+        mstring_append_fmt(out, "case %uu: return cregs[%u];\n", i, i);
+    mstring_append(out, "default: return vec4(0.0); } }\n");
+    for (unsigned component = 0; component < 3; component++) {
+        const char *type = component == 0 ? "vec3" : component == 1 ? "float" : "vec4";
+        const char *field = component == 0 ? "rgb" : component == 1 ? "a" : "rgba";
+        unsigned width = component == 0 ? 3 : component == 1 ? 1 : 4;
+        mstring_append_fmt(out, "void cbset%u(uint reg,%s x) { switch(reg) {\n", width, type);
+        for (unsigned i = 1; i < 16; i++)
+            mstring_append_fmt(out, "case %uu: cregs[%u].%s=x; break;\n", i, i, field);
+        mstring_append(out, "default: break; } }\n");
+    }
+    static const struct { const char *before, *after; } edits[] = {
+        {"return cregs[reg];", "return cbget(reg);"},
+        {"cregs[reg].rgb = x;", "cbset3(reg,x);"},
+        {"cregs[reg].a = x;", "cbset1(reg,x);"},
+        {"void comb_stage(int s) {\n", "void comb_stage(int s) {\n"
+         " if(cbfast(combRgbIn[s],combRgbOut[s],combAlphaIn[s],combAlphaOut[s],s))return;\n"},
+        {"void comb_final() {\n", "void comb_final() {\n if(cbfinal())return;\n"},
+    };
+    const char *cursor = source + sizeof(declaration) - 1;
+    for (unsigned i = 0; i < ARRAY_SIZE(edits); i++) {
+        const char *end = strstr(cursor, edits[i].before);
+        assert(end);
+        g_string_append_len(out->gstr, cursor, end - cursor);
+        mstring_append(out, edits[i].after);
+        cursor = end + strlen(edits[i].before);
+    }
+    mstring_append(out, cursor);
+    /* Uniform descriptors select this exact RGBA modulation shape before any
+     * bank mutation. Other shapes retain the complete interpreter. */
+    mstring_append(out,
+        "vec4 cbin4(uint b,int s){vec4 v=comb_fetch(b&15u,s);uint m=(b>>5u)&7u;\n"
+        " vec4 x=m==1u?clamp(v,0.0,1.0):(m>=6u?v:max(v,0.0));return x*cmap_s[m]+cmap_b[m];}\n"
+        "bool cbzero(uint pair){uint a=(pair>>13u)&7u;uint b=(pair>>5u)&7u;\n"
+        " return (pair&0x0f0fu)==0u&&(a==0u||a==6u)&&(b==0u||b==6u); }\n"
+        "uvec4 cbprod(uint ins,uint outs,bool rgb){uint d=outs&0xfffu;uint f=outs>>12u;\n"
+        " if(rgb&&(((d&0xf0u)!=0u&&(f&128u)!=0u)||((d&15u)!=0u&&(f&64u)!=0u)))return uvec4(0u);\n"
+        " uint a=ins>>24u;uint b=(ins>>16u)&255u;uint flag=rgb&&((f&2u)!=0u)?2u:0u;\n"
+        " if((d&0xf0fu)==0u)return uvec4((d>>4u)&15u,a,b,flag);\n"
+        " a=(ins>>8u)&255u;b=ins&255u;flag=rgb&&((f&1u)!=0u)?2u:0u;\n"
+        " if((d&0xff0u)==0u)return uvec4(d&15u,a,b,flag);\n"
+        " if((d&255u)!=0u||(f&4u)!=0u)return uvec4(0u);\n"
+        " if(cbzero(ins>>16u))return uvec4((d>>8u)&15u,a,b,flag|5u);\n"
+        " if(cbzero(ins&65535u))return uvec4((d>>8u)&15u,ins>>24u,(ins>>16u)&255u,1u|(rgb&&((f&2u)!=0u)?2u:0u));\n"
+        " return uvec4(0u); }\n"
+        "bool cbfast(uint ri,uint ro,uint ai,uint ao,int s){\n"
+        " uint dest=(ro>>4u)&15u;uint rf=ro>>12u;uint af=ao>>12u;\n"
+        " if(dest!=0u&&(ro&0xf0fu)==0u&&(ao&0xfffu)==(dest<<4u)&&\n"
+        "    (rf&0xc2u)==0u&&((rf^af)&0x38u)==0u&&(ri&0x10100000u)==0u&&(ai>>16u)==((ri>>16u)|0x1010u)){\n"
+        "  vec4 x=cbin4(ri>>24u,s)*cbin4((ri>>16u)&255u,s);uint m=(rf>>3u)&7u;\n"
+        "  x=clamp((x+omap_b[m])*omap_s[m],-1.0,1.0);cbset4(dest,x);return true; }\n"
+        " uvec4 r=cbprod(ri,ro,true);uvec4 a=cbprod(ai,ao,false);if(r.x==0u||a.x==0u)return false;\n"
+        " vec3 ra=comb_in_rgb(r.y,s);vec3 rb=comb_in_rgb(r.z,s);\n"
+        " vec3 rgb=(r.w&2u)!=0u?vec3(dot(ra,rb)):ra*rb;\n"
+        " float alpha=comb_in_a(a.y,s)*comb_in_a(a.z,s);\n"
+        " if((r.w&1u)!=0u)rgb=(r.w&4u)!=0u?vec3(0.0)+rgb:rgb+vec3(0.0);\n"
+        " if((a.w&1u)!=0u)alpha=(a.w&4u)!=0u?0.0+alpha:alpha+0.0;\n"
+        " rgb=clamp(comb_map3(rgb,(rf>>3u)&7u),-1.0,1.0);alpha=clamp(comb_map1(alpha,(af>>3u)&7u),-1.0,1.0);\n"
+        " cbset3(r.x,rgb);cbset1(a.x,alpha);return true;}\n"
+        /* These final descriptors do not read E/F. Keep the original input
+         * mappings, sum clamp, mix order and zero additions exactly. */
+        "bool cbfinal(){if((combFinal1&~128u)!=0x1c00u)return false;\n"
+        " if(combFinal0!=0x0000000cu&&combFinal0!=0x130c0300u&&combFinal0!=0x130e0300u)return false;\n"
+        " if(combFinal0==0x0000000cu){\n"
+        "  fragColor.rgb=comb_in_rgb(12u,8)+mix(comb_in_rgb(0u,8),comb_in_rgb(0u,8),comb_in_rgb(0u,8));\n"
+        " }else{vec3 b;\n"
+        "  if(combFinal0==0x130c0300u)b=comb_in_rgb(12u,8);\n"
+        "  else{vec3 sum=cregs[5].rgb+cregs[12].rgb;\n"
+        "   if((combFinal1&128u)!=0u)sum=clamp(sum,0.0,1.0);cregs[14]=vec4(sum,0.0);b=comb_in_rgb(14u,8); }\n"
+        "  fragColor.rgb=comb_in_rgb(0u,8)+mix(comb_in_rgb(3u,8),b,comb_in_rgb(0x13u,8));\n"
+        " }fragColor.a=comb_in_a(0x1cu,8);return true;}\n");
+}
+
 static void emit_dynamic_combiner(struct PixelShader *ps, MString *preflight)
 {
-    mstring_append(preflight,
+    static const char helpers[] =
         "vec4 cregs[16];\n"
         "vec4 comb_fetch(uint reg, int stage) {\n"
         "    if (reg == 1u) {\n"
@@ -1377,7 +1482,9 @@ static void emit_dynamic_combiner(struct PixelShader *ps, MString *preflight)
         "    vec3 fd = comb_in_rgb(combFinal0 & 0xFFu, 8);\n"
         "    fragColor.rgb = fd + mix(fc, fb, fa);\n"
         "    fragColor.a = comb_in_a((combFinal1 >> 8) & 0xFFu, 8);\n"
-        "}\n");
+        "}\n";
+    if (ps->ready) psh_ready_combiner_helpers(preflight, helpers);
+    else mstring_append(preflight, helpers);
 
     mstring_append(ps->code, "// Dynamic combiner\n");
     for (int i = 0; i < 16; i++) {
@@ -1390,7 +1497,7 @@ static void emit_dynamic_combiner(struct PixelShader *ps, MString *preflight)
         case 9: init = "t1"; break;
         case 10: init = "t2"; break;
         case 11: init = "t3"; break;
-        case 12: init = ps->tex_modes[0] != PS_TEXTUREMODES_NONE ?
+        case 12: init = ps->ready || ps->tex_modes[0] != PS_TEXTUREMODES_NONE ?
                         "vec4(0.0, 0.0, 0.0, t0.a)" : "vec4(0.0, 0.0, 0.0, 1.0)";
             break;
         default: init = "vec4(0.0)"; break;
@@ -1761,6 +1868,8 @@ static void psh_append_dotmap(MString *preflight, unsigned mapping,
     }
 }
 
+#include "hw/xbox/nv2a/pgraph/glsl/psh-ready.inc"
+
 static MString* psh_convert(struct PixelShader *ps)
 {
     MString *preflight = mstring_new();
@@ -1806,6 +1915,9 @@ static MString* psh_convert(struct PixelShader *ps)
         mstring_append(preflight, "};\n");
     }
 
+    if (ps->ready) mstring_append(preflight, "uniform uvec4 fsControl[2];\n");
+    if (psh_preserve_helpers(ps)) mstring_append(preflight, "bool fsKill;\n");
+
     const char *dotmap_funcs[] = {
         "dotmap_zero_to_one",
         "dotmap_minus1_to_1_d3d",
@@ -1841,6 +1953,9 @@ static MString* psh_convert(struct PixelShader *ps)
         "\n");
 
     MString *clip = mstring_new();
+    if (ps->ready) {
+        psh_ready_window_clip(clip);
+    } else {
     mstring_append_fmt(clip, "/*  Window-clip (%slusive) */\n",
                        ps->state->window_clip_exclusive ? "Exc" : "Inc");
     if (!ps->state->window_clip_exclusive) {
@@ -1853,7 +1968,7 @@ static MString* psh_convert(struct PixelShader *ps)
                          "      greaterThanEqual(coord, vec2(clipRegion[i].zw))));\n"
                          "  if (!outside) {\n");
     if (ps->state->window_clip_exclusive) {
-        mstring_append(clip, "    discard;\n");
+        mstring_append(clip, psh_preserve_helpers(ps) ? "    fsKill=true;\n" : "    discard;\n");
     } else {
         mstring_append(clip, "    clipContained = true;\n"
                              "    break;\n");
@@ -1861,9 +1976,11 @@ static MString* psh_convert(struct PixelShader *ps)
     mstring_append(clip, "  }\n"
                          "}\n");
     if (!ps->state->window_clip_exclusive) {
-        mstring_append(clip, "if (!clipContained) {\n"
-                             "  discard;\n"
-                             "}\n");
+        mstring_append(clip, psh_preserve_helpers(ps) ?
+            "if (!clipContained) {\n  fsKill=true;\n}\n" :
+            "if (!clipContained) {\n  discard;\n}\n");
+    }
+
     }
 
     /* Barycentric depth: the perspective mode divides the weights by w
@@ -1871,14 +1988,16 @@ static MString* psh_convert(struct PixelShader *ps)
     mstring_append(
         clip,
         "vec2 unscaled_xy = gl_FragCoord.xy / surfaceScale;\n");
-    bool ui_clamp = ps->state->depth_format & DEPTH_FORMAT_UI_CLAMP;
+    bool ui_clamp = ps->ready || (ps->state->depth_format & DEPTH_FORMAT_UI_CLAMP);
     if (ui_clamp) {
         /* A right-triangle half of an axis-aligned rectangle has its full
          * sampling bounds prepared once by the existing geometry stage.
          * Its negative-zero slope marker selects constant finite depth and
          * reuses the otherwise unneeded plane positions for UV bounds. */
+        mstring_append(clip, ps->ready ?
+            "bool uiRect=((fsControl[0].x>>8u)&7u)!=0u && floatBitsToUint(triMZ)==0x80000000u;\n" :
+            "bool uiRect = floatBitsToUint(triMZ) == 0x80000000u;\n");
         mstring_append(clip,
-            "bool uiRect = floatBitsToUint(triMZ) == 0x80000000u;\n"
             "precise float uiBc1=0.0,uiBc2=0.0;\n"
             "if(!uiRect){\n"
         );
@@ -1911,10 +2030,12 @@ static MString* psh_convert(struct PixelShader *ps)
         "    bc2 = area(sample_xy, pos0_xy, pos1_xy);\n"
         "  }\n"
         "}\n");
-    if (ps->state->z_perspective) {
+    if (ps->ready || ps->state->z_perspective) {
+        if (ps->ready) mstring_append(clip,"if((fsControl[0].x&8u)!=0u){\n");
         mstring_append(clip, "bc0 /= vtxPos0.w;\n"
                              "bc1 /= vtxPos1.w;\n"
                              "bc2 /= vtxPos2.w;\n");
+        if (ps->ready) mstring_append(clip,"}\n");
     }
     mstring_append(
         clip,
@@ -1932,7 +2053,9 @@ static MString* psh_convert(struct PixelShader *ps)
             "precise float bc1=uiBc1,bc2=uiBc2;\n");
     }
 
-    if (ps->state->z_perspective) {
+    if (ps->ready) {
+        psh_ready_depth_value(clip);
+    } else if (ps->state->z_perspective) {
         mstring_append(
             clip,
             "precise float zvalue = vtxPos0.w + (bc1*(vtxPos1.w - vtxPos0.w) + bc2*(vtxPos2.w - vtxPos0.w));\n"
@@ -1981,13 +2104,20 @@ static MString* psh_convert(struct PixelShader *ps)
     mstring_append(vars, "vec4 pT0 = vtxT0;\n");
     mstring_append(vars, "vec4 pT1 = vtxT1;\n");
     mstring_append(vars, "vec4 pT2 = vtxT2;\n");
-    if (ps->state->point_sprite) {
+    if (ps->ready) {
+        mstring_append(vars,"vec4 pT3=(fsControl[0].x&16u)!=0u?vec4(gl_PointCoord,1.0,1.0):vtxT3;\n");
+    } else if (ps->state->point_sprite) {
         assert(!ps->state->rect_tex[3]);
         mstring_append(vars, "vec4 pT3 = vec4(gl_PointCoord, 1.0, 1.0);\n");
     } else {
         mstring_append(vars, "vec4 pT3 = vtxT3;\n");
     }
-    if (ui_clamp) {
+    if (ps->ready) {
+        for (unsigned stage=0;stage<4;stage++)
+            mstring_append_fmt(vars,
+                "if(uiRect&&((fsControl[0].x>>8u)&7u)==%uu)pT%u.xy=clamp(pT%u.xy,vtxPos1.xy,vtxPos2.xy);\n",
+                stage+1,stage,stage);
+    } else if (ui_clamp) {
         unsigned stage = pgraph_glsl_ui_clamp_stage(ps->state) - 1;
         mstring_append_fmt(vars,
             "if(uiRect) pT%u.xy=clamp(pT%u.xy,vtxPos1.xy,vtxPos2.xy);\n",
@@ -2009,7 +2139,9 @@ static MString* psh_convert(struct PixelShader *ps)
 
     bool color_key_comparator_defined = false;
 
-    for (int i = 0; i < 4; i++) {
+    if (ps->ready) {
+        psh_ready_textures(ps,preflight,vars);
+    } else for (int i = 0; i < 4; i++) {
 
         const char *sampler_type = get_sampler_type(ps, ps->tex_modes[i], i);
 
@@ -2108,9 +2240,10 @@ static MString* psh_convert(struct PixelShader *ps)
             mstring_append_fmt(vars, "vec4 t%d = vec4(0.0); /* PS_TEXTUREMODES_CLIPPLANE */\n",
                                i);
             for (j = 0; j < 4; j++) {
-                mstring_append_fmt(vars, "  if(pT%d.%c %s 0.0) { discard; };\n",
+                mstring_append_fmt(vars, "  if(pT%d.%c %s 0.0) { %s };\n",
                                    i, "xyzw"[j],
-                                   ps->state->compare_mode[i][j] ? ">=" : "<");
+                                   ps->state->compare_mode[i][j] ? ">=" : "<",
+                                   psh_kill_statement(ps));
             }
             break;
         }
@@ -2324,10 +2457,10 @@ static MString* psh_convert(struct PixelShader *ps)
             if (ps->state->alpha_dynamic) {
                 mstring_append_fmt(vars,
                     "if ((alphaKillMask & %du) != 0u && t%d.a == 0.0)"
-                    " { discard; };\n", 1 << i, i);
+                    " { %s };\n", 1 << i, i, psh_kill_statement(ps));
             } else if (ps->state->alphakill[i]) {
-                mstring_append_fmt(vars, "if (t%d.a == 0.0) { discard; };\n",
-                                   i);
+                mstring_append_fmt(vars, "if (t%d.a == 0.0) { %s };\n",
+                                   i, psh_kill_statement(ps));
             }
 
             enum PS_COLORKEYMODE color_key_mode = ps->state->colorkey_mode[i];
@@ -2346,7 +2479,7 @@ static MString* psh_convert(struct PixelShader *ps)
 
                 switch (color_key_mode) {
                 case COLOR_KEY_DISCARD:
-                    mstring_append(vars, "  discard;\n");
+                    mstring_append(vars, psh_preserve_helpers(ps) ? "  fsKill=true;\n" : "  discard;\n");
                     break;
 
                 case COLOR_KEY_KILL_ALPHA:
@@ -2477,7 +2610,13 @@ static MString* psh_convert(struct PixelShader *ps)
      * due to rounding.)
      */
 
-    switch (ps->state->depth_format & DEPTH_FORMAT_MASK) {
+    if (ps->ready) {
+        mstring_append(ps->code,
+            "uint fsDepth=fsControl[0].x&3u;\n"
+            "if(fsDepth==1u)gl_FragDepth=floor(zvalue)/65535.0;\n"
+            "else if(fsDepth==0u)gl_FragDepth=uintBitsToFloat(floatBitsToUint(floor(zvalue)/16777216.0)+1u);\n"
+            "else gl_FragDepth=zvalue/clipRange.y;\n");
+    } else switch (ps->state->depth_format & DEPTH_FORMAT_MASK) {
     case DEPTH_FORMAT_D16:
         // 16-bit unsigned int
         mstring_append(
@@ -2501,9 +2640,11 @@ static MString* psh_convert(struct PixelShader *ps)
      * GString storage instead of cloning the whole prefix into another owner. */
     MString *final = preflight;
     mstring_append(final, "void main() {\n");
+    if (psh_preserve_helpers(ps)) mstring_append(final,"fsKill=false;\n");
     mstring_append(final, mstring_get_str(clip));
     mstring_append(final, mstring_get_str(vars));
     mstring_append(final, mstring_get_str(ps->code));
+    if (psh_preserve_helpers(ps)) mstring_append(final,"if(fsKill)discard;\n");
     mstring_append(final, "}\n");
 
     mstring_unref(clip);
@@ -2596,6 +2737,17 @@ MString *pgraph_glsl_gen_psh(const PshState *state, GenPshGlslOptions opts)
         ps.final_input.inv_r0 = flags & PS_FINALCOMBINERSETTING_COMPLEMENT_R0;
     }
 
+    return psh_convert(&ps);
+}
+
+MString *pgraph_glsl_gen_psh_ready(const PshState *state, GenPshGlslOptions opts)
+{
+    uint32_t controls[8];
+    if (opts.vulkan || !opts.locations ||
+        !pgraph_glsl_psh_ready_controls(state,controls)) return NULL;
+    PshState canonical = { .smooth_shading=state->smooth_shading,
+                           .combiner_dynamic=true, .alpha_dynamic=true };
+    struct PixelShader ps = { .opts=opts, .state=&canonical, .ready=true };
     return psh_convert(&ps);
 }
 

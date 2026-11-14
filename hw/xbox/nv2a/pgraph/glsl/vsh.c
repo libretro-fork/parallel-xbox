@@ -4,7 +4,7 @@
  * Copyright (c) 2015 espes
  * Copyright (c) 2015 Jannik Vogel
  * Copyright (c) 2020-2025 Matt Borgerson
- * Copyright (c) 2026 Réda Chérif-Touil
+ * Copyright (c) 2026 RÃ©da ChÃ©rif-Touil
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -27,6 +27,7 @@
 #include "vsh.h"
 #include "vsh-ff.h"
 #include "vsh-prog.h"
+#include "vsh-controls.inc"
 
 DEF_UNIFORM_INFO_ARR(VshUniform, VSH_UNIFORM_DECL_X)
 
@@ -316,8 +317,12 @@ void pgraph_glsl_vsh_dynamic_ready(const VshState *state)
     }
 }
 
-MString *pgraph_glsl_gen_vsh(const VshState *state, GenVshGlslOptions opts)
+static MString *pgraph_glsl_gen_vsh_impl(const VshState *state,
+                                      GenVshGlslOptions opts, bool interpreter,
+                                      bool dynamic_controls)
 {
+    assert(!dynamic_controls || interpreter);
+    assert(!interpreter || !state->is_fixed_function);
     MString *uniforms = mstring_new();
     const char *u = opts.vulkan ? "" : "uniform ";
     for (int i = 0; i < ARRAY_SIZE(VshUniformInfo); i++) {
@@ -334,6 +339,15 @@ MString *pgraph_glsl_gen_vsh(const VshState *state, GenVshGlslOptions opts)
         } else {
             mstring_append_fmt(uniforms, "%s%s %s[%zd];\n", u, type_str,
                                info->name, info->count);
+        }
+    }
+
+    if (interpreter && opts.vulkan) {
+        /* The Vulkan caller's final uniform owner includes this trailing code
+         * array. It is deliberately not part of the ordinary uniform ABI. */
+        mstring_append(uniforms, "ivec4 vpCode[136];\n");
+        if (dynamic_controls) {
+            mstring_append(uniforms, "uint vpFlags;\n");
         }
     }
 
@@ -460,20 +474,45 @@ MString *pgraph_glsl_gen_vsh(const VshState *state, GenVshGlslOptions opts)
     if (state->is_fixed_function) {
         pgraph_glsl_gen_vsh_ff(state, header, body);
     } else {
-        pgraph_glsl_gen_vsh_prog(
-            VSH_VERSION_XVS, (uint32_t *)state->programmable.program_data,
-            state->programmable.program_length, header, body);
-        if (!state->point_params_enable) {
+        if (interpreter) {
+            if (!opts.vulkan) {
+                /* Separate storage preserves the GL 4.1 default-uniform
+                 * budget. The native owner assigns its binding before use. */
+                if (dynamic_controls) {
+                    mstring_append(header,
+                        "layout(std140) uniform XvsCode { ivec4 vpCode[136]; uint vpFlags; };\n");
+                } else {
+                    mstring_append(header,
+                        "layout(std140) uniform XvsCode { ivec4 vpCode[136]; };\n");
+                }
+            }
+            pgraph_glsl_gen_vsh_prog_interpreter(header, body);
+        } else {
+            pgraph_glsl_gen_vsh_prog(
+                VSH_VERSION_XVS, (uint32_t *)state->programmable.program_data,
+                state->programmable.program_length, header, body);
+        }
+        if (dynamic_controls) {
+            mstring_append(body, vsh_interpreter_point_controls);
+        } else if (!state->point_params_enable) {
             mstring_append(
                 body,
                 "  oPts.x = (pointSizeReg <= 0.0 ? 1.0 : pointSizeReg) * pointScale;\n");
+        } else if (interpreter) {
+            /* Keep the literal expression for an unwritten point output.
+             * GL drivers may fold it differently from a dynamic multiply;
+             * this is the same expression the specialized generator exposes. */
+            mstring_append(body,
+                "  oPts.x = irPointWritten ? oPts.x * pointScale : 0.0 * pointScale;\n");
         } else {
             /* oPts is in Xbox pixels, just like the fixed-function result. */
             mstring_append(body, "  oPts.x *= pointScale;\n");
         }
     }
 
-    if (state->fog_dynamic) {
+    if (dynamic_controls) {
+        mstring_append(body, vsh_interpreter_fog_controls);
+    } else if (state->fog_dynamic) {
         if (!state->is_fixed_function) {
             mstring_append(body, "  float fogDistance = oFog.x;\n");
         }
@@ -602,7 +641,9 @@ MString *pgraph_glsl_gen_vsh(const VshState *state, GenVshGlslOptions opts)
                    "  gl_PointSize = oPts.x;\n"
     );
 
-    if (state->is_fixed_function && state->fixed_function.csv0c_dynamic) {
+    if (dynamic_controls) {
+        mstring_append(body, vsh_interpreter_specular_controls);
+    } else if (state->is_fixed_function && state->fixed_function.csv0c_dynamic) {
         mstring_append(body,
             "  if ((csv0cCtl & 4096u) != 0u) {\n"
             "    vtxD1 = clamp(NaNToOne(oD1), 0.0, 1.0);\n"
@@ -676,7 +717,6 @@ MString *pgraph_glsl_gen_vsh(const VshState *state, GenVshGlslOptions opts)
         mstring_append(
             output, mstring_get_str(uniforms));
     }
-
     mstring_unref(uniforms);
 
     mstring_append(output, mstring_get_str(header));
@@ -686,6 +726,23 @@ MString *pgraph_glsl_gen_vsh(const VshState *state, GenVshGlslOptions opts)
     mstring_unref(body);
 
     return output;
+}
+
+MString *pgraph_glsl_gen_vsh(const VshState *state, GenVshGlslOptions opts)
+{
+    return pgraph_glsl_gen_vsh_impl(state, opts, false, false);
+}
+
+MString *pgraph_glsl_gen_vsh_interpreter(const VshState *state,
+                                      GenVshGlslOptions opts)
+{
+    return pgraph_glsl_gen_vsh_impl(state, opts, true, false);
+}
+
+MString *pgraph_glsl_gen_vsh_interpreter_dynamic(const VshState *state,
+                                              GenVshGlslOptions opts)
+{
+    return pgraph_glsl_gen_vsh_impl(state, opts, true, true);
 }
 
 void pgraph_glsl_set_vsh_uniform_values(PGRAPHState *pg, const VshState *state,
