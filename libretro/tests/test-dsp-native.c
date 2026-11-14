@@ -6738,6 +6738,18 @@ static void check_parallel_coverage(void)
 
 int main(int argc, char **argv)
 {
+    unsigned suite = 4; /* Default: retain the complete, unpartitioned oracle. */
+    if (argc == 3 && !strcmp(argv[1], "--suite")) {
+        char *end;
+        unsigned long selected = strtoul(argv[2], &end, 10);
+        if (!*argv[2] || *end || selected >= 4) {
+            fputs("native DSP: --suite requires 0, 1, 2 or 3\n", stderr);
+            return 2;
+        }
+        suite = (unsigned)selected;
+        argc = 1;
+        fprintf(stderr, "native DSP: starting full-oracle suite %u/4\n", suite);
+    }
     if (argc == 2 && !strcmp(argv[1], "--parallel-coverage")) {
         check_parallel_coverage();
         puts("native DSP: all 16777216 encodings audited; 15547392 parallel encodings eligible");
@@ -6961,6 +6973,8 @@ int main(int argc, char **argv)
         }
         goto done;
     }
+    /* Full-oracle suite 0: no cases are removed from the default run. */
+    if (suite == 4 || suite == 0) {
     check_macr_rounding(a, b);
     check_rotate_carry(a, b);
     check_max_transfer(a, b);
@@ -6988,6 +7002,9 @@ int main(int argc, char **argv)
     }
     check_parallel_coverage();
     check_class_ii_decode(a);
+    }
+    /* Full-oracle suite 1: no cases are removed from the default run. */
+    if (suite == 4 || suite == 1) {
     for (unsigned mode = 0; mode < 4; mode++) { check_vsl_constant_ram(a,b,mode); check_constant_bit_ram(a,b,mode); check_constant_class_moves(a,b,mode); check_constant_single_ram(a,b,mode); check_constant_pair_ram(a,b,mode); check_long_load_flags(a,b,mode); check_long_load_flag_oracle(a,b,mode); check_long_move_limiter(a, b, mode); check_short_parallel_ram(a, b, mode); check_short_bit_ram(a, b, mode); check_budget_overflow(a, b, mode); check_store_halt_loops(a, b, mode); check_y_store_retirement(a, b, mode); check_native_pm0(a, b, mode); check_native_pm0_oracle(a, b, mode); check_native_pm0_repeat(a, b, mode); check_native_pm0_peripheral(a, b, mode); }
     for (unsigned mode = 0; mode < 4; mode++) { check_native_pm1(a, b, mode); check_native_pm1_oracle(a, b, mode); check_native_pm1_repeat(a, b, mode); check_native_pm1_peripheral(a, b, mode); }
     for (unsigned mode = 0; mode < 4; mode++) check_native_rep_loop_setup(a, b, mode);
@@ -7003,6 +7020,9 @@ int main(int argc, char **argv)
     for (unsigned mode = 0; mode < 4; mode++) { check_native_rti(a, b, mode); check_native_rti_loops(a, b, mode); check_native_rti_cache(a, b, mode); }
     check_status_restore_chains(a, b);
     check_logical_immediates(a, b);
+    }
+    /* Full-oracle suite 2: no cases are removed from the default run. */
+    if (suite == 4 || suite == 2) {
     for (unsigned mode = 0; mode < 4; mode++) check_qq_program_moves(a, b, mode);
     for (unsigned mode = 0; mode < 4; mode++) check_qq_register_moves(a, b, mode);
     for (unsigned mode = 0; mode < 4; mode++) check_control_register_bitbranches(a, b, mode);
@@ -7038,6 +7058,9 @@ int main(int argc, char **argv)
     for (unsigned mode = 0; mode < 4; mode++) check_logical_shift_immediates(a, b, mode);
     for (unsigned mode = 0; mode < 4; mode++) check_immediate_logic(a, b, mode);
     check_loop_address_reload(a, b);
+    }
+    /* Full-oracle suite 3: no cases are removed from the default run. */
+    if (suite == 4 || suite == 3) {
     for (unsigned sr = 0; sr < 256; sr++) {
         for (unsigned cc = 0; cc < 16; cc++) {
             check(a, b, 0x0E0030 | (cc << 12), 0x30, 0x20000 | sr, 0, false);
@@ -7180,7 +7203,8 @@ int main(int argc, char **argv)
     check_parallel_discard_and_self_moves(a, b);
     check_register_bits(a, b);
     check_call_chains(a, b);
-    check_loop_cache_identity(a, b);
+    check_loop_cache_identity(a, b);    }
+
 done:
     assert(dspjit_test_mode_count(jit) == 8);
     assert(dspjit_test_committed_bytes(jit) >= initially_committed);

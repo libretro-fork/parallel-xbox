@@ -1,0 +1,205 @@
+name: DSP regression tests
+
+on:
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  dsp:
+    name: DSP ${{ matrix.arch }} / ${{ matrix.suite }}
+    runs-on: ubuntu-24.04${{ matrix.arch == 'aarch64' && '-arm' || '' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [x86_64, aarch64]
+        suite: [native-0, native-1, native-2, native-3, programs, machines, control]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install DSP test build dependencies
+        run: sudo apt-get -qy update && sudo apt-get -qy install build-essential pkg-config libepoxy-dev
+      - name: Build the full native instruction oracle
+        if: startsWith(matrix.suite, 'native-')
+        timeout-minutes: 10
+        run: make libretro/tests/dspnative
+      - name: Run the native instruction suite
+        if: startsWith(matrix.suite, 'native-')
+        timeout-minutes: 10
+        env:
+          SUITE: ${{ matrix.suite }}
+        run: |
+          set -euo pipefail
+          mkdir -p results
+          ./libretro/tests/dspnative --suite "${SUITE#native-}" 2>&1 | tee results/native.log
+      - name: Run dspnativeprograms
+        if: matrix.suite == 'programs'
+        timeout-minutes: 10
+        run: |
+          set -euo pipefail
+          mkdir -p results
+          make dspnativeprograms 2>&1 | tee results/dspnativeprograms.log
+      - name: Run dspdecode
+        if: matrix.suite == 'machines'
+        timeout-minutes: 10
+        run: |
+          set -euo pipefail
+          mkdir -p results
+          make dspdecode 2>&1 | tee results/dspdecode.log
+      - name: Run dspdma
+        if: matrix.suite == 'machines'
+        timeout-minutes: 10
+        run: |
+          set -euo pipefail
+          mkdir -p results
+          make dspdma 2>&1 | tee results/dspdma.log
+      - name: Run dspbootstrap
+        if: matrix.suite == 'machines'
+        timeout-minutes: 10
+        run: |
+          set -euo pipefail
+          mkdir -p results
+          make dspbootstrap 2>&1 | tee results/dspbootstrap.log
+      - name: Run dspdmaspans
+        if: matrix.suite == 'machines'
+        timeout-minutes: 10
+        run: |
+          set -euo pipefail
+          mkdir -p results
+          make dspdmaspans 2>&1 | tee results/dspdmaspans.log
+      - name: Run dspinvalidate
+        if: matrix.suite == 'machines'
+        timeout-minutes: 10
+        run: |
+          set -euo pipefail
+          mkdir -p results
+          make dspinvalidate 2>&1 | tee results/dspinvalidate.log
+      - name: Run dspcoverage
+        if: matrix.suite == 'machines'
+        timeout-minutes: 10
+        run: |
+          set -euo pipefail
+          mkdir -p results
+          make dspcoverage 2>&1 | tee results/dspcoverage.log
+      - name: Run dspflush
+        if: matrix.suite == 'machines'
+        timeout-minutes: 10
+        run: |
+          set -euo pipefail
+          mkdir -p results
+          make dspflush 2>&1 | tee results/dspflush.log
+      - name: Run dspinit
+        if: matrix.suite == 'machines'
+        timeout-minutes: 10
+        run: |
+          set -euo pipefail
+          mkdir -p results
+          make dspinit 2>&1 | tee results/dspinit.log
+      - name: Run dspymemory
+        if: matrix.suite == 'machines'
+        timeout-minutes: 10
+        run: |
+          set -euo pipefail
+          mkdir -p results
+          make dspymemory 2>&1 | tee results/dspymemory.log
+      - name: Run dspmax
+        if: matrix.suite == 'control'
+        timeout-minutes: 10
+        run: |
+          set -euo pipefail
+          mkdir -p results
+          make dspmax 2>&1 | tee results/dspmax.log
+      - name: Run dspjumps
+        if: matrix.suite == 'control'
+        timeout-minutes: 10
+        run: |
+          set -euo pipefail
+          mkdir -p results
+          make dspjumps 2>&1 | tee results/dspjumps.log
+      - name: Run dsptcc
+        if: matrix.suite == 'control'
+        timeout-minutes: 10
+        run: |
+          set -euo pipefail
+          mkdir -p results
+          make dsptcc 2>&1 | tee results/dsptcc.log
+      - name: Run dsplogical
+        if: matrix.suite == 'control'
+        timeout-minutes: 10
+        run: |
+          set -euo pipefail
+          mkdir -p results
+          make dsplogical 2>&1 | tee results/dsplogical.log
+      - name: Run dspstatus
+        if: matrix.suite == 'control'
+        timeout-minutes: 10
+        run: |
+          set -euo pipefail
+          mkdir -p results
+          make dspstatus 2>&1 | tee results/dspstatus.log
+      - name: Run dspbudget
+        if: matrix.suite == 'control'
+        timeout-minutes: 10
+        run: |
+          set -euo pipefail
+          mkdir -p results
+          make dspbudget 2>&1 | tee results/dspbudget.log
+      - name: Run dsprelative
+        if: matrix.suite == 'control'
+        timeout-minutes: 10
+        run: |
+          set -euo pipefail
+          mkdir -p results
+          make dsprelative 2>&1 | tee results/dsprelative.log
+      - name: Run dsploops
+        if: matrix.suite == 'control'
+        timeout-minutes: 10
+        run: |
+          set -euo pipefail
+          mkdir -p results
+          make dsploops 2>&1 | tee results/dsploops.log
+      - name: Run dspprogram
+        if: matrix.suite == 'control'
+        timeout-minutes: 10
+        run: |
+          set -euo pipefail
+          mkdir -p results
+          make dspprogram 2>&1 | tee results/dspprogram.log
+      - name: Run dspregisterloops
+        if: matrix.suite == 'control'
+        timeout-minutes: 10
+        run: |
+          set -euo pipefail
+          mkdir -p results
+          make dspregisterloops 2>&1 | tee results/dspregisterloops.log
+      - name: Run dspcompare
+        if: matrix.suite == 'control'
+        timeout-minutes: 10
+        run: |
+          set -euo pipefail
+          mkdir -p results
+          make dspcompare 2>&1 | tee results/dspcompare.log
+      - name: Run dspstartup
+        if: matrix.suite == 'control'
+        timeout-minutes: 10
+        run: |
+          set -euo pipefail
+          mkdir -p results
+          make dspstartup 2>&1 | tee results/dspstartup.log
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: dsp-${{ matrix.arch }}-${{ matrix.suite }}
+          path: results/
+
+  dsp-gate:
+    name: DSP regression gate
+    if: always()
+    needs: dsp
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Require every native architecture and suite
+        env:
+          RESULT: ${{ needs.dsp.result }}
+        run: test "$RESULT" = success

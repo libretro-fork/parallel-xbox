@@ -19,6 +19,10 @@ on:
 # platforms input (workflow_dispatch) lists them. Pushes and "all" build
 # everything.
 jobs:
+  dsp-regression:
+    name: Native DSP regressions
+    uses: ./.github/workflows/dsp-tests.yml
+
   dsp-guest-ram:
     name: DSP guest RAM ordering regression
     runs-on: ubuntu-24.04
@@ -175,9 +179,6 @@ jobs:
         run: python3 libretro/tests/test-quiet-store-prefix.py . cc
       - name: Install native DSP test build dependency
         run: sudo apt-get update -qq && sudo apt-get install -y libepoxy-dev
-      - name: Native DSP instructions must match the interpreter without fallback
-        timeout-minutes: 10
-        run: make dspdecode dspnative dspnativeprograms dspdma dspbootstrap dspdmaspans dspinvalidate dspcoverage dspflush dspinit dspymemory dspmax dspjumps dsptcc dsplogical dspstatus dspbudget dsprelative dsploops dspprogram dspregisterloops dspcompare dspstartup
 
   dsp-cache-flush:
     name: DSP cache flush sanitizers and ARM64
@@ -365,9 +366,6 @@ jobs:
       - name: Frame and audio tests
         run: libretro/tests/run.sh parallel_xbox_libretro.so
 
-      - name: Native DSP coverage and interpreter equivalence
-        timeout-minutes: 10
-        run: make dspdecode dspnative dspnativeprograms dspdma dspbootstrap dspdmaspans dspinvalidate dspcoverage dspflush dspinit dspymemory dspmax dspjumps dsptcc dsplogical dspstatus dspbudget dsprelative dsploops dspprogram dspregisterloops dspcompare dspstartup
 
       # GLib is the core's own and libslirp is linked in: the core is the
       # one file
