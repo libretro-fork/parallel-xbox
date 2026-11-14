@@ -603,3 +603,31 @@ required strip-bit mutation and same-owner uniform-switch lifetime checks.
 Quad provoking selection is always vertex 3, so it is emitted as a constant
 rather than a uniform-dependent input selector. This is a work reduction,
 not yet a qualified startup or gameplay latency improvement.
+
+
+The 16-stage follow-up at c5c88f424b passes the complete native NVIDIA and
+llvmpipe matrix, all six negative controls, and Windows/Linux ownership checks.
+The corrected strip negative control reports a mismatched emitted-vertex count
+explicitly instead of an ordinary assert; the positive corpus is unchanged.
+Clean Windows default/experimental and Linux experimental builds pass. The
+Linux private checkout required a corrected LF-only version stamp; the initial
+malformed private stamp and build failure are retained in its logs.
+NGB fresh-process restores and GL reset/restore retain the exact prior images.
+DOA3 reaches 600 first-fight callbacks with exact audio cadence and no missing
+video; the rendered image was checked visually, not claimed byte-equivalent.
+Three padded boot audio callbacks remain. Functional tests overlapped builds,
+so their roughly 475 ms maximum is retained but is not clean timing evidence.
+
+The clean c5c88f424b ABBA probe uses four fresh processes, empty private app
+caches, no build/benchmark overlap, no diagnostics and zero image readbacks or
+readback allocations. At 8x, fight p99 is 10.554/11.379 ms for f3d5d52760 and
+11.719/11.087 ms for the 16-stage candidate; maxima are 11.042/12.633 and
+12.115/12.079 ms. These tails overlap run spread; all four 600-callback fight
+windows have zero callback deadline misses. No GPU execution or displayed-frame
+latency improvement is established. Startup maxima remain consistently higher:
+parent 72.270/77.582 ms versus candidate 89.069/88.326 ms. This improves on
+the 22-stage observation but still fails recovery against the parent. Driver
+cache state remains uncontrolled, and total boot callback counts differ.
+No stutter-recovery gate or acceptance budget has been relaxed. The feature
+stays disabled; fragment misses, full native pipeline creation and Vulkan
+readiness remain open violations. Fewer shader objects alone are not recovery.
