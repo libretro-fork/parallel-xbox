@@ -49,7 +49,6 @@
 #include "hw/pci/pci.h"
 #include "cpu.h"
 
-#include "trace.h"
 
 #include "nv2a.h"
 #include "pgraph/pgraph.h"
@@ -200,14 +199,6 @@ typedef struct NV2AState {
 
 #include "hw/xbox/nv2a/ramin.h"
 
-typedef struct NV2ABlockInfo {
-    const char *name;
-    hwaddr offset;
-    uint64_t size;
-    MemoryRegionOps ops;
-} NV2ABlockInfo;
-extern const NV2ABlockInfo blocktable[NV_NUM_BLOCKS];
-
 void nv2a_update_irq(NV2AState *d);
 
 /* A PFIFO register: relaxed, a plain load or store; the pusher's and the
@@ -228,22 +219,6 @@ static inline void pfifo_reg_w(NV2AState *d, unsigned int r, uint32_t v)
         SET_MASK(pfifo_v_, (mask), (v));    \
         pfifo_reg_w((d), (r), pfifo_v_);    \
     } while (0)
-
-static inline
-void nv2a_reg_log_read(int block, hwaddr addr, unsigned int size, uint64_t val)
-{
-    const char *block_name = "UNK";
-    if (block < ARRAY_SIZE(blocktable) && blocktable[block].name)
-        block_name = blocktable[block].name;
-}
-
-static inline
-void nv2a_reg_log_write(int block, hwaddr addr, unsigned int size, uint64_t val)
-{
-    const char *block_name = "UNK";
-    if (block < ARRAY_SIZE(blocktable) && blocktable[block].name)
-        block_name = blocktable[block].name;
-}
 
 #define DEFINE_PROTO(n) \
     uint64_t n##_read(void *opaque, hwaddr addr, unsigned int size); \

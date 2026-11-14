@@ -24,17 +24,19 @@
 /* PRMVIO - aliases VGA sequencer and graphics controller registers */
 uint64_t prmvio_read(void *opaque, hwaddr addr, unsigned int size)
 {
+    (void)size;
     NV2AState *d = opaque;
     uint64_t r = vga_ioport_read(&d->vga, addr);
 
-    nv2a_reg_log_read(NV_PRMVIO, addr, size, r);
+
     return r;
 }
 
 void prmvio_write(void *opaque, hwaddr addr, uint64_t val, unsigned int size)
 {
+    (void)size;
     NV2AState *d = opaque;
 
-    nv2a_reg_log_write(NV_PRMVIO, addr, size, val);
+
     vga_ioport_write(&d->vga, addr, val);
 }

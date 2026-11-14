@@ -31,11 +31,6 @@
 
 #include "dsp_cpu_regs.h"
 
-typedef enum {
-    DSP_TRACE_MODE,
-    DSP_DISASM_MODE
-} dsp_trace_disasm_t;
-
 typedef struct dsp_interrupt_s {
     const uint16_t inter;
     const uint16_t vectorAddr;
@@ -119,37 +114,18 @@ struct dsp_core_s {
     /* Current instruction */
     uint32_t cur_inst;
 
-    char str_disasm_memory[2][50];     /* Buffer for memory change text in disasm mode */
-    uint32_t disasm_memory_ptr;        /* Pointer for memory change in disasm mode */
-
     bool exception_debugging;
 
 
     /* disasm data */
-
-    /* Previous instruction */
-    uint32_t disasm_prev_inst_pc;
-    bool disasm_is_looping;
-
-    /* Used to display dc instead of unknown instruction for illegal opcodes */
-    dsp_trace_disasm_t disasm_mode;
 
     uint32_t disasm_cur_inst;
     uint16_t disasm_cur_inst_len;
 
     /* Current instruction */
     char disasm_str_instr[256];
-    char disasm_str_instr2[523];
     char disasm_parallelmove_name[64];
 
-    /**********************************
-     *  Register change
-     **********************************/
-
-    uint32_t disasm_registers_save[64];
-#ifdef DSP_DISASM_REG_PC
-    uint32_t pc_save;
-#endif
 
 };
 

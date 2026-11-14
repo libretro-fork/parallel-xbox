@@ -27,8 +27,8 @@ static void timer_mod(QEMUTimer*t,uint64_t deadline){t->pending=true;t->deadline
 static bool timer_pending(QEMUTimer*t){return t->pending;}
 static void timer_init_ns(QEMUTimer*t,int clock,void(*cb)(void*),void*opaque){(void)cb;(void)opaque;assert(clock==0);memset(t,0,sizeof(*t));}
 static void nv2a_update_irq(NV2AState*d){d->irqs++;}
-static void nv2a_reg_log_read(unsigned block,hwaddr addr,unsigned size,uint64_t val){(void)block;(void)addr;(void)size;(void)val;}
-static void nv2a_reg_log_write(unsigned block,hwaddr addr,unsigned size,uint64_t val){(void)block;(void)addr;(void)size;(void)val;}
+#define nv2a_reg_log_read(b,a,s,v) ((void)(b),(void)(a),(void)(s),(void)(v)) /* Legacy candidates only. */
+#define nv2a_reg_log_write(b,a,s,v) ((void)(b),(void)(a),(void)(s),(void)(v)) /* Legacy candidates only. */
 /* PRODUCTION */
 static uint64_t ceil_ratio(uint64_t a,uint32_t b,uint32_t c){assert(c);__uint128_t x=(__uint128_t)a*b;return x/c+(x%c!=0);}
 int main(void){

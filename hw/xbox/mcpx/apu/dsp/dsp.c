@@ -25,7 +25,6 @@
 
 #include "qemu/osdep.h"
 #include "dsp_internal.h"
-#include "trace.h"
 #include "ui/xemu-settings.h"
 
 /* Defines */

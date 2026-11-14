@@ -233,13 +233,7 @@ static int dis_calc_ea(dsp_core_t* dsp, uint32_t ea_mode, char *dest)
 
 static void dis_undefined(dsp_core_t* dsp)
 {
-    if (dsp->disasm_mode == DSP_DISASM_MODE) {
-        /* In Disasm mode, display dc instruction_opcode */
-        sprintf(dsp->disasm_str_instr, "dc $%06x", dsp->disasm_cur_inst);
-    } else {
-        /* In trace mode, display unknown instruction */
-        sprintf(dsp->disasm_str_instr, "$%06x unknown instruction", dsp->disasm_cur_inst);
-    }
+    sprintf(dsp->disasm_str_instr, "dc $%06x", dsp->disasm_cur_inst);
 }
 
 static void dis_add_imm(dsp_core_t* dsp)

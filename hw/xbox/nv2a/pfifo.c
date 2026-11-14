@@ -41,6 +41,7 @@ static RAMHTEntry ramht_lookup(NV2AState *d, uint32_t handle);
  * reads at its next method (after the kick a write gives) */
 uint64_t pfifo_read(void *opaque, hwaddr addr, unsigned int size)
 {
+    (void)size;
     NV2AState *d = (NV2AState *)opaque;
 
     uint64_t r = 0;
@@ -59,15 +60,16 @@ uint64_t pfifo_read(void *opaque, hwaddr addr, unsigned int size)
         break;
     }
 
-    nv2a_reg_log_read(NV_PFIFO, addr, size, r);
+
     return r;
 }
 
 void pfifo_write(void *opaque, hwaddr addr, uint64_t val, unsigned int size)
 {
+    (void)size;
     NV2AState *d = (NV2AState *)opaque;
 
-    nv2a_reg_log_write(NV_PFIFO, addr, size, val);
+
 
     switch (addr) {
     case NV_PFIFO_INTR_0:

@@ -15,17 +15,6 @@
 #include "qemu/thread.h"
 #include "qemu-lock-common.h"
 
-static void error_exit(int err, const char *msg)
-{
-    char *pstr;
-
-    FormatMessage(FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_ALLOCATE_BUFFER,
-                  NULL, err, 0, (LPTSTR)&pstr, 2, NULL);
-    fprintf(stderr, "qemu: %s: %s\n", msg, pstr);
-    LocalFree(pstr);
-    abort();
-}
-
 void qemu_mutex_init(QemuMutex *mutex)
 {
     InitializeSRWLock(&mutex->lock);

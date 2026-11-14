@@ -8,7 +8,7 @@ a=s.index('static inline void x86_cpu_synchronize_from_tb(')
 e=s.index('\n}\n',a)+3
 helper=s[a:e]
 s=(r/'accel/tcg/cpu-exec.c').read_text(encoding='utf8')
-a=s.index('    if (*tb_exit > TB_EXIT_IDX1) {',s.index('trace_exec_tb_exit'))
+a=s.index('    if (*tb_exit > TB_EXIT_IDX1) {',s.index('cpu_tb_exec(CPUState *cpu,'))
 # Extract the complete guarded statement; logging after it is optional.
 e=s.index('{',a)+1;depth=1
 while depth:depth+=(s[e]=='{')-(s[e]=='}');e+=1

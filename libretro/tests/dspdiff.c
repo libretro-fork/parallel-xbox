@@ -39,8 +39,6 @@
 #include <string.h>
 
 /* what the core's DSP sources need of QEMU's trace points (off) */
-int trace_events_enabled_count;
-uint16_t _TRACE_DSP56K_EXECUTE_INSTRUCTION_DISASM_DSTATE;
 
 /* what the core's DSP sources need of GLib */
 void *g_malloc(size_t n)

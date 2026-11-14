@@ -52,6 +52,7 @@ NV2AState *g_nv2a;
  * the rest the pfifo thread reads at its next method, after the kick. */
 uint64_t pgraph_read(void *opaque, hwaddr addr, unsigned int size)
 {
+    (void)size;
     NV2AState *d = (NV2AState *)opaque;
     PGRAPHState *pg = &d->pgraph;
 
@@ -88,16 +89,17 @@ uint64_t pgraph_read(void *opaque, hwaddr addr, unsigned int size)
         break;
     }
 
-    nv2a_reg_log_read(NV_PGRAPH, addr, size, r);
+
     return r;
 }
 
 void pgraph_write(void *opaque, hwaddr addr, uint64_t val, unsigned int size)
 {
+    (void)size;
     NV2AState *d = (NV2AState *)opaque;
     PGRAPHState *pg = &d->pgraph;
 
-    nv2a_reg_log_write(NV_PGRAPH, addr, size, val);
+
 
     switch (addr) {
     case NV_PGRAPH_INTR:
@@ -819,8 +821,6 @@ unsigned int nv2a_get_surface_scale_factor(void)
 #define METHOD_ADDR(gclass, name) \
     gclass ## _ ## name
 #define METHOD_ADDR_TO_INDEX(x) ((x)>>2)
-#define METHOD_NAME_STR(gclass, name) \
-    tostring(gclass ## _ ## name)
 #define METHOD_FUNC_NAME(gclass, name) \
     pgraph_ ## gclass ## _ ## name ## _handler
 #define METHOD_HANDLER_ARG_DECL \
@@ -849,48 +849,34 @@ unsigned int nv2a_get_surface_scale_factor(void)
 
 typedef void (*MethodFunc)(METHOD_HANDLER_ARG_DECL);
 static const struct {
-    uint32_t base;
-    const char *name;
     MethodFunc handler;
 } pgraph_kelvin_methods[0x800] = {
 #define DEF_METHOD(gclass, name)                        \
     [METHOD_ADDR_TO_INDEX(METHOD_ADDR(gclass, name))] = \
     { \
-        METHOD_ADDR(gclass, name), \
-        METHOD_NAME_STR(gclass, name), \
         METHOD_FUNC_NAME(gclass, name), \
     },
 #define DEF_METHOD_RANGE(gclass, name, range) \
     [METHOD_ADDR_TO_INDEX(METHOD_ADDR(gclass, name)) \
      ... METHOD_ADDR_TO_INDEX(METHOD_ADDR(gclass, name) + 4*range - 1)] = \
     { \
-        METHOD_ADDR(gclass, name), \
-        METHOD_NAME_STR(gclass, name), \
         METHOD_FUNC_NAME(gclass, name), \
     },
 #define DEF_METHOD_CASE_4_OFFSET(gclass, name, offset, stride) \
     [METHOD_ADDR_TO_INDEX(METHOD_ADDR(gclass, name) + offset)] = \
     { \
-        METHOD_ADDR(gclass, name), \
-        METHOD_NAME_STR(gclass, name), \
         METHOD_FUNC_NAME(gclass, name), \
     }, \
     [METHOD_ADDR_TO_INDEX(METHOD_ADDR(gclass, name) + offset + stride)] = \
     { \
-        METHOD_ADDR(gclass, name), \
-        METHOD_NAME_STR(gclass, name), \
         METHOD_FUNC_NAME(gclass, name), \
     }, \
     [METHOD_ADDR_TO_INDEX(METHOD_ADDR(gclass, name) + offset + stride * 2)] = \
     { \
-        METHOD_ADDR(gclass, name), \
-        METHOD_NAME_STR(gclass, name), \
         METHOD_FUNC_NAME(gclass, name), \
     }, \
     [METHOD_ADDR_TO_INDEX(METHOD_ADDR(gclass, name) + offset + stride * 3)] = \
     { \
-        METHOD_ADDR(gclass, name), \
-        METHOD_NAME_STR(gclass, name), \
         METHOD_FUNC_NAME(gclass, name), \
     },
 #define DEF_METHOD_CASE_4(gclass, name, stride) \
@@ -936,20 +922,6 @@ static void pgraph_method_inc(MethodFunc handler, uint32_t end,
     *num_words_consumed = count;
 }
 
-static void pgraph_method_non_inc(MethodFunc handler, METHOD_HANDLER_ARG_DECL)
-{
-    if (inc) {
-        handler(METHOD_HANDLER_ARGS);
-        return;
-    }
-
-    for (size_t i = 0; i < num_words_available; i++) {
-        parameter = ldl_le_p(parameters + i);
-        handler(METHOD_HANDLER_ARGS);
-    }
-    *num_words_consumed = num_words_available;
-}
-
 #define METHOD_FUNC_NAME_INT(gclass, name) METHOD_FUNC_NAME(gclass, name##_int)
 #define DEF_METHOD_INT(gclass, name) DEF_METHOD(gclass, name##_int)
 #define DEF_METHOD(gclass, name) DEF_METHOD_PROTO(gclass, name)
@@ -962,15 +934,6 @@ static void pgraph_method_non_inc(MethodFunc handler, METHOD_HANDLER_ARG_DECL)
                           METHOD_RANGE_END_NAME(gclass, name), \
                           METHOD_HANDLER_ARGS);                \
     }                                                          \
-    DEF_METHOD_INT(gclass, name)
-
-#define DEF_METHOD_NON_INC(gclass, name)                          \
-    DEF_METHOD_INT(gclass, name);                                 \
-    DEF_METHOD(gclass, name)                                      \
-    {                                                             \
-        pgraph_method_non_inc(METHOD_FUNC_NAME_INT(gclass, name), \
-                              METHOD_HANDLER_ARGS);               \
-    }                                                             \
     DEF_METHOD_INT(gclass, name)
 
 int pgraph_method(NV2AState *d, unsigned int subchannel,
@@ -1065,7 +1028,7 @@ int pgraph_method(NV2AState *d, unsigned int subchannel,
             }
             break;
         default:
-	    return num_processed;
+            return num_processed;
         }
         break;
     }
@@ -1075,7 +1038,7 @@ int pgraph_method(NV2AState *d, unsigned int subchannel,
             pgraph_fence_publish(pg, parameter);
             break;
         default:
-	    return num_processed;
+            return num_processed;
         }
         break;
     }
@@ -1104,7 +1067,7 @@ int pgraph_method(NV2AState *d, unsigned int subchannel,
             context_surfaces_2d->dest_offset = parameter & 0x07FFFFFF;
             break;
         default:
-	    return num_processed;
+            return num_processed;
         }
         break;
     }
@@ -1136,7 +1099,7 @@ int pgraph_method(NV2AState *d, unsigned int subchannel,
             }
             break;
         default:
-	    return num_processed;
+            return num_processed;
         }
         break;
     }
@@ -1144,7 +1107,7 @@ int pgraph_method(NV2AState *d, unsigned int subchannel,
         MethodFunc handler =
             pgraph_kelvin_methods[METHOD_ADDR_TO_INDEX(method)].handler;
         if (handler == NULL)
-	    return num_processed;
+            return num_processed;
         size_t num_words_consumed = 1;
         handler(d, pg, subchannel, method, parameter, parameters,
                 num_words_available, &num_words_consumed, inc);
@@ -1173,7 +1136,7 @@ int pgraph_method(NV2AState *d, unsigned int subchannel,
         break;
     }
     default:
-	break;
+        break;
     }
 
     return num_processed;
@@ -1253,8 +1216,6 @@ DEF_METHOD(NV097, FLIP_INCREMENT_WRITE)
         (old + 1) % PG_GET_MASK(NV_PGRAPH_SURFACE,
                                 NV_PGRAPH_SURFACE_MODULO_3D));
 
-    uint32_t new =
-        PG_GET_MASK(NV_PGRAPH_SURFACE, NV_PGRAPH_SURFACE_WRITE_3D);
 
     pg->frame_time++;
 }

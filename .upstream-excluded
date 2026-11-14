@@ -3238,3 +3238,12 @@ include/disas/
 chardev/char-win-stdio.c
 include/chardev/char-win-stdio.h
 deps/volk/
+
+# Removed trace-only NV2A/DSP metadata and adapters.
+hw/xbox/nv2a/trace.h
+hw/xbox/nv2a/trace-events
+libretro/gen/trace/trace-hw_xbox_nv2a.h
+hw/xbox/mcpx/apu/dsp/trace.h
+hw/xbox/mcpx/apu/dsp/trace-events
+libretro/gen/trace/trace-hw_xbox_mcpx_apu_dsp.h
+hw/xbox/mcpx/apu/dsp/interp/debug.c

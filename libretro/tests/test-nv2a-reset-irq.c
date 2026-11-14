@@ -29,7 +29,7 @@ typedef struct {
 } NV2AState;
 static bool irq, fifo_locked, bql_held;
 static unsigned flushes,updates;
-static void trace_nv2a_irq(uint32_t bits) { assert(bits); }
+#define trace_nv2a_irq(...) ((void)0)
 static void pci_irq_assert(NV2AState *d) { (void)d;irq=true;updates++; }
 static void pci_irq_deassert(NV2AState *d) { (void)d;irq=false;updates++; }
 static void nv2a_migration_release(NV2AState *d) { (void)d;assert(bql_held&&!fifo_locked); }

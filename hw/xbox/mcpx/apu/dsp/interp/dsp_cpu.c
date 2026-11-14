@@ -46,10 +46,8 @@ static void dsp_postexecute_update_pc(dsp_core_t* dsp);
 static void dsp_postexecute_interrupts(dsp_core_t* dsp);
 
 static uint32_t read_memory_p(dsp_core_t* dsp, uint32_t address);
-static uint32_t read_memory_disasm(dsp_core_t* dsp, int space, uint32_t address);
 
 static void write_memory_raw(dsp_core_t* dsp, int space, uint32_t address, uint32_t value);
-static void write_memory_disasm(dsp_core_t* dsp, int space, uint32_t address, uint32_t value);
 
 static void dsp_write_reg(dsp_core_t* dsp, uint32_t numreg, uint32_t value);
 
@@ -457,7 +455,6 @@ void dsp56k_reset_cpu(dsp_core_t* dsp)
     dsp->num_inst = 0;
 
     dsp->exception_debugging = true;
-    dsp->disasm_prev_inst_pc = 0xFFFFFFFF;
 }
 
 static const OpcodeEntry *lookup_opcode_slow(uint32_t op) {
@@ -502,22 +499,8 @@ static const OpcodeEntry *lookup_opcode(uint32_t op)
     return entry;
 }
 
-static uint16_t disasm_instruction(dsp_core_t* dsp, dsp_trace_disasm_t mode)
+static uint16_t disasm_instruction(dsp_core_t* dsp)
 {
-    dsp->disasm_mode = mode;
-    if (mode == DSP_TRACE_MODE) {
-        if (dsp->disasm_prev_inst_pc == dsp->pc) {
-            if (!dsp->disasm_is_looping) {
-                DPRINTF("Looping on DSP instruction at PC = $%04x\n", dsp->disasm_prev_inst_pc);
-                dsp->disasm_is_looping = true;
-            }
-            return 0;
-        }
-    }
-
-    dsp->disasm_prev_inst_pc = dsp->pc;
-    dsp->disasm_is_looping = false;
-
     dsp->disasm_cur_inst = dsp56k_read_memory(dsp, DSP_SPACE_P, dsp->pc);
     dsp->disasm_cur_inst_len = 1;
 
@@ -540,115 +523,6 @@ static uint16_t disasm_instruction(dsp_core_t* dsp, dsp_trace_disasm_t mode)
             disasm_opcodes_alu[dsp->disasm_cur_inst & BITMASK(8)], dsp->disasm_parallelmove_name);
     }
     return dsp->disasm_cur_inst_len;
-}
-
-static void disasm_reg_save(dsp_core_t* dsp)
-{
-    memcpy(dsp->disasm_registers_save, dsp->registers , sizeof(dsp->disasm_registers_save));
-#ifdef DSP_DISASM_REG_PC
-    dsp->pc_save = dsp->pc;
-#endif
-}
-
-static void disasm_reg_compare(dsp_core_t* dsp)
-{
-    int i;
-    bool bRegA = false;
-    bool bRegB = false;
-
-    for (i=4; i<64; i++) {
-        if (dsp->disasm_registers_save[i] == dsp->registers[i]) {
-            continue;
-        }
-
-        switch(i) {
-            case DSP_REG_X0:
-            case DSP_REG_X1:
-            case DSP_REG_Y0:
-            case DSP_REG_Y1:
-                DPRINTF("\tReg: %s  $%06x -> $%06x\n",
-                    registers_name[i], dsp->disasm_registers_save[i], dsp->registers[i]);
-                break;
-            case DSP_REG_R0:
-            case DSP_REG_R1:
-            case DSP_REG_R2:
-            case DSP_REG_R3:
-            case DSP_REG_R4:
-            case DSP_REG_R5:
-            case DSP_REG_R6:
-            case DSP_REG_R7:
-            case DSP_REG_M0:
-            case DSP_REG_M1:
-            case DSP_REG_M2:
-            case DSP_REG_M3:
-            case DSP_REG_M4:
-            case DSP_REG_M5:
-            case DSP_REG_M6:
-            case DSP_REG_M7:
-            case DSP_REG_N0:
-            case DSP_REG_N1:
-            case DSP_REG_N2:
-            case DSP_REG_N3:
-            case DSP_REG_N4:
-            case DSP_REG_N5:
-            case DSP_REG_N6:
-            case DSP_REG_N7:
-            case DSP_REG_SR:
-            case DSP_REG_LA:
-            case DSP_REG_LC:
-                DPRINTF("\tReg: %s  $%04x -> $%04x\n",
-                    registers_name[i], dsp->disasm_registers_save[i], dsp->registers[i]);
-                break;
-            case DSP_REG_OMR:
-            case DSP_REG_SP:
-            case DSP_REG_SSH:
-            case DSP_REG_SSL:
-                DPRINTF("\tReg: %s  $%02x -> $%02x\n",
-                    registers_name[i], dsp->disasm_registers_save[i], dsp->registers[i]);
-                break;
-            case DSP_REG_A0:
-            case DSP_REG_A1:
-            case DSP_REG_A2:
-                if (bRegA == false) {
-                    DPRINTF("\tReg: a   $%02x:%06x:%06x -> $%02x:%06x:%06x\n",
-                        dsp->disasm_registers_save[DSP_REG_A2], dsp->disasm_registers_save[DSP_REG_A1], dsp->disasm_registers_save[DSP_REG_A0],
-                        dsp->registers[DSP_REG_A2], dsp->registers[DSP_REG_A1], dsp->registers[DSP_REG_A0]
-                    );
-                    bRegA = true;
-                }
-                break;
-            case DSP_REG_B0:
-            case DSP_REG_B1:
-            case DSP_REG_B2:
-                if (bRegB == false) {
-                    DPRINTF("\tReg: b   $%02x:%06x:%06x -> $%02x:%06x:%06x\n",
-                        dsp->disasm_registers_save[DSP_REG_B2], dsp->disasm_registers_save[DSP_REG_B1], dsp->disasm_registers_save[DSP_REG_B0],
-                        dsp->registers[DSP_REG_B2], dsp->registers[DSP_REG_B1], dsp->registers[DSP_REG_B0]
-                    );
-                    bRegB = true;
-                }
-                break;
-        }
-    }
-
-#ifdef DSP_DISASM_REG_PC
-    if (pc_save != dsp->pc) {
-        DPRINTF("\tReg: pc  $%04x -> $%04x\n", pc_save, dsp->pc);
-    }
-#endif
-}
-
-static const char* disasm_get_instruction_text(dsp_core_t* dsp)
-{
-    if (dsp->disasm_is_looping) {
-        dsp->disasm_str_instr2[0] = 0;
-    }
-    if (dsp->disasm_cur_inst_len == 1) {
-        snprintf(dsp->disasm_str_instr2, sizeof(dsp->disasm_str_instr2), "p:%04x  %06x         (%02d cyc)  %s", dsp->disasm_prev_inst_pc, dsp->disasm_cur_inst, dsp->instr_cycle, dsp->disasm_str_instr);
-    } else {
-        snprintf(dsp->disasm_str_instr2, sizeof(dsp->disasm_str_instr2), "p:%04x  %06x %06x  (%02d cyc)  %s", dsp->disasm_prev_inst_pc, dsp->disasm_cur_inst, read_memory_p(dsp, dsp->disasm_prev_inst_pc + 1), dsp->instr_cycle, dsp->disasm_str_instr);
-    }
-    return dsp->disasm_str_instr2;
 }
 
 #ifdef DSPJIT_TEST
@@ -683,9 +557,6 @@ void dsp56k_clear_opcache(dsp_core_t *dsp)
 
 void dsp56k_execute_instruction(dsp_core_t* dsp)
 {
-    uint32_t disasm_return = 0;
-    dsp->disasm_memory_ptr = 0;
-
     /* Decode and execute current instruction */
     dsp->cur_inst = read_memory_p(dsp, dsp->pc);
 
@@ -1029,7 +900,7 @@ uint32_t *dsp56k_memory_ptr(dsp_core_t* dsp, int space, uint32_t address, uint32
 
 void dsp56k_write_memory(dsp_core_t* dsp, int space, uint32_t address, uint32_t value)
 {
-	write_memory_raw(dsp, space, address, value);
+    write_memory_raw(dsp, space, address, value);
 }
 
 static void write_memory_raw(dsp_core_t* dsp, int space, uint32_t address, uint32_t value)
@@ -1071,41 +942,6 @@ static void write_memory_raw(dsp_core_t* dsp, int space, uint32_t address, uint3
         }
     } else {
         assert(!"Invalid dsp space in write raw memory");
-    }
-}
-
-static uint32_t read_memory_disasm(dsp_core_t* dsp, int space, uint32_t address)
-{
-    return dsp56k_read_memory(dsp, space, address);
-}
-
-static void write_memory_disasm(dsp_core_t* dsp, int space, uint32_t address, uint32_t value)
-{
-    uint32_t oldvalue, curvalue;
-    char space_c;
-
-    oldvalue = read_memory_disasm(dsp, space, address);
-
-    write_memory_raw(dsp, space, address, value);
-
-    switch(space) {
-        case DSP_SPACE_X:
-            space_c = 'x';
-            break;
-        case DSP_SPACE_Y:
-            space_c = 'y';
-            break;
-        case DSP_SPACE_P:
-            space_c = 'p';
-            break;
-        default:
-            assert(!"Invalid dsp space in write memory disasm");
-    }
-
-    curvalue = read_memory_disasm(dsp, space, address);
-    if (dsp->disasm_memory_ptr < ARRAY_SIZE(dsp->str_disasm_memory)) {
-        sprintf(dsp->str_disasm_memory[dsp->disasm_memory_ptr], "Mem: %c:0x%04x  0x%06x -> 0x%06x", space_c, address, oldvalue, curvalue);
-        dsp->disasm_memory_ptr ++;
     }
 }
 
@@ -1543,7 +1379,7 @@ void dsp56k_decode(dsp_core_t *dsp, uint32_t pc, DspDecoded *d)
     }
     /* the length: the disassembler's count of the words */
     dsp->pc = pc;
-    d->len = disasm_instruction(dsp, DSP_DISASM_MODE);
+    d->len = disasm_instruction(dsp);
     dsp->pc = saved_pc;
     if (d->len < 1 || d->len > 2) {
         d->len = 1;

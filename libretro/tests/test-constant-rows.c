@@ -11,12 +11,9 @@ typedef struct { uint32_t before, vsh_constants[192][4], reg, after;
 typedef int NV2AState;
 #define PG_GET_MASK(r,m) ((pg->reg & (m)) / ((m)&-(m)))
 #define PG_SET_MASK(r,m,v) (pg->reg=(pg->reg & ~(m)) | (((v)*((m)&-(m)))&(m)))
-#define DEF_METHOD(g,n) static void upload(PGRAPHState *pg, unsigned subchannel, unsigned method, uint32_t parameter, uint32_t *parameters, size_t num_words_available, size_t *num_words_consumed, bool inc)
+#define DEF_METHOD(g,n) static void upload(PGRAPHState *pg, unsigned subchannel __attribute__((unused)), unsigned method, uint32_t parameter, uint32_t *parameters, size_t num_words_available, size_t *num_words_consumed, bool inc)
 #define METHOD_RANGE_END_NAME(g,n) (NV097_SET_TRANSFORM_CONSTANT+32*4)
-typedef struct { unsigned sub, cls, method; uint32_t word; } Log;
-static Log logs[64]; static unsigned nlogs;
-static void pgraph_method_log(unsigned sub,unsigned cls,unsigned method,uint32_t word)
-{ assert(nlogs<64); logs[nlogs++]=(Log){sub,cls,method,word}; }
+#define pgraph_method_log(...) ((void)0) /* Legacy candidates only. */
 static uint32_t ldl_le_p(const void *p)
 { const unsigned char *b=p;return (uint32_t)b[0]|(uint32_t)b[1]<<8|(uint32_t)b[2]<<16|(uint32_t)b[3]<<24; }
 /* PRODUCTION */
@@ -24,10 +21,10 @@ static uint32_t ldl_le_p(const void *p)
 static void reference(PGRAPHState *pg,unsigned sub,unsigned method,uint32_t parameter,
                       uint32_t *parameters,size_t available,size_t *consumed,bool inc)
 {
+    (void)sub;
     size_t count=inc ? MIN(available,(NV097_SET_TRANSFORM_CONSTANT+128-method)/4) : 1;
     for(size_t i=0;i<count;i++) {
         if(inc)parameter=ldl_le_p((unsigned char *)parameters+4*i);
-        if(i)pgraph_method_log(sub,NV_KELVIN_PRIMITIVE,method,parameter);
         unsigned slot=(method-NV097_SET_TRANSFORM_CONSTANT)/4;
         unsigned row=PG_GET_MASK(NV_PGRAPH_CHEOPS_OFFSET,NV_PGRAPH_CHEOPS_OFFSET_CONST_LD_PTR);
         assert(row<192);
@@ -64,14 +61,12 @@ int main(void)
         /* Unaligned DMA payload, partial rows, repeated values and dirty bits. */
         expected=pg;size_t actual_count=1,expected_count=1;
         unsigned method=NV097_SET_TRANSFORM_CONSTANT+4*slot;
-        uint32_t parameter=rnd();nlogs=0;
+        uint32_t parameter=rnd();
         reference(&expected,3,method,parameter,(void *)(buffer+offset),available,&expected_count,inc);
-        Log expected_logs[64];unsigned expected_nlogs=nlogs;memcpy(expected_logs,logs,sizeof(logs));nlogs=0;
         upload(&pg,3,method,parameter,(void *)(buffer+offset),available,&actual_count,inc);
-        assert(actual_count==expected_count && nlogs==expected_nlogs);
-        assert(!memcmp(logs,expected_logs,nlogs*sizeof(*logs)));
+        assert(actual_count==expected_count);
         assert(!memcmp(&pg,&expected,sizeof(pg)));
         cases++;
     }
-    printf("PASS: %u constant uploads match word handler: bytes, dirty rows, register bits, consumption and logs\n",cases);
+    printf("PASS: %u constant uploads match word handler: bytes, dirty rows, register bits, consumption\n",cases);
 }
