@@ -424,8 +424,8 @@ static void nv2a_init_memory(NV2AState *d, MemoryRegion *ram)
     pgraph_init(d);
 
     /* fire up pfifo */
-    qemu_thread_create(&d->pfifo.thread, "nv2a.pfifo",
-                       pfifo_thread, d, QEMU_THREAD_JOINABLE);
+    d->pfifo.thread = sthread_create(pfifo_thread, d);
+    if (!d->pfifo.thread) abort();
 }
 
 static void nv2a_init_vga(NV2AState *d)
@@ -608,7 +608,8 @@ static void nv2a_exitfn(PCIDevice *dev)
     retro_atomic_store_release_int(&d->exiting, 1);
 
     pfifo_kick(d);
-    qemu_thread_join(&d->pfifo.thread);
+    sthread_join(d->pfifo.thread);
+    d->pfifo.thread = NULL;
 
     pgraph_destroy(&d->pgraph);
 }

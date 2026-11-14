@@ -99,12 +99,12 @@ struct MigrationIncomingState {
 
     size_t         largest_page_size;
     bool           have_fault_thread;
-    QemuThread     fault_thread;
+    sthread_t *fault_thread;
     /* Set this when we want the fault thread to quit */
     bool           fault_thread_quit;
 
     bool           have_listen_thread;
-    QemuThread     listen_thread;
+    sthread_t *listen_thread;
 
     /* For the kernel to send us notifications */
     int       userfault_fd;
@@ -126,7 +126,7 @@ struct MigrationIncomingState {
     /* QEMUFile for postcopy only; it'll be handled by a separate thread */
     QEMUFile *postcopy_qemufile_dst;
     /* Postcopy priority thread is used to receive postcopy requested pages */
-    QemuThread postcopy_prio_thread;
+    sthread_t *postcopy_prio_thread;
     /*
      * Always set by the main vm load thread only, but can be read by the
      * postcopy preempt thread.  "volatile" makes sure all reads will be
@@ -192,7 +192,7 @@ struct MigrationState {
     DeviceState parent_obj;
 
     /*< public >*/
-    QemuThread thread;
+    sthread_t *thread;
     QEMUFile *to_dst_file;
     /* Postcopy specific transfer channel */
     QEMUFile *postcopy_qemufile_src;
@@ -222,7 +222,7 @@ struct MigrationState {
     /* State related to return path */
     struct {
         QEMUFile     *from_dst_file;
-        QemuThread    rp_thread;
+        sthread_t *rp_thread;
         /*
          * We can also check non-zero of rp_thread, but there's no "official"
          * way to do this, so this bool makes it slightly more elegant.

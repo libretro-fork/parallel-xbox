@@ -59,37 +59,6 @@ static void layout_worker(void *arg)
     }
 }
 
-typedef void (*pSetThreadDescription)(void);
-#ifndef _WIN32
-typedef void *HMODULE;
-#endif
-#define GetModuleHandleA mock_GetModuleHandleA
-#define GetProcAddress mock_GetProcAddress
-static retro_atomic_int_t lookups, module_lookups, api_calls;
-static int api_mode;
-static void describe(void) { retro_atomic_fetch_add_int(&api_calls,1); }
-static HMODULE GetModuleHandleA(const char *name)
-{
-    assert(!strcmp(name,"kernel32.dll"));
-    retro_atomic_fetch_add_int(&module_lookups,1);
-    return api_mode==2?NULL:(void *)&api_mode;
-}
-static pSetThreadDescription GetProcAddress(HMODULE module,const char *name)
-{
-    assert(module&& !strcmp(name,"SetThreadDescription"));
-    int first=retro_atomic_fetch_add_int(&lookups,1);
-    if(!first){retro_atomic_store_release_int(&blocked,1);await(&release_stalled);}
-    return api_mode==0?describe:NULL;
-}
-/* WIN32 */
-static void api_worker(void *arg)
-{
-    for(unsigned i=0;i<10000;i++) {
-        pSetThreadDescription fn=load_set_thread_description();
-        assert(fn==(api_mode==0?describe:NULL));
-        if(fn)fn();
-    }
-}
 int main(void)
 {
     sthread_t *threads[16];
@@ -105,22 +74,6 @@ int main(void)
     for(unsigned i=0;i<128;i++)discard(retro_atomic_load_acquire_ptr(&helpers[i].layout));
     discard(retro_atomic_load_acquire_ptr(&stalled_helper.layout));
     assert(retro_atomic_load_acquire_int(&allocations)==retro_atomic_load_acquire_int(&frees));
-    for(api_mode=0;api_mode<3;api_mode++) {
-        retro_atomic_store_relaxed_ptr(&thread_description_func,NULL);
-        retro_atomic_store_relaxed_int(&lookups,0);retro_atomic_store_relaxed_int(&module_lookups,0);
-        retro_atomic_store_relaxed_int(&blocked,0);retro_atomic_store_relaxed_int(&release_stalled,0);
-        if(api_mode!=2) {
-            threads[0]=sthread_create(api_worker,NULL);assert(threads[0]);await(&blocked);
-            assert(load_set_thread_description()==(api_mode==0?describe:NULL));
-            retro_atomic_store_release_int(&release_stalled,1);sthread_join(threads[0]);
-        }
-        for(unsigned i=0;i<16;i++){threads[i]=sthread_create(api_worker,NULL);assert(threads[i]);}
-        for(unsigned i=0;i<16;i++)sthread_join(threads[i]);
-        int before=retro_atomic_load_acquire_int(&module_lookups);
-        for(unsigned i=0;i<10000;i++)assert(load_set_thread_description()==(api_mode==0?describe:NULL));
-        assert(retro_atomic_load_acquire_int(&module_lookups)==before);
-        if(api_mode==2)assert(!retro_atomic_load_acquire_int(&lookups));
-    }
-    puts("Initialization publication: stalled-initializer independence, canonical layouts, reclamation and optional Windows API caching PASS");
+    puts("Initialization publication: stalled-initializer independence, canonical layouts, reclamation PASS");
     return 0;
 }

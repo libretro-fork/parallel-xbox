@@ -366,8 +366,6 @@ static void qemu_init_sigbus(void)
 }
 #endif /* !CONFIG_LINUX */
 
-static QemuThread io_thread;
-
 /* cpu creation */
 static QemuCond qemu_cpu_cond;
 /* system init */
@@ -380,7 +378,6 @@ void qemu_init_cpu_loop(void)
     qemu_cond_init(&qemu_pause_cond);
     qemu_mutex_init(&bql);
 
-    qemu_thread_get_self(&io_thread);
 }
 
 void run_on_cpu(CPUState *cpu, run_on_cpu_func func, run_on_cpu_data data)
@@ -406,15 +403,9 @@ void cpus_kick_thread(CPUState *cpu)
     }
     retro_atomic_store_relaxed_int(&cpu->thread_kicked, 1);
 
-#ifndef _WIN32
-    int err = pthread_kill(cpu->thread->thread, SIG_IPI);
-    if (err && err != ESRCH) {
-        fprintf(stderr, "qemu:%s: %s", __func__, strerror(err));
-        exit(1);
-    }
-#else
-    qemu_sem_post(&cpu->sem);
-#endif
+    /* The libretro vCPU shares the emulation owner, not a signal thread. */
+    cpu_exit(cpu);
+    qemu_notify_event();
 }
 
 void qemu_cpu_kick(CPUState *cpu)
@@ -428,7 +419,8 @@ void qemu_cpu_kick(CPUState *cpu)
 
 bool qemu_cpu_is_self(CPUState *cpu)
 {
-    return qemu_thread_is_self(cpu->thread);
+    return cpu->thread_owner_id &&
+           cpu->thread_owner_id == sthread_get_current_thread_id();
 }
 
 bool qemu_in_vcpu_thread(void)
@@ -544,9 +536,9 @@ void cpu_remove_sync(CPUState *cpu)
     cpu->stop = true;
     cpu->unplug = true;
     cpu_exit(cpu);
-    bql_unlock();
-    qemu_thread_join(cpu->thread);
-    bql_lock();
+    /* The vCPU has no independent thread to join. Its owner must already
+     * be quiescent, or be the caller doing the removal. */
+    assert(cpu->stopped || qemu_cpu_is_self(cpu));
 }
 
 void cpus_register_accel(const AccelOpsClass *ops)

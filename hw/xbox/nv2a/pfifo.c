@@ -571,7 +571,7 @@ static void pfifo_park_for_guest(NV2AState *d)
     retro_atomic_store_release_int(&d->pfifo.parked_for_guest, 0);
 }
 
-void *pfifo_thread(void *arg)
+void pfifo_thread(void *arg)
 {
     NV2AState *d = (NV2AState *)arg;
 
@@ -622,7 +622,8 @@ void *pfifo_thread(void *arg)
 
     rcu_unregister_thread();
 
-    return NULL;
+    qemu_thread_run_atexit();
+    return;
 }
 
 static uint32_t ramht_hash(NV2AState *d, uint32_t handle)

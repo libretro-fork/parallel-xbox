@@ -230,10 +230,10 @@ static void cpu_common_initfn(Object *obj)
     cpu->nr_threads = 1;
 
     /* The libretro accelerator runs on the emulator thread. */
-    cpu->thread = g_new0(QemuThread, 1);
     retro_mpsc_init(&cpu->work_queue);
     cpu->work_pending = NULL;
     retro_atomic_int_init(&cpu->work_count, 0);
+    cpu->work_queue_ready = true;
     QTAILQ_INIT(&cpu->breakpoints);
     QTAILQ_INIT(&cpu->watchpoints);
     QTAILQ_INIT_RCU(&cpu->mem_access_callbacks);
@@ -252,11 +252,11 @@ static void cpu_common_finalize(Object *obj)
     CPUState *cpu = CPU(obj);
 
     free_queued_cpu_work(cpu);
+    cpu->work_queue_ready = false;
     /* If cleanup didn't happen in context to gdb_unregister_coprocessor_all */
     if (cpu->gdb_regs) {
         g_array_free(cpu->gdb_regs, TRUE);
     }
-    g_free(cpu->thread);
 }
 
 static int64_t cpu_common_get_arch_id(CPUState *cpu)

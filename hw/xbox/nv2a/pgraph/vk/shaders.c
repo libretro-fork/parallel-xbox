@@ -658,7 +658,6 @@ static retro_atomic_int_t vk_spec_cancel;   /* finalize: skip what is queued */
 static unsigned vk_spec_undrained; /* states queued, not yet drained: what
                                       the out ring must have room for (render
                                       thread only) */
-static QemuThread vk_spec_thread;
 static bool vk_spec_started;
 static bool vk_spec_push_constants;
 
@@ -1149,7 +1148,7 @@ static bool vk_pre_process_input(void)
     return true;
 }
 
-static void *vk_spec_worker_fn(void *opaque)
+static void vk_spec_worker_fn(void *opaque)
 {
     for (;;) {
         bool worked = vk_spec_process_input();
@@ -1166,7 +1165,8 @@ static void *vk_spec_worker_fn(void *opaque)
         }
         retro_eventcount_commit_wait(&vk_spec_ec, key);
     }
-    return NULL;
+    qemu_thread_run_atexit();
+    return;
 }
 
 static void vk_spec_ready_push(const VkSpecDone *done)
@@ -1398,8 +1398,9 @@ static bool vk_spec_start(void)
             vk_spec_ready_order[i] = i;
         }
         vk_spec_started = true;
-        qemu_thread_create(&vk_spec_thread, "vk-firstmeet", vk_spec_worker_fn,
-                           NULL, QEMU_THREAD_DETACHED);
+        sthread_t *vk_spec_thread = sthread_create(vk_spec_worker_fn, NULL);
+        if (!vk_spec_thread) abort();
+        if (sthread_detach(vk_spec_thread)) abort();
     }
     return true;
 }

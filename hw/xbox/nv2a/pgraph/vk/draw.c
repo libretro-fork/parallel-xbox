@@ -1117,10 +1117,9 @@ static retro_atomic_int_t pump_cancel; /* skip what is not started */
 static unsigned pump_w_local;      /* the render thread's copy of pump_w */
 static unsigned pump_d;            /* drained, render thread only */
 static retro_eventcount_t pipe_ec_work, pipe_ec_done;
-static QemuThread pipe_thread;
 static bool pipe_started;
 
-static void *pipe_worker_fn(void *opaque)
+static void pipe_worker_fn(void *opaque)
 {
     unsigned pr = 0;
     for (;;) {
@@ -1148,7 +1147,8 @@ static void *pipe_worker_fn(void *opaque)
         }
         retro_eventcount_commit_wait(&pipe_ec_work, key);
     }
-    return NULL;
+    qemu_thread_run_atexit();
+    return;
 }
 
 static void pipe_start(void)
@@ -1159,8 +1159,9 @@ static void pipe_start(void)
     pipe_started = true;
     retro_eventcount_init(&pipe_ec_work);
     retro_eventcount_init(&pipe_ec_done);
-    qemu_thread_create(&pipe_thread, "vk-pipe", pipe_worker_fn, NULL,
-                       QEMU_THREAD_DETACHED);
+    sthread_t *pipe_thread = sthread_create(pipe_worker_fn, NULL);
+    if (!pipe_thread) abort();
+    if (sthread_detach(pipe_thread)) abort();
 }
 
 /*

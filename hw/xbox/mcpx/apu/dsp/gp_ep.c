@@ -44,7 +44,7 @@ void lr_dsp_bus_borrow(void) { bus_lease_acquire(&bus_lease); }
 void lr_dsp_bus_return(void) { bus_lease_release(&bus_lease); }
 /* The CPU owns GP. One EP job may own guest RAM until its completion
  * epoch is published. No job queue, mix-buffer copy or per-tick allocation. */
-static QemuThread ownership_thread;
+static sthread_t *ownership_thread;
 static retro_atomic_int_t ownership_posted, ownership_done, ownership_stop;
 static retro_eventcount_t ownership_work, ownership_completion;
 static retro_atomic_int_t ownership_ready;
@@ -78,7 +78,7 @@ void lr_dsp_ownership_fence(unsigned reason)
     (void)reason;
     lr_dsp_ownership_quiesce();
 }
-static void *ownership_worker(void *opaque)
+static void ownership_worker(void *opaque)
 {
     MCPXAPUState *d = opaque;
     ownership_is_worker = true;
@@ -103,7 +103,8 @@ static void *ownership_worker(void *opaque)
         retro_eventcount_notify(&ownership_completion);
     }
     rcu_unregister_thread();
-    return NULL;
+    qemu_thread_run_atexit();
+    return;
 }
 static void ownership_start(MCPXAPUState *d)
 {
@@ -129,8 +130,8 @@ static void ownership_start(MCPXAPUState *d)
     }
     ownership_device = d;
     retro_atomic_store_release_int(&ownership_ready, 1);
-    qemu_thread_create(&ownership_thread, "apu-ep", ownership_worker, d,
-                       QEMU_THREAD_JOINABLE);
+    ownership_thread = sthread_create(ownership_worker, d);
+    if (!ownership_thread) abort();
 }
 static void ownership_finish(void)
 {
@@ -138,7 +139,8 @@ static void ownership_finish(void)
     lr_dsp_ownership_quiesce();
     retro_atomic_store_release_int(&ownership_stop, 1);
     retro_eventcount_notify(&ownership_work);
-    qemu_thread_join(&ownership_thread);
+    sthread_join(ownership_thread);
+    ownership_thread = NULL;
     assert(retro_atomic_load_acquire_int(&ownership_posted) ==
            retro_atomic_load_acquire_int(&ownership_done));
     retro_atomic_store_release_int(&ownership_ready, 0);

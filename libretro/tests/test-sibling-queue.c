@@ -4,6 +4,7 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <vulkan/vulkan.h>
 #include <retro_spsc.h>
@@ -17,7 +18,7 @@
 #define QEMU_THREAD_DETACHED 1
 typedef struct ShaderSource ShaderSource;
 typedef int retro_eventcount_t;
-typedef int QemuThread;
+typedef int sthread_t;
 /* TYPES */
 static struct { uint64_t hash; int phase; } vk_spec_track[1024];
 static retro_spsc_t vk_spec_in, vk_spec_out;
@@ -25,7 +26,7 @@ static retro_eventcount_t vk_spec_ec, vk_spec_idle_ec;
 static retro_atomic_int_t vk_spec_inflight;
 static unsigned vk_spec_undrained, vk_spec_ready_order[VK_SPEC_READY];
 static bool vk_spec_started;
-static QemuThread vk_spec_thread;
+static sthread_t *vk_spec_thread;
 static unsigned attempts, fail_at, drains, notifications, threads;
 static bool test_init(retro_spsc_t *q, size_t bytes)
 {
@@ -42,13 +43,27 @@ static void retro_eventcount_notify(retro_eventcount_t *ec)
     assert(ec == &vk_spec_ec);
     notifications++;
 }
-static void *vk_spec_worker_fn(void *p) { return p; }
-static void qemu_thread_create(QemuThread *t, const char *name,
-                              void *(*fn)(void *), void *p, int flags)
+static void vk_spec_worker_fn(void *p) { (void)p; }
+static sthread_t fake_thread;
+static sthread_t *sthread_create(void (*fn)(void *), void *p)
+{
+    assert(fn == vk_spec_worker_fn && !p);
+    threads++;
+    return &fake_thread;
+}
+static int sthread_detach(sthread_t *t)
+{
+    assert(t == &fake_thread);
+    return 0;
+}
+/* Frozen queue-policy reference: model its old create operation using the
+ * same counted thread start; only production explicitly detaches the handle. */
+static void qemu_thread_create(sthread_t **t, const char *name,
+                              void (*fn)(void *), void *p, int flags)
 {
     assert(t == &vk_spec_thread && !strcmp(name, "vk-firstmeet"));
-    assert(fn == vk_spec_worker_fn && !p && flags == QEMU_THREAD_DETACHED);
-    threads++;
+    assert(flags == QEMU_THREAD_DETACHED);
+    *t = sthread_create(fn, p);
 }
 static int vk_spec_find(uint64_t h)
 {

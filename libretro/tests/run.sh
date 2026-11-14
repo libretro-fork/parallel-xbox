@@ -67,6 +67,9 @@ python3 "$here/test-rcu-callbacks.py" "$here/../.." "$cc"
 python3 "$here/test-qemu-file-memory.py" "$here/../.." "$cc"
 python3 "$here/test-chihiro-dimm-stream.py" "$here/../.." "$cc"
 python3 "$here/test-init-publication.py" "$here/../.." "$cc"
+case $core in
+*.so) python3 "$here/test-win32-thread-exit.py" "$here/../.." "$cc" ;;
+esac
 python3 "$here/test-qemu-parking.py" "$here/../.." "$cc"
 python3 "$here/test-vmstop-mailbox.py" "$here/../.." "$cc"
 python3 "$here/test-win-poll.py" "$here/../.." "$cc"
