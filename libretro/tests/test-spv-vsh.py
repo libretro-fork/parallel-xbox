@@ -11,7 +11,11 @@ env=os.environ.copy();env['PATH']=str(Path(cc).resolve().parent)+os.pathsep+env.
 with tempfile.TemporaryDirectory(prefix='direct-vsh-') as tmp:
  d=Path(tmp);(d/'qemu').mkdir();(d/'qemu/osdep.h').write_text('#include <stdint.h>\n#include <stddef.h>\n#include <stdbool.h>\n');(d/'qemu/mstring.h').write_text('typedef struct MString MString;\n')
  native=(r/'hw/xbox/nv2a/pgraph/vk/instance.c').read_text()
- assert native.count('init_float_controls(r);')==2
+ # The core adopts only the frontend device; standalone device creation was
+ # removed. Require capability publication on that surviving path.
+ adopt=native[native.index('static bool adopt_frontend_device('):native.index('void pgraph_vk_init_instance(')]
+ assert adopt.count('init_float_controls(r);')==1
+ assert adopt.index('r->vk_api_version =') < adopt.index('init_float_controls(r);') < adopt.index('return true;')
  start=native.index('static void init_float_controls(');end=native.index('{',start)+1;depth=1
  while depth:depth+=(native[end]=='{')-(native[end]=='}');end+=1
  test=Path(__file__).with_suffix('.c').read_text().replace('/* DEVICE CAPS */',native[start:end]);(d/'test.c').write_text(test)

@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Repair the vertex-emitter regression fixture after removal of standalone Vulkan device creation; it still requires float-control publication for the frontend-owned device.
+
 - Repair index/constant-upload, reset and GL surface tests after trace removal: assert guest values, bounds, memory reads and ownership rather than diagnostic callbacks, and extract functions without trace anchors. Remove orphaned register-log wrappers, Kelvin method-name metadata, DSP trace buffers/helpers, unused debugger code and MMIO trace helpers. Keep the DSP instruction-length decoder and existing savestate padding.
 
 - Remove Volk and standalone Vulkan device setup. Resolve renderer entry points through the negotiated libretro frontend instance and device, using its queue family for command pools. GPU regression probes retain a test-only native loader; the core opens no Vulkan loader library.
