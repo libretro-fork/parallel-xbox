@@ -6,6 +6,7 @@
 MString *baseline_gen_psh(const PshState *,GenPshGlslOptions);
 void mstring_test_group(unsigned);
 size_t mstring_test_norm_formats(unsigned);
+size_t mstring_test_created(unsigned);
 size_t mstring_test_live(unsigned);
 size_t mstring_test_retained_bytes(unsigned);
 void mstring_test_cleanup(unsigned);
@@ -60,6 +61,7 @@ int main(void)
     for(unsigned pattern=0;pattern<24;pattern++)for(unsigned target=0;target<3;target++,test++){
         PshState s=state_for(flags,depth,pattern);
         GenPshGlslOptions opts={.vulkan=target==2,.locations=target!=0,.ubo_binding=1,.tex_binding=2};
+        size_t old_created=mstring_test_created(0),new_created=mstring_test_created(1);
         size_t before_formats=mstring_test_norm_formats(0);
         mstring_test_group(0);MString *old=baseline_gen_psh(&s,opts);
         REQUIRE(mstring_test_live(0)==2);
@@ -67,6 +69,9 @@ int main(void)
         mstring_test_group(1);MString *now=pgraph_glsl_gen_psh(&s,opts);
         REQUIRE(mstring_test_live(1)==1);
         REQUIRE(mstring_test_norm_formats(1)==0);
+        size_t parent_created=mstring_test_created(0)-old_created;
+        size_t candidate_created=mstring_test_created(1)-new_created;
+        REQUIRE(candidate_created+1==parent_created);
         REQUIRE(mstring_get_length(now)>0);
         REQUIRE(!strcmp(mstring_get_str(old),mstring_get_str(now)));
         bytes+=mstring_get_length(now);
@@ -80,5 +85,6 @@ int main(void)
     printf("PASS PSH source owners: %u sources byte-identical; %zu source bytes; candidate retains no temporary owners\n",test,bytes);
     printf("Historical clip owner leak: %zu aggregate bytes, %zu maximum bytes per source (real MString/GString capacities)\n",leaked,maximum);
     printf("Normalization-name format calls: parent %zu, candidate %zu\n",mstring_test_norm_formats(0),mstring_test_norm_formats(1));
+    printf("MString record allocations: parent %zu, candidate %zu\n",mstring_test_created(0),mstring_test_created(1));
     return 0;
 }

@@ -40,3 +40,16 @@ normalization-name formatting. Linux runs use address/undefined sanitizers
 and leak detection; Windows runs use the same actual owners without sanitizer
 substitution. Full shader/performance and cold-play qualification retain their
 existing failed/unqualified status.
+
+
+The follow-up moves the unchanged version directive to the start of the
+preflight/declaration owner, then appends `main`, clipping, variables and code
+into that same owner. Return ownership transfers to the caller without a
+reference increment or a second final MString/GString allocation. No interior
+lend is retained across growth; the final source stays alive through its
+caller's last consumer. This removes the full declaration-prefix assembly
+copy. GString growth, the remaining independently built source sections and
+driver-internal copies/allocations remain; this is not a whole-renderer
+zero-copy claim. The same byte-equivalence fixture checks exactly one fewer
+MString record allocation per generated source and rejects a reintroduced
+prefix clone even when its output and final live-owner count are correct.

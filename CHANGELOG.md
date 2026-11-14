@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Assemble fragment GLSL directly in its declaration buffer and transfer that owner to the caller, avoiding a separate final MString/GString and whole-prefix copy. Shader source stays byte-identical; remaining source assembly and driver allocations are unchanged.
+
 - Release temporary clipping-source storage after fragment generation. Each generated source previously retained one MString/GString and its buffer (up to 4,136 bytes in the ownership corpus). Use immutable normalization-function names instead of allocating formatted names for texture stages, shadow sampling and convolution. Generated GL and Vulkan shader text stays byte-identical; this fixes retained CPU allocations, not draw-time compilation or shader stutters.
 
 - Repair the vertex-emitter regression fixture after removal of standalone Vulkan device creation; it still requires float-control publication for the frontend-owned device.
