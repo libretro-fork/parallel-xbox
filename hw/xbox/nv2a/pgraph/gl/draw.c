@@ -20,7 +20,7 @@
  * License along with this library; if not, see <http://www.gnu.org/licenses/>.
  */
 
-#include "qemu/fast-hash.h"
+#include <encodings/xxh3.h>
 #include "hw/xbox/nv2a/nv2a_int.h"
 #include "hw/xbox/nv2a/pgraph/cost.h"
 #include "hw/xbox/nv2a/pgraph/blend.h"
@@ -667,8 +667,8 @@ void pgraph_gl_flush_draw(NV2AState *d)
         k.gl_type = GL_UNSIGNED_INT;
         k.gl_normalize = GL_FALSE;
         k.stride = sizeof(uint32_t);
-        uint64_t h = fast_hash((uint8_t*)pg->inline_elements,
-                               pg->inline_elements_length * 4);
+        uint64_t h = xxh3_64((uint8_t*)pg->inline_elements,
+                               pg->inline_elements_length * 4, 0);
 
         LruNode *node = lru_lookup(&r->element_cache, h, &k);
         VertexLruNode *found = container_of(node, VertexLruNode, node);

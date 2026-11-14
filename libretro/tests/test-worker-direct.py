@@ -28,7 +28,7 @@ with tempfile.TemporaryDirectory(prefix='worker-direct-') as tmp:
  for checked in [True,False]:
   exe=p/('test.exe' if os.name=='nt' else 'test');flags=['-DCHECKED','-fsanitize=undefined','-fsanitize-undefined-trap-on-error'] if checked else []
   if not checked and '--benchmark' in sys.argv[3:]: flags.append('-DBENCHMARK')
-  command=[cc,'-O2','-std=gnu11','-Wall','-Wextra','-Werror','-pthread',*flags,'-I'+str(p),'-I'+str(repo),'-I'+str(repo/'include'),'-I'+str(repo/'libretro-common/include'),'-I'+str(repo/'deps/vulkan-headers'),str(p/'test.c'),str(repo/'util/fast-hash.c'),str(repo/'libretro-common/encodings/encoding_xxh3.c'),str(repo/'libretro-common/queues/retro_spsc.c'),'-o',str(exe)]
+  command=[cc,'-O2','-std=gnu11','-Wall','-Wextra','-Werror','-pthread',*flags,'-I'+str(p),'-I'+str(repo),'-I'+str(repo/'include'),'-I'+str(repo/'libretro-common/include'),'-I'+str(repo/'deps/vulkan-headers'),str(p/'test.c'),str(repo/'libretro-common/encodings/encoding_xxh3.c'),str(repo/'libretro-common/queues/retro_spsc.c'),'-o',str(exe)]
   subprocess.run(command,env=env,check=True)
   print('UBSan' if checked else 'Optimized',flush=True)
   subprocess.run([str(exe)],env=env,check=True,timeout=120)

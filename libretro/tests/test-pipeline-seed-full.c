@@ -9,7 +9,7 @@
 #include <vulkan/vulkan.h>
 #include "hw/xbox/nv2a/pgraph/glsl/shaders.h"
 #include "hw/xbox/nv2a/pgraph/blend.h"
-#include "qemu/fast-hash.h"
+#include <encodings/xxh3.h>
 #undef assert
 #define assert(x) do{if(!(x)){fprintf(stderr,"FAIL seed-full line %d: %s\n",__LINE__,#x);_Exit(1);}}while(0)
 #define ARRAY_SIZE(a) ((int)(sizeof(a)/sizeof(*(a))))
@@ -36,11 +36,11 @@ uint64_t cpu_features_get(void){return 0;}
 static uint32_t pgraph_reg_r(PGRAPHState *pg,unsigned reg){for(unsigned i=0;i<9;i++)if(pipeline_registers[i]==reg)return pg->vk_renderer_state->raw[i];abort();}
 static void init_render_pass_state(PGRAPHState *pg,RenderPassState *rp){*rp=pg->vk_renderer_state->rp;}
 static LibJob *pump_slot(void){if(full)return NULL;memset(&slot,0xa5,sizeof(slot));slot.nmods=0;return &slot;}
-static bool pipeline_ready(PGRAPHVkState *r,uint64_t hash,const PipelineKey *key){(void)r;assert(key==&slot.key&&!memcmp(key,&expected,sizeof(*key)));assert(hash==fast_hash((const uint8_t *)&expected,sizeof(expected)));return ready;}
-static bool pump_full_in_flight(uint64_t hash,const PipelineKey *key){assert(!memcmp(key,&expected,sizeof(*key)));assert(hash==fast_hash((const uint8_t *)&expected,sizeof(expected)));return flight;}
+static bool pipeline_ready(PGRAPHVkState *r,uint64_t hash,const PipelineKey *key){(void)r;assert(key==&slot.key&&!memcmp(key,&expected,sizeof(*key)));assert(hash==xxh3_64((const uint8_t *)&expected,sizeof(expected), 0));return ready;}
+static bool pump_full_in_flight(uint64_t hash,const PipelineKey *key){assert(!memcmp(key,&expected,sizeof(*key)));assert(hash==xxh3_64((const uint8_t *)&expected,sizeof(expected), 0));return flight;}
 static void pgraph_vk_ref_state_modules(PGRAPHVkState *r,const ShaderState *st,ShaderModuleInfo **g,ShaderModuleInfo **v,ShaderModuleInfo **p){(void)r;assert(st==&slot.key.shader_state);refs++;*v=&mods[0];*g=geometry?&mods[1]:NULL;*p=&mods[2];}
 static void pipeline_job_fill(PGRAPHState *pg,const ShaderState *st,const ShaderModuleInfo *v,const ShaderModuleInfo *g,const ShaderModuleInfo *p,const PipelineKey *key,LibJob *job){(void)pg;assert(st==&slot.key.shader_state&&job==&slot&&key==&slot.key);assert(v==&mods[0]&&g==(geometry?&mods[1]:NULL)&&p==&mods[2]);slot.full=true;}
-static void pump_submit(LibJob *job){assert(job==&slot&&slot.full);assert(job->nmods==(geometry?3u:2u));assert(job->mods[0]==&mods[0]&&job->mods[job->nmods-1]==&mods[2]);assert(job->state_hash==fast_hash((const uint8_t *)&expected.shader_state,sizeof(expected.shader_state)));submits++;}
+static void pump_submit(LibJob *job){assert(job==&slot&&slot.full);assert(job->nmods==(geometry?3u:2u));assert(job->mods[0]==&mods[0]&&job->mods[job->nmods-1]==&mods[2]);assert(job->state_hash==xxh3_64((const uint8_t *)&expected.shader_state,sizeof(expected.shader_state), 0));submits++;}
 static void pgraph_vk_spec_pipeline_queued(uint64_t hash){assert(submits==1&&hash==slot.state_hash);queued++;}
 /* FUNCTIONS */
 static uint32_t rng=0x48276ad1;

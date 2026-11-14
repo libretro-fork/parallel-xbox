@@ -40,7 +40,7 @@ static uint64_t reference_pre_hash(PGRAPHVkState *r, VkShaderModule vsh,
         memcpy(k.attr, vi->pVertexAttributeDescriptions,
                k.na * sizeof(k.attr[0]));
     }
-    return fast_hash((const uint8_t *)&k, sizeof(k));
+    return xxh3_64((const uint8_t *)&k, sizeof(k), 0);
 }
 
 static uint64_t reference_frag_hash(PGRAPHVkState *r, VkShaderModule psh,
@@ -71,5 +71,5 @@ static uint64_t reference_frag_hash(PGRAPHVkState *r, VkShaderModule psh,
         k.blend = cb->pAttachments[0];
         k.blend_valid = 1;
     }
-    return fast_hash((const uint8_t *)&k, sizeof(k));
+    return xxh3_64((const uint8_t *)&k, sizeof(k), 0);
 }

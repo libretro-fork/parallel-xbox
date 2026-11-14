@@ -23,7 +23,7 @@ void retro_sleep_us(unsigned us){(void)us;abort();}
 #define cpu_to_le32 swap_if_big32
 #define le32_to_cpu swap_if_big32
 #define cpu_to_be32 swap_if_little32
-#define qemu_fopen fopen
+#define fopen_utf8 fopen
 static void *error_fatal;
 static uint32_t entropy;
 static int qcrypto_random_bytes(void *p,size_t n,void *error)

@@ -24,7 +24,7 @@ code=r'''
 #include <stddef.h>
 #include <string.h>
 #include "hw/xbox/nv2a/pgraph/glsl/shaders.h"
-#include "qemu/fast-hash.h"
+#include <encodings/xxh3.h>
 uint64_t cpu_features_get(void){return 0;}
 #define CHECK(x) do{if(!(x)){fprintf(stderr,"projection FAIL line %d: %s\n",__LINE__,#x);exit(1);}}while(0)
 #define container_of(p,t,m) ((t *)((char *)(p)-offsetof(t,m)))
@@ -37,7 +37,7 @@ static ShaderState exact,canonical;static ShaderBinding fallback,real;
 static bool boost,known;static int marker;static unsigned lookups,queues,gens,tracks,profiles;
 static uint64_t ph,sh;static bool pgraph_gpu_boost_gl(void){return boost;}
 /* PARTS */
-static LruNode *lru_lookup(unsigned *cache,uint64_t hash,const void *key){(void)cache;CHECK(hash==fast_hash((const uint8_t *)&canonical,sizeof(canonical)));CHECK(!memcmp(key,&canonical,sizeof(canonical)));lookups++;return &fallback.node;}
+static LruNode *lru_lookup(unsigned *cache,uint64_t hash,const void *key){(void)cache;CHECK(hash==xxh3_64((const uint8_t *)&canonical,sizeof(canonical), 0));CHECK(!memcmp(key,&canonical,sizeof(canonical)));lookups++;return &fallback.node;}
 static int spec_track_find(PGRAPHGLState *r,uint64_t hash){(void)r;CHECK(hash==sh);return marker;}
 static bool state_modules_known(PGRAPHGLState *r,const ShaderState *state){(void)r;CHECK(!memcmp(state,&canonical,sizeof(*state)));return known;}
 static void generate_shaders(PGRAPHGLState *r,ShaderBinding *b){(void)r;CHECK(b==&fallback);b->initialized=true;gens++;}
@@ -56,7 +56,7 @@ int main(void){uint32_t random=41;unsigned cases=0;
   exact.psh.combiner_dynamic=!!(mode&1);boost=!(mode&2);known=!!(mode&4);fallback.initialized=!!(mode&8);bool initial=fallback.initialized;
   marker=(mode&16)?0:-1;int t=(mode&32)?0:-1;PGRAPHGLState r={0};r.spec_track[0].phase=SPEC_ADOPTED;
   memcpy(&canonical,&exact,sizeof(exact));bool can=pgraph_glsl_psh_canonicalize_dynamic(&canonical.psh);
-  ph=fast_hash((const uint8_t *)&exact.psh,sizeof(exact.psh));sh=fast_hash((const uint8_t *)&canonical.psh,sizeof(canonical.psh));
+  ph=xxh3_64((const uint8_t *)&exact.psh,sizeof(exact.psh), 0);sh=xxh3_64((const uint8_t *)&canonical.psh,sizeof(canonical.psh), 0);
   lookups=queues=gens=tracks=profiles=0;choose(&r,&exact,t);
   bool made=can&&!initial&&marker>=0&&known;bool ready=can&&(initial||made);
   CHECK(lookups==can&&gens==made&&profiles==ready);
@@ -70,7 +70,7 @@ int main(void){uint32_t random=41;unsigned cases=0;
 with tempfile.TemporaryDirectory(prefix='gl-cover-projection-') as tmp:
  d=Path(tmp);(d/'qemu').mkdir();(d/'qemu/osdep.h').write_text('#include <stdint.h>\n#include <stdbool.h>\n#include <stddef.h>\n');(d/'qemu/mstring.h').write_text('typedef struct MString MString;\n')
  c=d/'test.c';exe=d/('test.exe' if os.name=='nt' else 'test')
- cmd=[cc,'-O2','-std=gnu11','-Wall','-Wextra','-Werror','-Wno-misleading-indentation','-fsanitize=undefined','-fsanitize-undefined-trap-on-error','-I'+str(d),'-I'+str(r),'-I'+str(r/'include'),'-I'+str(r/'libretro-common/include'),str(c),str(r/'util/fast-hash.c'),str(r/'libretro-common/encodings/encoding_xxh3.c'),'-o',str(exe)]
+ cmd=[cc,'-O2','-std=gnu11','-Wall','-Wextra','-Werror','-Wno-misleading-indentation','-fsanitize=undefined','-fsanitize-undefined-trap-on-error','-I'+str(d),'-I'+str(r),'-I'+str(r/'include'),'-I'+str(r/'libretro-common/include'),str(c),str(r/'libretro-common/encodings/encoding_xxh3.c'),'-o',str(exe)]
  c.write_text(code);subprocess.run(cmd,check=True);subprocess.run([str(exe)],check=True)
  for name,mutant in [('missing early restore',code.replace('memcpy(&state.psh, &exact_psh, sizeof(exact_psh));','(void)exact_psh;',1)),('wrong exact queue',code.replace('spec_queue(r, ph, &state);','spec_queue(r, ph, &canonical);',1))]:
   assert mutant!=code,name;c.write_text(mutant);subprocess.run(cmd,check=True)

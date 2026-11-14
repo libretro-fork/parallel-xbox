@@ -20,7 +20,7 @@
  * License along with this library; if not, see <http://www.gnu.org/licenses/>.
  */
 
-#include "qemu/fast-hash.h"
+#include <encodings/xxh3.h>
 #include "hw/xbox/nv2a/nv2a_int.h"
 #include "hw/xbox/nv2a/pgraph/swizzle.h"
 #include "hw/xbox/nv2a/pgraph/s3tc.h"
@@ -524,7 +524,7 @@ void bind_textures(NV2AState *d, bool highres_depth)
         }
 
         // Search for existing texture binding in cache
-        uint64_t tex_binding_hash = fast_hash((uint8_t*)&key, sizeof(key));
+        uint64_t tex_binding_hash = xxh3_64((uint8_t*)&key, sizeof(key), 0);
         LruNode *found = lru_lookup(&r->texture_cache,
                                      tex_binding_hash, &key);
         TextureLruNode *key_out = container_of(found, TextureLruNode, node);
@@ -548,10 +548,10 @@ void bind_textures(NV2AState *d, bool highres_depth)
             key_out->binding->s2t_format == GL_DEPTH_COMPONENT24;
         uint64_t tex_data_hash = 0;
         if (!surf_to_tex && !surf_to_tex_cube && (possibly_dirty || f16_to_ram)) {
-            tex_data_hash = fast_hash(texture_data,
-                pgraph_texture_hash_length(state, length));
+            tex_data_hash = xxh3_64(texture_data,
+                pgraph_texture_hash_length(state, length), 0);
             if (is_indexed) {
-                tex_data_hash ^= fast_hash(palette_data, palette_length);
+                tex_data_hash ^= xxh3_64(palette_data, palette_length, 0);
             }
         }
 

@@ -28,7 +28,7 @@
 #include "hw/xbox/nv2a/pgraph/s3tc.h"
 #include "hw/xbox/nv2a/pgraph/swizzle.h"
 
-#include "qemu/fast-hash.h"
+#include <encodings/xxh3.h>
 #include "data/segaboot_logo.rgba.h"
 #include "qemu/lru.h"
 #include "renderer.h"
@@ -865,10 +865,10 @@ static uint64_t hash_mixed_cube_ram(const uint8_t *data, size_t face_length,
     uint64_t faces[7] = { gpu_mask };
     for (unsigned f = 0; f < 6; f++) {
         if (!(gpu_mask & (1u << f))) {
-            faces[f + 1] = fast_hash(data + f * face_length, face_length);
+            faces[f + 1] = xxh3_64(data + f * face_length, face_length, 0);
         }
     }
-    return fast_hash((const uint8_t *)faces, sizeof(faces));
+    return xxh3_64((const uint8_t *)faces, sizeof(faces), 0);
 }
 
 /* An upload leaves skipped cube layers untouched. Provenance belongs to the
@@ -2322,7 +2322,7 @@ static VkSampler sampler_cache_get(PGRAPHState *pg, const TextureShape *state,
     k.levels = state->levels;
     k.min_mip = state->min_mipmap_level;
     k.max_mip = state->max_mipmap_level;
-    unsigned h = (unsigned)(fast_hash((const uint8_t *)&k, sizeof(k)) %
+    unsigned h = (unsigned)(xxh3_64((const uint8_t *)&k, sizeof(k), 0) %
                             VK_SAMPLER_CACHE_SIZE);
     for (unsigned i = 0; i < VK_SAMPLER_CACHE_SIZE; i++) {
         unsigned s = (h + i) % VK_SAMPLER_CACHE_SIZE;
@@ -2784,7 +2784,7 @@ static void create_texture(PGRAPHState *pg, int texture_idx)
          d16_surface_can_borrow(r, surface, &state, znative_zeta, filter,
                                 max_anisotropy));
 
-    uint64_t key_hash = fast_hash((void*)&key, sizeof(key));
+    uint64_t key_hash = xxh3_64((void*)&key, sizeof(key), 0);
     LruNode *node = lru_lookup(&r->texture_cache, key_hash, &key);
     TextureBinding *snode = container_of(node, TextureBinding, node);
     bool binding_found = snode->image != VK_NULL_HANDLE;
@@ -2838,9 +2838,9 @@ static void create_texture(PGRAPHState *pg, int texture_idx)
         (snode->validation_frame != pg->frame_time || f16_to_ram || cube_hash_mask_changed)) {
         content_hash = mixed_cube ?
             hash_mixed_cube_ram(texture_data, texture_length / 6, cube_mask) :
-            fast_hash(texture_data, pgraph_texture_hash_length(state, texture_length));
+            xxh3_64(texture_data, pgraph_texture_hash_length(state, texture_length), 0);
         if (is_indexed) {
-            content_hash ^= fast_hash(palette_data, texture_palette_data_size);
+            content_hash ^= xxh3_64(palette_data, texture_palette_data_size, 0);
         }
         content_hashed = true;
     }

@@ -849,30 +849,6 @@ int qemu_msync(void *addr, size_t length, int fd)
     return qemu_fdatasync(fd);
 }
 
-FILE *qemu_fopen(const char *filename, const char *mode)
-{
-    wchar_t *wfilename;
-    wchar_t *wmode = NULL;
-    FILE *file = NULL;
-
-    wfilename = g_utf8_to_utf16(filename, -1, NULL, NULL, NULL);
-    if (!wfilename) {
-        goto done;
-    }
-    
-    wmode = g_utf8_to_utf16(mode, -1, NULL, NULL, NULL);
-    if (!wmode) {
-        goto done;
-    }
-
-    file = _wfopen(wfilename, wmode);
-
-done:
-    g_free(wfilename);
-    g_free(wmode);
-    return file;
-}
-
 int qemu_access(const char *pathname, int mode)
 {
     wchar_t *wpathname;

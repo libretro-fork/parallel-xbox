@@ -21,7 +21,7 @@
  */
 
 #include "qemu/osdep.h"
-#include "qemu/fast-hash.h"
+#include <encodings/xxh3.h>
 #include "qemu/file-map.h"
 #include <glib/gstdio.h>
 #include "qemu/mstring.h"
@@ -528,8 +528,8 @@ static void module_save_queue_drain(PGRAPHGLState *r, unsigned max_items)
              * first draw that uses this module from paying it. */
             module_locs_demand(module);
             if (!module_save_to_disk(r, module,
-                                    fast_hash((void *)&module->key,
-                                              sizeof(ShaderModuleCacheKey)))) {
+                                    xxh3_64((void *)&module->key,
+                                              sizeof(ShaderModuleCacheKey), 0))) {
                 break; /* Disk slots busy: retry without exporting or waiting. */
             }
         }
@@ -573,7 +573,7 @@ static void shader_module_cache_entry_init(Lru *lru, LruNode *node,
     /* Adopt only for pipelines: the linked-program path attaches the
      * shader object, which an adopted module lacks. */
     if (gl_sso_enabled() && r->comb_adopt_program &&
-        fast_hash((void *)key, sizeof(ShaderModuleCacheKey)) ==
+        xxh3_64((void *)key, sizeof(ShaderModuleCacheKey), 0) ==
             r->comb_adopt_hash) {
         module->gl_stage_program = r->comb_adopt_program;
         r->comb_adopt_program = 0;
@@ -587,7 +587,7 @@ static void shader_module_cache_entry_init(Lru *lru, LruNode *node,
     }
 
     if (gl_sso_enabled() && g_config.perf.cache_shaders) {
-        uint64_t hash = fast_hash((void *)key, sizeof(ShaderModuleCacheKey));
+        uint64_t hash = xxh3_64((void *)key, sizeof(ShaderModuleCacheKey), 0);
         bool hit = module_load_from_disk(r, module, hash);
         if (hit) {
             module->gl_shader = 0;
@@ -741,7 +741,7 @@ static bool state_module_keys(const ShaderState *st,
 static ShaderModuleCacheEntry *get_shader_module_for_key(
     PGRAPHGLState *r, const ShaderModuleCacheKey *key)
 {
-    uint64_t hash = fast_hash((void *)key, sizeof(ShaderModuleCacheKey));
+    uint64_t hash = xxh3_64((void *)key, sizeof(ShaderModuleCacheKey), 0);
     LruNode *node = lru_lookup(&r->shader_module_cache, hash, key);
     return container_of(node, ShaderModuleCacheEntry, node);
 }
@@ -993,7 +993,7 @@ void pgraph_gl_shader_write_cache_reload_list(PGRAPHState *pg)
 
     char *shader_lru_path = shader_get_lru_cache_path();
 
-    FILE *lru_list = qemu_fopen(shader_lru_path, "wb");
+    FILE *lru_list = fopen_utf8(shader_lru_path, "wb");
     g_free(shader_lru_path);
     if (!lru_list) {
         fprintf(stderr, "nv2a: Failed to open shader LRU cache for writing\n");
@@ -1171,7 +1171,7 @@ static void shader_reload_lru_from_disk(void *arg)
     PGRAPHState *pg = (PGRAPHState*) arg;
     char *shader_lru_path = shader_get_lru_cache_path();
 
-    FILE *lru_shaders_list = qemu_fopen(shader_lru_path, "rb");
+    FILE *lru_shaders_list = fopen_utf8(shader_lru_path, "rb");
     g_free(shader_lru_path);
     if (!lru_shaders_list) {
         return;
@@ -1723,7 +1723,7 @@ static int spec_track_find(PGRAPHGLState *r, uint64_t h)
 
 static void spec_track_adopted(PGRAPHGLState *r, const PshState *st)
 {
-    uint64_t h = fast_hash((const uint8_t *)st, sizeof(*st));
+    uint64_t h = xxh3_64((const uint8_t *)st, sizeof(*st), 0);
     int i = spec_track_find(r, h);
     if (i >= 0 && r->spec_track[i].phase != SPEC_PIPE_RESERVED) {
         r->spec_track[i].phase = SPEC_ADOPTED;
@@ -1866,7 +1866,7 @@ static bool gen_jobs_have_free(unsigned needed)
 /* Already generated, queued, or cached? Skip regenerating. */
 static bool module_known(PGRAPHGLState *r, const ShaderModuleCacheKey *key)
 {
-    uint64_t hash = fast_hash((const void *)key, sizeof(*key));
+    uint64_t hash = xxh3_64((const void *)key, sizeof(*key), 0);
     Lru *cache = &r->shader_module_cache;
     unsigned bin = lru_hash_to_bin(cache, hash);
     LruNode *node;
@@ -1894,7 +1894,7 @@ static bool state_modules_known(PGRAPHGLState *r, const ShaderState *state)
  * Borrow only for this predicate; no cache entry escapes or changes owner. */
 static bool module_ready(PGRAPHGLState *r, const ShaderModuleCacheKey *key)
 {
-    uint64_t hash = fast_hash((const uint8_t *)key, sizeof(*key));
+    uint64_t hash = xxh3_64((const uint8_t *)key, sizeof(*key), 0);
     Lru *cache = &r->shader_module_cache;
     unsigned bin = lru_hash_to_bin(cache, hash);
     LruNode *node;
@@ -1914,8 +1914,8 @@ static int spec_binding_reservation(PGRAPHGLState *r)
     if (!pending || pending->state.psh.combiner_dynamic) {
         return -1;
     }
-    uint64_t ph = fast_hash((const uint8_t *)&pending->state.psh,
-                             sizeof(pending->state.psh));
+    uint64_t ph = xxh3_64((const uint8_t *)&pending->state.psh,
+                             sizeof(pending->state.psh), 0);
     int t = spec_track_find(r, ph);
     return t >= 0 && r->spec_track[t].phase == SPEC_PIPE_RESERVED ? t : -1;
 }
@@ -1963,8 +1963,8 @@ static ShaderBinding *ready_cover_binding(PGRAPHGLState *r,
     memcpy(&exact, &owned_state->psh, sizeof(exact));
     ShaderBinding *cover = NULL;
     if (pgraph_glsl_psh_canonicalize_dynamic(&owned_state->psh)) {
-        uint64_t hash = fast_hash((const uint8_t *)owned_state,
-                                  sizeof(*owned_state));
+        uint64_t hash = xxh3_64((const uint8_t *)owned_state,
+                                  sizeof(*owned_state), 0);
         Lru *cache = &r->shader_cache;
         unsigned bin = lru_hash_to_bin(cache, hash);
         LruNode *node;
@@ -2016,8 +2016,8 @@ static void spec_binding_pump(PGRAPHGLState *r)
     }
     r->spec_binding = NULL;
     if (!target->state.psh.combiner_dynamic) {
-        uint64_t ph = fast_hash((const uint8_t *)&target->state.psh,
-                                 sizeof(target->state.psh));
+        uint64_t ph = xxh3_64((const uint8_t *)&target->state.psh,
+                                 sizeof(target->state.psh), 0);
         int t = spec_track_find(r, ph);
         /* The ready pipeline no longer needs a scheduling marker. Pending
          * CPU/GL jobs keep their independent owned slots until consumption. */
@@ -2114,7 +2114,7 @@ static unsigned seed_compact_dynamic_states(ShaderState *states, unsigned count)
         pgraph_glsl_psh_migrate_seed(&state->psh);
         if (pgraph_glsl_psh_canonicalize_dynamic(&state->psh) &&
             pgraph_seed_hash_set_add(
-                seen, fast_hash((const uint8_t *)state, sizeof(*state)))) {
+                seen, xxh3_64((const uint8_t *)state, sizeof(*state), 0))) {
             if (used != i) {
                 memcpy(&states[used], state, sizeof(*state));
             }
@@ -2177,8 +2177,8 @@ static void seed_load(PGRAPHGLState *r)
             bool need_gs = state_module_keys(&sib[i], keys);
             for (unsigned k = need_gs ? 0 : 1; k < 3; k++) {
                 if (pgraph_seed_hash_set_add(
-                        seen, fast_hash((const uint8_t *)&keys[k],
-                                        sizeof(keys[k])))) {
+                        seen, xxh3_64((const uint8_t *)&keys[k],
+                                        sizeof(keys[k]), 0))) {
                     memcpy(&r->seed.mod_keys[n_keys++], &keys[k], sizeof(keys[k]));
                 }
             }
@@ -2250,7 +2250,7 @@ static void seed_pipe_pump(PGRAPHGLState *r, unsigned max_items)
             }
             continue;
         }
-        uint64_t h = fast_hash((const uint8_t *)st, sizeof(*st));
+        uint64_t h = xxh3_64((const uint8_t *)st, sizeof(*st), 0);
         LruNode *node = lru_lookup(&r->shader_cache, h, st);
         ShaderBinding *b = container_of(node, ShaderBinding, node);
         if (!b->initialized) {
@@ -2425,8 +2425,8 @@ static void comb_async_service(PGRAPHGLState *r, unsigned max_items)
         glDetachShader(comb_async[i].gl_program, comb_async[i].gl_shader);
         glDeleteShader(comb_async[i].gl_shader);
         if (ok) {
-            r->comb_adopt_hash = fast_hash((void *)&comb_async[i].key,
-                                           sizeof(ShaderModuleCacheKey));
+            r->comb_adopt_hash = xxh3_64((void *)&comb_async[i].key,
+                                           sizeof(ShaderModuleCacheKey), 0);
             r->comb_adopt_program = comb_async[i].gl_program;
             get_shader_module_for_key(r, &comb_async[i].key);
             if (r->comb_adopt_program) {
@@ -2654,14 +2654,14 @@ void pgraph_gl_bind_shaders(PGRAPHState *pg)
                          state.vsh.is_fixed_function ? "FF" : "PROG");
 
     uint64_t shader_state_hash =
-        fast_hash((uint8_t *)&state, sizeof(ShaderState));
+        xxh3_64((uint8_t *)&state, sizeof(ShaderState), 0);
 
     LruNode *node = lru_lookup(&r->shader_cache, shader_state_hash, &state);
     ShaderBinding *binding = container_of(node, ShaderBinding, node);
 
     if (!binding->initialized && gl_sso_enabled() && first_meet_enabled()) {
         uint64_t ph =
-            fast_hash((const uint8_t *)&state.psh, sizeof(state.psh));
+            xxh3_64((const uint8_t *)&state.psh, sizeof(state.psh), 0);
         int t = spec_track_find(r, ph);
         if (t >= 0 &&
             (r->spec_track[t].phase == SPEC_ADOPTED ||
@@ -2681,8 +2681,8 @@ void pgraph_gl_bind_shaders(PGRAPHState *pg)
                 /* A different recipe cannot displace the reservation. Keep
                  * a shared fragment marker until that owner finishes. */
                 ShaderBinding *pending = r->spec_binding;
-                if (!pending || fast_hash((const uint8_t *)&pending->state.psh,
-                                           sizeof(pending->state.psh)) != ph) {
+                if (!pending || xxh3_64((const uint8_t *)&pending->state.psh,
+                                           sizeof(pending->state.psh), 0) != ph) {
                     r->spec_track[t].phase = 0;
                 }
             }
@@ -2693,14 +2693,14 @@ void pgraph_gl_bind_shaders(PGRAPHState *pg)
             PshState exact_psh;
             memcpy(&exact_psh, &state.psh, sizeof(exact_psh));
             if (pgraph_glsl_psh_canonicalize_dynamic(&state.psh)) {
-                uint64_t fh = fast_hash((const uint8_t *)&state, sizeof(state));
+                uint64_t fh = xxh3_64((const uint8_t *)&state, sizeof(state), 0);
                 LruNode *fn = lru_lookup(&r->shader_cache, fh, &state);
                 ShaderBinding *fbind = container_of(fn, ShaderBinding, node);
                 if (!fbind->initialized) {
                     /* The sibling is interpreter code, never worth a sync
                      * stall: queue it, and take the normal path meanwhile. */
-                    uint64_t sh = fast_hash((const uint8_t *)&state.psh,
-                                            sizeof(state.psh));
+                    uint64_t sh = xxh3_64((const uint8_t *)&state.psh,
+                                            sizeof(state.psh), 0);
                     int ts = spec_track_find(r, sh);
                     if (ts >= 0 && r->spec_track[ts].phase == SPEC_ADOPTED &&
                         state_modules_known(r, &state)) {

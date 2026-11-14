@@ -14,7 +14,7 @@
 #include <retro_spsc.h>
 #include <vulkan/vulkan.h>
 #include "hw/xbox/nv2a/pgraph/glsl/shaders.h"
-#include "qemu/fast-hash.h"
+#include <encodings/xxh3.h>
 #include <libretro.h>
 #ifdef _WIN32
 #include <windows.h>
@@ -62,7 +62,7 @@ static retro_spsc_t vk_spec_out;
 static unsigned lookup_n;
 static int vk_state_module_keys(const ShaderState *s,bool push,ShaderModuleCacheKey *keys){(void)s;(void)push;memcpy(keys,prepared,sizeof(prepared));lookup_n=0;return 3;}
 static ShaderSource *vk_spec_compile_module(const ShaderModuleCacheKey *key,uint64_t hash){
- unsigned i=lookup_n++;assert(i<3&&hash==fast_hash((const uint8_t*)key,sizeof(*key)));
+ unsigned i=lookup_n++;assert(i<3&&hash==xxh3_64((const uint8_t*)key,sizeof(*key), 0));
  retro_atomic_fetch_add_int(&sources[i].refs,1);return &sources[i];
 }
 static void pgraph_vk_shader_source_unref(ShaderSource *s){assert(retro_atomic_fetch_sub_int(&s->refs,1)>1);}
@@ -120,8 +120,8 @@ static void *consume(void *unused){
   while(retro_spsc_read_avail(&vk_spec_out)<sizeof(actual))sched_yield();
   assert(retro_spsc_read(&vk_spec_out,&actual,sizeof(actual))==sizeof(actual));
   memset(&expected,0,sizeof(expected));memcpy(&expected.key,&prepared[j],sizeof(expected.key));
-  expected.key_hash=fast_hash((const uint8_t*)&prepared[j],sizeof(prepared[j]));expected.spirv=&sources[j];
-  state_for(&s,i);expected.state_hash=j==2?fast_hash((const uint8_t*)&s,sizeof(s)):0;
+  expected.key_hash=xxh3_64((const uint8_t*)&prepared[j],sizeof(prepared[j]), 0);expected.spirv=&sources[j];
+  state_for(&s,i);expected.state_hash=j==2?xxh3_64((const uint8_t*)&s,sizeof(s), 0):0;
   assert(!memcmp(&expected,&actual,sizeof(actual)));
   pgraph_vk_shader_source_unref(actual.spirv);
  }

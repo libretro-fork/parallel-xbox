@@ -10,7 +10,7 @@
 #include <vulkan/vulkan.h>
 #include <libretro.h>
 #include "qemu/lru.h"
-#include "qemu/fast-hash.h"
+#include <encodings/xxh3.h>
 #include "hw/xbox/nv2a/pgraph/glsl/shaders.h"
 #define container_of(p,t,m) ((t*)((char*)(p)-offsetof(t,m)))
 typedef struct {unsigned id;} ShaderSource;
@@ -27,8 +27,8 @@ static uint64_t expected_hash;
 #ifdef CHECKED
 static unsigned hash_calls;
 #endif
-static uint64_t hash_value(const uint8_t *p,size_t n){return force_collision?7:fast_hash(p,n);}
-static uint64_t counted_hash(const uint8_t *p,size_t n){
+static uint64_t hash_value(const uint8_t *p,size_t n){return force_collision?7:xxh3_64(p,n, 0);}
+static uint64_t counted_hash(const uint8_t *p,size_t n,uint64_t seed __attribute__((unused))){
 #ifdef CHECKED
  hash_calls++;
 #endif
@@ -42,9 +42,9 @@ static ShaderSource *vk_module_spirv(const ShaderModuleCacheKey *key){(void)key;
 static ShaderModuleInfo *pgraph_vk_create_shader_module_from_spirv(PGRAPHVkState *r,ShaderSource *s){assert(!r->info.refs&&r->entry.node.hash==expected_hash);r->creates++;r->fallbacks+=s==&sources[2];r->info.source=s->id;return &r->info;}
 static void pgraph_vk_ref_shader_module(ShaderModuleInfo *m){m->refs++;}
 static void pgraph_vk_unref_shader_module(PGRAPHVkState *r,ShaderModuleInfo *m){(void)r;assert(m->refs);m->refs--;}
-#define fast_hash counted_hash
+#define xxh3_64 counted_hash
 /* FUNCTIONS */
-#undef fast_hash
+#undef xxh3_64
 static PGRAPHVkState *setup(bool current){
  PGRAPHVkState *r=calloc(1,sizeof(*r));assert(r);lru_init(&r->shader_module_cache);
  r->shader_module_cache.init_node=current?shader_module_cache_entry_init:reference_init;

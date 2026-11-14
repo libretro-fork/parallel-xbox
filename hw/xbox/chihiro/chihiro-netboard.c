@@ -1275,7 +1275,7 @@ bool chihiro_netboard_init(const char *firmware_path, const char serial[16],
     if (nb_present) return true;
     if (!firmware_path || !firmware_path[0]) return false;
 
-    FILE *f = qemu_fopen(firmware_path, "rb");
+    FILE *f = fopen_utf8(firmware_path, "rb");
     if (!f) return false;
 
     memset(&nb, 0, sizeof(nb));

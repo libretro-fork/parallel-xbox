@@ -20,7 +20,7 @@ code=r'''
 #include <assert.h>
 #include <vulkan/vulkan.h>
 #include <libretro.h>
-#include "qemu/fast-hash.h"
+#include <encodings/xxh3.h>
 #include "hw/xbox/nv2a/pgraph/glsl/shaders.h"
 #undef assert
 #define assert(x) do { if (!(x)) { fprintf(stderr,"FAIL line %d: %s\n",__LINE__,#x); _Exit(1); } } while(0)
@@ -52,8 +52,8 @@ static bool ring_full,with_geom,release_on_drain;
 static unsigned drained,filled,submitted,landed,queued,refs;
 static ShaderModuleInfo modules[3];
 uint64_t cpu_features_get(void) {return 0;}
-static uint64_t hash_bytes(const uint8_t *p,size_t n) {return fast_hash(p,n);}
-static uint64_t checked_key_hash(const uint8_t *p,size_t n) {
+static uint64_t hash_bytes(const uint8_t *p,size_t n) {return xxh3_64(p,n, 0);}
+static uint64_t checked_key_hash(const uint8_t *p,size_t n,uint64_t seed __attribute__((unused))) {
     assert(p==(const uint8_t *)&slot.key && n==sizeof(slot.key));
     return hash_bytes(p,n);
 }
@@ -82,9 +82,9 @@ static void pump_submit(LibJob *job) {
  assert(job->nmods==(with_geom?3:2) && job->mods[0]==&modules[0] && job->mods[job->nmods-1]==&modules[2]);
  submitted++;
 }
-#define fast_hash checked_key_hash
+#define xxh3_64 checked_key_hash
 /* PRODUCTION */
-#undef fast_hash
+#undef xxh3_64
 int main(void) {
  unsigned cases=0;
  for(unsigned serial=0;serial<128;serial++)for(unsigned valid=0;valid<2;valid++)
@@ -157,7 +157,7 @@ int main(void) {
 with tempfile.TemporaryDirectory(prefix='pipeline-ahead-key-') as tmp:
  d=Path(tmp);(d/'qemu').mkdir();(d/'qemu/osdep.h').write_bytes(b'#include <stdint.h>\n#include <stdbool.h>\n#include <stddef.h>\n');(d/'qemu/mstring.h').write_bytes(b'typedef struct MString MString;\n');c=d/'test.c';c.write_text(code);exe=d/('test.exe' if os.name=='nt' else 'test')
  env=os.environ.copy();env['PATH']=str(Path(cc).resolve().parent)+os.pathsep+env.get('PATH','')
- command=[cc,'-std=gnu11','-O2','-Wall','-Wextra','-Werror','-I'+str(d),'-I'+str(r),'-I'+str(r/'include'),'-I'+str(r/'libretro-common/include'),'-I'+str(r/'deps/vulkan-headers'),*shlex.split(os.environ.get('PIPELINE_AHEAD_CFLAGS','')),str(c),str(r/'util/fast-hash.c'),str(r/'libretro-common/encodings/encoding_xxh3.c'),'-o',str(exe)]
+ command=[cc,'-std=gnu11','-O2','-Wall','-Wextra','-Werror','-I'+str(d),'-I'+str(r),'-I'+str(r/'include'),'-I'+str(r/'libretro-common/include'),'-I'+str(r/'deps/vulkan-headers'),*shlex.split(os.environ.get('PIPELINE_AHEAD_CFLAGS','')),str(c),str(r/'libretro-common/encodings/encoding_xxh3.c'),'-o',str(exe)]
  subprocess.run(command,check=True,env=env)
  subprocess.run([str(exe)],check=True,env=env,timeout=30)
  # Compile the old protocol error: work still in flight falsely becomes ready.

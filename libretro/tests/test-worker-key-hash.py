@@ -22,7 +22,7 @@ with tempfile.TemporaryDirectory(prefix='worker-key-hash-') as tmp:
  for checked in ([True] if '--check-only' in sys.argv[3:] else [True,False]):
   exe=p/('test.exe' if os.name=='nt' else 'test');flags=['-DCHECKED','-fsanitize=undefined','-fsanitize-undefined-trap-on-error'] if checked else []
   if '--clear-baseline' in sys.argv[3:]: flags.append('-DREFERENCE_REUSES_HASH')
-  subprocess.run([cc,'-O2','-std=gnu11','-Wall','-Wextra','-Werror',*flags,'-I'+str(p),'-I'+str(repo),'-I'+str(repo/'include'),'-I'+str(repo/'libretro-common/include'),'-I'+str(repo/'deps/vulkan-headers'),str(p/'test.c'),str(repo/'util/fast-hash.c'),str(repo/'libretro-common/encodings/encoding_xxh3.c'),'-o',str(exe)],env=env,check=True)
+  subprocess.run([cc,'-O2','-std=gnu11','-Wall','-Wextra','-Werror',*flags,'-I'+str(p),'-I'+str(repo),'-I'+str(repo/'include'),'-I'+str(repo/'libretro-common/include'),'-I'+str(repo/'deps/vulkan-headers'),str(p/'test.c'),str(repo/'libretro-common/encodings/encoding_xxh3.c'),'-o',str(exe)],env=env,check=True)
   if not checked and os.environ.get('WORKER_RECORD_ASM'):
    subprocess.run([cc,'-O2','-std=gnu11','-fno-ipa-icf','-S','-I'+str(p),'-I'+str(repo),'-I'+str(repo/'include'),'-I'+str(repo/'libretro-common/include'),'-I'+str(repo/'deps/vulkan-headers'),str(p/'test.c'),'-o',os.environ['WORKER_RECORD_ASM']],env=env,check=True)
   subprocess.run([str(exe)],env=env,check=True,timeout=120)

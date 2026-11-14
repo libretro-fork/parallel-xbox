@@ -19,7 +19,7 @@
  */
 
 #include "qemu/osdep.h"
-#include "qemu/fast-hash.h"
+#include <encodings/xxh3.h>
 #include "qemu/file-map.h"
 #include "ui/xemu-settings.h"
 #include "renderer.h"
@@ -609,7 +609,7 @@ static void create_clear_pipeline(PGRAPHState *pg)
 
     key.regs[0] = r->clear_parameter;
 
-    uint64_t hash = fast_hash((void *)&key, sizeof(key));
+    uint64_t hash = xxh3_64((void *)&key, sizeof(key), 0);
     LruNode *node = lru_lookup(&r->pipeline_cache, hash, &key);
     PipelineBinding *snode = container_of(node, PipelineBinding, node);
 
@@ -1319,7 +1319,7 @@ static uint64_t gpl_pre_hash(PGRAPHVkState *r, uint64_t vsh,
                    k->na * sizeof(k->attr[0]));
         }
     }
-    return fast_hash((const uint8_t *)k, sizeof(*k));
+    return xxh3_64((const uint8_t *)k, sizeof(*k), 0);
 }
 
 static VkColorComponentFlags color_write_mask(uint32_t control_0)
@@ -1371,7 +1371,7 @@ static uint64_t gpl_frag_hash(PGRAPHVkState *r, uint64_t psh,
         k->blend = cb->pAttachments[0];
         k->blend_valid = 1;
     }
-    return fast_hash((const uint8_t *)k, sizeof(*k));
+    return xxh3_64((const uint8_t *)k, sizeof(*k), 0);
 }
 
 /* The pre-rasterization library: the first num_pre_stages stages of full
@@ -1925,8 +1925,8 @@ void pgraph_vk_libpump_step(PGRAPHState *pg)
         g_free(r->pump.state_hash);
         r->pump.state_hash = g_new(uint64_t, n);
         for (unsigned i = 0; i < n; i++) {
-            r->pump.state_hash[i] = fast_hash((const uint8_t *)&states[i],
-                                              sizeof(states[i]));
+            r->pump.state_hash[i] = xxh3_64((const uint8_t *)&states[i],
+                                              sizeof(states[i]), 0);
         }
         r->pump.state_hash_base = states;
         r->pump.state_hash_n = n;
@@ -2359,7 +2359,7 @@ static int pump_state(PGRAPHState *pg, const ShaderState *st,
     memset((char *)key + after_shader, 0, sizeof(*key) - after_shader);
     memcpy(&key->shader_state, st, sizeof(key->shader_state));
     key->render_pass_state = *rp;
-    uint64_t hash = fast_hash((const uint8_t *)key, sizeof(*key));
+    uint64_t hash = xxh3_64((const uint8_t *)key, sizeof(*key), 0);
     if (pipeline_ready(r, hash, key) || pump_full_in_flight(hash, key)) {
         return 0;
     }
@@ -2367,8 +2367,8 @@ static int pump_state(PGRAPHState *pg, const ShaderState *st,
     pgraph_vk_ref_state_modules(r, &key->shader_state, &geom, &vsh, &psh);
     pipeline_job_fill(pg, &key->shader_state, vsh, geom, psh, key, job);
     job->hash = hash;
-    job->state_hash = fast_hash((const uint8_t *)&key->shader_state,
-                                sizeof(key->shader_state));
+    job->state_hash = xxh3_64((const uint8_t *)&key->shader_state,
+                                sizeof(key->shader_state), 0);
     job->mods[job->nmods++] = vsh;
     if (geom) {
         job->mods[job->nmods++] = geom;
@@ -2406,7 +2406,7 @@ static void pipeline_ahead(PGRAPHState *pg, const PipelineKey *draw_key)
     memcpy((char *)key + after_shader, (const char *)draw_key + after_shader,
            sizeof(*key) - after_shader);
     memcpy(&key->shader_state, &r->ahead_state, sizeof(ShaderState));
-    uint64_t hash = fast_hash((const uint8_t *)key, sizeof(*key));
+    uint64_t hash = xxh3_64((const uint8_t *)key, sizeof(*key), 0);
     if (pipeline_ready(r, hash, key)) {
         pgraph_vk_spec_pipeline_landed(r->ahead_hash);
         return;
@@ -2451,9 +2451,9 @@ static bool pipeline_use_ready_sibling(PGRAPHState *pg, PipelineKey *key,
         memcpy(&key->shader_state.psh, &original, sizeof(original));
         return false;
     }
-    uint64_t shader_hash = fast_hash((const uint8_t *)&key->shader_state,
-                                     sizeof(key->shader_state));
-    uint64_t sibling_hash = fast_hash((const uint8_t *)key, sizeof(*key));
+    uint64_t shader_hash = xxh3_64((const uint8_t *)&key->shader_state,
+                                     sizeof(key->shader_state), 0);
+    uint64_t sibling_hash = xxh3_64((const uint8_t *)key, sizeof(*key), 0);
     ShaderBinding *sibling = NULL;
     if (pipeline_ready(r, sibling_hash, key)) {
         sibling = pgraph_vk_materialize_ready_shader_binding(r,
@@ -2543,7 +2543,7 @@ static void create_pipeline(PGRAPHState *pg)
     PipelineKey key;
     init_pipeline_key(pg, &key);
     pipeline_ahead(pg, &key);
-    uint64_t hash = fast_hash((void *)&key, sizeof(key));
+    uint64_t hash = xxh3_64((void *)&key, sizeof(key), 0);
 
     LruNode *node = lru_lookup(&r->pipeline_cache, hash, &key);
     PipelineBinding *snode = container_of(node, PipelineBinding, node);

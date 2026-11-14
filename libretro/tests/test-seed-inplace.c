@@ -2,11 +2,11 @@
 #include <assert.h>
 #include <limits.h>
 #include "hw/xbox/nv2a/pgraph/glsl/shaders.h"
-#include "qemu/fast-hash.h"
+#include <encodings/xxh3.h>
 static bool boost,collision;
 static bool pgraph_gpu_boost_gl(void) {return boost;}
-static uint64_t fixture_hash(const uint8_t *p,size_t n) {return collision?7:fast_hash(p,n);}
-#define fast_hash fixture_hash
+static uint64_t fixture_hash(const uint8_t *p,size_t n,uint64_t seed __attribute__((unused))) {return collision?7:xxh3_64(p,n, 0);}
+#define xxh3_64 fixture_hash
 typedef unsigned GLenum;
 #define GL_GEOMETRY_SHADER 0x8DD9
 #define GL_VERTEX_SHADER 0x8B31
@@ -34,10 +34,10 @@ static void check_keys(ShaderState *states,unsigned count) {
   memset(actual_keys,0xa5,sizeof(actual_keys));assert(state_module_keys(&states[i],actual_keys)==geom);
   for(unsigned k=geom?0:1;k<3;k++) {
    assert(!memcmp(actual_keys+k,keys+k,sizeof(keys[k])));
-   assert(fast_hash((const uint8_t *)(actual_keys+k),sizeof(keys[k]))==fast_hash((const uint8_t *)(keys+k),sizeof(keys[k])));
+   assert(xxh3_64((const uint8_t *)(actual_keys+k),sizeof(keys[k]), 0)==xxh3_64((const uint8_t *)(keys+k),sizeof(keys[k]), 0));
   }
   if(!geom){assert(!actual_keys[0].kind);for(size_t p=sizeof(actual_keys[0].kind);p<sizeof(actual_keys[0]);p++)assert(((unsigned char *)actual_keys)[p]==0xa5);}
-  for(unsigned k=geom?0:1;k<3;k++)if(pgraph_seed_hash_set_add(seen,fast_hash((const uint8_t *)&keys[k],sizeof(keys[k]))))expected[used++]=keys[k];
+  for(unsigned k=geom?0:1;k<3;k++)if(pgraph_seed_hash_set_add(seen,xxh3_64((const uint8_t *)&keys[k],sizeof(keys[k]), 0)))expected[used++]=keys[k];
  }
  g_hash_table_destroy(seen);
  unsigned n=UINT_MAX;ShaderModuleCacheKey *actual=build_keys(states,count,&n);
@@ -54,7 +54,7 @@ static unsigned reference(const ShaderState *src,ShaderState *out,unsigned count
    if(state.psh.conv_tex[stage]==1)state.psh.conv_tex[stage]=(enum ConvolutionFilter)5;
    else if(state.psh.conv_tex[stage]==2)state.psh.conv_tex[stage]=(enum ConvolutionFilter)6;
   }
-  if(pgraph_glsl_psh_canonicalize_dynamic(&state.psh) && pgraph_seed_hash_set_add(seen,fast_hash((const uint8_t *)&state,sizeof(state))))out[used++]=state;
+  if(pgraph_glsl_psh_canonicalize_dynamic(&state.psh) && pgraph_seed_hash_set_add(seen,xxh3_64((const uint8_t *)&state,sizeof(state), 0)))out[used++]=state;
  }
  g_hash_table_destroy(seen);return used;
 }

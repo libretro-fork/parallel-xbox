@@ -36,10 +36,9 @@ static tb_page_addr_t get_page_addr_code_hostp(CPUArchState *e,vaddr pc,void **h
 {e->probes++;executable(e,pc);if(!e->ram[pc/4096]||e->subpage[pc/4096])return -1;*host=e->mapped[pc/4096]+pc%4096;return pc;}
 static uint64_t test_simd;
 uint64_t cpu_features_get(void){return test_simd;}
-uint64_t fast_hash(const uint8_t *,size_t);
 /* PRODUCTION */
 static uint64_t reference(vaddr pc,size_t size)
-{uint8_t code[4096];for(size_t i=0;i<size;i++)code[i]=cpu_ldb_code_mmu(&env,pc+i,0,0);return fast_hash(code,size);}
+{uint8_t code[4096];for(size_t i=0;i<size;i++)code[i]=cpu_ldb_code_mmu(&env,pc+i,0,0);return xxh3_64(code,size, 0);}
 static void reset(void){env.reads=env.io_reads=env.probes=0;}
 static void check(vaddr pc,size_t size)
 {

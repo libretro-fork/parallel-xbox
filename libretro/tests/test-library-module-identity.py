@@ -19,7 +19,7 @@ env=os.environ.copy();env['PATH']=str(Path(cc).resolve().parent)+os.pathsep+env.
 with tempfile.TemporaryDirectory(prefix='library-module-identity-') as d:
     p=Path(d);src=p/'test.c';exe=p/('test.exe' if os.name=='nt' else 'test')
     sanitizer=['-fsanitize=undefined','-fsanitize-undefined-trap-on-error'] if os.name=='nt' else ['-fsanitize=undefined','-fno-sanitize-recover=all']
-    cmd=[cc,'-O2','-std=gnu11','-Wall','-Wextra','-Werror',*sanitizer,'-I'+str(r/'deps/vulkan-headers'),'-I'+str(r/'libretro-common/include'),'-I'+str(r/'include'),str(src),str(r/'util/fast-hash.c'),str(r/'libretro-common/encodings/encoding_xxh3.c'),'-o',str(exe)]
+    cmd=[cc,'-O2','-std=gnu11','-Wall','-Wextra','-Werror',*sanitizer,'-I'+str(r/'deps/vulkan-headers'),'-I'+str(r/'libretro-common/include'),'-I'+str(r/'include'),str(src),str(r/'libretro-common/encodings/encoding_xxh3.c'),'-o',str(exe)]
     src.write_text(code);subprocess.run(cmd,env=env,check=True);subprocess.run([str(exe)],env=env,check=True,timeout=30)
     controls=[
         ('identity reused',code.replace('info->identity = ++r->next_shader_module_identity;','info->identity = 1;',1)),

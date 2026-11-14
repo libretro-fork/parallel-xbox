@@ -37,7 +37,7 @@ static FILE *gl_cache_file_begin(GLDiskSlot *slot, const char *family,
                  "%s.%" PRIuMAX ".%" PRIxPTR ".tmp", slot->path,
                  process, (uintptr_t)slot);
     if (n < 0 || (size_t)n >= slot->path_capacity) return NULL;
-    return qemu_fopen(slot->temporary_path, "wb");
+    return fopen_utf8(slot->temporary_path, "wb");
 }
 
 /* Failed writes/close/replace discard only this unpublished temporary. A

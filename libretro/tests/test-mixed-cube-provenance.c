@@ -4,7 +4,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
-#include "qemu/fast-hash.h"
+#include <encodings/xxh3.h>
 uint64_t cpu_features_get(void){return 0;}
 #define VK_IMAGE_LAYOUT_UNDEFINED 0
 #define VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL 1
@@ -34,15 +34,15 @@ static void record_color_surface_copies(PGRAPHState *pg,VkCommandBuffer cmd,Surf
 static uint8_t ram[6*4096];
 static size_t face_bytes,hashed_bytes;
 static unsigned gpu_faces;
-static uint64_t tracked_hash(const uint8_t *data,size_t len){
+static uint64_t tracked_hash(const uint8_t *data,size_t len,uint64_t seed __attribute__((unused))){
  uintptr_t base=(uintptr_t)ram,addr=(uintptr_t)data;
  if(addr>=base&&addr<base+sizeof(ram)){
   assert(len==face_bytes&&(addr-base)%face_bytes==0);
   assert(!(gpu_faces&(1u<<((addr-base)/face_bytes))));hashed_bytes+=len;
  }
- return fast_hash(data,len);
+ return xxh3_64(data,len, 0);
 }
-#define fast_hash tracked_hash
+#define xxh3_64 tracked_hash
 static bool replace_next;
 static unsigned ram_uploads;
 static bool texture_cow_if_referenced(PGRAPHState *pg,TextureBinding *t,bool open){

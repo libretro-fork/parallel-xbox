@@ -26,7 +26,7 @@ static ShaderModuleInfo modules[2];
 static bool geometry,cache_hit;
 static size_t cleared;
 static void record(uint64_t v){assert(log_data.n<256);log_data.words[log_data.n++]=v;}
-static uint64_t fast_hash(const uint8_t *p,size_t n){
+static uint64_t xxh3_64(const uint8_t *p,size_t n, uint64_t seed __attribute__((unused))){
  assert(n<=sizeof(log_data.hash_bytes));memcpy(log_data.hash_bytes,p,n);log_data.hash_size=n;
  uint64_t h=1469598103934665603ull;for(size_t i=0;i<n;i++)h=(h^p[i])*1099511628211ull;log_data.hash=h;return h;
 }

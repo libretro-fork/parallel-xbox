@@ -23,5 +23,5 @@ code=Path(__file__).with_suffix('.c').read_text().replace('/* PRODUCTION */','\n
 env=os.environ.copy();env['PATH']=str(Path(cc).resolve().parent)+os.pathsep+env.get('PATH','')
 with tempfile.TemporaryDirectory(prefix='mixed-cube-') as tmp:
  d=Path(tmp);(d/'test.c').write_text(code);exe=d/'test.exe'
- subprocess.run([cc,'-O2','-std=gnu11','-Wall','-Wextra','-Werror','-Wno-sign-compare','-fsanitize=undefined','-fsanitize-undefined-trap-on-error','-I'+str(r/'include'),'-I'+str(r/'libretro-common/include'),str(d/'test.c'),str(r/'util/fast-hash.c'),str(r/'libretro-common/encodings/encoding_xxh3.c'),'-o',str(exe)],check=True,env=env)
+ subprocess.run([cc,'-O2','-std=gnu11','-Wall','-Wextra','-Werror','-Wno-sign-compare','-fsanitize=undefined','-fsanitize-undefined-trap-on-error','-I'+str(r/'include'),'-I'+str(r/'libretro-common/include'),str(d/'test.c'),str(r/'libretro-common/encodings/encoding_xxh3.c'),'-o',str(exe)],check=True,env=env)
  subprocess.run([str(exe)],check=True,env=env,timeout=30)

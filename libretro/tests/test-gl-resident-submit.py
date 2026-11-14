@@ -38,7 +38,7 @@ typedef struct {QTAILQ_HEAD(,LruNode) bins[1];} Lru;
 typedef struct {LruNode node;ShaderModuleCacheKey key;GLuint gl_stage_program;bool locs_pending;} ShaderModuleCacheEntry;
 typedef struct {Lru shader_module_cache;} PGRAPHGLState;
 #define container_of(p,t,m) ((t *)((char *)(p)-offsetof(t,m)))
-static uint64_t fast_hash(const uint8_t *key,size_t n){(void)key;CHECK(n==sizeof(ShaderModuleCacheKey));return 42;}
+static uint64_t xxh3_64(const uint8_t *key,size_t n, uint64_t seed __attribute__((unused))){(void)key;CHECK(n==sizeof(ShaderModuleCacheKey));return 42;}
 static unsigned lru_hash_to_bin(Lru *cache,uint64_t hash){(void)cache;(void)hash;return 0;}
 static unsigned active,compiled,unrefs,psh_ready,vsh_ready,spec_ready,released;
 static ShaderModuleCacheKey expected;

@@ -64,7 +64,7 @@ static void *poisoned_alloc(size_t size) {
 #define g_free free
 static retro_atomic_int_t hold_save,save_entered;
 static retro_eventcount_t save_entered_event,save_release_event;
-static FILE *qemu_fopen(const char *path,const char *mode)
+static FILE *fopen_utf8(const char *path,const char *mode)
 {
     if (!strcmp(mode,"wb") && retro_atomic_load_acquire_int(&hold_save)) {
         assert(!owner);

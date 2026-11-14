@@ -23,9 +23,9 @@ static void vk_spec_compile_state(const ShaderState *st)
 {
     ShaderModuleCacheKey keys[3];
     int n = vk_state_module_keys(st, vk_spec_push_constants, keys);
-    uint64_t state_hash = fast_hash((const uint8_t *)st, sizeof(*st));
+    uint64_t state_hash = xxh3_64((const uint8_t *)st, sizeof(*st), 0);
     for (int i = 0; i < n; i++) {
-        uint64_t key_hash = fast_hash((const uint8_t *)&keys[i], sizeof(keys[i]));
+        uint64_t key_hash = xxh3_64((const uint8_t *)&keys[i], sizeof(keys[i]), 0);
         ShaderSource *spv = vk_spec_compile_module(&keys[i], key_hash);
         VkSpecDone d;
         memset(&d, 0, sizeof(d));

@@ -31,6 +31,7 @@
 # define _FORTIFY_SOURCE 2
 #endif
 
+#include <compat/fopen_utf8.h>
 #include "config-host.h"
 #ifdef COMPILING_PER_TARGET
 #include CONFIG_TARGET
@@ -573,14 +574,8 @@ bool qemu_has_ofd_lock(void);
 #endif
 
 #ifdef _WIN32
-FILE *qemu_fopen(const char *filename, const char *mode);
 int qemu_access(const char *pathname, int mode);
 #else
-static inline FILE *qemu_fopen(const char *filename, const char *mode)
-{
-    return fopen(filename, mode);
-}
-
 static inline int qemu_access(const char *pathname, int mode)
 {
     return access(pathname, mode);

@@ -57,7 +57,7 @@ static gpointer payload_alloc(gsize n,gsize size) {
     payload_allocations++;payload_bytes+=n*size;return g_malloc_n(n,size);
 }
 #define g_malloc_n payload_alloc
-static uint64_t fast_hash(const void *p, size_t n) {
+static uint64_t xxh3_64(const void *p, size_t n, uint64_t seed __attribute__((unused))) {
     if(force_collision)return 7;
     const uint8_t *b=p; uint64_t h=1469598103934665603ull;
     for (size_t i=0;i<n;i++) h=(h^b[i])*1099511628211ull;
@@ -128,7 +128,7 @@ int main(void) {
         for(unsigned pass=0;pass<2;pass++) {
             uint32_t *values=pass?in:disk;unsigned count=pass?in_n:disk_n;
             for(unsigned i=0;i<count && (!pass || n<cap);i++) {
-                uint64_t h=fast_hash(values+i,4);unsigned j=0;while(j<n && hashes[j]!=h)j++;
+                uint64_t h=xxh3_64(values+i,4, 0);unsigned j=0;while(j<n && hashes[j]!=h)j++;
                 if(j==n){hashes[n]=h;expected[n++]=values[i];added+=pass;}
             }
         }

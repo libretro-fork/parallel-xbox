@@ -21,7 +21,7 @@
  */
 
 #include "qemu/osdep.h"
-#include "qemu/fast-hash.h"
+#include <encodings/xxh3.h>
 #include "hw/xbox/nv2a/pgraph/pgraph.h"
 #include "shaders.h"
 #include "vsh.h"
@@ -87,11 +87,11 @@ static bool ff_texgen_vary(const FixedFunctionVshState *state)
     memset(family.texture_matrix_enable, 0,
            sizeof(family.texture_matrix_enable));
 
-    uint64_t fh = fast_hash((const uint8_t *)&family, sizeof(family));
-    uint64_t th = fast_hash((const uint8_t *)state->texgen,
-                            sizeof(state->texgen)) ^
-                  fast_hash((const uint8_t *)state->texture_matrix_enable,
-                            sizeof(state->texture_matrix_enable));
+    uint64_t fh = xxh3_64((const uint8_t *)&family, sizeof(family), 0);
+    uint64_t th = xxh3_64((const uint8_t *)state->texgen,
+                            sizeof(state->texgen), 0) ^
+                  xxh3_64((const uint8_t *)state->texture_matrix_enable,
+                            sizeof(state->texture_matrix_enable), 0);
     return vary_note(&table, fh, th);
 }
 
@@ -103,9 +103,9 @@ static bool ff_lights_vary(const FixedFunctionVshState *state)
     FixedFunctionVshState family = *state;
     memset(family.light, 0, sizeof(family.light));
 
-    uint64_t fh = fast_hash((const uint8_t *)&family, sizeof(family));
-    uint64_t lh = fast_hash((const uint8_t *)state->light,
-                            sizeof(state->light));
+    uint64_t fh = xxh3_64((const uint8_t *)&family, sizeof(family), 0);
+    uint64_t lh = xxh3_64((const uint8_t *)state->light,
+                            sizeof(state->light), 0);
     return vary_note(&table, fh, lh);
 }
 
@@ -264,7 +264,7 @@ void pgraph_glsl_set_vsh_state(PGRAPHState *pg, VshState *vsh)
         dyn.separate_specular = false;
         dyn.ignore_specular_alpha = false;
 
-        uint64_t h = fast_hash((const uint8_t *)&dyn, sizeof(dyn));
+        uint64_t h = xxh3_64((const uint8_t *)&dyn, sizeof(dyn), 0);
         int idx = -1;
         for (unsigned i = 0; i < vsh_seen_n; i++) {
             if (vsh_seen[i].key == h) {
@@ -307,7 +307,7 @@ bool pgraph_glsl_vsh_dynamic_pending_take(VshState *out)
 void pgraph_glsl_vsh_dynamic_ready(const VshState *state)
 {
     pgraph_glsl_dynamic_gen++;
-    uint64_t h = fast_hash((const uint8_t *)state, sizeof(*state));
+    uint64_t h = xxh3_64((const uint8_t *)state, sizeof(*state), 0);
     for (unsigned i = 0; i < vsh_seen_n; i++) {
         if (vsh_seen[i].key == h) {
             vsh_seen[i].adopted++;

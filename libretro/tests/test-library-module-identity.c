@@ -8,7 +8,7 @@
 #define VK_NO_PROTOTYPES
 #include <vulkan/vulkan.h>
 #include <retro_atomic.h>
-#include "qemu/fast-hash.h"
+#include <encodings/xxh3.h>
 #define assert(x) do {if(!(x)){fprintf(stderr,"FAIL line %d: %s\n",__LINE__,#x);_Exit(1);}}while(0)
 #define ARRAY_SIZE(a) (sizeof(a)/sizeof((a)[0]))
 #define NV2A_VERTEXSHADER_ATTRIBUTES 16

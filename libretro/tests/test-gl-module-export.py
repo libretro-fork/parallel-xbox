@@ -62,7 +62,7 @@ static void glGetProgramBinary(unsigned program,GLsizei size,GLsizei *copied,GLe
 }
 static GLenum glGetError(void) {return gl_error;}
 #endif
-static FILE *qemu_fopen(const char *path,const char *mode) {
+static FILE *fopen_utf8(const char *path,const char *mode) {
  assert(!strcmp(path,"module.cache") && !strcmp(mode,"wb"));opens++;if(fail_open)return NULL;
 #ifdef _WIN32
  const char *root=getenv("TEMP");assert(root);
@@ -85,7 +85,7 @@ static int close_capture(FILE *file) {
 #define fwrite write_bytes
 #define fclose close_capture
 static bool shader_write_cache_version(FILE *file) {const uint32_t magic=0xaabbccdd;return fwrite(&magic,4,1,file)==1;}
-static FILE *gl_cache_file_begin(GLDiskSlot *slot,const char *family,uint64_t hash){(void)slot;(void)family;(void)hash;return qemu_fopen("module.cache","wb");}
+static FILE *gl_cache_file_begin(GLDiskSlot *slot,const char *family,uint64_t hash){(void)slot;(void)family;(void)hash;return fopen_utf8("module.cache","wb");}
 static bool gl_cache_file_finish(GLDiskSlot *slot,FILE *f,bool ok){(void)slot;ok=fclose(f)==0&&ok;if(!ok)qemu_unlink("module.cache");return ok;}
 /* PRODUCTION */
 static void check_blob(ShaderModuleCacheEntry *module) {

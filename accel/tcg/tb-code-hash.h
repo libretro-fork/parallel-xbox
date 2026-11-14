@@ -6,7 +6,6 @@
 #include "accel/tcg/internal-common.h"
 #include "accel/tcg/cpu-ldst-common.h"
 #include "accel/tcg/cpu-mmu-index.h"
-#include "qemu/fast-hash.h"
 #include <encodings/xxh3.h>
 
 static inline uint32_t cpu_ldub_code(CPUArchState *env, vaddr addr)
@@ -66,7 +65,7 @@ static inline uint64_t tb_code_hash_func(CPUArchState *env, vaddr pc, size_t siz
 {
     assert(size < 4096);
     if (!size) {
-        return fast_hash(NULL, 0);
+        return xxh3_64(NULL, 0, 0);
     }
     if (size > TARGET_PAGE_SIZE - (pc & ~TARGET_PAGE_MASK)) {
         return tb_code_hash_spans(env, pc, size, NULL, false);
@@ -76,7 +75,7 @@ static inline uint64_t tb_code_hash_func(CPUArchState *env, vaddr pc, size_t siz
      * keep the byte-fetch path, including its exception and I/O behavior. */
     void *host = NULL;
     if (get_page_addr_code_hostp(env, pc, &host) != -1) {
-        return fast_hash(host, size);
+        return xxh3_64(host, size, 0);
     }
     /* The first probe already rejected direct RAM; do not repeat it. */
     return tb_code_hash_spans(env, pc, size, NULL, true);
@@ -91,7 +90,7 @@ static inline uint64_t tb_code_hash_func_host(CPUArchState *env, vaddr pc,
     assert(size < 4096);
     if (host && size) {
         if (size <= TARGET_PAGE_SIZE - (pc & ~TARGET_PAGE_MASK)) {
-            return fast_hash(host, size);
+            return xxh3_64(host, size, 0);
         }
         return tb_code_hash_spans(env, pc, size, host, true);
     }

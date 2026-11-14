@@ -19,7 +19,7 @@
 
 #include "qemu/osdep.h"
 #include <glib/gstdio.h>
-#include "qemu/fast-hash.h"
+#include <encodings/xxh3.h>
 #include "qemu/file-map.h"
 #include "ui/xemu-settings.h"
 #include "hw/xbox/nv2a/pgraph/pgraph.h"
@@ -415,14 +415,14 @@ unsigned pgraph_seed_merge(int section, size_t itemsize, const void *items,
 
     for (unsigned i = 0; i < n_disk; i++) {
         const uint8_t *it = disk + (size_t)i * itemsize;
-        if (pgraph_seed_hash_set_add(seen, fast_hash(it, itemsize))) {
+        if (pgraph_seed_hash_set_add(seen, xxh3_64(it, itemsize, 0))) {
             g_ptr_array_add(records, (gpointer)it);
             n++;
         }
     }
     for (unsigned i = 0; i < count && n < cap; i++) {
         const uint8_t *it = (const uint8_t *)items + (size_t)i * itemsize;
-        if (pgraph_seed_hash_set_add(seen, fast_hash(it, itemsize))) {
+        if (pgraph_seed_hash_set_add(seen, xxh3_64(it, itemsize, 0))) {
             g_ptr_array_add(records, (gpointer)it);
             n++;
             added++;

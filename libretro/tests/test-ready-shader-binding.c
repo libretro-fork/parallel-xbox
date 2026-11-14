@@ -27,7 +27,7 @@ typedef struct PGRAPHVkState {
 static bool geometry,collisions;
 static unsigned uniforms,ordinary,evictions;
 static ShaderModuleInfo *initial[3],*module_owner;
-static uint64_t fast_hash(const uint8_t *p,size_t n) {
+static uint64_t xxh3_64(const uint8_t *p,size_t n, uint64_t seed __attribute__((unused))) {
     if(collisions)return 1;
     uint64_t h=1469598103934665603ull;while(n--)h=(h^*p++)*1099511628211ull;return h;
 }
@@ -67,14 +67,14 @@ int main(void){
         lru_add_free(&r->shader_cache,&entries[0].node);
         if(bits&1)lru_add_free(&r->shader_cache,&entries[1].node);
         if((bits&257)==257)lru_add_free(&r->shader_cache,&entries[2].node);
-        uint64_t fh=fast_hash((const uint8_t *)&full,sizeof(full));
+        uint64_t fh=xxh3_64((const uint8_t *)&full,sizeof(full), 0);
         r->shader_binding=container_of(lru_lookup(&r->shader_cache,fh,&full),ShaderBinding,node);
         ShaderModuleCacheKey keys[3];int n=vk_state_module_keys(&state,r->use_push_constants_for_uniform_attrs,keys);
-        ShaderModuleCacheKey *key=&keys[n-1];uint64_t mh=fast_hash((const uint8_t *)key,sizeof(*key));
+        ShaderModuleCacheKey *key=&keys[n-1];uint64_t mh=xxh3_64((const uint8_t *)key,sizeof(*key), 0);
         if(bits&4)key->psh.glsl_opts.tex_binding++;
         module_owner=bits&2?NULL:&owners[3];lru_add_free(&r->shader_module_cache,&modules[0].node);
         lru_lookup(&r->shader_module_cache,mh,key);
-        uint64_t sh=fast_hash((const uint8_t *)&state,sizeof(state));
+        uint64_t sh=xxh3_64((const uint8_t *)&state,sizeof(state), 0);
         /* An exact incomplete shader-cache entry must remain untouched. */
         if((bits&256)&&(bits&1)){
             initial[0]=NULL;initial[1]=NULL;initial[2]=NULL;

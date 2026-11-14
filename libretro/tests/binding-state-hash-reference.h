@@ -2,7 +2,7 @@
 static ShaderBinding *get_shader_binding_for_state(PGRAPHVkState *r,
                                                    const ShaderState *state)
 {
-    uint64_t hash = fast_hash((void *)state, sizeof(*state));
+    uint64_t hash = xxh3_64((void *)state, sizeof(*state), 0);
     LruNode *node = lru_lookup(&r->shader_cache, hash, state);
     ShaderBinding *binding = container_of(node, ShaderBinding, node);
     NV2A_VK_DPRINTF("shader state hash: %016" PRIx64 " %p", hash, binding);
@@ -22,7 +22,7 @@ void pgraph_vk_bind_shaders(PGRAPHState *pg)
         if (!r->shader_binding || memcmp(&r->shader_binding->state, &new_state,
                                          sizeof(ShaderState))) {
             uint64_t h =
-                fast_hash((const uint8_t *)&new_state, sizeof(new_state));
+                xxh3_64((const uint8_t *)&new_state, sizeof(new_state), 0);
             uint64_t bound_h = h; /* of the state drawn with, below */
             if (!vk_seen_contains(h)) {
                 int phase = vk_spec_phase(h);
@@ -34,8 +34,8 @@ void pgraph_vk_bind_shaders(PGRAPHState *pg)
                 } else {
                     ShaderState fb = new_state;
                     if (pgraph_glsl_psh_canonicalize_dynamic(&fb.psh)) {
-                        uint64_t fh = fast_hash((const uint8_t *)&fb,
-                                                sizeof(fb));
+                        uint64_t fh = xxh3_64((const uint8_t *)&fb,
+                                                sizeof(fb), 0);
                         int sphase = fh != h ? vk_spec_phase(fh) : 0;
                         bool sib_ready =
                             fh != h &&

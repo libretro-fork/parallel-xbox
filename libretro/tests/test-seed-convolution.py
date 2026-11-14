@@ -8,12 +8,12 @@ for banned in ('malloc','memcpy','realloc','free(','static const'):assert banned
 # The migration is startup-only and precedes any hash/canonicalize/publication.
 gl=(r/'hw/xbox/nv2a/pgraph/gl/shaders.c').read_text(encoding='utf-8');vk=(r/'hw/xbox/nv2a/pgraph/vk/shaders.c').read_text(encoding='utf-8')
 compact=gl[gl.index('static unsigned seed_compact_dynamic_states('):gl.index('static void seed_load(')]
-assert compact.index('pgraph_glsl_psh_migrate_seed(&state->psh);')<compact.index('pgraph_glsl_psh_canonicalize_dynamic(')<compact.index('fast_hash(')
+assert compact.index('pgraph_glsl_psh_migrate_seed(&state->psh);')<compact.index('pgraph_glsl_psh_canonicalize_dynamic(')<compact.index('xxh3_64(', 0)
 load=gl[gl.index('static void seed_load('):gl.index('static void seed_finish(')]
 assert 'if (key->kind == GL_FRAGMENT_SHADER)' in load and 'pgraph_glsl_psh_migrate_seed(&key->psh.state);' in load
 assert load.index('pgraph_seed_read_first(')<load.index('pgraph_glsl_psh_migrate_seed(')<load.index('seed_compact_dynamic_states(')
 load=vk[vk.index('static void vk_seed_siblings('):vk.index('static void vk_seed_step(')]
-assert load.index('pgraph_seed_read(')<load.index('pgraph_glsl_psh_migrate_seed(&arr[i].psh);')<load.index('ShaderState fb = arr[i];')<load.index('fast_hash(')
+assert load.index('pgraph_seed_read(')<load.index('pgraph_glsl_psh_migrate_seed(&arr[i].psh);')<load.index('ShaderState fb = arr[i];')<load.index('xxh3_64(', 0)
 assert gl.count('pgraph_glsl_psh_migrate_seed(')==2 and vk.count('pgraph_glsl_psh_migrate_seed(')==1
 # Include the production helper in isolation so mutation controls cannot change
 # any unrelated declaration or constructor.

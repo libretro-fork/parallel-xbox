@@ -28,7 +28,7 @@
  */
 
 #include "qemu/osdep.h"
-#include "qemu/fast-hash.h"
+#include <encodings/xxh3.h>
 #include "hw/xbox/nv2a/debug.h"
 #include "hw/xbox/nv2a/nv2a.h"
 #include "hw/xbox/nv2a/pgraph/pgraph.h"
@@ -91,7 +91,7 @@ static uint64_t psh_family_hash(const PshState *state)
     psh_zero_alpha_fields(&family);
     family.combiner_dynamic = false;
     family.alpha_dynamic = false;
-    return fast_hash((const uint8_t *)&family, sizeof(family));
+    return xxh3_64((const uint8_t *)&family, sizeof(family), 0);
 }
 
 /* Combiner families (a state minus its combiner program and alpha state):
@@ -121,7 +121,7 @@ static int psh_family_note(const PshState *state)
     memcpy(&sig[11], state->rgb_outputs, sizeof(state->rgb_outputs));
     memcpy(&sig[19], state->alpha_inputs, sizeof(state->alpha_inputs));
     memcpy(&sig[27], state->alpha_outputs, sizeof(state->alpha_outputs));
-    uint64_t ch = fast_hash((const uint8_t *)sig, sizeof(sig));
+    uint64_t ch = xxh3_64((const uint8_t *)sig, sizeof(sig), 0);
 
     for (unsigned i = 0; i < psh_seen_n; i++) {
         if (psh_seen[i].family != fh) {

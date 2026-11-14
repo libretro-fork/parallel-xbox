@@ -19,7 +19,7 @@
  */
 
 #include "qemu/osdep.h"
-#include "qemu/fast-hash.h"
+#include <encodings/xxh3.h>
 #include "qemu/mstring.h"
 #include "renderer.h"
 #include "ui/xemu-settings.h"
@@ -357,7 +357,7 @@ static ShaderModuleInfo *
 get_and_ref_shader_module_for_key(PGRAPHVkState *r,
                                   const ShaderModuleCacheKey *key)
 {
-    uint64_t hash = fast_hash((void *)key, sizeof(ShaderModuleCacheKey));
+    uint64_t hash = xxh3_64((void *)key, sizeof(ShaderModuleCacheKey), 0);
     LruNode *node = lru_lookup(&r->shader_module_cache, hash, key);
     ShaderModuleCacheEntry *module =
         container_of(node, ShaderModuleCacheEntry, node);
@@ -1056,9 +1056,9 @@ static void vk_spec_compile_state(const ShaderState *st)
 {
     ShaderModuleCacheKey keys[3];
     int n = vk_state_module_keys(st, vk_spec_push_constants, keys);
-    uint64_t state_hash = fast_hash((const uint8_t *)st, sizeof(*st));
+    uint64_t state_hash = xxh3_64((const uint8_t *)st, sizeof(*st), 0);
     for (int i = 0; i < n; i++) {
-        uint64_t key_hash = fast_hash((const uint8_t *)&keys[i], sizeof(keys[i]));
+        uint64_t key_hash = xxh3_64((const uint8_t *)&keys[i], sizeof(keys[i]), 0);
         ShaderSource *spv = vk_spec_compile_module(&keys[i], key_hash);
         VkSpecDone fallback;
         void *record;
@@ -1456,8 +1456,8 @@ bool pgraph_vk_queue_pre_modules(PGRAPHState *pg, const ShaderState *state,
         request->count = vk_pre_state_module_keys(state,
                                     r->use_push_constants_for_uniform_attrs, request->keys);
         for (unsigned i = 0; i < request->count; i++) {
-            request->hashes[i] = fast_hash((const uint8_t *)&request->keys[i],
-                                           sizeof(request->keys[i]));
+            request->hashes[i] = xxh3_64((const uint8_t *)&request->keys[i],
+                                           sizeof(request->keys[i]), 0);
         }
         /* Other live slots own immutable keys/pipeline metadata until their
          * final adoption. A digest only filters: preserve different shader
@@ -1619,7 +1619,7 @@ static void vk_seed_siblings(void)
             if (!pgraph_glsl_psh_canonicalize_dynamic(&fb.psh)) {
                 continue;
             }
-            uint64_t h = fast_hash((const uint8_t *)&fb, sizeof(fb));
+            uint64_t h = xxh3_64((const uint8_t *)&fb, sizeof(fb), 0);
             if (!pgraph_seed_hash_set_add(seen, h)) {
                 continue;
             }
@@ -1631,7 +1631,7 @@ static void vk_seed_siblings(void)
         ShaderState *arr = src ? local : states;
         unsigned cnt = src ? n_local : n;
         for (unsigned i = 0; arr && i < cnt; i++) {
-            uint64_t h = fast_hash((const uint8_t *)&arr[i], sizeof(arr[i]));
+            uint64_t h = xxh3_64((const uint8_t *)&arr[i], sizeof(arr[i]), 0);
             if (!pgraph_seed_hash_set_add(seen, h)) {
                 continue;
             }
@@ -1655,7 +1655,7 @@ static void vk_seed_step(void)
            vk_spec_undrained < VK_SPEC_RING) {
         const ShaderState *st =
             &g_array_index(vk_seed_pending, ShaderState, vk_seed_next);
-        vk_spec_queue(fast_hash((const uint8_t *)st, sizeof(*st)), st);
+        vk_spec_queue(xxh3_64((const uint8_t *)st, sizeof(*st), 0), st);
         vk_seed_next++;
     }
     if (vk_seed_next == vk_seed_pending->len) {
@@ -1930,7 +1930,7 @@ ShaderBinding *pgraph_vk_materialize_ready_shader_binding(PGRAPHVkState *r,
     key.psh.glsl_opts.vulkan = true;
     key.psh.glsl_opts.ubo_binding = PSH_UBO_BINDING;
     key.psh.glsl_opts.tex_binding = PSH_TEX_BINDING;
-    uint64_t module_hash = fast_hash((const uint8_t *)&key, sizeof(key));
+    uint64_t module_hash = xxh3_64((const uint8_t *)&key, sizeof(key), 0);
     ShaderModuleInfo *psh = NULL;
     bin = lru_hash_to_bin(&r->shader_module_cache, module_hash);
     QTAILQ_FOREACH(node, &r->shader_module_cache.bins[bin], next_bin) {
@@ -2072,7 +2072,7 @@ void pgraph_vk_bind_shaders(PGRAPHState *pg)
         if (!r->shader_binding || memcmp(&r->shader_binding->state, &new_state,
                                          sizeof(ShaderState))) {
             uint64_t h =
-                fast_hash((const uint8_t *)&new_state, sizeof(new_state));
+                xxh3_64((const uint8_t *)&new_state, sizeof(new_state), 0);
             uint64_t bound_h = h; /* of the state drawn with, below */
             if (unlikely(!vk_seen_contains(h))) {
                 int phase = vk_spec_phase(h);

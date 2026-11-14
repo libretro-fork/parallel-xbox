@@ -166,7 +166,7 @@ bool xbox_eeprom_generate(const char *file, XboxEEPROMVersion ver) {
     rc4_crypt(&rctx, e.confounder, 0x1C);
 
     // save to file
-    FILE *fd = qemu_fopen(file, "wb");
+    FILE *fd = fopen_utf8(file, "wb");
     if (fd == NULL) {
         return false;
     }

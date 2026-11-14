@@ -435,7 +435,7 @@ unsigned chihiro_dimm_factor(void)
     const char *path = xemu_chihiro_image();
     int64_t size = -1;
     if (path && path[0]) {
-        FILE *f = qemu_fopen(path, "rb");
+        FILE *f = fopen_utf8(path, "rb");
         if (f) {
             if (fseek(f, 0, SEEK_END) == 0)
                 size = ftell(f);
@@ -1441,7 +1441,7 @@ static void chihiro_capture_game_filename_from_dir(void)
     }
     char bootid_path[1100];
     snprintf(bootid_path, sizeof(bootid_path), "%s/boot.id", chihiro_game_dir);
-    FILE *f = qemu_fopen(bootid_path, "rb");
+    FILE *f = fopen_utf8(bootid_path, "rb");
     if (!f) {
         return;
     }
@@ -2261,7 +2261,7 @@ int chihiro_detected_game_profile(void)
 
 static bool chihiro_read_flash_rom(const char *path)
 {
-    FILE *f = qemu_fopen(path, "rb");
+    FILE *f = fopen_utf8(path, "rb");
     if (!f) return false;
 
     fseek(f, 0, SEEK_END);
@@ -2341,7 +2341,7 @@ static uint8_t *load_eeprom_file(const char *dir, const char *name,
 {
     char path[2048];
     snprintf(path, sizeof(path), "%s%s", dir, name);
-    FILE *f = qemu_fopen(path, "rb");
+    FILE *f = fopen_utf8(path, "rb");
     if (!f) return NULL;
     fseek(f, 0, SEEK_END);
     long sz = ftell(f);
@@ -2867,7 +2867,7 @@ bool chihiro_file_replace(const char *path, const ChihiroFilePart *parts,
                           int count)
 {
     char *tmp = g_strdup_printf("%s.tmp", path);
-    FILE *f = qemu_fopen(tmp, "wb");
+    FILE *f = fopen_utf8(tmp, "wb");
     bool ok = f != NULL;
 
     for (int i = 0; ok && i < count; i++) {
@@ -3195,7 +3195,7 @@ bool chihiro_gundam_card_repair(const char *card_path, char *why, size_t why_len
         snprintf(why, why_len, "No card.");
         return false;
     }
-    f = qemu_fopen(card_path, "rb");
+    f = fopen_utf8(card_path, "rb");
     if (!f || fread(card, 1, sizeof(card), f) != sizeof(card)) {
         if (f) fclose(f);
         snprintf(why, why_len, "Cannot read the card file.");
@@ -3431,7 +3431,7 @@ static void chihiro_dimm_sys_load(void)
         if (chihiro_dimm_sys)
             memset(chihiro_dimm_sys, 0, (size_t)CHIHIRO_DIMM_SYS_SECTORS * 512);
     }
-    FILE *f = qemu_fopen(path, "rb");
+    FILE *f = fopen_utf8(path, "rb");
     if (!f) return;
     if (fread(hdr, sizeof(hdr), 1, f) == 1 && hdr[0] == CHIHIRO_DIMM_SYS_MAGIC &&
         hdr[1] == CHIHIRO_DIMM_SYS_VERSION && hdr[2] < CHIHIRO_DIMM_SYS_SECTORS &&
@@ -3489,7 +3489,7 @@ static bool chihiro_read_image_bootid(uint8_t *bid)
     }
     if (g_file_test(path, G_FILE_TEST_IS_DIR)) {
         char *bootid_path = g_strdup_printf("%s/boot.id", path);
-        FILE *f = qemu_fopen(bootid_path, "rb");
+        FILE *f = fopen_utf8(bootid_path, "rb");
         g_free(bootid_path);
         if (!f) {
             return false;
@@ -3499,7 +3499,7 @@ static bool chihiro_read_image_bootid(uint8_t *bid)
         return ok && memcmp(bid, "BTID", 4) == 0;
     }
 
-    FILE *f = qemu_fopen(path, "rb");
+    FILE *f = fopen_utf8(path, "rb");
     if (!f) {
         return false;
     }

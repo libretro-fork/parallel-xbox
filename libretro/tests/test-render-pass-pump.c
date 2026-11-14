@@ -31,7 +31,7 @@ static bool pipe_started,pressure;
 static unsigned pump_d,pump_w_local,drains,probes,submits,bank_n;
 static ShaderState states[40];static uint64_t hashes[40];static bool ready[40];
 static unsigned observed[6][40];
-static uint64_t fast_hash(const uint8_t *p,size_t n){uint64_t h=1469598103934665603ull;while(n--)h=(h^*p++)*1099511628211ull;return h;}
+static uint64_t xxh3_64(const uint8_t *p,size_t n, uint64_t seed __attribute__((unused))){uint64_t h=1469598103934665603ull;while(n--)h=(h^*p++)*1099511628211ull;return h;}
 static void pump_drain(PGRAPHState *pg){drains++;pump_d=pump_w_local;}
 static const ShaderState *pgraph_vk_seed_pump_states(unsigned *n){*n=bank_n;return states;}
 static bool pgraph_vk_seed_spv_ready_hash(uint64_t h){probes++;for(unsigned i=0;i<bank_n;i++)if(h==hashes[i])return ready[i];abort();}
@@ -58,7 +58,7 @@ int main(void){
   PGRAPHVkState r={.device=true,.dyn_cull_front=true,.dyn_blend=true,.dyn_vertex_input=true,.color_binding=true};PGRAPHState pg={&r};
   r.render_passes=g_array_new(false,false,sizeof(RenderPass));r.live=(RenderPassState){VK_FORMAT_R32_SFLOAT,VK_FORMAT_D32_SFLOAT};
   for(unsigned i=0;i<count;i++){RenderPass pass={.state={i&1?VK_FORMAT_R8G8B8A8_UNORM:VK_FORMAT_B8G8R8A8_UNORM,i&2?VK_FORMAT_D16_UNORM:VK_FORMAT_UNDEFINED}};if(i>=4)pass.state.color_format=VK_FORMAT_R16G16B16A16_SFLOAT+i;g_array_append_val(r.render_passes,pass);}
-  bank_n=40;for(unsigned i=0;i<bank_n;i++){memset(&states[i],0,sizeof(states[i]));states[i].psh.final_inputs_0=i+1;hashes[i]=fast_hash((const uint8_t *)&states[i],sizeof(states[i]));ready[i]=!(mode&2);}
+  bank_n=40;for(unsigned i=0;i<bank_n;i++){memset(&states[i],0,sizeof(states[i]));states[i].psh.final_inputs_0=i+1;hashes[i]=xxh3_64((const uint8_t *)&states[i],sizeof(states[i]), 0);ready[i]=!(mode&2);}
   memset(observed,0,sizeof(observed));g_config.perf.shader_seeding=!(mode&1);pipe_started=true;pump_d=0;pump_w_local=1;drains=0;pressure=mode&4;
   bank_n=0;probes=submits=0;pgraph_vk_libpump_step(&pg);
   assert(!probes&&!submits&&!r.pump.n&&!r.pump.next_pass&&!r.pump.state_hash);

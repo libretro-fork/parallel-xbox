@@ -45,7 +45,7 @@ static bool accept_pipeline,cache_hit,start_ok=true,collide,stress,resident_case
 static unsigned compiles,adoptions,transfers,work_wakes,idle_wakes,starts;
 static bool need_geometry;
 bool pgraph_glsl_need_geom(const GeomState *s) {(void)s;return need_geometry;}
-static uint64_t fast_hash(const uint8_t *bytes,size_t count) {
+static uint64_t xxh3_64(const uint8_t *bytes,size_t count, uint64_t seed __attribute__((unused))) {
     if(collide)return 1;
     uint64_t h=UINT64_C(1469598103934665603);
     for(size_t i=0;i<count;i++)h=(h^bytes[i])*UINT64_C(1099511628211);
@@ -66,11 +66,11 @@ static ShaderModuleInfo *pgraph_vk_create_shader_module_from_spirv(PGRAPHVkState
 }
 static ShaderSource *vk_spec_compile_module(const ShaderModuleCacheKey *key,uint64_t hash) {
     assert(in_worker && key->kind!=VK_SHADER_STAGE_FRAGMENT_BIT);
-    assert(hash==fast_hash((const uint8_t *)key,sizeof(*key)));
+    assert(hash==xxh3_64((const uint8_t *)key,sizeof(*key), 0));
     for(unsigned j=0;j<VK_PRE_REQUESTS;j++)for(unsigned i=0;i<vk_pre_requests[j].count;i++) {
         if(key==&vk_pre_requests[j].keys[i]) {
             if(!stress)assert(!memcmp(key,&expected[j][i],sizeof(*key)));
-            else {sched_yield();assert(hash==fast_hash((const uint8_t *)key,sizeof(*key)));}
+            else {sched_yield();assert(hash==xxh3_64((const uint8_t *)key,sizeof(*key), 0));}
             assert(retro_atomic_load_acquire_int(&vk_pre_requests[j].phase)==VK_PRE_QUEUED);
             sources[j][i].refs++;compiles++;return &sources[j][i];
         }
@@ -137,7 +137,7 @@ static void resident_matrix(PGRAPHState *pg) {
         ShaderModuleCacheEntry entries[2]={0},decoy={0};unsigned variant=(bits>>4)&3;
         for(unsigned i=0;i<count;i++) {
             entries[i].key=keys[i];entries[i].module_info=variant==2?NULL:&modules[0][i];modules[0][i].refs=1;
-            entries[i].node.hash=fast_hash((const uint8_t *)&keys[i],sizeof(keys[i]));
+            entries[i].node.hash=xxh3_64((const uint8_t *)&keys[i],sizeof(keys[i]), 0);
             unsigned bin=lru_hash_to_bin(&r->shader_module_cache,entries[i].node.hash);
             if(!(bits&2) || i+1<count){entries[i].node.next=r->shader_module_cache.bins[bin];r->shader_module_cache.bins[bin]=&entries[i].node;}
         }

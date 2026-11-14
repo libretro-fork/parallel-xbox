@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Call libretro-common XXH3 and UTF-8 file opening directly, removing the redundant QEMU hash implementation and file-opening wrappers. Hash seeds and cache identities are unchanged; this is consolidation, not a measured gameplay speedup.
+
 - Run the complete DSP regression corpus independently on native x86_64 and ARM64 runners. Give each Make target its own ten-minute watchdog, and divide the large instruction oracle into four suites without changing its checks or default full-run behavior. This removes the shared ten-minute build-and-test bottleneck and duplicate DSP runs inside core-build jobs; DSP emulation is unchanged.
 
 - Fix the shader CI ownership check's unnecessary Vulkan loader dependency. Distribute the complete software-GPU corpus across utility, vertex and eight fragment jobs. Split each original fragment batch across up to four existing worker slots under one shared 300-second watchdog, then run the original C coverage assertions on the combined results. Balance the vertex batch workers with disjoint interleaved case indices. Preserve all 42,512 vertex and 82,704 fragment cases and add checks for lost coverage, child failure, cleanup and deadline renewal. Accept both Unix and Windows child-log line endings. This repairs validation infrastructure; gameplay compilation stutters remain open.
@@ -1222,13 +1224,13 @@
 
 - Adopt formatted shader-string buffers directly instead of allocating and copying a second buffer during shader generation.
 
-- Run shader-generation and POSIX AIO fixtures against the core�s compatibility API instead of upstream GLib. Remove the host GLib development dependency from CI, and supply native graphics-test dependencies to the Windows/Wine job.
+- Run shader-generation and POSIX AIO fixtures against the coreï¿½s compatibility API instead of upstream GLib. Remove the host GLib development dependency from CI, and supply native graphics-test dependencies to the Windows/Wine job.
 
-- Match each utility vertex shader�s builtin interface in the test-only geometry capture stage, retaining strict Vulkan validation for clear-shader comparisons.
+- Match each utility vertex shaderï¿½s builtin interface in the test-only geometry capture stage, retaining strict Vulkan validation for clear-shader comparisons.
 
 - Build signed-texture guest ROM fixtures with an x86 cross compiler on ARM CI hosts, independently of the native core compiler.
 
-- Preserve geometry input-array extents when parsing point output layouts in the core shader compiler; triangle and quad point modes retain all input vertices. Validate every generated reference module�s input extents independently of GPU behavior.
+- Preserve geometry input-array extents when parsing point output layouts in the core shader compiler; triangle and quad point modes retain all input vertices. Validate every generated reference moduleï¿½s input extents independently of GPU behavior.
 
 - Separate the unproven RAM-spin cadence fixture from the exact supported wait-proof fixture, retaining the 4x fast-forward requirement for proven waits.
 
@@ -1254,7 +1256,7 @@
 
 - Avoid redundant idle-counter work when a translated block reaches its first store through a straight-line prefix without earlier side effects. Preserve checks on conditional paths, helper calls and guest accesses, and keep instruction deadlines unchanged.
 
-- Remove the unused standalone CPU host-pacing budget, busy-wait loop and stall-credit accounting. Translated blocks retain the frame engine�s instruction budget; lock-contention diagnostics remain available.
+- Remove the unused standalone CPU host-pacing budget, busy-wait loop and stall-credit accounting. Translated blocks retain the frame engineï¿½s instruction budget; lock-contention diagnostics remain available.
 
 - Make the frame engine the sole owner of guest time: remove QEMU idle warps, host-clock alignment/sleeps, adaptive rate timers and CPU timing-option parsing. Initialize the fixed Xbox instruction clock directly, preserving the existing guest rate, interrupt handling and saved-state wire layout. Add halted-device-wait and direct-clock-initialization regression coverage.
 
@@ -1877,7 +1879,7 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 - Vulkan bordered cubemap base uploads now skip the same four-texel source border as OpenGL. Higher mip copies fit their destination levels and compressed rows retain block alignment. Copy skips remain separate from allocation/flush spans. Higher mip source origins retain the existing Vulkan policy pending an Xbox layout reference.
 
-- Vulkan shader preparation reuses identical immutable SPIR-V modules across queued states, avoiding repeated generation/compilation and array-wrapper reconstruction. Temporary reflection borrows the input words; both parser metadata and the module�s input reference are released after extracting persistent layouts. A 64-entry worker memo retains at most 4 MiB of CPU payload and is cleared after quiescence; no GPU cache or VRAM reservation is added. GArray/GByteArray references use retro atomics, and ownership-transfer arrays no longer allocate a discarded dummy buffer. Ready-table removal moves slot indices instead of shader-key records, preserving FIFO eviction; module teardown releases its packed uniform storage.
+- Vulkan shader preparation reuses identical immutable SPIR-V modules across queued states, avoiding repeated generation/compilation and array-wrapper reconstruction. Temporary reflection borrows the input words; both parser metadata and the moduleï¿½s input reference are released after extracting persistent layouts. A 64-entry worker memo retains at most 4 MiB of CPU payload and is cleared after quiescence; no GPU cache or VRAM reservation is added. GArray/GByteArray references use retro atomics, and ownership-transfer arrays no longer allocate a discarded dummy buffer. Ready-table removal moves slot indices instead of shader-key records, preserving FIFO eviction; module teardown releases its packed uniform storage.
 
 - Retail Xbox games queue their learned shader seeds from the first flip instead of waiting 15 seconds to name the disc. This gives the existing workers boot time to prepare known shaders and avoids delaying seed loading into play. Chihiro retains its detected-title priority and fallback delay.
 

@@ -81,7 +81,7 @@ static void stb_phys(void *space,hwaddr a,uint8_t value)
             d->notices[n]++;
 }
 static bool xemu_doge_mode(void){return false;}
-static uint64_t fast_hash(const void *p,size_t n){return 0;}
+static uint64_t xxh3_64(const void *p,size_t n, uint64_t seed __attribute__((unused))){return 0;}
 static const uint8_t segaboot_jingle_data[2]={0};
 static const size_t segaboot_jingle_size=0;
 static int peek_ahead_multipass_bin(MCPXAPUState*d,uint16_t v,uint16_t*dest){*dest=0xffff;return -1;}

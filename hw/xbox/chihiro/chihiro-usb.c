@@ -1296,7 +1296,7 @@ static const TypeInfo chihiro_an2131sc_info = {
 static bool chihiro_usb_save_read(const char *path, uint8_t *ic11,
                                   uint8_t *backup, uint32_t *version)
 {
-    FILE *f = qemu_fopen(path, "rb");
+    FILE *f = fopen_utf8(path, "rb");
     uint32_t magic;
     bool ok;
 

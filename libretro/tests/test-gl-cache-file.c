@@ -27,7 +27,7 @@ static void qemu_mkdir(const char *p){
  mkdir(p,0700);
 #endif
 }
-static FILE *qemu_fopen(const char *p,const char *mode){opens++;return fail_open?NULL:fopen(p,mode);}
+static FILE *fopen_utf8(const char *p,const char *mode){opens++;return fail_open?NULL:fopen(p,mode);}
 static int close_file(FILE *f){int result=fclose(f);return fail_close?-1:result;}
 static int g_rename(const char *a,const char *b){
  renames++;if(fail_rename)return -1;

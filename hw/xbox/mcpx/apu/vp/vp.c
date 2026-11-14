@@ -20,7 +20,7 @@
  * License along with this library; if not, see <http://www.gnu.org/licenses/>.
  */
 
-#include "qemu/fast-hash.h"
+#include <encodings/xxh3.h>
 #include "qemu/cpu-boost.h"
 #include "qemu/processor.h"
 #include "data/segaboot_jingle.raw.h"
@@ -931,7 +931,7 @@ voice_jingle_hash(MCPXAPUState *d, uint32_t ba)
                          ba + off));
         memcpy(head + off, &w, 4);
     }
-    return fast_hash(head, sizeof(head));
+    return xxh3_64(head, sizeof(head), 0);
 }
 
 /* A PCM frame crossing logical SGE pages needs at most eight bytes from

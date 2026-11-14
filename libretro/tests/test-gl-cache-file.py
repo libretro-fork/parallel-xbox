@@ -8,7 +8,7 @@ s=(r/'hw/xbox/nv2a/pgraph/gl/shaders.c').read_text()
 for name in ('module_write_to_disk','shader_write_to_disk'):
  a=s.index('static void '+name+'(');b=s.index('\n}',a);body=s[a:b]
  assert 'gl_cache_file_begin(' in body and 'gl_cache_file_finish(' in body
- for forbidden in ('g_strdup','g_new','g_malloc','qemu_fopen','qemu_unlink'):
+ for forbidden in ('g_strdup','g_new','g_malloc','fopen_utf8','qemu_unlink'):
   assert forbidden not in body,(name,forbidden)
 env=dict(os.environ);env['PATH']=str(Path(cc).resolve().parent)+os.pathsep+env.get('PATH','')
 with tempfile.TemporaryDirectory(prefix='gl-cache-file-') as tmp:
@@ -24,7 +24,7 @@ with tempfile.TemporaryDirectory(prefix='gl-cache-file-') as tmp:
   else:assert result.returncode==0,result.stderr.decode(errors='replace');print(result.stdout.decode(),end='')
  run(header)
  for label,before,after in [
-  ('truncate published file','qemu_fopen(slot->temporary_path, "wb")','qemu_fopen(slot->path, "wb")'),
+  ('truncate published file','fopen_utf8(slot->temporary_path, "wb")','fopen_utf8(slot->path, "wb")'),
   ('publish incomplete write','if (ok && g_rename','if ((ok || true) && g_rename'),
   ('ignore failed close','if (fclose(file) != 0) ok = false;','(void)fclose(file);'),
   ('remove old good file on failure','qemu_unlink(slot->temporary_path);','qemu_unlink(slot->path);'),

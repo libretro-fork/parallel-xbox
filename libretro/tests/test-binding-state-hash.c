@@ -14,7 +14,7 @@
 #include <libretro.h>
 #include <encodings/xxh3.h>
 #include "qemu/lru.h"
-#include "qemu/fast-hash.h"
+#include <encodings/xxh3.h>
 #include "hw/xbox/nv2a/pgraph/glsl/shaders.h"
 #define QEMU_ALIGNED(n) __attribute__((aligned(n)))
 #define unlikely(x) __builtin_expect(!!(x),0)
@@ -53,11 +53,11 @@ static unsigned hash_calls;
 #else
 #define CHECK_HASH(x) ((void)0)
 #endif
-static uint64_t counted_hash(const uint8_t *p,size_t n){
+static uint64_t counted_hash(const uint8_t *p,size_t n,uint64_t seed __attribute__((unused))){
 #ifdef CHECKED
  hash_calls++;
 #endif
- return fast_hash(p,n);
+ return xxh3_64(p,n, 0);
 }
 static void profile(unsigned n){if(n==NV2A_PROF_SHADER_FALLBACK)log_data.fallback++;else{assert(n==NV2A_PROF_SHADER_BIND_NOTDIRTY);log_data.notdirty++;}}
 #define nv2a_profile_inc_counter(n) profile(n)
@@ -68,20 +68,20 @@ __attribute__((noinline)) bool pgraph_glsl_psh_canonicalize_dynamic(PshState *s)
 static bool vk_seen_contains(uint64_t h){assert(h==request_hash||h==sibling_hash);return h==request_hash?seen_request:seen_sibling;}
 static int vk_spec_phase(uint64_t h){assert(h==request_hash||h==sibling_hash);return h==request_hash?request_phase:sibling_phase;}
 static void vk_spec_release_adopted(uint64_t h){assert(log_data.releases<2);log_data.released[log_data.releases++]=h;}
-static void vk_spec_queue(uint64_t h,const ShaderState *s){assert(!log_data.queues);log_data.queues++;log_data.queued_hash=h;memcpy(&log_data.queued,s,sizeof(*s));CHECK_HASH(h==fast_hash((const uint8_t*)s,sizeof(*s)));}
+static void vk_spec_queue(uint64_t h,const ShaderState *s){assert(!log_data.queues);log_data.queues++;log_data.queued_hash=h;memcpy(&log_data.queued,s,sizeof(*s));CHECK_HASH(h==xxh3_64((const uint8_t*)s,sizeof(*s), 0));}
 static void vk_spec_queue_view(uint64_t h,const ShaderStateView *view){
  assert(!log_data.queues);log_data.queues++;log_data.queued_hash=h;
  memcpy(&log_data.queued,view->head,VK_SHADER_HEAD_BYTES);
  memcpy((uint8_t*)&log_data.queued+VK_SHADER_HEAD_BYTES,&view->tail,sizeof(view->tail));
- CHECK_HASH(h==fast_hash((const uint8_t*)&log_data.queued,sizeof(log_data.queued)));
+ CHECK_HASH(h==xxh3_64((const uint8_t*)&log_data.queued,sizeof(log_data.queued), 0));
 }
 static void vk_seen_add(uint64_t h){log_data.adds++;log_data.added=h;}
 static void update_shader_uniforms(PGRAPHState *pg){assert(pg->vk_renderer_state->shader_binding);log_data.uniforms++;}
-static void init_entry(Lru *lru,LruNode *node,const void *key){CHECK_HASH(node->hash==fast_hash(key,sizeof(ShaderState)));ShaderBinding *b=container_of(node,ShaderBinding,node);memcpy(&b->state,key,sizeof(b->state));}
+static void init_entry(Lru *lru,LruNode *node,const void *key){CHECK_HASH(node->hash==xxh3_64(key,sizeof(ShaderState), 0));ShaderBinding *b=container_of(node,ShaderBinding,node);memcpy(&b->state,key,sizeof(b->state));}
 static bool compare_entry(Lru *lru,LruNode *node,const void *key){return memcmp(&container_of(node,ShaderBinding,node)->state,key,sizeof(ShaderState));}
 static void shader_cache_entry_init_modules(Lru *lru,LruNode *node){
  (void)lru;ShaderBinding *binding=container_of(node,ShaderBinding,node);(void)binding;
- CHECK_HASH(node->hash==fast_hash((const uint8_t*)&binding->state,sizeof(binding->state)));
+ CHECK_HASH(node->hash==xxh3_64((const uint8_t*)&binding->state,sizeof(binding->state), 0));
 }
 static uint64_t counted_pair(const void *a,size_t na,const void *b,size_t nb,uint64_t seed){
 #ifdef CHECKED
@@ -90,9 +90,9 @@ static uint64_t counted_pair(const void *a,size_t na,const void *b,size_t nb,uin
  return xxh3_64_pair(a,na,b,nb,seed);
 }
 #define xxh3_64_pair counted_pair
-#define fast_hash counted_hash
+#define xxh3_64 counted_hash
 /* FUNCTIONS */
-#undef fast_hash
+#undef xxh3_64
 #undef xxh3_64_pair
 static PGRAPHVkState *setup(void){PGRAPHVkState *r=calloc(1,sizeof(*r));assert(r);lru_init(&r->shader_cache);r->shader_cache.init_node=init_entry;r->shader_cache.compare_nodes=compare_entry;lru_add_free(&r->shader_cache,&r->entry.node);return r;}
 static void prepare(PGRAPHVkState *r,unsigned initial){
@@ -101,14 +101,14 @@ static void prepare(PGRAPHVkState *r,unsigned initial){
 }
 static uint32_t seed=0x789abc23;
 static uint32_t random_value(void){seed^=seed<<13;seed^=seed>>17;seed^=seed<<5;return seed;}
-static void hashes(void){ShaderState sibling;memcpy(&sibling,&requested,sizeof(sibling));sibling.psh.alpha_dynamic=true;request_hash=fast_hash((const uint8_t*)&requested,sizeof(requested));sibling_hash=fast_hash((const uint8_t*)&sibling,sizeof(sibling));}
+static void hashes(void){ShaderState sibling;memcpy(&sibling,&requested,sizeof(sibling));sibling.psh.alpha_dynamic=true;request_hash=xxh3_64((const uint8_t*)&requested,sizeof(requested), 0);sibling_hash=xxh3_64((const uint8_t*)&sibling,sizeof(sibling), 0);}
 static void view_callbacks(void){
  PGRAPHVkState *r=setup();ShaderState source,expected;
  for(unsigned trial=0;trial<10000;trial++){
   for(size_t i=0;i<sizeof(source);i++)((uint8_t*)&source)[i]=(uint8_t)random_value();
   memcpy(&expected,&source,sizeof(expected));ShaderStateView view;view.head=&source;
   memcpy(&view.tail,(const uint8_t*)&source+VK_SHADER_HEAD_BYTES,sizeof(view.tail));
-  r->entry.node.hash=fast_hash((const uint8_t*)&source,sizeof(source));
+  r->entry.node.hash=xxh3_64((const uint8_t*)&source,sizeof(source), 0);
   shader_cache_entry_init_view(&r->shader_cache,&r->entry.node,&view);
   assert(!shader_cache_entry_compare_view(&r->shader_cache,&r->entry.node,&view));
   ((uint8_t*)&source)[trial%VK_SHADER_HEAD_BYTES]^=1;
@@ -138,7 +138,7 @@ static void correctness(void){
   memset(&log_data,0,sizeof(log_data));pgraph_vk_bind_shaders(&pb);
   assert(!memcmp(&log_data,&expected,sizeof(expected))&&a->shader_bindings_changed==b->shader_bindings_changed&&a->ahead_valid==b->ahead_valid&&a->ahead_hash==b->ahead_hash);
   assert(!memcmp(&a->ahead_state,&b->ahead_state,sizeof(a->ahead_state))&&!memcmp(&a->shader_binding->state,&b->shader_binding->state,sizeof(ShaderState)));
-  if(b->shader_bindings_changed)assert(b->shader_binding->node.hash==fast_hash((const uint8_t*)&b->shader_binding->state,sizeof(ShaderState))&&log_data.added==b->shader_binding->node.hash);
+  if(b->shader_bindings_changed)assert(b->shader_binding->node.hash==xxh3_64((const uint8_t*)&b->shader_binding->state,sizeof(ShaderState), 0)&&log_data.added==b->shader_binding->node.hash);
 #ifdef CHECKED
 #ifdef REFERENCE_REUSES_HASH
   assert(old_hashes==hash_calls);

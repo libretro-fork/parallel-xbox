@@ -24,7 +24,7 @@ void pgraph_vk_bind_shaders(PGRAPHState *pg)
             ShaderState fb;
             const ShaderState *bound_state = &new_state;
             uint64_t h =
-                fast_hash((const uint8_t *)&new_state, sizeof(new_state));
+                xxh3_64((const uint8_t *)&new_state, sizeof(new_state), 0);
             uint64_t bound_h = h; /* of the state drawn with, below */
             if (!vk_seen_contains(h)) {
                 int phase = vk_spec_phase(h);
@@ -36,8 +36,8 @@ void pgraph_vk_bind_shaders(PGRAPHState *pg)
                 } else {
                     fb = new_state;
                     if (pgraph_glsl_psh_canonicalize_dynamic(&fb.psh)) {
-                        uint64_t fh = fast_hash((const uint8_t *)&fb,
-                                                sizeof(fb));
+                        uint64_t fh = xxh3_64((const uint8_t *)&fb,
+                                                sizeof(fb), 0);
                         int sphase = fh != h ? vk_spec_phase(fh) : 0;
                         bool sib_ready =
                             fh != h &&

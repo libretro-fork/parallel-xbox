@@ -68,7 +68,7 @@ static unsigned cached_n;
 static unsigned lru_hash_to_bin(Lru *cache,uint64_t hash){(void)cache;return hash&3u;}
 /* Force collisions across every stage/family. The production key predicate
  * must still reject nonmatching entries. */
-static uint64_t fast_hash(const void *key,size_t size){(void)key;CHECK(size==sizeof(ShaderModuleCacheKey));return 0x42;}
+static uint64_t xxh3_64(const void *key,size_t size, uint64_t seed __attribute__((unused))){(void)key;CHECK(size==sizeof(ShaderModuleCacheKey));return 0x42;}
 static void fixture_publish(retro_atomic_int_t *p,int value){CHECK(value==GEN_QUEUED);retro_atomic_store_release_int(p,value);published++;}
 /* JOB FUNCTIONS */
 /* GEOM */
@@ -115,7 +115,7 @@ static void run(unsigned occupied,unsigned cache_mask,bool geometry,unsigned cou
   if(geometry)CHECK(expected[n][0].geom.glsl_opts.ui_clamp_stage==n+1);
   for(unsigned stage=stages[n];stage<3;stage++)if(cache_mask&(1u<<stage)){
    ShaderModuleCacheEntry *entry=&cached[cached_n++];entry->key=expected[n][stage];
-   entry->node.hash=fast_hash(&entry->key,sizeof(entry->key));
+   entry->node.hash=xxh3_64(&entry->key,sizeof(entry->key), 0);
    unsigned bin=lru_hash_to_bin(&r.shader_module_cache,entry->node.hash);
    QTAILQ_INSERT_TAIL(&r.shader_module_cache.bins[bin],&entry->node,next_bin);
   }

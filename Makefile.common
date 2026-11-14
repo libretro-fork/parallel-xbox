@@ -178,7 +178,6 @@ SOURCES_UTIL := \
 	$(CORE_DIR)/util/error-report.c \
 	$(CORE_DIR)/util/error.c \
 	$(CORE_DIR)/util/event.c \
-	$(CORE_DIR)/util/fast-hash.c \
 	$(CORE_DIR)/util/file-map.c \
 	$(CORE_DIR)/util/fifo8.c \
 	$(CORE_DIR)/util/getauxval.c \

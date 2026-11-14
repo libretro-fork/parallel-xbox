@@ -8,7 +8,7 @@
 #include <time.h>
 #include <vulkan/vulkan.h>
 #include "hw/xbox/nv2a/pgraph/glsl/shaders.h"
-#include "qemu/fast-hash.h"
+#include <encodings/xxh3.h>
 #include <libretro.h>
 static uint64_t fixture_simd;
 uint64_t cpu_features_get(void){return fixture_simd;}
@@ -25,23 +25,23 @@ static int vk_spec_out;
 #ifdef CHECKED
 static size_t hashed_bytes,hash_calls,zeroed_bytes;
 #endif
-static uint64_t counted_hash(const uint8_t *p,size_t n){
+static uint64_t counted_hash(const uint8_t *p,size_t n,uint64_t seed __attribute__((unused))){
 #ifdef CHECKED
  hashed_bytes+=n;hash_calls++;
 #endif
- return fast_hash(p,n);
+ return xxh3_64(p,n, 0);
 }
 static int vk_state_module_keys(const ShaderState *s,bool push,ShaderModuleCacheKey *keys){(void)s;(void)push;memcpy(keys,prepared,module_count*sizeof(*keys));return module_count;}
 static ShaderSource *vk_spec_compile_module(const ShaderModuleCacheKey *key,uint64_t hash){
 #ifdef CHECKED
- assert(hash==fast_hash((const uint8_t*)key,sizeof(*key)));
+ assert(hash==xxh3_64((const uint8_t*)key,sizeof(*key), 0));
 #else
  (void)key;
 #endif
  assert(lookup_n<3);lookup_hashes[lookup_n]=hash;sources[lookup_n].refs++;return &sources[lookup_n++];
 }
 #ifndef REFERENCE_REUSES_HASH
-static ShaderSource *reference_module(const ShaderModuleCacheKey *key){return vk_spec_compile_module(key,counted_hash((const uint8_t*)key,sizeof(*key)));}
+static ShaderSource *reference_module(const ShaderModuleCacheKey *key){return vk_spec_compile_module(key,counted_hash((const uint8_t*)key,sizeof(*key),0));}
 #endif
 static void pgraph_vk_shader_source_unref(ShaderSource *s){assert(s->refs>1);s->refs--;}
 static size_t retro_spsc_write(void *ring,const void *data,size_t size){assert(ring==&vk_spec_out&&size==sizeof(VkSpecDone));if(emitted_n==queue_limit)return 0;memcpy(&emitted[emitted_n++],data,size);return size;}
@@ -59,9 +59,9 @@ static void *counted_memset(void *p,int value,size_t n){
  return memset(p,value,n);
 }
 #define memset counted_memset
-#define fast_hash counted_hash
+#define xxh3_64 counted_hash
 /* FUNCTIONS */
-#undef fast_hash
+#undef xxh3_64
 #undef memset
 static void reset(void){emitted_n=lookup_n=0;memset(emitted,0,sizeof(emitted));memset(lookup_hashes,0,sizeof(lookup_hashes));for(unsigned i=0;i<3;i++)sources[i].refs=1;
 #ifdef CHECKED
@@ -90,8 +90,8 @@ static void correctness(void){
   assert(count==emitted_n&&lookup_n==module_count&&!memcmp(expected,emitted,sizeof(expected))&&!memcmp(expected_hashes,lookup_hashes,sizeof(expected_hashes)));
   for(unsigned i=0;i<3;i++)assert(refs[i]==sources[i].refs&&sources[i].refs==1+(unsigned)(i<emitted_n));
   for(unsigned i=0;i<emitted_n;i++){
-   assert(emitted[i].key_hash==fast_hash((const uint8_t*)&prepared[i],sizeof(prepared[i])));
-   assert(emitted[i].state_hash==(i==module_count-1?fast_hash((const uint8_t*)&state,sizeof(state)):0));
+   assert(emitted[i].key_hash==xxh3_64((const uint8_t*)&prepared[i],sizeof(prepared[i]), 0));
+   assert(emitted[i].state_hash==(i==module_count-1?xxh3_64((const uint8_t*)&state,sizeof(state), 0):0));
   }
 #ifdef CHECKED
   assert(hash_calls==1+module_count&&hashed_bytes==sizeof(state)+module_count*sizeof(ShaderModuleCacheKey));
@@ -117,7 +117,7 @@ int main(void){
  if(__builtin_cpu_supports("avx2"))fixture_simd|=RETRO_SIMD_AVX2;
 #endif
  printf("Fixture CPU feature mask=%llu (GCC runtime SSE2/AVX2 detection; scalar elsewhere)\n",(unsigned long long)fixture_simd);
- correctness();printf("key=%zu state=%zu bytes; real util/fast-hash.c and bundled XXH3\n",sizeof(ShaderModuleCacheKey),sizeof(ShaderState));
+ correctness();printf("key=%zu state=%zu bytes; direct bundled XXH3\n",sizeof(ShaderModuleCacheKey),sizeof(ShaderState));
 #ifndef CHECKED
  puts("Modeled module lookup/queue, real hash; no GLSL/SPIR-V/GPU timing; ns/state");
  for(unsigned round=0;round<5;round++)for(unsigned count=2;count<=3;count++){

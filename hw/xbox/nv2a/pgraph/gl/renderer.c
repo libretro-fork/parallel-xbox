@@ -24,7 +24,7 @@
 #include "hw/xbox/nv2a/pgraph/pgraph.h"
 #include "debug.h"
 #include "renderer.h"
-#include "qemu/fast-hash.h"
+#include <encodings/xxh3.h>
 #include "ui/xemu-settings.h"
 
 GloContext *g_nv2a_context_render;

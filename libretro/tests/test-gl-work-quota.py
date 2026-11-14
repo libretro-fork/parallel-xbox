@@ -26,7 +26,7 @@ static ShaderBinding bindings[16];
 static unsigned visits,built,finished,restored;
 static bool state_module_keys(ShaderState *s,ShaderModuleCacheKey keys[3]){visits++;for(int i=0;i<3;i++)keys[i].id=s->id;return false;}
 static bool module_known(PGRAPHGLState*r,ShaderModuleCacheKey*k){(void)r;return ready[k->id];}
-static uint64_t fast_hash(const uint8_t*p,size_t n){assert(n==sizeof(ShaderState));return ((const ShaderState*)p)->id;}
+static uint64_t xxh3_64(const uint8_t*p,size_t n, uint64_t seed __attribute__((unused))){assert(n==sizeof(ShaderState));return ((const ShaderState*)p)->id;}
 static LruNode *lru_lookup(int *cache,uint64_t h,ShaderState*s){(void)cache;assert(h==s->id);return &bindings[h].node;}
 static void generate_shaders(PGRAPHGLState*r,ShaderBinding*b){(void)r;assert(ready[b->node.id]&&!b->initialized);b->initialized=true;built++;}
 static void glUseProgram(unsigned p){assert(!p);}

@@ -52,7 +52,7 @@ static unsigned generated,restores,deleted;static GLuint bound;
 static bool sso=true,boost=true;
 unsigned pgraph_glsl_dynamic_gen;
 static bool gl_sso_enabled(void){return sso;}static bool first_meet_enabled(void){return boost;}
-static uint64_t fast_hash(const uint8_t *data,size_t n){(void)data;CHECK(n==sizeof(ShaderModuleCacheKey)||n==sizeof(PshState));return 42;}
+static uint64_t xxh3_64(const uint8_t *data,size_t n, uint64_t seed __attribute__((unused))){(void)data;CHECK(n==sizeof(ShaderModuleCacheKey)||n==sizeof(PshState));return 42;}
 static void uniform_cache_invalidate(bool *v){*v=false;}
 /* Namespace lifetime semantics are covered by test-gl-program-namespace;
  * this fixture checks the pump and its actual eviction helper together. */

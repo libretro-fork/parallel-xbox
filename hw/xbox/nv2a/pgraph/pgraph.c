@@ -22,7 +22,7 @@
 
 #include <math.h>
 
-#include "qemu/fast-hash.h"
+#include <encodings/xxh3.h>
 #include "hw/xbox/nv2a/nv2a_int.h"
 #include "system/libretro-vcpu.h"
 #include "qemu/main-loop.h"
@@ -3593,8 +3593,8 @@ DEF_METHOD(NV097, SET_TRANSFORM_PROGRAM_LOAD)
             }
         }
         if (complete && vp_prewarmed_n < ARRAY_SIZE(vp_prewarmed)) {
-            uint64_t h = fast_hash((const uint8_t *)pg->program_data,
-                                   sizeof(pg->program_data));
+            uint64_t h = xxh3_64((const uint8_t *)pg->program_data,
+                                   sizeof(pg->program_data), 0);
             if (!vp_prewarmed_contains(h)) {
                 vp_prewarmed[vp_prewarmed_n++] = h;
                 pgraph_renderer(pg)->ops.prewarm_vertex_program(d);

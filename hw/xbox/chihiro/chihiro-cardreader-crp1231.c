@@ -121,7 +121,7 @@ static bool crp1231_load(CRP1231State *r, const char *path)
     if (!path || !path[0])
         return true;
 
-    FILE *f = qemu_fopen(path, "rb");
+    FILE *f = fopen_utf8(path, "rb");
     if (f) {
         fseek(f, 0, SEEK_END);
         long size = ftell(f);

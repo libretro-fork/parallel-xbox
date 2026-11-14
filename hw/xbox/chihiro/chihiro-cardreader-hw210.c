@@ -139,7 +139,7 @@ void card_reader_insert(CardReaderState *s, const char *path,
 
     snprintf(s->card_path, sizeof(s->card_path), "%s", path);
 
-    FILE *f = qemu_fopen(path, "rb");
+    FILE *f = fopen_utf8(path, "rb");
     if (f) {
         fseek(f, 0, SEEK_END);
         long size = ftell(f);

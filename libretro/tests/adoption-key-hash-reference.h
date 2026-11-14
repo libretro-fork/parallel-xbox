@@ -1,7 +1,7 @@
 /* Frozen from 8efd128; LGPL-2.1-or-later. */
 static ShaderSource *vk_spec_take_ready(const ShaderModuleCacheKey *key)
 {
-    uint64_t h = fast_hash((const uint8_t *)key, sizeof(*key));
+    uint64_t h = xxh3_64((const uint8_t *)key, sizeof(*key), 0);
     const unsigned *order = vk_spec_ready_order;
     for (unsigned i = 0; i < vk_spec_ready_n; i++) {
         unsigned slot = order[i];

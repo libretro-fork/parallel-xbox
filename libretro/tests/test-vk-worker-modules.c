@@ -36,7 +36,7 @@ typedef ShaderModuleCacheKey MString;
 static bool pgraph_vk_spirv_1_6,pgraph_vk_preserve_float32,vk_spec_push_constants,force_collision;
 static unsigned compiles;
 static unsigned key_hash_calls;
-static uint64_t fast_hash(const uint8_t *p,size_t n){if(n==sizeof(ShaderModuleCacheKey))key_hash_calls++;uint64_t h=17;if(force_collision)return 7;while(n--)h=h*33+*p++;return h;}
+static uint64_t xxh3_64(const uint8_t *p,size_t n, uint64_t seed __attribute__((unused))){if(n==sizeof(ShaderModuleCacheKey))key_hash_calls++;uint64_t h=17;if(force_collision)return 7;while(n--)h=h*33+*p++;return h;}
 static MString *vk_module_glsl(const ShaderModuleCacheKey *key){MString *m=malloc(sizeof(*m));assert(m);*m=*key;return m;}
 static const char *mstring_get_str(MString *m){return (const char *)m;}
 static void mstring_unref(MString *m){free(m);}
@@ -72,10 +72,10 @@ static void retro_spsc_write_end(void *ring,size_t n){assert(ring==&vk_spec_out&
 /* READY STATE */
 /* PRODUCTION */
 static ShaderSource *take_ready_for_test(const ShaderModuleCacheKey *key)
-{ return vk_spec_take_ready(key,fast_hash((const uint8_t *)key,sizeof(*key))); }
+{ return vk_spec_take_ready(key,xxh3_64((const uint8_t *)key,sizeof(*key), 0)); }
 
 static ShaderSource *compile_for_test(const ShaderModuleCacheKey *key)
-{ return vk_spec_compile_module(key,fast_hash((const uint8_t *)key,sizeof(*key))); }
+{ return vk_spec_compile_module(key,xxh3_64((const uint8_t *)key,sizeof(*key), 0)); }
 
 static uint32_t seed=19;
 static uint32_t rnd(void){seed^=seed<<13;seed^=seed>>17;seed^=seed<<5;return seed;}
@@ -162,7 +162,7 @@ int main(void)
  for(unsigned trial=0;trial<100;trial++){
   vk_spec_push_constants=(trial&1)!=0;
   ShaderState st={trial};emitted_n=0;unsigned before_hashes=key_hash_calls;vk_spec_compile_state(&st);assert(emitted_n==3&&key_hash_calls-before_hashes==3);
-  uint64_t h=fast_hash((const uint8_t *)&st,sizeof(st));assert(!emitted[0].state_hash&&!emitted[1].state_hash&&emitted[2].state_hash==h);
+  uint64_t h=xxh3_64((const uint8_t *)&st,sizeof(st), 0);assert(!emitted[0].state_hash&&!emitted[1].state_hash&&emitted[2].state_hash==h);
   for(unsigned i=0;i<3;i++)vk_spec_ready_push(&emitted[i]);
   ShaderSource *same=take_ready_for_test(&emitted[0].key);assert(same==emitted[0].spirv&&vk_spec_ready_n==2);pgraph_vk_shader_source_unref(same);
   vk_spec_ready_clear();assert(vk_spec_ready_order==vk_spec_ready_order_storage);
@@ -173,7 +173,7 @@ int main(void)
  ShaderModuleCacheKey fifo[VK_SPEC_READY];unsigned nfifo=0;
  for(unsigned n=0;n<10000;n++){
   ShaderModuleCacheKey key={.kind=3,.id=n+100000,.len=16};
-  VkSpecDone d={.key=key,.key_hash=fast_hash((const uint8_t *)&key,sizeof(key)),.spirv=compile_for_test(&key)};
+  VkSpecDone d={.key=key,.key_hash=xxh3_64((const uint8_t *)&key,sizeof(key), 0),.spirv=compile_for_test(&key)};
   if(nfifo==VK_SPEC_READY){memmove(fifo,fifo+1,(nfifo-1)*sizeof(fifo[0]));nfifo--;}
   fifo[nfifo++]=key;vk_spec_ready_push(&d);assert(vk_spec_ready_n==nfifo);
   if((rnd()&3)==0){

@@ -1211,7 +1211,7 @@ static void configure_accelerators(const char *progname)
 /* Return 1 if file fails to open */
 static int xemu_check_file(const char *path)
 {
-    FILE *fd = qemu_fopen(path, "rb");
+    FILE *fd = fopen_utf8(path, "rb");
     if (fd == NULL) {
         return 1;
     }
@@ -1553,7 +1553,7 @@ static const char *get_eeprom_path(void)
      * BIOS needs a debug EEPROM, an Xbox BIOS a retail one. One made for
      * the other machine is set aside and regenerated. */
     if (qemu_access(path, F_OK) == 0) {
-        FILE *f = qemu_fopen(path, "rb");
+        FILE *f = fopen_utf8(path, "rb");
         if (f) {
             uint8_t data[256];
             bool valid = fread(data, 1, 256, f) == 256;

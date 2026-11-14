@@ -32,6 +32,6 @@ with tempfile.TemporaryDirectory(prefix='seed-inplace-') as tmp:
  command=shlex.split(cc)+['-O2','-g','-std=gnu11','-Wall','-Wextra','-Werror','-I'+str(p),'-I'+str(r),'-I'+str(r/'include')]
  if 'mingw' in cc:command+=['-Wno-cast-function-type']
  command+=shlex.split(os.environ.get('SEED_INPLACE_CFLAGS','-fsanitize=address,undefined'))
- command += [str(p/'test.c'),str(r/'util/fast-hash.c'),str(r/'libretro-common/encodings/encoding_xxh3.c'),str(r/'libretro-common/features/features_cpu.c'),str(r/'libretro-common/time/rtime.c'),str(r/'libretro-common/compat/compat_strl.c'),*compat_glib_flags(r,cc),'-o',binary]
+ command += [str(p/'test.c'),str(r/'libretro-common/encodings/encoding_xxh3.c'),str(r/'libretro-common/features/features_cpu.c'),str(r/'libretro-common/time/rtime.c'),str(r/'libretro-common/compat/compat_strl.c'),*compat_glib_flags(r,cc),'-o',binary]
  subprocess.run(command,check=True)
  if not os.environ.get('SEED_INPLACE_SKIP_RUN'):subprocess.run([binary],check=True,timeout=60)
