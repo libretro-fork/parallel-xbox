@@ -1764,6 +1764,8 @@ static void psh_append_dotmap(MString *preflight, unsigned mapping,
 static MString* psh_convert(struct PixelShader *ps)
 {
     MString *preflight = mstring_new();
+    mstring_append_fmt(preflight, "#version %d\n\n",
+                       ps->opts.vulkan ? 450 : (ps->opts.locations ? 410 : 400));
     /* Separable programs match stages by location: by name, an input the
      * vertex stage never writes lets the driver pack the rest differently
      * on each side (seen on AMD Windows GL). */
@@ -2494,10 +2496,10 @@ static MString* psh_convert(struct PixelShader *ps)
         break;
     }
 
-    MString *final = mstring_new();
-    mstring_append_fmt(final, "#version %d\n\n",
-                       ps->opts.vulkan ? 450 : (ps->opts.locations ? 410 : 400));
-    mstring_append(final, mstring_get_str(preflight));
+    /* Transfer the declaration buffer itself to the caller. Nothing retains
+     * an interior lend across the appends, so growth can keep using its own
+     * GString storage instead of cloning the whole prefix into another owner. */
+    MString *final = preflight;
     mstring_append(final, "void main() {\n");
     mstring_append(final, mstring_get_str(clip));
     mstring_append(final, mstring_get_str(vars));
@@ -2505,7 +2507,6 @@ static MString* psh_convert(struct PixelShader *ps)
     mstring_append(final, "}\n");
 
     mstring_unref(clip);
-    mstring_unref(preflight);
     mstring_unref(vars);
     mstring_unref(ps->code);
 

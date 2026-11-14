@@ -55,11 +55,12 @@ static inline const gchar *mstring_get_str(MString *m){mstring_test_access(m);re
     (directory/'owners.c').write_text("""#include "qemu/mstring.h"
 static struct {MString *p;unsigned group;} owners[256];
 static unsigned group;
-static size_t norm_formats[2];
+static size_t norm_formats[2],created[2];
+size_t mstring_test_created(unsigned g){return created[g];}
 size_t mstring_test_norm_formats(unsigned g){return norm_formats[g];}
 gchar *mstring_test_strdup_printf(const gchar *fmt,...){if(!strcmp(fmt,"norm%d"))norm_formats[group]++;va_list ap;va_start(ap,fmt);gchar *p=g_strdup_vprintf(fmt,ap);va_end(ap);return p;}
 void mstring_test_group(unsigned g){assert(g<2);group=g;}
-void *mstring_test_alloc(gsize size){assert(size==sizeof(MString));MString *p=g_malloc(size);unsigned i=0;while(i<256&&owners[i].p)i++;assert(i<256);owners[i].p=p;owners[i].group=group;return p;}
+void *mstring_test_alloc(gsize size){assert(size==sizeof(MString));MString *p=g_malloc(size);unsigned i=0;while(i<256&&owners[i].p)i++;assert(i<256);owners[i].p=p;owners[i].group=group;created[group]++;return p;}
 void mstring_test_free(void *p){unsigned i=0;while(i<256&&owners[i].p!=p)i++;assert(i<256);owners[i].p=NULL;g_free(p);}
 void mstring_test_access(MString *p){for(unsigned i=0;i<256;i++)if(owners[i].p==p)return;fprintf(stderr,"source-owner use after release\\n");exit(2);}
 size_t mstring_test_live(unsigned g){size_t n=0;for(unsigned i=0;i<256;i++)n+=owners[i].p&&owners[i].group==g;return n;}
@@ -72,6 +73,10 @@ void mstring_test_cleanup(unsigned g){for(unsigned i=0;i<256;i++)if(owners[i].p&
     if mutation=='missing_release':
         assert body.count('mstring_unref(clip);')==1
         body=body.replace('mstring_unref(clip);','(void)clip;')
+    if mutation=='prefix_clone':
+        needle='MString *final = preflight;'
+        assert body.count(needle)==1
+        body=body.replace(needle,'MString *final=mstring_from_str(mstring_get_str(preflight));\n    mstring_unref(preflight);')
     if mutation=='norm_format_alloc':
         needle='        const char *tex_remap = ps->state->rect_tex[i] ? psh_norm_names[i] : "";'
         assert body.count(needle)==1
@@ -103,7 +108,7 @@ void mstring_test_cleanup(unsigned g){for(unsigned i=0;i<256;i++)if(owners[i].p&
     result=subprocess.run([str(exe)],env=env,capture_output=True,text=True,timeout=180)
     (directory/'result.log').write_text(result.stdout+result.stderr)
     if mutation:
-        wanted={'missing_release':'mstring_test_live(1)==1','premature_release':'source-owner use after release','norm_format_alloc':'mstring_test_norm_formats(1)==0'}[mutation]
+        wanted={'missing_release':'mstring_test_live(1)==1','premature_release':'source-owner use after release','norm_format_alloc':'mstring_test_norm_formats(1)==0','prefix_clone':'candidate_created+1==parent_created'}[mutation]
         assert result.returncode!=0 and wanted in result.stdout+result.stderr,(mutation,result.returncode,result.stdout,result.stderr)
         print('Required fragment-owner control rejected:',mutation,flush=True)
     else:
@@ -118,7 +123,7 @@ def main():
     baseline=blob.decode('utf-8')
     with tempfile.TemporaryDirectory(prefix='psh-source-owners-') as temporary:
         directory=args.keep.resolve() if args.keep else Path(temporary);directory.mkdir(parents=True,exist_ok=True)
-        for mutation in ['', 'missing_release', 'premature_release', 'norm_format_alloc']:
+        for mutation in ['', 'missing_release', 'premature_release', 'norm_format_alloc', 'prefix_clone']:
             target=directory/(mutation or 'positive');target.mkdir()
             run(root,args.cc,target,baseline,mutation)
 if __name__=='__main__':main()

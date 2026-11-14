@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Assemble fragment GLSL directly in its declaration buffer and transfer that owner to the caller, avoiding a separate final MString/GString and whole-prefix copy. Shader source stays byte-identical; remaining source assembly and driver allocations are unchanged.
+
 - Release temporary clipping-source storage after fragment generation. Each generated source previously retained one MString/GString and its buffer (up to 4,136 bytes in the ownership corpus). Use immutable normalization-function names instead of allocating formatted names for texture stages, shadow sampling and convolution. Generated GL and Vulkan shader text stays byte-identical; this fixes retained CPU allocations, not draw-time compilation or shader stutters.
 
 - Experimental GL geometry preparation shares quad and quad-strip native programs, reducing the prepared set from 22 to 16 without dropping states. A packed strip bit preserves the exact plane/vertex ordering and odd-strip suppression; last-vertex quad color selection remains constant. Clean startup improves over the 22-stage attempt but remains slower than the parent; the feature stays disabled and stutter recovery remains unqualified.
