@@ -21,12 +21,11 @@
 
 #include "nv2a_int.h"
 
-#define DEFINE_STUB(name, region_id) \
+#define DEFINE_STUB(name) \
     uint64_t name ## _read(void *opaque, \
                            hwaddr addr, \
                            unsigned int size) \
     { \
-        nv2a_reg_log_read(region_id, addr, size, 0); \
         return 0; \
     } \
     void name ## _write(void *opaque, \
@@ -34,15 +33,14 @@
                         uint64_t val, \
                         unsigned int size) \
     { \
-        nv2a_reg_log_write(region_id, addr, size, val); \
     } \
 
-DEFINE_STUB(prma, NV_PRMA)
-DEFINE_STUB(pcounter, NV_PCOUNTER)
-DEFINE_STUB(pvpe, NV_PVPE)
-DEFINE_STUB(ptv, NV_PTV)
-DEFINE_STUB(prmfb, NV_PRMFB)
-DEFINE_STUB(pstraps, NV_PSTRAPS)
-// DEFINE_STUB(pramin, NV_PRAMIN)
+DEFINE_STUB(prma)
+DEFINE_STUB(pcounter)
+DEFINE_STUB(pvpe)
+DEFINE_STUB(ptv)
+DEFINE_STUB(prmfb)
+DEFINE_STUB(pstraps)
+// DEFINE_STUB(pramin)
 
 #undef DEFINE_STUB

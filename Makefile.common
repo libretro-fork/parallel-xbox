@@ -591,7 +591,6 @@ SOURCES_DSP := \
 	$(CORE_DIR)/hw/xbox/mcpx/apu/dsp/dsp.c \
 	$(CORE_DIR)/hw/xbox/mcpx/apu/dsp/dsp_c.c \
 	$(CORE_DIR)/hw/xbox/mcpx/apu/dsp/dsp_dma.c \
-	$(CORE_DIR)/hw/xbox/mcpx/apu/dsp/interp/debug.c \
 	$(CORE_DIR)/hw/xbox/mcpx/apu/dsp/interp/dsp_cpu.c \
 	$(CORE_DIR)/hw/xbox/mcpx/apu/dsp/jit/dspjit.c \
 

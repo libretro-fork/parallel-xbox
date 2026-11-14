@@ -21,7 +21,7 @@ typedef uint64_t hwaddr;
 typedef struct {struct {int regs[0x2000];} pfifo;} NV2AState;
 typedef struct {bool lr_poll_any;} CPUState;
 static CPUState cpu,*current_cpu;
-static unsigned kicks,stores,release_stores,read_logs,write_logs;
+static unsigned kicks,stores,release_stores;
 #define ctz32(v) __builtin_ctz(v)
 static uint32_t pfifo_reg_r(NV2AState*d,unsigned reg){assert(reg<0x2000);return (uint32_t)d->pfifo.regs[reg];}
 static void pfifo_reg_w(NV2AState*d,unsigned reg,uint32_t val){
@@ -30,8 +30,8 @@ static void pfifo_reg_w(NV2AState*d,unsigned reg,uint32_t val){
 }
 static void retro_atomic_store_release_int(int *p,int v){*p=v;stores++;release_stores++;}
 static void pfifo_kick_guest(NV2AState*d){(void)d;assert(stores==1);kicks++;}
-static void nv2a_reg_log_read(unsigned unit,hwaddr addr,unsigned size,uint64_t val){(void)addr;(void)val;assert(unit==NV_USER&&size==4);read_logs++;}
-static void nv2a_reg_log_write(unsigned unit,hwaddr addr,unsigned size,uint64_t val){(void)addr;(void)val;assert(unit==NV_USER&&size==4);write_logs++;}
+#define nv2a_reg_log_read(b,a,s,v) ((void)(b),(void)(a),(void)(s),(void)(v)) /* Legacy candidates only. */
+#define nv2a_reg_log_write(b,a,s,v) ((void)(b),(void)(a),(void)(s),(void)(v)) /* Legacy candidates only. */
 /* PRODUCTION */
 static void one(unsigned channel,unsigned offset,bool dma,unsigned active,bool have_cpu,bool busy){
  static NV2AState d;
@@ -45,14 +45,14 @@ static void one(unsigned channel,unsigned offset,bool dma,unsigned active,bool h
  bool audit=offset%1024==0||offset==NV_USER_DMA_PUT||offset==NV_USER_DMA_GET||offset==NV_USER_REF;
  if(audit)memcpy(before,d.pfifo.regs,sizeof(before));
  current_cpu=have_cpu?&cpu:NULL;cpu.lr_poll_any=false;
- kicks=stores=release_stores=read_logs=write_logs=0;
+ kicks=stores=release_stores=0;
  bool selected=channel<32&&dma&&channel==active;
  bool known=offset==NV_USER_DMA_PUT||offset==NV_USER_DMA_GET||offset==NV_USER_REF;
  uint64_t expected=!selected?0:offset==NV_USER_DMA_PUT?put:offset==NV_USER_DMA_GET?get:offset==NV_USER_REF?ref:0;
  hwaddr addr=((hwaddr)channel<<16)|offset;
  assert(user_read(&d,addr,4)==expected);
  assert(cpu.lr_poll_any==(have_cpu&&selected&&offset==NV_USER_DMA_GET&&busy));
- assert(read_logs==1&&!stores&&!kicks);
+ assert(!stores&&!kicks);
  if(audit)assert(!memcmp(before,d.pfifo.regs,sizeof(before)));
  uint64_t val=UINT64_C(0xdeadbeefcafebabe);
  user_write(&d,addr,val,4);
@@ -63,7 +63,7 @@ static void one(unsigned channel,unsigned offset,bool dma,unsigned active,bool h
   if(offset==NV_USER_DMA_GET)get=(uint32_t)val;
   if(offset==NV_USER_REF)ref=(uint32_t)val;
  }
- assert(stores==(selected&&known)&&kicks==stores&&write_logs==1);
+ assert(stores==(selected&&known)&&kicks==stores);
  assert(release_stores==(selected&&offset==NV_USER_DMA_PUT));
  assert(pfifo_reg_r(&d,NV_PFIFO_CACHE1_DMA_PUT)==put);
  assert(pfifo_reg_r(&d,NV_PFIFO_CACHE1_DMA_GET)==get);

@@ -37,7 +37,8 @@ for member in ['VMSTATE_UNUSED(8192 + 4 + 1)', '.pre_load = ohci_pre_load']:
     assert member in vmstate
 soft_reset = function('ohci_soft_reset')
 assert soft_reset.index('ohci_stop_endpoints(ohci)') < soft_reset.index('ohci->ctl =')
-port_reset = source.split('trace_usb_ohci_port_reset(portnum);', 1)[1]
+port_reset = function('ohci_port_set_status')
+port_reset = port_reset[port_reset.index('val & OHCI_PORT_PRS'):]
 assert port_reset.index('ohci_drop_device_packets') < port_reset.index('usb_device_reset')
 code = Path(__file__).with_suffix('.c').read_text().replace('/* DEFINITIONS */', definitions + '\n' + traces).replace('/* PACKET TYPES */', packet_types).replace('/* PRODUCTION */', production)
 iov_source = (repo / 'util/iov.c').read_text()

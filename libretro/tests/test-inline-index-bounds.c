@@ -33,12 +33,11 @@ typedef struct {
 typedef struct {PGRAPHState pgraph;struct {uint8_t palette[768];int packed[256],dirty;} puserdac;} NV2AState;
 static NV2AState d;
 static uint32_t reference[NV2A_MAX_BATCH_LENGTH],words[NV2A_MAX_BATCH_LENGTH+7];
-static unsigned nref,flushes,reads,ntrace;
-static uint32_t traced[NV2A_MAX_BATCH_LENGTH+7];
+static unsigned nref,flushes,reads;
 static uint32_t rng=0x164a923;
 static uint32_t rnd(void){rng^=rng<<13;rng^=rng>>17;rng^=rng<<5;return rng;}
 static uint32_t ldl_le_p(const void *ptr){const uint8_t *p=ptr;reads++;return p[0]|(uint32_t)p[1]<<8|(uint32_t)p[2]<<16|(uint32_t)p[3]<<24;}
-static void pgraph_method_log(unsigned s,unsigned c,unsigned m,uint32_t v){(void)m;assert(s==2&&c==0x97&&ntrace<ARRAY_SIZE(traced));traced[ntrace++]=v;}
+#define pgraph_method_log(...) ((void)0) /* Legacy candidates only. */
 static void pgraph_check_within_begin_end_block(PGRAPHState *pg){assert(pg==&d.pgraph);}
 static void flush_draw(NV2AState *state){assert(state==&d);flushes++;}
 static struct {struct {void (*flush_draw)(NV2AState *);} ops;} renderer={{flush_draw}};
@@ -59,15 +58,15 @@ static void nv2a_migration_release(NV2AState *state){assert(state->pgraph.light_
 void pgraph_reset_draw_arrays(PGRAPHState *);
 void pgraph_reset_inline_buffers(PGRAPHState *);
 /* PRODUCTION */
-static void reset(void){memset(&d,0,sizeof(d));d.pgraph.inline_elements[NV2A_MAX_BATCH_LENGTH]=0x12345678;d.pgraph.inline_elements[NV2A_MAX_BATCH_LENGTH+1]=0x89abcdef;pgraph_reset_inline_buffers(&d.pgraph);nref=reads=ntrace=0;check();}
+static void reset(void){memset(&d,0,sizeof(d));d.pgraph.inline_elements[NV2A_MAX_BATCH_LENGTH]=0x12345678;d.pgraph.inline_elements[NV2A_MAX_BATCH_LENGTH+1]=0x89abcdef;pgraph_reset_inline_buffers(&d.pgraph);nref=reads=0;check();}
 static void oracle(uint32_t value){assert(nref<ARRAY_SIZE(reference));reference[nref++]=value;}
 static void packet(bool packed,bool inc,unsigned count){
- unsigned before=d.pgraph.inline_elements_length;size_t consumed=1;reads=ntrace=0;
+ unsigned before=d.pgraph.inline_elements_length;size_t consumed=1;reads=0;
  unsigned available=NV2A_MAX_BATCH_LENGTH-before;unsigned take=inc?1:MIN(count,available/(packed?2:1));
  if(packed)method_ARRAY_ELEMENT16(&d,&d.pgraph,2,0x1800,words[0],words,count,&consumed,inc);
  else method_ARRAY_ELEMENT32(&d,&d.pgraph,2,0x1808,words[0],words,count,&consumed,inc);
- assert(consumed==(inc?1:take));assert(reads==(inc||!take?0:take-1));assert(ntrace==(take?take-1:0));
- for(unsigned i=0;i<take;i++){if(i)assert(traced[i-1]==words[i]);if(packed){oracle(words[i]&65535);oracle(words[i]>>16);}else oracle(words[i]);}
+ assert(consumed==(inc?1:take));assert(reads==(inc||!take?0:take-1));
+ for(unsigned i=0;i<take;i++){if(packed){oracle(words[i]&65535);oracle(words[i]>>16);}else oracle(words[i]);}
  check();
 }
 static void draw(unsigned start,unsigned count){size_t used=1;uint32_t parameter=start|((count-1)<<24);method_DRAW_ARRAYS(&d,&d.pgraph,2,0x1810,parameter,NULL,1,&used,true);}
@@ -92,13 +91,13 @@ int main(void){
  pgraph_append_inline_elements_range(&d.pgraph,0,0);check();
  reset();for(unsigned i=0;i<ARRAY_SIZE(words);i++)words[i]=rnd();packet(false,false,ARRAY_SIZE(words));assert(nref==NV2A_MAX_BATCH_LENGTH);
  reset();for(unsigned i=0;i<NV2A_MAX_BATCH_LENGTH-2;i++){words[0]=i;packet(false,true,1);}for(unsigned i=0;i<8;i++)words[i]=rnd();packet(true,false,8);assert(nref==NV2A_MAX_BATCH_LENGTH);
- reset();size_t used=99;reads=ntrace=0;method_ARRAY_ELEMENT32(&d,&d.pgraph,2,0x1808,123,NULL,0,&used,false);assert(!used&&!reads&&!ntrace);check();
+ reset();size_t used=99;reads=0;method_ARRAY_ELEMENT32(&d,&d.pgraph,2,0x1808,123,NULL,0,&used,false);assert(!used&&!reads);check();
  uint8_t unaligned[17]={0};for(unsigned i=0;i<4;i++){uint32_t value=0xface0000+i;for(unsigned j=0;j<4;j++)unaligned[1+4*i+j]=value>>(8*j);}
- used=1;reads=ntrace=0;method_ARRAY_ELEMENT32(&d,&d.pgraph,2,0x1808,0xface0000,(uint32_t *)(unaligned+1),4,&used,false);for(unsigned i=0;i<4;i++)oracle(0xface0000+i);check();assert(used==4&&reads==3&&ntrace==3);
+ used=1;reads=0;method_ARRAY_ELEMENT32(&d,&d.pgraph,2,0x1808,0xface0000,(uint32_t *)(unaligned+1),4,&used,false);for(unsigned i=0;i<4;i++)oracle(0xface0000+i);check();assert(used==4&&reads==3);
  reset();draw(20,2);used=99;method_ARRAY_ELEMENT16(&d,&d.pgraph,2,0x1800,0,NULL,0,&used,false);assert(!used&&d.pgraph.draw_arrays_length==1&&!nref);check();
  reset();for(unsigned i=0;i<ARRAY_SIZE(words);i++)words[i]=rnd();packet(false,false,ARRAY_SIZE(words));used=99;method_ARRAY_ELEMENT16(&d,&d.pgraph,2,0x1800,0,NULL,0,&used,false);assert(!used);check();
  reset();words[0]=UINT32_MAX;packet(false,true,1);words[0]=0;packet(false,true,1);assert(!nv2a_post_load(&d,5));check();
  unsigned before=releases,updates=zcomp_updates;restore_ok=false;
  assert(nv2a_post_load(&d,5)==-EINVAL&&releases==before+1&&zcomp_updates==updates);
- puts("inline index packets/bounds: 65536 complementary packed endpoint pairs, 100000 mixed operations, consumed/traced words, generated/wrapping ranges, partial capacity and legacy-load rebuild passed; UB traps enabled");return 0;
+ puts("inline index packets/bounds: 65536 complementary packed endpoint pairs, 100000 mixed operations, consumed/read words, generated/wrapping ranges, partial capacity and legacy-load rebuild passed; UB traps enabled");return 0;
 }

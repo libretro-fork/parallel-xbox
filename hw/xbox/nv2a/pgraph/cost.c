@@ -346,12 +346,6 @@ static void xemu_cost_init_consts(void)
     cost_bp_num_v = (long)(100000.0 / bw);
 }
 
-static long xemu_cost_bp_num(void)
-{
-    xemu_cost_init_consts();
-    return cost_bp_num_v;
-}
-
 /* Vertex instructions executed for the current config. Program mode: the
  * uploaded program's length, walked to its FINAL bit (MEASURED-EXACT).
  * Fixed-function mode: program-equivalent counts per feature, mirroring

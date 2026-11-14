@@ -9,7 +9,10 @@ for name in ('surface_copy_expand_row','surface_copy_expand','surface_unpack_lay
  while depth:depth+=(s[b]=='{')-(s[b]=='}');b+=1
  parts.append(s[a:b])
 a=s.index('    uint8_t *data = d->vram_ptr;',s.index('static void upload_surface_data_impl'))
-b=s.index('\nstatic void compare_surfaces',a)
+# Bound the upload body itself; following diagnostic helpers may be deleted.
+start=s.index('static void upload_surface_data_impl')
+b=s.index('{',start)+1;depth=1
+while depth:depth+=(s[b]=='{')-(s[b]=='}');b+=1
 parts.append('static void upload_pixels(NV2AState *d,SurfaceBinding *surface){ PGRAPHState *pg=&d->pgraph;PGRAPHGLState *r=pg->gl_renderer_state;GLint last_texture_binding;glGetIntegerv(GL_TEXTURE_BINDING_2D,&last_texture_binding);glBindFramebuffer(GL_FRAMEBUFFER,pg->gl_renderer_state->gl_fb_util);\n'+s[a:b])
 code=Path(__file__).with_suffix('.c').read_text().replace('/* PRODUCTION */','\n'.join(parts))
 with tempfile.TemporaryDirectory(prefix='gl-pitched-') as tmp:

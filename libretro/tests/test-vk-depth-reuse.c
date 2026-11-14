@@ -61,7 +61,7 @@ static SurfaceBinding *pgraph_vk_surface_get(NV2AState *d,hwaddr addr) {
     surface_gets++;SurfaceBinding *s=d->pgraph.vk_renderer_state->cached;
     return s && s->vram_addr==addr?s:NULL;
 }
-static void trace_stub(uint32_t addr,uint32_t w,uint32_t h,const char *layout,uint32_t aa,
+static inline void trace_stub(uint32_t addr,uint32_t w,uint32_t h,const char *layout,uint32_t aa,
                        uint32_t cx,uint32_t cw,uint32_t cy,uint32_t ch,uint32_t pitch) {}
 #define trace_nv2a_pgraph_surface_match_color trace_stub
 #define trace_nv2a_pgraph_surface_match_zeta trace_stub
@@ -71,7 +71,7 @@ static void trace_stub(uint32_t addr,uint32_t w,uint32_t h,const char *layout,ui
 #define trace_nv2a_pgraph_surface_hit_zeta trace_stub
 #define trace_nv2a_pgraph_surface_target(...) ((void)0)
 #define trace_nv2a_pgraph_surface_evict_reason(...) ((void)0)
-static void compare_surfaces(const SurfaceBinding *a,const SurfaceBinding *b) {}
+static inline void compare_surfaces(const SurfaceBinding *a,const SurfaceBinding *b) {}
 static void evict_surface(NV2AState *d,SurfaceBinding *s) {
     evictions++;downloads++;pgraph_rt_memo_forget(&d->pgraph.vk_renderer_state->rt_memo,s);
 }

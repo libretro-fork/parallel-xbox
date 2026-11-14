@@ -29,11 +29,12 @@
  * lock), before the first of these. */
 uint64_t user_read(void *opaque, hwaddr addr, unsigned int size)
 {
+    (void)size;
     NV2AState *d = (NV2AState *)opaque;
 
     unsigned int channel_id = addr >> 16;
     if (channel_id >= NV2A_NUM_CHANNELS) {
-        nv2a_reg_log_read(NV_USER, addr, size, 0);
+
         return 0;
     }
 
@@ -78,15 +79,16 @@ uint64_t user_read(void *opaque, hwaddr addr, unsigned int size)
         /* PIO mode is not implemented; read as zero. */
     }
 
-    nv2a_reg_log_read(NV_USER, addr, size, r);
+
     return r;
 }
 
 void user_write(void *opaque, hwaddr addr, uint64_t val, unsigned int size)
 {
+    (void)size;
     NV2AState *d = (NV2AState *)opaque;
 
-    nv2a_reg_log_write(NV_USER, addr, size, val);
+
 
     unsigned int channel_id = addr >> 16;
     if (channel_id >= NV2A_NUM_CHANNELS) {

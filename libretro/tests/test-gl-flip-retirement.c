@@ -45,7 +45,7 @@ static void pgraph_gl_surfaces_refresh_any_dirty(NV2AState*d){(void)d;assert(gpu
 static void xemu_cost_resolve_frame(NV2AState*d,int *ops,unsigned scale){(void)d;assert(ops==&pgraph_gl_cost_ops&&scale==expected_scale&&!xemu_cost_q_open&&!xemu_cost_q2_open&&gpu_done>=required);if(xemu_cost_segn)assert(gpu_done>=created);xemu_cost_segn=0;finishes++;}
 static void xemu_cost_flip_deadline(NV2AState*d){(void)d;assert(!xemu_cost_segn);deadlines++;}
 static void mock_surface_update(NV2AState*d,bool upload,bool color,bool zeta){(void)d;assert(!upload&&color&&zeta);}
-static void trace_nv2a_pgraph_flip_stall(void){}
+#define trace_nv2a_pgraph_flip_stall() ((void)0)
 static void nv2a_profile_flip_stall(void){}
 #define DEF_METHOD(g,n) static void generic_flip(NV2AState *d,PGRAPHState *pg)
 static bool guest_stall,intr_error,intr_context,fifo_access;

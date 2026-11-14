@@ -82,7 +82,7 @@ static void usb_handle_packet(USBDevice *d, USBPacket *p)
 static void ohci_async_complete_packet(USBPort *port, USBPacket *p);
 static void ohci_process_lists(OHCIState *s) { assert(!s->servicing); dispatches++; }
 static void usb_device_flush_ep_queue(USBDevice *d,USBEndpoint *ep);
-static void ohci_td_pkt(const char *str,const uint8_t *buf,size_t n) {}
+#define ohci_td_pkt(...) ((void)0) /* Legacy candidates only. */
 /* PRODUCTION */
 static void usb_device_flush_ep_queue(USBDevice *d,USBEndpoint *ep)
 {

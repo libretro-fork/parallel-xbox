@@ -201,7 +201,14 @@ hwaddr nv_clip_gpu_tile_blit(NV2AState *d, hwaddr blit_base_address, hwaddr len)
     return len;
 }
 
-const NV2ABlockInfo blocktable[NV_NUM_BLOCKS] = {
+typedef struct NV2ABlockInfo {
+    const char *name;
+    hwaddr offset;
+    uint64_t size;
+    MemoryRegionOps ops;
+} NV2ABlockInfo;
+
+static const NV2ABlockInfo blocktable[NV_NUM_BLOCKS] = {
     #define ENTRY(NAME, LNAME, OFFSET, SIZE) [NV_##NAME] = {            \
         .name   = #NAME,                                                \
         .offset = OFFSET,                                               \
