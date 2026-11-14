@@ -19,7 +19,7 @@ static void save(const char *folder,const char *name,const uint32_t *words,size_
 static GlslcResult reference(bool to_ram){GlslcResult result;GlslcOptions opts={0};if(!glslc_compile(GLSLC_STAGE_COMPUTE,to_ram?swizzle_glsl:unswizzle_glsl,&opts,&result)){fprintf(stderr,"Reference line %d: %s\n",result.error_line,result.error);abort();}return result;}
 #ifdef TEST_VULKAN
 #define VK_NO_PROTOTYPES
-#include <volk.h>
+#include <vk-test-loader.h>
 #include "gpu-common.h"
 /* HOST SOURCE BARRIER */
 static VkPipeline pipeline(VkShaderModule module,VkPipelineLayout layout){VkComputePipelineCreateInfo ci={.sType=VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO,.layout=layout,.stage={.sType=VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,.stage=VK_SHADER_STAGE_COMPUTE_BIT,.module=module,.pName="main"}};VkPipeline p;CHECK(vkCreateComputePipelines(device,VK_NULL_HANDLE,1,&ci,NULL,&p));return p;}

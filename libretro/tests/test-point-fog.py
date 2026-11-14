@@ -7,6 +7,8 @@ runtime generators. No core instrumentation or runtime test branch is used.
 import argparse, ast, json, math, os, re, struct, subprocess, tempfile
 from pathlib import Path
 
+vk_loader_root = Path(__file__).resolve().parents[2]
+
 p=argparse.ArgumentParser(description=__doc__)
 p.add_argument('checkout',type=Path)
 p.add_argument('--cc',default='cc')
@@ -328,7 +330,7 @@ with tempfile.TemporaryDirectory(prefix='point-fog-') as temp:
     printf("PASS: %u GPU primitive/polygon/sprite transitions preserve stage-3 coordinates\n",draws);
     }'''
     fixture=out/'fixture.c'
-    source=(r/'libretro/tests/test-point-fog-gl.c').read_text()
+    source=(vk_loader_root/'libretro/tests/test-point-fog-gl.c').read_text()
     prefix='#include "hw/xbox/nv2a/nv2a_regs.h"\n#define ctz32(v) __builtin_ctz(v)\n'+enums+'\n'+selection+'\n'
     source=source.replace('int main(',prefix+'int main(')
     source=source.replace('/* SPRITE */',sprite+'\n'+nonpoints)
@@ -427,13 +429,13 @@ with tempfile.TemporaryDirectory(prefix='point-fog-') as temp:
             for i,expr in enumerate(('probe[2].x','probe[2].y','probe[2].z','probe[2].w','0.0','0.0','probe[3].x','probe[3].y')):
                 source=source.replace('pointParams['+str(i)+']',expr)
             comp=Path(path).with_suffix('.comp');comp.write_text(source);vkargs.extend([str(comp),data])
-        helper=(r/'libretro/tests/spv-clear-vulkan.h').read_text().split('static VkPipeline pipeline(')[0]
-        test=out/'fixture-vk.c';test.write_text((r/'libretro/tests/test-point-fog-vk.c').read_text().replace('/* GPU HELPERS */',helper))
+        helper=(vk_loader_root/'libretro/tests/spv-clear-vulkan.h').read_text().split('static VkPipeline pipeline(')[0]
+        test=out/'fixture-vk.c';test.write_text((vk_loader_root/'libretro/tests/test-point-fog-vk.c').read_text().replace('/* GPU HELPERS */',helper))
         exe=out/('point-fog-vk.exe' if os.name=='nt' else 'point-fog-vk')
         command=[a.cc,'-O2','-std=gnu11','-Wall','-Wextra','-Werror','-Wno-unused-function','-Wno-unused-variable',
-                 '-Wno-sign-compare','-Wno-missing-field-initializers','-I'+str(r),'-I'+str(r/'deps/volk'),
+                 '-Wno-sign-compare','-Wno-missing-field-initializers','-I'+str(r),'-I'+str(vk_loader_root/'libretro'),
                  '-I'+str(r/'deps/vulkan-headers'),'-I'+str(r/'deps/spirv-headers/include'),str(test),
-                 str(r/'hw/xbox/nv2a/pgraph/spv/glslc.c'),str(r/'hw/xbox/nv2a/pgraph/spv/glslc_lex.c'),str(r/'deps/volk/volk.c'),'-lm','-o',str(exe)]
+                 str(r/'hw/xbox/nv2a/pgraph/spv/glslc.c'),str(r/'hw/xbox/nv2a/pgraph/spv/glslc_lex.c'),str(vk_loader_root/'libretro/vk_dispatch.c'),str(vk_loader_root/'libretro/tests/vk-test-loader.c'),'-lm','-o',str(exe)]
         if os.name!='nt':command+=['-ldl']
         subprocess.run(command,check=True,env=env)
         subprocess.run([str(exe),*vkargs],check=True,env=env)

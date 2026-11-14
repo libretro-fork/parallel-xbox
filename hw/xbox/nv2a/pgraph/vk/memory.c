@@ -6,7 +6,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
-#include <volk.h>
+#include <vk_dispatch.h>
 #include "memory.h"
 
 #define IMAGE_BLOCK_BYTES (16ull << 20)

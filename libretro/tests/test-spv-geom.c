@@ -36,7 +36,7 @@ static void mstring_unref(MString*s){free(s->str);free(s);}
 /* TYPES */
 /* GENERATORS */
 #ifdef TEST_VULKAN
-#include <volk.h>
+#include <vk-test-loader.h>
 #else
 #define VK_SHADER_STAGE_GEOMETRY_BIT 8
 #endif

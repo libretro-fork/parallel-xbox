@@ -7,7 +7,7 @@
  * instance and device of its own - so a frame is handed to RetroArch as an
  * image on the same device, without exporting memory to a second one.
  *
- * Include after the Vulkan headers (volk.h or libretro_vulkan.h).
+ * Include after the Vulkan headers (vk_dispatch.h or libretro_vulkan.h).
  *
  * This work is licensed under the terms of the GNU GPL, version 2 or later.
  * See the COPYING file in the top-level directory.

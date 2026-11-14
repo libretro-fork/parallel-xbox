@@ -2,6 +2,8 @@
 """Execute the production geometry UI classifier and packed bounds on GPUs."""
 import argparse,ast,json,math,os,re,struct,subprocess,tempfile,shutil
 from pathlib import Path
+
+vk_loader_root = Path(__file__).resolve().parents[2]
 p=argparse.ArgumentParser(description=__doc__);p.add_argument('checkout',type=Path);p.add_argument('--cc',default='cc');p.add_argument('--epoxy-root',type=Path);p.add_argument('--output',type=Path);p.add_argument('--vulkan',action='store_true');a=p.parse_args();r=a.checkout.resolve()
 s=(r/'hw/xbox/nv2a/pgraph/glsl/geom.c').read_text();start=s.index('static void append_ui_prepare(');end=s.index('\nMString *pgraph_glsl_gen_geom(',start);production=s[start:end]
 start=s.index('        ui_emit = ');end=s.index(';\n',start);pack=ast.literal_eval(s[start+len('        ui_emit = '):end])
@@ -83,7 +85,7 @@ int main(int argc,char **argv){assert(argc==2);for(unsigned n=3;n<=4;n++)for(uns
     for inputs,expected in cases:f.write(struct.pack('37f',*inputs,*expected))
    total+=len(cases);args.extend([str(vertex),str(data)])
    comp=vertex.with_suffix('.comp');comp.write_text('#version 450\n'+macros+'layout(set=0,binding=0,std140) uniform Inputs{vec4 positions[4];vec4 tex[4];};\nlayout(set=0,binding=1,std430) buffer Outputs{vec4 bounds;float valid;};\nlayout(local_size_x=1) in;\n'+body+'}\n');vkargs.extend([str(comp),str(data)])
- prefix=(r/'libretro/tests/test-point-fog-gl.c').read_text();prefix=prefix[:prefix.index('    printf("Point/fog GL GPU:')]
+ prefix=(vk_loader_root/'libretro/tests/test-point-fog-gl.c').read_text();prefix=prefix[:prefix.index('    printf("Point/fog GL GPU:')]
  driver=r'''printf("UI geometry GPU: %s\n",glGetString(GL_RENDERER));GLuint vao,b;glGenVertexArrays(1,&vao);glBindVertexArray(vao);glGenBuffers(1,&b);glBindBuffer(GL_TRANSFORM_FEEDBACK_BUFFER,b);glBufferData(GL_TRANSFORM_FEEDBACK_BUFFER,20,NULL,GL_STREAM_READ);glBindBufferBase(GL_TRANSFORM_FEEDBACK_BUFFER,0,b);glEnable(GL_RASTERIZER_DISCARD);unsigned count=0;
  for(int file=1;file<argc;file+=2){FILE*f=fopen(argv[file],"rb");assert(f);fseek(f,0,SEEK_END);long n=ftell(f);rewind(f);char*s=calloc(n+1,1);assert(s&&fread(s,1,n,f)==(size_t)n);fclose(f);GLuint v=compile(GL_VERTEX_SHADER,s),p=glCreateProgram();free(s);glAttachShader(p,v);const char*names[]={"bounds","valid"};glTransformFeedbackVaryings(p,2,names,GL_INTERLEAVED_ATTRIBS);glLinkProgram(p);GLint ok;glGetProgramiv(p,GL_LINK_STATUS,&ok);assert(ok);glUseProgram(p);GLint pos=glGetUniformLocation(p,"positions"),tex=glGetUniformLocation(p,"tex");assert(pos>=0&&tex>=0);f=fopen(argv[file+1],"rb");assert(f);float input[37];while(fread(input,sizeof(input),1,f)==1){glUniform4fv(pos,4,input);glUniform4fv(tex,4,input+16);glBeginTransformFeedback(GL_POINTS);glDrawArrays(GL_POINTS,0,1);glEndTransformFeedback();float actual[5];glGetBufferSubData(GL_TRANSFORM_FEEDBACK_BUFFER,0,20,actual);assert(glGetError()==GL_NO_ERROR);if(actual[4]!=input[36]){fprintf(stderr,"%s case %u valid %.9g != %.9g\n",argv[file],count,actual[4],input[36]);return 1;}if(actual[4])for(unsigned k=0;k<4;k++)if(fabsf(actual[k]-input[32+k])>5e-5f*fmaxf(1,fabsf(input[32+k]))){fprintf(stderr,"%s case %u bounds %u %.9g != %.9g\n",argv[file],count,k,actual[k],input[32+k]);return 1;}count++;}fclose(f);glDeleteProgram(p);glDeleteShader(v);}
  glDeleteBuffers(1,&b);glDeleteVertexArrays(1,&vao);printf("PASS: %u production geometry classifications, packed bounds and marker probes\n",count);return 0;}
@@ -95,12 +97,12 @@ int main(int argc,char **argv){assert(argc==2);for(unsigned n=3;n<=4;n++)for(uns
  subprocess.run(cmd,check=True,env=env);subprocess.run([str(exe),*args],check=True,env=dict(env,EGL_PLATFORM='surfaceless'))
  negative=out/'unmarked.vert';negative.write_text(Path(args[0]).read_text().replace('triMZ = uintBitsToFloat(0x80000000u)','triMZ = 0.0'));result=subprocess.run([str(exe),str(negative),args[1]],capture_output=True,text=True,env=dict(env,EGL_PLATFORM='surfaceless'));assert result.returncode==1 and 'valid' in result.stderr;print('PASS: missing metadata marker fails the independent oracle')
  if a.vulkan:
-  helper=(r/'libretro/tests/spv-clear-vulkan.h').read_text().split('static VkPipeline pipeline(')[0]
-  driver=(r/'libretro/tests/test-point-fog-vk.c').read_text().replace('/* GPU HELPERS */',helper)
+  helper=(vk_loader_root/'libretro/tests/spv-clear-vulkan.h').read_text().split('static VkPipeline pipeline(')[0]
+  driver=(vk_loader_root/'libretro/tests/test-point-fog-vk.c').read_text().replace('/* GPU HELPERS */',helper)
   driver=driver.replace('make_buffer(64,','make_buffer(128,').replace('make_buffer(16,','make_buffer(32,').replace('input.buffer,0,64','input.buffer,0,128').replace('output.buffer,0,16','output.buffer,0,32').replace('float values[20]','float values[37]').replace('input.mapped,values,64','input.mapped,values,128')
   driver=driver.replace('production point/fog expressions via Vulkan SPIR-V','production UI geometry metadata via Vulkan SPIR-V')
   driver=driver.replace('for(unsigned k=0;k<4;k++)if(', 'if(actual[4]!=values[36]){fprintf(stderr,"valid mismatch %.9g != %.9g\\n",actual[4],values[36]);return 1;}\n            if(actual[4])for(unsigned k=0;k<4;k++)if(').replace('values[16+k]','values[32+k]')
-  test=out/'vk.c';test.write_text(driver);exe=out/('ui-vk.exe' if os.name=='nt' else 'ui-vk');cmd=[a.cc,'-O2','-std=gnu11','-Wall','-Wextra','-Werror','-Wno-unused-function','-Wno-unused-variable','-Wno-sign-compare','-Wno-missing-field-initializers','-I'+str(r),'-I'+str(r/'deps/volk'),'-I'+str(r/'deps/vulkan-headers'),'-I'+str(r/'deps/spirv-headers/include'),str(test),str(r/'hw/xbox/nv2a/pgraph/spv/glslc.c'),str(r/'hw/xbox/nv2a/pgraph/spv/glslc_lex.c'),str(r/'deps/volk/volk.c'),'-lm','-o',str(exe)]
+  test=out/'vk.c';test.write_text(driver);exe=out/('ui-vk.exe' if os.name=='nt' else 'ui-vk');cmd=[a.cc,'-O2','-std=gnu11','-Wall','-Wextra','-Werror','-Wno-unused-function','-Wno-unused-variable','-Wno-sign-compare','-Wno-missing-field-initializers','-I'+str(r),'-I'+str(vk_loader_root/'libretro'),'-I'+str(r/'deps/vulkan-headers'),'-I'+str(r/'deps/spirv-headers/include'),str(test),str(r/'hw/xbox/nv2a/pgraph/spv/glslc.c'),str(r/'hw/xbox/nv2a/pgraph/spv/glslc_lex.c'),str(vk_loader_root/'libretro/vk_dispatch.c'),str(vk_loader_root/'libretro/tests/vk-test-loader.c'),'-lm','-o',str(exe)]
   if os.name!='nt':cmd+=['-ldl']
   subprocess.run(cmd,check=True,env=env);subprocess.run([str(exe),*vkargs],check=True,env=env)
   validator=shutil.which('spirv-val',path=env['PATH'])

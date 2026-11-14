@@ -351,6 +351,9 @@ jobs:
             sudo apt-get -qy install gcc-x86-64-linux-gnu binutils-x86-64-linux-gnu
           fi
 
+      - name: Validate frontend Vulkan dispatch without a loader
+        run: python3 libretro/tests/test-vk-dispatch.py . cc
+
       - name: Validate packed index fetches with the software Vulkan driver
         run: python3 libretro/tests/test-vk-index-packing.py . cc --gpu
 

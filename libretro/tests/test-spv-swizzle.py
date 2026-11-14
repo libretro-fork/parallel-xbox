@@ -1,6 +1,8 @@
 # SPDX-License-Identifier: LGPL-2.1-or-later
 """Validate fixed Morton conversion modules and optional original/direct GPU parity."""
 from pathlib import Path
+
+vk_loader_root = Path(__file__).resolve().parents[2]
 import argparse,ctypes,os,re,shutil,subprocess,tempfile
 
 def run(r,cc,folder,gpu):
@@ -14,13 +16,13 @@ def run(r,cc,folder,gpu):
  a=host.index('    /* Host and earlier GPU writes');b=host.index('    vkCmdBindPipeline',a)
  barrier='static void production_unswizzle_barrier(Buffer source,Buffer output,const uint32_t push[11]){\n#define BUFFER_UNSWIZZLE_OUT 0\nstruct {VkBuffer vram_buffer;struct {VkBuffer buffer;}storage_buffers[1];}state={.vram_buffer=source.buffer,.storage_buffers={{output.buffer}}},*r=&state;VkCommandBuffer cmd=command;VkDeviceSize src_offset=push[0],dst=push[1],palette_offset=push[10];size_t texels=(size_t)push[2]*push[3]*push[4],out_size=push[9]*4;unsigned bpp=push[5];'+host[a:b]+'\n#undef BUFFER_UNSWIZZLE_OUT\n}'
  code=Path(__file__).with_suffix('.c').read_text().replace('/* HOST SOURCE BARRIER */',barrier)
- q=(r/'libretro/tests/test-spv-geom.c').read_text();a=q.index('#ifdef _WIN32\nstatic void quiet_test_abort');b=q.index('int line_tests(',a);code=code.replace('/* QUIET ERRORS */',q[a:b])
- prefix=(r/'libretro/tests/spv-clear-vulkan.h').read_text();prefix=prefix[:prefix.index('static VkPipeline pipeline(')].replace('Utility GPU:','Swizzle GPU:')
+ q=(vk_loader_root/'libretro/tests/test-spv-geom.c').read_text();a=q.index('#ifdef _WIN32\nstatic void quiet_test_abort');b=q.index('int line_tests(',a);code=code.replace('/* QUIET ERRORS */',q[a:b])
+ prefix=(vk_loader_root/'libretro/tests/spv-clear-vulkan.h').read_text();prefix=prefix[:prefix.index('static VkPipeline pipeline(')].replace('Utility GPU:','Swizzle GPU:')
  prefix=prefix.replace('static unsigned memory_type(unsigned bits,VkMemoryPropertyFlags flags){for(unsigned i=0;i<memory_properties.memoryTypeCount;i++)if((bits&(1u<<i))&&(memory_properties.memoryTypes[i].propertyFlags&flags)==flags)return i;abort();}', 'static unsigned memory_type(unsigned bits,VkMemoryPropertyFlags flags){for(unsigned pass=0;pass<2;pass++){unsigned required=flags|(pass?0:VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);for(unsigned i=0;i<memory_properties.memoryTypeCount;i++)if((bits&(1u<<i))&&(memory_properties.memoryTypes[i].propertyFlags&required)==required)return i;}abort();}')
  (folder/'gpu-common.h').write_text(prefix);(folder/'test.c').write_text(code);exe=folder/('test.exe' if os.name=='nt' else 'test')
- cmd=[cc,'-O2','-std=gnu11','-Wall','-Wextra','-Werror','-Wno-sign-compare','-Wno-unused-function','-Wno-missing-field-initializers','-Wno-misleading-indentation','-fsanitize=undefined','-fsanitize-undefined-trap-on-error','-I'+str(r),'-I'+str(r/'libretro/tests'),'-I'+str(folder),'-I'+str(r/'deps/spirv-headers/include'),'-I'+str(r/'deps/vulkan-headers'),'-I'+str(r/'deps/volk')]
+ cmd=[cc,'-O2','-std=gnu11','-Wall','-Wextra','-Werror','-Wno-sign-compare','-Wno-unused-function','-Wno-missing-field-initializers','-Wno-misleading-indentation','-fsanitize=undefined','-fsanitize-undefined-trap-on-error','-I'+str(r),'-I'+str(vk_loader_root/'libretro/tests'),'-I'+str(folder),'-I'+str(r/'deps/spirv-headers/include'),'-I'+str(r/'deps/vulkan-headers'),'-I'+str(vk_loader_root/'libretro')]
  sources=[str(folder/'test.c')]+[str(r/'hw/xbox/nv2a/pgraph/spv'/n) for n in ['swizzle.c','glslc.c','glslc_lex.c']]+[str(r/'hw/xbox/nv2a/pgraph/swizzle.c')]
- if gpu:cmd+=['-DTEST_VULKAN'];sources+=[str(r/'deps/volk/volk.c')]
+ if gpu:cmd+=['-DTEST_VULKAN'];sources+=[str(vk_loader_root/'libretro/vk_dispatch.c'),str(vk_loader_root/'libretro/tests/vk-test-loader.c')]
  cmd+=sources+['-lm']
  if gpu and os.name!='nt':cmd+=['-ldl']
  subprocess.run(cmd+['-o',str(exe)],check=True,env=env);subprocess.run([str(exe),str(folder)],check=True,timeout=180,env=env)

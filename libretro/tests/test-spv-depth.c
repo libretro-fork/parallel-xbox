@@ -10,7 +10,7 @@
 #include <windows.h>
 #endif
 #ifdef TEST_VULKAN
-#include <volk.h>
+#include <vk-test-loader.h>
 #else
 #include <vulkan/vulkan.h>
 #endif

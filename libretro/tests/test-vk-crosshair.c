@@ -9,7 +9,7 @@
 #ifdef _WIN32
 #include <windows.h>
 #endif
-#include <volk.h>
+#include <vk-test-loader.h>
 #include "ui/libretro-crosshair.h"
 #define MIN(a,b) ((a)<(b)?(a):(b))
 #define MAX(a,b) ((a)>(b)?(a):(b))

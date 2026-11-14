@@ -1,6 +1,8 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 """Check production u16 index packing and conservative topology selection."""
 from pathlib import Path
+
+vk_loader_root = Path(__file__).resolve().parents[2]
 import os,re,shlex,struct,subprocess,sys,tempfile
 r=Path(sys.argv[1]).resolve();cc=shlex.split(sys.argv[2] if len(sys.argv)>2 else 'cc')
 def function(path,name):
@@ -39,9 +41,9 @@ with tempfile.TemporaryDirectory(prefix='vk-index-packing-') as d:
   shader.write_text('#version 450\nlayout(std430,binding=0) buffer Results { uint value[]; };\nvoid main(){uint i=uint(gl_VertexIndex);atomicExchange(value[i],i^0x12345678u);gl_Position=vec4(0,0,0,1);gl_PointSize=1.0;}\n')
   subprocess.run(['glslangValidator','-V',str(shader),'-o',str(spv)],check=True)
   raw=spv.read_bytes();words=struct.unpack('<'+'I'*(len(raw)//4),raw)
-  helpers=(r/'libretro/tests/spv-clear-vulkan.h').read_text().split('static VkPipeline pipeline(')[0]
-  gpu='#include <stdlib.h>\n#include <volk.h>\n#define main cpu_index_test\n'+code+'\n#undef main\n'+helpers
+  helpers=(vk_loader_root/'libretro/tests/spv-clear-vulkan.h').read_text().split('static VkPipeline pipeline(')[0]
+  gpu='#include <stdlib.h>\n#include <vk-test-loader.h>\n#define main cpu_index_test\n'+code+'\n#undef main\n'+helpers
   gpu+='\nstatic const uint32_t index_vertex_words[]={'+','.join(map(str,words))+'};\n'
-  gpu+=(r/'libretro/tests/test-vk-index-packing-gpu.c').read_text();src.write_text(gpu)
-  subprocess.run(cc+['-O2','-std=gnu11','-Wall','-Wextra','-Werror','-Wno-unused-variable','-Wno-unused-function','-I'+str(r),'-I'+str(r/'deps/volk'),'-I'+str(r/'deps/vulkan-headers'),str(src),str(r/'deps/volk/volk.c'),'-ldl','-o',binary],check=True)
+  gpu+=(vk_loader_root/'libretro/tests/test-vk-index-packing-gpu.c').read_text();src.write_text(gpu)
+  subprocess.run(cc+['-O2','-std=gnu11','-Wall','-Wextra','-Werror','-Wno-unused-variable','-Wno-unused-function','-I'+str(r),'-I'+str(vk_loader_root/'libretro'),'-I'+str(r/'deps/vulkan-headers'),str(src),str(vk_loader_root/'libretro/vk_dispatch.c'),str(vk_loader_root/'libretro/tests/vk-test-loader.c'),'-ldl','-o',binary],check=True)
   subprocess.run([binary],check=True,timeout=60)

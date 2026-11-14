@@ -145,7 +145,7 @@ else ifeq ($(platform),osx)
                   -Wl,-exported_symbol,_retro_* \
                   -Wl,-headerpad_max_install_names -Wl,-dead_strip
    OS_INCFLAGS :=
-   # the Vulkan entry points come from the frontend (MoltenVK), volk loads
+   # the Vulkan entry points come from the frontend (MoltenVK), its resolver supplies
    # the rest; Metal surfaces are the frontend's
    OS_CFLAGS   := $(OSX_ARCH_FLAGS) -DVK_USE_PLATFORM_METAL_EXT
    OS_ASFLAGS  := $(OSX_ARCH_FLAGS)
@@ -215,7 +215,7 @@ OBJS_DSP      := $(call obj,$(SOURCES_DSP))
 OBJS_GLOFF    := $(call obj,$(SOURCES_GLOFF))
 OBJS_LRCOMMON := $(call obj,$(SOURCES_LRCOMMON))
 OBJS_GLIB     := $(call obj,$(SOURCES_GLIB))
-OBJS_VOLK     := $(call obj,$(SOURCES_VOLK))
+OBJS_VK_DISPATCH     := $(call obj,$(SOURCES_VK_DISPATCH))
 OBJS_GLSLC    := $(call obj,$(SOURCES_GLSLC))
 OBJS_VSH      := $(call obj,$(SOURCES_VSH))
 OBJS_DATA     := $(patsubst %.S,%.o,$(SOURCES_DATA_ASM))
@@ -226,7 +226,7 @@ LIBQEMUUTIL := $(CORE_DIR)/libqemuutil.a
 
 OBJECTS := $(OBJS_COMMON) $(OBJS_SYSTEM) $(OBJS_TARGET) \
            $(OBJS_DSP) $(OBJS_GLOFF) $(OBJS_LRCOMMON) $(OBJS_GLIB) \
-           $(OBJS_VOLK) $(OBJS_GLSLC) $(OBJS_VSH) \
+           $(OBJS_VK_DISPATCH) $(OBJS_GLSLC) $(OBJS_VSH) \
            $(OBJS_DATA)
 
 $(OBJS_UTIL):     GROUP_CFLAGS := $(CFLAGS_UTIL)
@@ -239,7 +239,7 @@ $(OBJS_LRCOMMON): GROUP_CFLAGS := $(CFLAGS_LRCOMMON)
 # Feature flags in Makefile.common also control which common APIs are built.
 $(OBJS_LRCOMMON): Makefile.common
 $(OBJS_GLIB):     GROUP_CFLAGS := $(CFLAGS_GLIB)
-$(OBJS_VOLK):     GROUP_CFLAGS := $(CFLAGS_VOLK)
+$(OBJS_VK_DISPATCH):     GROUP_CFLAGS := $(CFLAGS_VK_DISPATCH)
 $(OBJS_GLSLC):    GROUP_CFLAGS := $(CFLAGS_GLSLC)
 # Native vertex/fragment emission borrows state whose headers use QEMU types.
 $(CORE_DIR)/hw/xbox/nv2a/pgraph/spv/vsh.o $(CORE_DIR)/hw/xbox/nv2a/pgraph/spv/psh.o: GROUP_CFLAGS := $(CFLAGS_SYSTEM) -I$(CORE_DIR)/deps/spirv-headers/include

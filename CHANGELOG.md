@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Remove Volk and standalone Vulkan device setup. Resolve renderer entry points through the negotiated libretro frontend instance and device, using its queue family for command pools. GPU regression probes retain a test-only native loader; the core opens no Vulkan loader library.
+
 - Collect core build artifacts without the deleted local .info file, fixing packaging failures across Windows, Linux, Android and macOS CI jobs.
 
 - Use libretro-common rthreads directly for worker lifecycle and host-thread identity. Remove QEMU native thread handles, Windows per-thread join bookkeeping and the unused vCPU signal/semaphore wake path. Drop the unused abstract Windows stdin backend, whose concrete stdio subclass was already excluded. Keep owner-local cleanup callbacks, stop/join ordering and lock-free data queues. Shared GPU/BQL mutexes remain required; this is not a claim that the whole emulator is lock-free.
