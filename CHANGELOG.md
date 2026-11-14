@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Shader CI runs the new complete-tuple ownership contract for every pushed revision containing that implementation. Earlier revisions keep their existing interpreter tests instead of failing because a later fixture did not exist yet. Missing tuple fixtures in applicable revisions still fail, and the tuple job is required by the final gate. Manual replay accepts a pinned base SHA and retains the same per-commit matrix, corpora and limits.
+
 - Experimental GL pipeline readiness: validate eighteen native VS/GS/FS combinations before guest execution, borrowing slots from the existing binding pool and retaining them through the existing pipeline-owner index. Partial failures return all slots. Existing uncovered states still create pipelines during gameplay; this is not complete coverage or qualified stutter recovery.
 
 - Experimental fragment execution probes use constant-index register-bank accesses and exact single-product/final-combiner paths with a full-interpreter fallback. The initial generic implementation regresses actual guest-Present throughput despite lower callback times. Product-path throughput improves in the rejection probe but remains below its matched parent; literal register operands restore the measured guest-Present count and reduce matched GPU execution cost. A modest throughput/tail gap, first-use startup spike and full cold/warm qualification remain open. Legacy shader text stays byte-identical; prepared source-owner release is checked separately.

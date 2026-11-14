@@ -4,6 +4,12 @@ on:
   push:
   pull_request:
   workflow_dispatch:
+    inputs:
+      base:
+        description: 'Optional full base SHA: replay every following commit with this workflow'
+        required: false
+        default: ''
+        type: string
 
 permissions:
   contents: read
@@ -15,6 +21,7 @@ jobs:
       matrix: ${{ steps.revisions.outputs.matrix }}
       software: ${{ steps.revisions.outputs.software }}
       candidates: ${{ steps.revisions.outputs.candidates }}
+      native_pipelines: ${{ steps.revisions.outputs.native_pipelines }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -23,7 +30,7 @@ jobs:
       - id: revisions
         env:
           EVENT: ${{ github.event_name }}
-          BEFORE: ${{ github.event.before }}
+          BEFORE: ${{ github.event.inputs.base || github.event.before }}
           AFTER: ${{ github.event.pull_request.head.sha || github.sha }}
           ACCEPTED: ${{ vars.SHADER_ACCEPTED_BASELINE }}
         run: |
@@ -32,7 +39,9 @@ jobs:
           def git(*args):
               return subprocess.check_output(['git', *args], text=True).strip()
           after, before = os.environ['AFTER'], os.environ.get('BEFORE', '')
-          if os.environ['EVENT'] == 'push' and before and set(before) != {'0'}:
+          if before and not re.fullmatch(r'[0-9a-fA-F]{40}', before):
+              raise SystemExit('Replay base must be a full commit SHA')
+          if os.environ['EVENT'] in ('push', 'workflow_dispatch') and before and set(before) != {'0'}:
               commits = git('rev-list', '--reverse', before+'..'+after).splitlines()
           else:
               commits = [after]
@@ -49,6 +58,15 @@ jobs:
               rows.append(dict(commit=commit, reference=parent, kind='parent'))
               if accepted and accepted != parent:
                   rows.append(dict(commit=commit, reference=accepted, kind='accepted'))
+          # A contract introduced with complete native tuples cannot execute
+          # from an older revision which has neither implementation nor fixture.
+          # Select every newly pushed revision containing that implementation;
+          # a missing fixture in any selected revision is still a hard failure.
+          native_path = 'hw/xbox/nv2a/pgraph/gl/ready-pipelines.inc'
+          native = [commit for commit in commits
+                    if git('ls-tree', '--name-only', commit, '--', native_path) == native_path]
+          if not native:
+              native = [after]  # Missing current implementation never becomes a pass.
           software = [dict(**row, suite=suite) for row in rows for suite in ['utilities', 'vertex']+['fragment-'+str(i) for i in range(8)]]
           if len(software) > 256:
               raise SystemExit('Unqualified: software matrix exceeds 256 jobs; split this push')
@@ -56,6 +74,7 @@ jobs:
               f.write('matrix='+json.dumps(dict(include=rows))+'\n')
               f.write('software='+json.dumps(dict(include=software))+'\n')
               f.write('candidates='+json.dumps(dict(commit=commits))+'\n')
+              f.write('native_pipelines='+json.dumps(dict(commit=native))+'\n')
           with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as f:
               f.write('Every new commit in this push is compared, not just its tip.\n\n')
               f.write('Pinned accepted reference: '+(accepted or '**UNQUALIFIED: not configured; parent comparison only**')+'\n\n')
@@ -364,9 +383,7 @@ jobs:
       - name: Validate native ready-stage ownership and bounded uploads
         run: python3 libretro/tests/test-ready-vsh-owner.py . cc
       - name: Native pipeline identity and shared retirement
-        run: |
-          python3 libretro/tests/test-gl-pipeline-owners.py . cc
-          python3 libretro/tests/test-ready-pipelines.py . cc
+        run: python3 libretro/tests/test-gl-pipeline-owners.py . cc
       - name: Compare all programmable cases and reject broken controls
         run: |
           set -euo pipefail
@@ -475,10 +492,26 @@ jobs:
           name: ready-fragment-${{ matrix.commit }}
           path: results/
 
+  native-pipeline-ready:
+    name: Native startup tuple ownership (${{ matrix.commit }})
+    needs: revisions
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.revisions.outputs.native_pipelines) }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ matrix.commit }}
+          filter: blob:none
+      - name: Validate complete tuples, rollback and borrowed lifetime
+        run: python3 libretro/tests/test-ready-pipelines.py . cc
+
   shader-gate:
     name: Shader and PSO required gate
     if: always()
-    needs: [revisions, contracts, compilation, software-gpu, interpreter-gpu, interpreter-dynamic-gpu, geometry-ready-gpu, fragment-ready-gpu]
+    needs: [revisions, contracts, compilation, software-gpu, interpreter-gpu, interpreter-dynamic-gpu, geometry-ready-gpu, fragment-ready-gpu, native-pipeline-ready]
     runs-on: ubuntu-24.04
     steps:
       - name: Require every revision and reference job to pass
