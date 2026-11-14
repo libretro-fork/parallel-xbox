@@ -82,7 +82,7 @@ set_exit_with_parent(void)
 #include "system/runstate.h"
 #include <sys/event.h>
 
-static void *
+static void
 exit_with_parent_loop(void *vp)
 {
     const pid_t ppid = getppid();
@@ -94,13 +94,15 @@ exit_with_parent_loop(void *vp)
     fd = kqueue();
     if (fd == -1) {
         error_report("exit_with_parent_loop: kqueue: %m");
-        return NULL;
+        qemu_thread_run_atexit();
+        return;
     }
     EV_SET(&kev, ppid, EVFILT_PROC, EV_ADD | EV_ENABLE, NOTE_EXIT, 0, NULL);
     if (kevent(fd, &kev, 1, NULL, 0, NULL) == -1) {
         error_report("exit_with_parent_loop: kevent: %m");
         close(fd);
-        return NULL;
+        qemu_thread_run_atexit();
+        return;
     }
 
     /* Wait for the kevent to happen. */
@@ -110,22 +112,23 @@ exit_with_parent_loop(void *vp)
         qemu_system_killed(SIGTERM, ppid);
     }
 
-    return NULL;
+    qemu_thread_run_atexit();
+    return;
 }
 
 int
 set_exit_with_parent(void)
 {
-    QemuThread exit_with_parent_thread;
+    sthread_t *exit_with_parent_thread;
 
     /*
      * We have to block waiting for kevent, so that requires that we
      * start a background thread.
      */
-    qemu_thread_create(&exit_with_parent_thread,
-                       "exit-parent",
-                       exit_with_parent_loop, NULL,
-                       QEMU_THREAD_DETACHED);
+    exit_with_parent_thread = sthread_create(exit_with_parent_loop, NULL);
+    if (!exit_with_parent_thread) abort();
+    if (sthread_detach(exit_with_parent_thread)) abort();
+    exit_with_parent_thread = NULL;
     return 0;
 }
 

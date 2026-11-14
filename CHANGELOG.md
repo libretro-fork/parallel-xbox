@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Use libretro-common rthreads directly for worker lifecycle and host-thread identity. Remove QEMU native thread handles, Windows per-thread join bookkeeping and the unused vCPU signal/semaphore wake path. Drop the unused abstract Windows stdin backend, whose concrete stdio subclass was already excluded. Keep owner-local cleanup callbacks, stop/join ordering and lock-free data queues. Shared GPU/BQL mutexes remain required; this is not a claim that the whole emulator is lock-free.
+
 - Call libretro-common XXH3 and UTF-8 file opening directly, removing the redundant QEMU hash implementation and file-opening wrappers. Hash seeds and cache identities are unchanged; this is consolidation, not a measured gameplay speedup.
 
 - Run the complete DSP regression corpus independently on native x86_64 and ARM64 runners. Give each Make target its own ten-minute watchdog, and divide the large instruction oracle into four suites without changing its checks or default full-run behavior. This removes the shared ten-minute build-and-test bottleneck and duplicate DSP runs inside core-build jobs; DSP emulation is unchanged.

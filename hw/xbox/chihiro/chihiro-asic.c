@@ -119,7 +119,7 @@ typedef struct ChihiroAsic {
      * instead. The big lock is not involved. */
     QemuMutex  lock;
     QemuCond   kick;
-    QemuThread thread;
+    sthread_t *thread;
     bool       thread_running;
     bool       exiting;
     bool       held;            /* a snapshot is saving or loading it */
@@ -730,7 +730,7 @@ static void asic_catch_up(void)
     }
 }
 
-static void *asic_thread(void *arg)
+static void asic_thread(void *arg)
 {
     rcu_register_thread();
 
@@ -754,7 +754,8 @@ static void *asic_thread(void *arg)
     qemu_mutex_unlock(&asic.lock);
 
     rcu_unregister_thread();
-    return NULL;
+    qemu_thread_run_atexit();
+    return;
 }
 
 static void asic_exit_notify(Notifier *n, void *data)
@@ -764,7 +765,8 @@ static void asic_exit_notify(Notifier *n, void *data)
     asic.exiting = true;
     qemu_cond_broadcast(&asic.kick);
     qemu_mutex_unlock(&asic.lock);
-    qemu_thread_join(&asic.thread);
+    sthread_join(asic.thread);
+    asic.thread = NULL;
     asic.thread_running = false;
 }
 
@@ -1003,8 +1005,8 @@ void chihiro_asic_init(void)
     vmstate_register(NULL, 0, &vmstate_chihiro_asic, &asic);
     qemu_add_vm_change_state_handler(asic_vm_state_change, NULL);
     qemu_add_exit_notifier(&asic_exit);
-    qemu_thread_create(&asic.thread, "chihiro.v850", asic_thread, &asic,
-                       QEMU_THREAD_JOINABLE);
+    asic.thread = sthread_create(asic_thread, &asic);
+    if (!asic.thread) abort();
     fprintf(stderr, "Chihiro ASIC: V850 core armed on its own thread, "
             "straps=0x%X\n", asic.straps);
 }

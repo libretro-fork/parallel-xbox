@@ -108,7 +108,7 @@ typedef struct NV2AState {
          * (pfifo_read/write, user.c): word-atomic, pfifo_reg_r/w */
         retro_atomic_int_t regs[0x2000];
         QemuMutex lock;
-        QemuThread thread;
+        sthread_t *thread;
         /* The thread's sleep, with nothing to do: an eventcount, so a kick
          * from any thread (the guest's PUT write, the vblank, the display,
          * a surface sync) is a flag and a notify, no lock taken and no

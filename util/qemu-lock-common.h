@@ -1,5 +1,5 @@
 /*
- * Common qemu-thread implementation header file.
+ * Common QEMU mutex and condition bookkeeping.
  *
  * Copyright Red Hat, Inc. 2018
  *
@@ -10,8 +10,8 @@
  * See the COPYING file in the top-level directory.
  */
 
-#ifndef QEMU_THREAD_COMMON_H
-#define QEMU_THREAD_COMMON_H
+#ifndef QEMU_LOCK_COMMON_H
+#define QEMU_LOCK_COMMON_H
 
 #include "qemu/thread.h"
 #include "qemu/main-loop.h"

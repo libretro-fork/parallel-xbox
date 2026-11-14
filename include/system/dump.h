@@ -200,7 +200,7 @@ typedef struct DumpState {
 
     bool has_format;              /* whether format is provided */
     DumpGuestMemoryFormat format; /* valid only if has_format == true */
-    QemuThread dump_thread;       /* thread for detached dump */
+    sthread_t *dump_thread;       /* thread for detached dump */
 
     int64_t total_size;          /* total memory size (in bytes) to
                                   * be dumped. When filter is

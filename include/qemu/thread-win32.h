@@ -19,18 +19,7 @@ struct QemuCond {
     bool initialized;
 };
 
-struct QemuSemaphore {
-    HANDLE sema;
-    bool initialized;
-};
 
-typedef struct QemuThreadData QemuThreadData;
-struct QemuThread {
-    QemuThreadData *data;
-    unsigned tid;
-};
 
-/* Only valid for joinable threads.  */
-HANDLE qemu_thread_get_handle(struct QemuThread *thread);
 
 #endif

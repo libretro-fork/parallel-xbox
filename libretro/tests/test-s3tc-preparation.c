@@ -78,6 +78,7 @@ static void pipeline_land(PGRAPHState *pg,LibJob *j){CHECK(!j->compute&&pg);vkDe
 static void library_land(PGRAPHVkState *r,LibJob *j){CHECK(!j->compute);vkDestroyPipeline(r->device,j->result,NULL);j->result=VK_NULL_HANDLE;graphics_lands++;}
 static void pgraph_vk_unref_shader_module(PGRAPHVkState *r,ShaderModuleInfo *m){(void)r;(void)m;CHECK(false);}
 static void pgraph_vk_wait_for_aux(PGRAPHState *pg){CHECK(pg&&!pg->vk_renderer_state->s3tc_decode.pending_mask&&(unsigned)retro_atomic_load_acquire_int(&pump_r)==pump_w_local);}
+static void qemu_thread_run_atexit(void) {}
 /* FUNCTIONS */
 static void worker_step(void){CHECK(!worker_active);if(!setjmp(step)){worker_active=true;pipe_worker_fn(NULL);CHECK(false);}worker_active=false;}
 static void context_start(PGRAPHVkState *r,PGRAPHState *pg){memset(r,0,sizeof(*r));r->device=(VkDevice)(uintptr_t)7;r->vk_pipeline_cache=(VkPipelineCache)(uintptr_t)8;r->s3tc_decode.enabled=true;pg->vk_renderer_state=r;active_pg=pg;context_alive=true;}

@@ -178,6 +178,7 @@ SOURCES_UTIL := \
 	$(CORE_DIR)/util/error-report.c \
 	$(CORE_DIR)/util/error.c \
 	$(CORE_DIR)/util/event.c \
+	$(CORE_DIR)/util/thread-exit.c \
 	$(CORE_DIR)/util/file-map.c \
 	$(CORE_DIR)/util/fifo8.c \
 	$(CORE_DIR)/util/getauxval.c \
@@ -211,7 +212,7 @@ SOURCES_UTIL_POSIX := \
 	$(CORE_DIR)/util/memfd.c \
 	$(CORE_DIR)/util/mmap-alloc.c \
 	$(CORE_DIR)/util/oslib-posix.c \
-	$(CORE_DIR)/util/qemu-thread-posix.c \
+	$(CORE_DIR)/util/qemu-lock-posix.c \
 
 SOURCES_UTIL_LINUX := \
 
@@ -221,7 +222,7 @@ SOURCES_UTIL_WIN32 := \
 	$(CORE_DIR)/util/aio-win32.c \
 	$(CORE_DIR)/util/event_notifier-win32.c \
 	$(CORE_DIR)/util/oslib-win32.c \
-	$(CORE_DIR)/util/qemu-thread-win32.c \
+	$(CORE_DIR)/util/qemu-lock-win32.c \
 
 # Block layer, crypto, chardev, I/O channels, QOM, migration core
 SOURCES_COMMON := \
@@ -272,7 +273,6 @@ SOURCES_COMMON_DARWIN := \
 
 SOURCES_COMMON_WIN32 := \
 	$(CORE_DIR)/chardev/char-console.c \
-	$(CORE_DIR)/chardev/char-win-stdio.c \
 	$(CORE_DIR)/chardev/char-win.c \
 	$(CORE_DIR)/scsi/pr-manager-stub.c \
 

@@ -170,7 +170,7 @@ typedef struct {
     uint32_t br_status, br_mask, br_r030, br_r034, br_host_pending, br_window;
 
     /* Thread */
-    QemuThread thread;
+    sthread_t *thread;
     QemuMutex  lock;
     QemuCond   kick;
     bool       exiting, running;
@@ -1194,7 +1194,7 @@ static void nb_catch_up(void)
     }
 }
 
-static void *nb_thread(void *arg)
+static void nb_thread(void *arg)
 {
     rcu_register_thread();
     qemu_mutex_lock(&nb.lock);
@@ -1209,7 +1209,8 @@ static void *nb_thread(void *arg)
     }
     qemu_mutex_unlock(&nb.lock);
     rcu_unregister_thread();
-    return NULL;
+    qemu_thread_run_atexit();
+    return;
 }
 
 /* The firmware boots on first contact: the doorbell, the window, or a frame
@@ -1226,8 +1227,8 @@ static void nb_wake_board(void)
     nb.paid = nb.cpu.cycles;
     qemu_mutex_unlock(&nb.lock);
     /* Linux keeps thread names of up to fifteen characters. */
-    qemu_thread_create(&nb.thread, "chihiro.netbd", nb_thread, &nb,
-                       QEMU_THREAD_JOINABLE);
+    nb.thread = sthread_create(nb_thread, &nb);
+    if (!nb.thread) abort();
     CHIHIRO_LOGF(NET, "netboard: the cabinet spoke to it, its firmware starts\n");
 }
 
@@ -1343,7 +1344,8 @@ void chihiro_netboard_exit(void)
     qemu_cond_signal(&nb.kick);
     qemu_mutex_unlock(&nb.lock);
     if (was_running)
-        qemu_thread_join(&nb.thread);
+        sthread_join(nb.thread);
+        nb.thread = NULL;
     if (nb.nic) { qemu_del_nic(nb.nic); nb.nic = NULL; }
     if (nb.tx_bh) { qemu_bh_delete(nb.tx_bh); nb.tx_bh = NULL; }
     if (nb.rx_bh) { qemu_bh_delete(nb.rx_bh); nb.rx_bh = NULL; }

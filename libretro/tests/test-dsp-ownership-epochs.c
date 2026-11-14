@@ -39,6 +39,7 @@ static void dsp_run_ep(MCPXAPUState*d,int div){
 }
 /* PRODUCTION WAIT */
 /* PRODUCTION ACCESS */
+static void qemu_thread_run_atexit(void) {}
 /* PRODUCTION WORKER */
 static void worker_start(void*p){ownership_worker(p);}
 int main(void){

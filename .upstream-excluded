@@ -3235,3 +3235,5 @@ include/tcg/debuginfo.h
 # Removed disabled QEMU assembly-printer infrastructure.
 disas/
 include/disas/
+chardev/char-win-stdio.c
+include/chardev/char-win-stdio.h

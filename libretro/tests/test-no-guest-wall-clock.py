@@ -49,7 +49,7 @@ assert 'CreateWaitableTimer' not in (root/'util/qemu-timer.c').read_text()
 assert 'SetWaitableTimer' not in (root/'util/qemu-timer.c').read_text()
 assert 'retro_sleep' not in (root/'libretro/glib/gmain.c').read_text()
 
-for name in ['include/qemu/thread.h','util/qemu-thread-win32.c','util/qemu-thread-posix.c']:
+for name in ['include/qemu/thread.h','util/qemu-lock-win32.c','util/qemu-lock-posix.c']:
  text=(root/name).read_text()
  assert 'qemu_cond_timedwait' not in text, name
  assert 'qemu_sem_timedwait' not in text, name

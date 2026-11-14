@@ -3,11 +3,10 @@
 
 #include "qemu/processor.h"
 #include <retro_atomic.h>
+#include <rthreads/rthreads.h>
 #include <rthreads/retro_eventcount.h>
 
 typedef struct QemuCond QemuCond;
-typedef struct QemuSemaphore QemuSemaphore;
-typedef struct QemuThread QemuThread;
 
 /*
  * QemuEvent
@@ -35,8 +34,6 @@ retro_eventcount_t *qemu_eventcount_for_address(const void *address);
 #include "qemu/thread-posix.h"
 #endif
 
-#define QEMU_THREAD_JOINABLE 0
-#define QEMU_THREAD_DETACHED 1
 
 void qemu_mutex_init(QemuMutex *mutex);
 void qemu_mutex_destroy(QemuMutex *mutex);
@@ -118,38 +115,21 @@ static inline void (qemu_cond_wait)(QemuCond *cond, QemuMutex *mutex)
     qemu_cond_wait(cond, mutex);
 }
 
-void qemu_sem_init(QemuSemaphore *sem, int init);
-void qemu_sem_post(QemuSemaphore *sem);
-void qemu_sem_wait(QemuSemaphore *sem);
-void qemu_sem_destroy(QemuSemaphore *sem);
-
 void qemu_event_init(QemuEvent *ev, bool init);
 void qemu_event_set(QemuEvent *ev);
 void qemu_event_reset(QemuEvent *ev);
 void qemu_event_wait(QemuEvent *ev);
 void qemu_event_destroy(QemuEvent *ev);
 
-void qemu_thread_create(QemuThread *thread, const char *name,
-                        void *(*start_routine)(void *),
-                        void *arg, int mode);
-int qemu_thread_set_affinity(QemuThread *thread, unsigned long *host_cpus,
-                             unsigned long nbits);
-int qemu_thread_get_affinity(QemuThread *thread, unsigned long **host_cpus,
-                             unsigned long *nbits);
-void *qemu_thread_join(QemuThread *thread);
-void qemu_thread_get_self(QemuThread *thread);
-bool qemu_thread_is_self(QemuThread *thread);
-G_NORETURN void qemu_thread_exit(void *retval);
-void qemu_thread_naming(bool enable);
 
 struct Notifier;
 /**
  * qemu_thread_atexit_add:
  * @notifier: Notifier to add
  *
- * Add the specified notifier to a list which will be run via
- * notifier_list_notify() when this thread exits (either by calling
- * qemu_thread_exit() or by returning from its start_routine).
+ * Add the specified notifier to this owner-local list. The emulation owner
+ * drains explicitly; managed workers drain immediately before returning
+ * from their rthreads entry point. Each callback is detached before invocation.
  * The usual usage is that the caller passes a Notifier which is
  * a per-thread variable; it can then use the callback to free
  * other per-thread data.

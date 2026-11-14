@@ -22,14 +22,7 @@ struct QemuCond {
     bool initialized;
 };
 
-struct QemuSemaphore {
-    QemuMutex mutex;
-    QemuCond cond;
-    unsigned int count;
-};
 
-struct QemuThread {
-    pthread_t thread;
-};
+
 
 #endif

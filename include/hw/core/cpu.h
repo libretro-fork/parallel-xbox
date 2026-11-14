@@ -437,8 +437,8 @@ struct qemu_work_item;
  *   See TranslationBlock::TCG CF_CLUSTER_MASK.
  * @tcg_cflags: Pre-computed cflags for this cpu.
  * @nr_threads: Number of threads within this CPU core.
- * @thread: Host thread details, only live once @created is #true
- * @sem: WIN32 only semaphore used only for qtest
+ * @thread_owner_id: Emulation-owner identity, valid once @created is #true
+ * @work_queue_ready: Owner-local work queue has been initialized
  * @thread_id: native thread id of vCPU, only live once @created is #true
  * @running: #true if CPU is currently running (lockless).
  * @created: Indicates whether the CPU thread has been successfully created.
@@ -505,9 +505,9 @@ struct CPUState {
 
     int nr_threads;
 
-    struct QemuThread *thread;
+    uintptr_t thread_owner_id;
+    bool work_queue_ready;
 #ifdef _WIN32
-    QemuSemaphore sem;
 #endif
     int thread_id;
     retro_atomic_int_t running;

@@ -44,7 +44,7 @@ void lr_start_vcpu(CPUState *cpu)
     tcg_cpu_init_cflags(cpu);
 
     /* The thread qemu_init runs on runs the guest: it is the vCPU's */
-    qemu_thread_get_self(cpu->thread);
+    cpu->thread_owner_id = sthread_get_current_thread_id();
     cpu->thread_id = qemu_get_thread_id();
     cpu->neg.can_do_io = true;
     if (!lr_tcg_registered) {

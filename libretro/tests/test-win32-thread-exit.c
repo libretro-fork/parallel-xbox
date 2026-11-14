@@ -1,52 +1,65 @@
 /* SPDX-License-Identifier: GPL-2.0-or-later */
-#include <windows.h>
 #include <assert.h>
 #include <stddef.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include "qemu/win32-tls.h"
+#include <retro_atomic.h>
+#include <rthreads/rthreads.h>
+#ifdef _WIN32
+#include <windows.h>
+#else
+#include <pthread.h>
+#endif
 typedef struct Error Error;
 #include "qemu/notify.h"
-#define g_new0(t,n) ((t *)calloc((n),sizeof(t)))
-#define g_free free
-typedef struct QemuThreadData { NotifierList exit; } QemuThreadData;
 /* NOTIFY */
 /* EXIT */
-static volatile LONG ready,total;
-static __thread struct { Notifier notifier; DWORD owner; unsigned calls; } local;
+static retro_atomic_int_t ready,total;
+static __thread struct { Notifier notifier; uintptr_t owner; unsigned calls; } local;
 static void callback(Notifier *n,void *unused) {
+ (void)unused;
  assert(n==&local.notifier);
- assert(local.owner==GetCurrentThreadId());
+ assert(local.owner==sthread_get_current_thread_id());
  assert(!n->node.le_prev && !n->node.le_next);
- local.calls++;InterlockedIncrement(&total);
+ local.calls++;retro_atomic_inc_int(&total);
 }
-static DWORD WINAPI foreign(void *unused) {
- local.owner=GetCurrentThreadId();local.notifier.notify=callback;
+static void exercise(void *unused) {
+ (void)unused;
+ local.owner=sthread_get_current_thread_id();local.notifier.notify=callback;
  qemu_thread_atexit_add(&local.notifier);
- InterlockedIncrement(&ready);
- while(ready<16)SwitchToThread();
- qemu_thread_run_atexit();qemu_thread_run_atexit();
- assert(local.calls==1);
- /* Reuse on the same host thread after core deinit/init. */
- qemu_thread_atexit_add(&local.notifier);qemu_thread_run_atexit();
- assert(local.calls==2);
- assert(!qemu_win32_tls_get(&tls_key_host_thread_exit));
- return 0;
+ retro_atomic_inc_int(&ready);
+ while(retro_atomic_load_acquire_int(&ready)<16)sthread_yield();
+ qemu_thread_run_atexit();qemu_thread_run_atexit();assert(local.calls==1);
+ qemu_thread_atexit_add(&local.notifier);qemu_thread_run_atexit();assert(local.calls==2);
+ assert(!QLIST_FIRST(&thread_exit.notifiers));
 }
+#ifdef _WIN32
+static DWORD WINAPI foreign(void *p) { exercise(p);return 0; }
+#else
+static void *foreign(void *p) { exercise(p);return NULL; }
+#endif
 int main(void) {
- HANDLE threads[16];
- SetErrorMode(SEM_FAILCRITICALERRORS|SEM_NOGPFAULTERRORBOX);
- for(unsigned i=0;i<16;i++){threads[i]=CreateThread(NULL,0,foreign,NULL,0,NULL);assert(threads[i]);}
- assert(WaitForMultipleObjects(16,threads,TRUE,10000)==WAIT_OBJECT_0);
- for(unsigned i=0;i<16;i++){DWORD code;assert(GetExitCodeThread(threads[i],&code));assert(!code);CloseHandle(threads[i]);}
- assert(total==32);
- QemuThreadData owned={0};set_qemu_thread_data(&owned);
- local.owner=GetCurrentThreadId();local.notifier.notify=callback;
- qemu_thread_atexit_add(&local.notifier);qemu_thread_run_atexit();
- assert(local.calls==1 && !QLIST_FIRST(&owned.exit.notifiers));
- set_qemu_thread_data(NULL);
+ sthread_t *workers[16];
+ for(unsigned i=0;i<16;i++){workers[i]=sthread_create(exercise,NULL);assert(workers[i]);}
+ for(unsigned i=0;i<16;i++)sthread_join(workers[i]);
+ assert(retro_atomic_load_acquire_int(&total)==32);
+ retro_atomic_store_relaxed_int(&ready,0);
+#ifdef _WIN32
+ HANDLE native[16];
+ for(unsigned i=0;i<16;i++){native[i]=CreateThread(NULL,0,foreign,NULL,0,NULL);assert(native[i]);}
+ assert(WaitForMultipleObjects(16,native,TRUE,10000)==WAIT_OBJECT_0);
+ for(unsigned i=0;i<16;i++){DWORD code;assert(GetExitCodeThread(native[i],&code));assert(!code);CloseHandle(native[i]);}
+#else
+ pthread_t native[16];
+ for(unsigned i=0;i<16;i++)assert(!pthread_create(&native[i],NULL,foreign,NULL));
+ for(unsigned i=0;i<16;i++)assert(!pthread_join(native[i],NULL));
+#endif
+ assert(retro_atomic_load_acquire_int(&total)==64);
+ local.owner=sthread_get_current_thread_id();local.notifier.notify=callback;
+ qemu_thread_atexit_add(&local.notifier);qemu_thread_run_atexit();assert(local.calls==1);
  qemu_thread_atexit_add(&local.notifier);qemu_thread_atexit_remove(&local.notifier);
  qemu_thread_run_atexit();assert(local.calls==1);
- puts("Windows thread exit: 16 isolated foreign threads, TLS lifetime, reuse, removal and owned-thread cleanup PASS");
+ puts("Thread exit: 16 rthreads + 16 native foreign threads; owner isolation, drain/reuse/removal and host-owner cleanup PASS");
  return 0;
 }

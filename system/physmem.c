@@ -2769,9 +2769,9 @@ static void tcg_commit(MemoryListener *listener)
      * the memory data structures.
      *
      * That said, the listener is also called during realize, before
-     * the CPU object has initialized its work queue and thread storage.
+     * the CPU object has initialized its work queue.
      */
-    if (cpu->thread) {
+    if (cpu->work_queue_ready) {
         async_run_on_cpu(cpu, tcg_commit_cpu, RUN_ON_CPU_HOST_PTR(cpuas));
     } else {
         tcg_commit_cpu(cpu, RUN_ON_CPU_HOST_PTR(cpuas));
