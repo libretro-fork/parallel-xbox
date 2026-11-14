@@ -51,6 +51,9 @@ static void ready_vsh_init(PGRAPHGLState *r)
 {
     if (!gl_sso_enabled()) return;
     assert(!r->ready_vsh.ready && !r->ready_vsh.code_buffer);
+#ifdef XEMU_READY_VSH_DIAGNOSTICS
+    r->ready_vsh.covered_binds = r->ready_vsh.code_uploads = 0;
+#endif
     for (unsigned i = 0; i < ARRAY_SIZE(r->ready_vsh.stage); i++) {
         VshState state = { .smooth_shading = !!(i & 2) };
         GenVshGlslOptions options = { .locations = true,
@@ -73,7 +76,11 @@ static void ready_vsh_init(PGRAPHGLState *r)
             return; /* Keep the existing correct specialized path. */
         }
         GLuint block = glGetUniformBlockIndex(stage->gl_stage_program, "XvsCode");
-        assert(block != GL_INVALID_INDEX);
+        if (block == GL_INVALID_INDEX) {
+            fprintf(stderr, "Experimental ready vertex stage lacks its code block\n");
+            ready_vsh_finalize(r);
+            return;
+        }
         glUniformBlockBinding(stage->gl_stage_program, block, 0);
         module_resolve_uniform_locs(stage);
     }

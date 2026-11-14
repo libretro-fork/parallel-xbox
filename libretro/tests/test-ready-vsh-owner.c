@@ -32,7 +32,7 @@ typedef struct { struct { ShaderModuleCacheEntry stage[4]; GLuint code_buffer;
     const ShaderBinding *uploaded_binding; bool ready;
     uint64_t covered_binds, code_uploads; } ready_vsh; } PGRAPHGLState;
 typedef struct { char text[8]; } MString;
-static bool sso=true, alive[8], buffer_alive;
+static bool sso=true, alive[8], buffer_alive, missing_block;
 static unsigned creates, deletes, uniform_resolves, writes, owners, fail_at;
 static GLint bound=77;
 static uint8_t storage[VSH_INTERPRETER_BUFFER_SIZE+16];
@@ -57,7 +57,7 @@ static void glGetProgramInfoLog(GLuint p,size_t n,void *length,char *out)
 static void delete_program(PGRAPHGLState *r,GLuint p)
 { (void)r;assert(alive[p]);alive[p]=false;deletes++; }
 static GLuint glGetUniformBlockIndex(GLuint p,const char *name)
-{ assert(alive[p]&&!strcmp(name,"XvsCode"));return 9; }
+{ assert(alive[p]&&!strcmp(name,"XvsCode"));return missing_block?GL_INVALID_INDEX:9; }
 static void glUniformBlockBinding(GLuint p,GLuint block,GLuint binding)
 { assert(alive[p]&&block==9&&!binding); }
 static void module_resolve_uniform_locs(ShaderModuleCacheEntry *s)
@@ -122,5 +122,8 @@ int main(void)
     creates=deletes=uniform_resolves=0;fail_at=2;ready_vsh_init(&r);
     assert(creates==2&&deletes==2&&!owners&&!buffer_alive&&!r.ready_vsh.ready);
     ready_vsh_finalize(&r);assert(deletes==2);
+    creates=deletes=uniform_resolves=0;fail_at=0;missing_block=true;ready_vsh_init(&r);
+    assert(creates==1&&deletes==1&&!buffer_alive&&!owners&&!r.ready_vsh.ready);
+    ready_vsh_finalize(&r);assert(deletes==1);
     puts("PASS: finite native stage owners, eligibility, bounded direct uploads, cache-node reuse and partial-init teardown");
 }
