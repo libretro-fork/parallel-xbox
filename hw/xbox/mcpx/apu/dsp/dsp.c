@@ -68,7 +68,6 @@ uint32_t read_peripheral(DSPState *dsp, uint32_t address)
         break;
     }
 
-    trace_dsp_read_peripheral(address, v);
     return v;
 }
 
@@ -99,8 +98,6 @@ void write_peripheral(DSPState *dsp, uint32_t address, uint32_t value)
         dsp_dma_write(&dsp->dma, DMA_CONFIGURATION, value);
         break;
     }
-
-    trace_dsp_write_peripheral(address, value);
 }
 
 void dsp_start_frame_impl(DSPState *dsp)

@@ -920,53 +920,6 @@ static const struct {
 #undef DEF_METHOD_CASE_4_OFFSET
 #undef DEF_METHOD_CASE_4
 
-static void pgraph_method_log(unsigned int subchannel,
-                              unsigned int graphics_class,
-                              unsigned int method, uint32_t parameter)
-{
-    const char *method_name = "?";
-    static unsigned int last = 0;
-    static unsigned int count = 0;
-
-    if (!trace_event_get_state_backends(TRACE_NV2A_PGRAPH_METHOD)) {
-        return;
-    }
-
-    if (last == NV097_ARRAY_ELEMENT16 && method != last) {
-        method_name = "NV097_ARRAY_ELEMENT16";
-        trace_nv2a_pgraph_method_abbrev(subchannel, graphics_class, last,
-                                        method_name, count);
-    }
-
-    if (method != NV097_ARRAY_ELEMENT16) {
-        uint32_t base = method;
-        switch (graphics_class) {
-        case NV_KELVIN_PRIMITIVE: {
-            int idx = METHOD_ADDR_TO_INDEX(method);
-            if (idx < ARRAY_SIZE(pgraph_kelvin_methods) &&
-                pgraph_kelvin_methods[idx].handler) {
-                method_name = pgraph_kelvin_methods[idx].name;
-                base = pgraph_kelvin_methods[idx].base;
-            }
-            break;
-        }
-        default:
-            break;
-        }
-
-        uint32_t offset = method - base;
-        trace_nv2a_pgraph_method(subchannel, graphics_class, method,
-                                 method_name, offset, parameter);
-    }
-
-    if (method == last) {
-        count++;
-    } else {
-        count = 0;
-    }
-    last = method;
-}
-
 static void pgraph_method_inc(MethodFunc handler, uint32_t end,
                               METHOD_HANDLER_ARG_DECL)
 {
@@ -977,10 +930,6 @@ static void pgraph_method_inc(MethodFunc handler, uint32_t end,
     size_t count = MIN(num_words_available, (end - method) / 4);
     for (size_t i = 0; i < count; i++) {
         parameter = ldl_le_p(parameters + i);
-        if (i) {
-            pgraph_method_log(subchannel, NV_KELVIN_PRIMITIVE, method,
-                              parameter);
-        }
         handler(METHOD_HANDLER_ARGS);
         method += 4;
     }
@@ -996,10 +945,6 @@ static void pgraph_method_non_inc(MethodFunc handler, METHOD_HANDLER_ARG_DECL)
 
     for (size_t i = 0; i < num_words_available; i++) {
         parameter = ldl_le_p(parameters + i);
-        if (i) {
-            pgraph_method_log(subchannel, NV_KELVIN_PRIMITIVE, method,
-                              parameter);
-        }
         handler(METHOD_HANDLER_ARGS);
     }
     *num_words_consumed = num_words_available;
@@ -1095,8 +1040,6 @@ int pgraph_method(NV2AState *d, unsigned int subchannel,
 
     uint32_t graphics_class = PG_GET_MASK(NV_PGRAPH_CTX_SWITCH1,
                                        NV_PGRAPH_CTX_SWITCH1_GRCLASS);
-
-    pgraph_method_log(subchannel, graphics_class, method, parameter);
 
     if (subchannel != 0) {
         // catches context switching issues on xbox d3d
@@ -2439,9 +2382,6 @@ DEF_METHOD(NV097, SET_TRANSFORM_CONSTANT)
         int slot = (method - NV097_SET_TRANSFORM_CONSTANT) / 4;
         if (slot % 4 || count - i < 4) {
             uint32_t word = ldl_le_p(parameters + i);
-            if (i) {
-                pgraph_method_log(subchannel, NV_KELVIN_PRIMITIVE, method, word);
-            }
             set_transform_constant_word(pg, slot, word);
             i++;
             method += 4;
@@ -2451,13 +2391,8 @@ DEF_METHOD(NV097, SET_TRANSFORM_CONSTANT)
                                      NV_PGRAPH_CHEOPS_OFFSET_CONST_LD_PTR);
         assert(const_load < NV2A_VERTEXSHADER_CONSTANTS);
         uint32_t v[4];
-        for (int k = 0; k < 4; k++) {
+        for (int k = 0; k < 4; k++)
             v[k] = ldl_le_p(parameters + i + k);
-            if (i + k) {
-                pgraph_method_log(subchannel, NV_KELVIN_PRIMITIVE,
-                                  method + 4 * k, v[k]);
-            }
-        }
         uint32_t *row = pg->vsh_constants[const_load];
         if ((v[0] ^ row[0]) | (v[1] ^ row[1]) | (v[2] ^ row[2]) |
             (v[3] ^ row[3])) {
@@ -3189,9 +3124,6 @@ DEF_METHOD(NV097, ARRAY_ELEMENT16)
     uint32_t low = UINT32_MAX, high = 0;
     for (size_t i = 0; i < count; i++) {
         uint32_t value = (inc || !i) ? parameter : ldl_le_p(parameters + i);
-        if (i) {
-            pgraph_method_log(subchannel, NV_KELVIN_PRIMITIVE, method, value);
-        }
         uint32_t a = value & 0xffff, b = value >> 16;
         out[2 * i] = a;
         out[2 * i + 1] = b;
@@ -3224,9 +3156,6 @@ DEF_METHOD(NV097, ARRAY_ELEMENT32)
     uint32_t low = UINT32_MAX, high = 0;
     for (size_t i = 0; i < count; i++) {
         uint32_t value = (inc || !i) ? parameter : ldl_le_p(parameters + i);
-        if (i) {
-            pgraph_method_log(subchannel, NV_KELVIN_PRIMITIVE, method, value);
-        }
         out[i] = value;
         low = MIN(low, value);
         high = MAX(high, value);

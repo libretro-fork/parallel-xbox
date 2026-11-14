@@ -28,15 +28,8 @@
 #include "dsp_cpu.h"
 #include "../jit/dspjit.h"
 #include "debug.h"
-#include "trace.h"
 
 #define BITMASK(x)  ((1<<(x))-1)
-
-#define TRACE_DSP_DISASM 0
-#define TRACE_DSP_DISASM_REG 0
-#define TRACE_DSP_DISASM_MEM 0
-
-
 
 /**********************************
  *  Defines
@@ -690,8 +683,6 @@ void dsp56k_clear_opcache(dsp_core_t *dsp)
 
 void dsp56k_execute_instruction(dsp_core_t* dsp)
 {
-    trace_dsp56k_execute_instruction(dsp->is_gp, dsp->pc);
-
     uint32_t disasm_return = 0;
     dsp->disasm_memory_ptr = 0;
 
@@ -701,23 +692,6 @@ void dsp56k_execute_instruction(dsp_core_t* dsp)
     /* Initialize instruction size and cycle counter */
     dsp->cur_inst_len = 1;
     dsp->instr_cycle = 2;
-
-    bool tracing = TRACE_DSP_DISASM || trace_event_get_state(TRACE_DSP56K_EXECUTE_INSTRUCTION_DISASM);
-
-    /* Disasm current instruction ? (trace mode only) */
-    if (tracing) {
-        disasm_return = disasm_instruction(dsp, DSP_TRACE_MODE);
-        if (disasm_return) {
-            const char *text = disasm_get_instruction_text(dsp);
-            trace_dsp56k_execute_instruction_disasm(text);
-            if (TRACE_DSP_DISASM) {
-                DPRINTF("%s\n", text);
-            }
-            if (TRACE_DSP_DISASM_REG) {
-                disasm_reg_save(dsp);
-            }
-        }
-    }
 
     if (!dsp56k_is_parallel(dsp->cur_inst)) {
         const OpcodeEntry *op = dsp->pram_opcache[dsp->pc];
@@ -735,23 +709,6 @@ void dsp56k_execute_instruction(dsp_core_t* dsp)
     } else {
         /* Do parallel move read */
         opcodes_parmove[(dsp->cur_inst>>20) & BITMASK(4)](dsp);
-    }
-
-    /* Disasm current instruction ? (trace mode only) */
-    if (tracing && disasm_return) {
-        if (TRACE_DSP_DISASM_REG) {
-            disasm_reg_compare(dsp);
-        }
-        if (TRACE_DSP_DISASM_MEM) {
-            /* 1 memory change to display ? */
-            if (dsp->disasm_memory_ptr == 1)
-                DPRINTF("\t%s\n", dsp->str_disasm_memory[0]);
-            /* 2 memory changes to display ? */
-            else if (dsp->disasm_memory_ptr == 2) {
-                DPRINTF("\t%s\n", dsp->str_disasm_memory[0]);
-                DPRINTF("\t%s\n", dsp->str_disasm_memory[1]);
-            }
-        }
     }
 
     /* Process the PC */
@@ -1072,10 +1029,7 @@ uint32_t *dsp56k_memory_ptr(dsp_core_t* dsp, int space, uint32_t address, uint32
 
 void dsp56k_write_memory(dsp_core_t* dsp, int space, uint32_t address, uint32_t value)
 {
-    if (TRACE_DSP_DISASM_MEM)
-        write_memory_disasm(dsp, space, address, value);
-    else
-        write_memory_raw(dsp, space, address, value);
+	write_memory_raw(dsp, space, address, value);
 }
 
 static void write_memory_raw(dsp_core_t* dsp, int space, uint32_t address, uint32_t value)

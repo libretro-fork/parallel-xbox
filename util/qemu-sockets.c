@@ -31,7 +31,6 @@
 #include "qapi/qobject-output-visitor.h"
 #include "qemu/cutils.h"
 #include "qemu/option.h"
-#include "trace.h"
 
 #ifndef AI_ADDRCONFIG
 # define AI_ADDRCONFIG 0

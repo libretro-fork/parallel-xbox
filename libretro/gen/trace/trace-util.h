@@ -147,18 +147,6 @@ static inline void trace_socket_listen(int num)
 {
 }
 
-static inline void trace_qemu_mutex_lock(void *mutex, const char *file, const int line)
-{
-}
-
-static inline void trace_qemu_mutex_locked(void *mutex, const char *file, const int line)
-{
-}
-
-static inline void trace_qemu_mutex_unlock(void *mutex, const char *file, const int line)
-{
-}
-
 static inline void trace_uffd_detect_open_mode(int mode)
 {
 }

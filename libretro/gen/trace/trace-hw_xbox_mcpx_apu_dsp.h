@@ -6,20 +6,4 @@
 
 #include "trace/control.h"
 
-
-static inline void trace_dsp_read_peripheral(uint32_t addr, uint32_t val)
-{
-}
-
-static inline void trace_dsp_write_peripheral(uint32_t addr, uint32_t val)
-{
-}
-
-static inline void trace_dsp56k_execute_instruction(uint32_t id, uint32_t pc)
-{
-}
-
-static inline void trace_dsp56k_execute_instruction_disasm(const char *disasm)
-{
-}
 #endif /* TRACE_HW_XBOX_MCPX_APU_DSP_GENERATED_TRACERS_H */

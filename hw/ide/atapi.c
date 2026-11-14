@@ -1411,12 +1411,6 @@ void ide_atapi_cmd(IDEState *s)
 
     trace_ide_atapi_cmd(s, s->io_buffer[0]);
 
-    if (trace_event_get_state_backends(TRACE_IDE_ATAPI_CMD_PACKET)) {
-        g_autoptr(GString) str =
-            qemu_hexdump_line(NULL, buf, ATAPI_PACKET_SIZE, 1, 0);
-        trace_ide_atapi_cmd_packet(s, s->lcyl | (s->hcyl << 8), str->str);
-    }
-
     /*
      * If there's a UNIT_ATTENTION condition pending, only command flagged with
      * ALLOW_UA are allowed to complete. with other commands getting a CHECK
