@@ -2,7 +2,9 @@
 
 ## Unreleased
 
-- Experimental GL fragment-source preparation: two interpolation variants carry regular 2D/3D/cube sampling, clipping and depth controls in bounded uniforms. Reject uncovered texture modes and formats before publishing controls. Legacy ordinary source remains unchanged; an explicit helper-liveness key flag lets the experimental reference and prepared source retain texture helper lanes through sampling. It is not enabled by guest-state capture or seed migration. Native owner/alias integration and performance qualification are still pending; this generator is not selected by gameplay.
+- Experimental GL fragment integration (unqualified): reserve two existing module slots for linked generic fragments, borrow typed texture aliases, and retain uniform/alias ownership through cache eviction and texture name reuse. Only the experimental GL renderer captures helper-preserving keys after both stages become ready; default builds and Vulkan capture stay unchanged. Native complete-pipeline readiness and cold gameplay qualification remain open.
+
+- Experimental GL fragment-source preparation: two interpolation variants carry regular 2D/3D/cube sampling, clipping and depth controls in bounded uniforms. Reject uncovered texture modes and formats before publishing controls. Legacy ordinary source remains unchanged; an explicit helper-liveness key flag lets the experimental reference and prepared source retain texture helper lanes through sampling. It is not enabled by guest-state capture or seed migration. The follow-up above integrates native owners/aliases experimentally; default builds do not select this generator and performance qualification remains pending.
 
 - Assemble fragment GLSL directly in its declaration buffer and transfer that owner to the caller, avoiding a separate final MString/GString and whole-prefix copy. Shader source stays byte-identical; remaining source assembly and driver allocations are unchanged.
 

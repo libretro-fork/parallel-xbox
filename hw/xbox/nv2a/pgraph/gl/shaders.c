@@ -717,6 +717,7 @@ GLuint pgraph_gl_separable_program(GLenum kind, const char *src,
 #include "../spv/vsh.h"
 #include "ready-vsh.inc"
 #include "ready-geom.inc"
+#include "ready-psh.inc"
 #include "pipeline-owners.inc"
 #endif
 
@@ -751,6 +752,7 @@ static ShaderModuleCacheEntry *get_shader_module_for_key(
 #ifdef XEMU_EXPERIMENTAL_READY_VSH
     ShaderModuleCacheEntry *ready = ready_vsh_find(r, key);
     if (!ready) ready = ready_geom_find(r, key);
+    if (!ready) ready = ready_psh_find(r, key);
     if (ready) return ready;
 #endif
     uint64_t hash = xxh3_64((void *)key, sizeof(ShaderModuleCacheKey), 0);
@@ -775,6 +777,7 @@ static void generate_shaders(PGRAPHGLState *r, ShaderBinding *binding)
     binding->gl_prog_gs = 0;
 #ifdef XEMU_EXPERIMENTAL_READY_VSH
     binding->ready_geom_variant = -1;
+    binding->ready_psh = false;
 #endif
 
     /* Submit all of this state's modules before waiting on any: new
@@ -801,6 +804,9 @@ static void generate_shaders(PGRAPHGLState *r, ShaderBinding *binding)
 
     /* generate a fragment shader from register combiners */
     ShaderModuleCacheEntry *fs_mod = get_shader_module_for_key(r, &keys[2]);
+#ifdef XEMU_EXPERIMENTAL_READY_VSH
+    binding->ready_psh = fs_mod == ready_psh_find(r, &keys[2]);
+#endif
     if (!gl_sso_enabled()) {
         glAttachShader(program, fs_mod->gl_shader);
     }
@@ -1018,6 +1024,9 @@ void pgraph_gl_shader_write_cache_reload_list(PGRAPHState *pg)
     fprintf(stderr, "READY_GEOM snapshot ready=%d covered=%"PRIu64" uploads=%"PRIu64"\n",
             r->ready_geom.ready, r->ready_geom.covered_binds,
             r->ready_geom.control_uploads);
+    fprintf(stderr, "READY_PSH snapshot ready=%d covered=%"PRIu64" uploads=%"PRIu64" aliases=%"PRIu64"\n",
+            r->ready_psh.ready, r->ready_psh.covered_binds,
+            r->ready_psh.control_uploads, r->ready_psh.alias_binds);
 #endif
 
     /* Join before draining, including when caching was disabled mid-session.
@@ -1243,6 +1252,7 @@ static void shader_cache_entry_init(Lru *lru, LruNode *node, const void *state)
     binding->pipeline_next = binding->pipeline_prev = NULL;
     binding->pipeline_hash_next = NULL;
     binding->ready_geom_variant = -1;
+    binding->ready_psh = false;
 #endif
     binding->gl_prog_vs = 0;
     binding->gl_prog_fs = 0;
@@ -1279,6 +1289,7 @@ static void shader_cache_entry_post_evict(Lru *lru, LruNode *node)
 #ifdef XEMU_EXPERIMENTAL_READY_VSH
     ready_vsh_invalidate(r, binding);
     ready_geom_invalidate(r, binding);
+    ready_psh_invalidate(r, binding);
 #endif
     if (r->shader_binding == binding) {
         r->shader_binding = NULL;
@@ -1397,10 +1408,13 @@ void pgraph_gl_init_shaders(PGRAPHState *pg)
 #ifdef XEMU_EXPERIMENTAL_READY_VSH
     if (gl_sso_enabled()) {
         reserved_geometry = GEOM_DYNAMIC_VARIANTS;
-        assert(reserved_geometry <= shader_module_cache_size);
+        assert(reserved_geometry + 2 <= shader_module_cache_size);
         r->ready_geom.stages = r->shader_module_cache_entries;
         memset(r->ready_geom.stages, 0,
                reserved_geometry * sizeof(*r->ready_geom.stages));
+        r->ready_psh.stages = r->shader_module_cache_entries + reserved_geometry;
+        memset(r->ready_psh.stages, 0, 2 * sizeof(*r->ready_psh.stages));
+        reserved_geometry += 2;
     }
 #endif
     for (int i = reserved_geometry; i < shader_module_cache_size; i++) {
@@ -1422,6 +1436,7 @@ void pgraph_gl_init_shaders(PGRAPHState *pg)
 #endif
     ready_vsh_init(r);
     ready_geom_init(r);
+    ready_psh_init(r);
 #endif
     r->seed.state = -1;
     r->prewarm.state = -1;
@@ -1462,6 +1477,7 @@ void pgraph_gl_finalize_shaders(PGRAPHState *pg)
     lru_flush(&r->shader_module_cache);
 #ifdef XEMU_EXPERIMENTAL_READY_VSH
     ready_geom_finalize(r); /* Reserved owners precede backing-pool release. */
+    ready_psh_finalize(r);
 #endif
     g_free(r->shader_module_cache_entries);
     r->shader_module_cache_entries = NULL;
@@ -1751,6 +1767,9 @@ static void update_shader_uniforms(PGRAPHState *pg, ShaderBinding *binding)
     pgraph_glsl_set_psh_uniform_values(pg, binding->uniform_locs.psh, &psh_values);
 
     for (int i = 0; i < 4; i++) {
+#ifdef XEMU_EXPERIMENTAL_READY_VSH
+        if (binding->ready_psh) psh_values.texScale[i] = 1.0f;
+#endif
         if (r->texture_binding[i] != NULL) {
             float scale = r->texture_binding[i]->scale;
             /* Sign tags encoded F16 RAM texels without extending uniforms. */
@@ -1948,7 +1967,7 @@ static bool gen_jobs_have_free(unsigned needed)
 static bool module_known(PGRAPHGLState *r, const ShaderModuleCacheKey *key)
 {
 #ifdef XEMU_EXPERIMENTAL_READY_VSH
-    if (ready_vsh_find(r, key) || ready_geom_find(r, key)) return true;
+    if (ready_vsh_find(r, key) || ready_geom_find(r, key) || ready_psh_find(r, key)) return true;
 #endif
     uint64_t hash = xxh3_64((const void *)key, sizeof(*key), 0);
     Lru *cache = &r->shader_module_cache;
@@ -1979,7 +1998,7 @@ static bool state_modules_known(PGRAPHGLState *r, const ShaderState *state)
 static bool module_ready(PGRAPHGLState *r, const ShaderModuleCacheKey *key)
 {
 #ifdef XEMU_EXPERIMENTAL_READY_VSH
-    if (ready_vsh_find(r, key) || ready_geom_find(r, key)) return true;
+    if (ready_vsh_find(r, key) || ready_geom_find(r, key) || ready_psh_find(r, key)) return true;
 #endif
     uint64_t hash = xxh3_64((const uint8_t *)key, sizeof(*key), 0);
     Lru *cache = &r->shader_module_cache;
@@ -2736,6 +2755,16 @@ void pgraph_gl_bind_shaders(PGRAPHState *pg)
     }
     ShaderState state = pgraph_glsl_get_shader_state(pg);
     state.geom.wide_lines = r->wide_lines;
+#ifdef XEMU_EXPERIMENTAL_READY_VSH
+    if (r->ready_psh.ready) {
+        uint32_t controls[8];
+        state.psh.depth_format |= DEPTH_FORMAT_HELPER_LIVENESS;
+        if (!pgraph_glsl_psh_ready_controls(&state.psh, controls))
+            state.psh.depth_format &= ~DEPTH_FORMAT_HELPER_LIVENESS;
+        /* Uncovered exact shaders retain legacy source/cache semantics.
+         * Only states with a fully linked ready fragment enter the new domain. */
+    }
+#endif
 
     NV2A_GL_DGROUP_BEGIN("%s (%s)", __func__,
                          state.vsh.is_fixed_function ? "FF" : "PROG");
@@ -2857,6 +2886,7 @@ update_uniforms:
 #ifdef XEMU_EXPERIMENTAL_READY_VSH
     ready_vsh_upload(r, r->shader_binding);
     ready_geom_upload(r, r->shader_binding);
+    ready_psh_upload(pg, r->shader_binding);
 #endif
     update_shader_uniforms(pg, r->shader_binding);
 }

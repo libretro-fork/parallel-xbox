@@ -459,6 +459,7 @@ static void render_surface_to(NV2AState *d, SurfaceBinding *surface,
                               GLuint gl_texture, unsigned int width,
                               unsigned int height, bool pack)
 {
+    assert(texture_unit >= 0 && texture_unit < NV2A_MAX_TEXTURES);
     /* External texture binds below desync the per-unit shadow. */
     pgraph_gl_tex_shadow_invalidate(d->pgraph.gl_renderer_state);
 
@@ -566,6 +567,7 @@ void render_surface_to_texture(NV2AState *d, SurfaceBinding *surface,
                                       TextureShape *texture_shape,
                                       int texture_unit, bool highres_depth)
 {
+    assert(texture_unit >= 0 && texture_unit < NV2A_MAX_TEXTURES);
     /* External texture binds below desync the per-unit shadow. */
     pgraph_gl_tex_shadow_invalidate(d->pgraph.gl_renderer_state);
 
@@ -706,6 +708,7 @@ void pgraph_gl_render_cube_faces_to_texture(NV2AState *d,
                                             TextureShape *shape,
                                             int texture_unit)
 {
+    assert(texture_unit >= 0 && texture_unit < NV2A_MAX_TEXTURES);
     pgraph_gl_tex_shadow_invalidate(d->pgraph.gl_renderer_state);
 
     PGRAPHState *pg = &d->pgraph;

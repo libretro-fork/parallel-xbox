@@ -211,6 +211,7 @@ typedef struct ShaderBinding {
 #ifdef XEMU_EXPERIMENTAL_READY_VSH
     struct ShaderBinding *pipeline_next, *pipeline_prev, *pipeline_hash_next;
     int ready_geom_variant;
+    bool ready_psh;
 #endif
     GLenum gl_primitive_mode;
     unsigned long uses;
@@ -485,6 +486,20 @@ typedef struct PGRAPHGLState {
         bool ready;
         uint64_t covered_binds, control_uploads; /* Diagnostic writes only. */
     } ready_geom;
+    struct {
+        ShaderModuleCacheEntry *stages; /* Two reserved existing module slots. */
+        GLint control_locs[2];
+        uint32_t controls[2][8];
+        bool controls_valid[2];
+        const ShaderBinding *uploaded_binding; /* Invalidated before LRU reuse. */
+        GLuint aliases[8]; /* Borrowed 3D/cube names; no texture payload owner. */
+        uint8_t aliases_valid;
+        bool aliases_bound;
+        bool ready;
+#ifdef XEMU_READY_VSH_DIAGNOSTICS
+        uint64_t covered_binds, control_uploads, alias_binds;
+#endif
+    } ready_psh;
 #endif
     /* Borrowed native cache slot; eviction/flush cancels before reuse. */
     ShaderBinding *spec_binding;

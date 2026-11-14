@@ -638,8 +638,8 @@ readiness remain open violations. Fewer shader objects alone are not recovery.
 The source API generates two location-matched native GL 4.1 fragment variants,
 smooth and flat, carrying regular texture/depth/clipping controls in uniforms.
 Controls are eight 32-bit words of metadata, packed only after all supported
-state checks succeed. Rejection leaves caller storage untouched. No native
-fragment owners or sampler aliases are selected by gameplay yet; this is not
+state checks succeed. Rejection leaves caller storage untouched. At the source-preparation checkpoint no native
+fragment owners or sampler aliases were selected by gameplay; this is not
 stutter recovery, complete pipeline readiness or an allocation-free renderer.
 
 NONE, PROJECT2D, PROJECT3D, CUBEMAP, PASSTHRU and CLIPPLANE use typed 2D, 3D
@@ -677,7 +677,8 @@ final OpKill; 1.6 retains its existing OpDemoteToHelperInvocation behavior.
 Legacy bit-clear keys, source and seeds retain their previous behavior. Struct
 size is unchanged, but the bit is part of exact/hash shader and linked-program
 keys, so compiled legacy programs cannot be adopted for helper-preserving keys.
-The flag is not yet captured from guest state or added to seed metadata. No
+The source-preparation checkpoint did not capture the flag from guest state
+or add it to seed metadata; the pending opt-in integration is described below. No
 release default or cache default changes. Ready controls reject bit-clear keys.
 
 The source domain has no conditional per-pixel texture dispatch other than its
@@ -711,3 +712,52 @@ Ordinary 73,728-source byte/lifetime checks remain required against pinned
 396d8f1f0a. Readbacks, reference compilation and comparison storage are test-only
 correctness work, not gameplay allocation or timing evidence. Public CI and
 local checks do not qualify full native pipeline readiness or cold first play.
+
+
+### Pending experimental native fragment integration
+
+The follow-up worktree reserves two slots from the existing module pool for
+native fragment programs and borrows 3D/cube texture names on units 4..11.
+It remains experimental and unqualified for cold-play recovery. Guest GL capture adds the helper-liveness
+flag only for covered states, after both programs, uniform locations and all
+typed sampler routes are ready. Uncovered exact shaders retain legacy keys
+and source instead of needlessly recompiling under different semantics. Default builds and Vulkan state capture do not enable the flag.
+Legacy seed keys retain eager semantics; they do not silently become current
+helper-preserving bindings. No seed migration is enabled yet.
+
+Retirement invalidates only aliases naming the retiring native texture, before
+the pool can delete/reuse it. Primary-unit helpers and flip resets preserve
+reserved alias bindings; their surface entry points enforce guest units 0..3. Updates preserve the previous active texture
+unit; disabled stages never borrow stale TextureBinding pointers. Shader
+finalization follows binding/pipeline flush and clears aliases before texture
+teardown. Per-native-program control shadows and binding witnesses are
+invalidated before LRU node reuse. These ownership claims still need executable
+lifetime/failure tests, native rendering, reset/restore/unload tests and cold
+first-play measurements. Draw-time native pipeline composition remains an
+explicit violation even when a covered fragment no longer compiles.
+
+
+Current integration evidence (still unqualified for recovery): the actual
+native-owner orchestration passes 29 partial-startup failures and eleven
+mutation controls on Windows and Linux, including exact slot return, shader
+object retirement, binding witness reuse, typed aliases, same-name/CPU-slot
+reuse, and primary-versus-reserved-unit independence. Native GL diagnostic NGB
+restores match the prior image exactly with 77,766 prepared-fragment binds.
+Preserving reserved units reduces alias calls from 10,016 to 12 in the matching
+restored window; this is a work reduction, not a latency claim. Initial copied
+harness scripts accidentally retained old DLL paths; those runs are invalid
+integration evidence. Corrected drivers require the expected commit log and
+positive READY_PSH native-path counters, and retain exact binary hashes.
+
+Fresh-boot DOA3 plus 600 live fight callbacks completes with 1,721,350 covered
+fragment binds and 12 alias calls. Both the earlier and latest integration images were visually
+inspected and show correct fighters, stage textures, shadows and HUD; different
+poses/camera positions do not establish pixel equivalence between fight runs. Actual OpenGL and
+Vulkan 360-callback restore/reset/restore/unload checks match the prior images;
+Vulkan reload also remains covered, while GL reload remains unsupported.
+Functional maxima of 477.75 and 492.87 ms are retained as failures/unqualified
+stutter evidence. Diagnostics, readbacks and uncontrolled driver caches do not
+qualify timings. Fourteen native pipeline objects still get created during the
+DOA3 run; startup/full-pipeline readiness, clean matched-parent/cold-warm timing,
+GPU execution costs, Linux full builds and default-build regression checks
+remain required before promotion.

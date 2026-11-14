@@ -36,8 +36,8 @@ enum PshDepthFormat {
     DEPTH_FORMAT_MASK = 3,
     DEPTH_FORMAT_UI_CLAMP = 1 << 8,
     /* Explicit source semantics: keep lanes alive until all texture derivatives
-     * have been evaluated. Legacy keys retain eager kills. This bit is not yet
-     * captured from guest state or added to old seed metadata. */
+     * have been evaluated. Legacy keys retain eager kills. Experimental GL
+     * capture adds it only with ready native owners; old seeds stay unchanged. */
     DEPTH_FORMAT_HELPER_LIVENESS = 1 << 9,
 };
 
