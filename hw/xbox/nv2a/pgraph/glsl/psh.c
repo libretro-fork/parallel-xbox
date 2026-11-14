@@ -1300,8 +1300,8 @@ static void psh_ready_combiner_helpers(MString *out, const char *source)
         unsigned width = component == 0 ? 3 : component == 1 ? 1 : 4;
         mstring_append_fmt(out, "void cbset%u(uint reg,%s x) { switch(reg) {\n", width, type);
         for (unsigned i = 1; i < 16; i++)
-            mstring_append_fmt(out, "case %uu: cregs[%u].%s=x; break;\n", i, i, field);
-        mstring_append(out, "default: break; } }\n");
+            mstring_append_fmt(out, "case %uu: cregs[%u].%s=x; return;\n", i, i, field);
+        mstring_append(out, "default: return; } }\n");
     }
     static const struct { const char *before, *after; } edits[] = {
         {"return cregs[reg];", "return cbget(reg);"},

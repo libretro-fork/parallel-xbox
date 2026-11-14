@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Use case-local returns in the experimental prepared fragment register writers. Preserve every constant-index destination and component write, ordinary shader text, keys and ownership. Native and software-GPU correctness and lifetime checks pass under the existing deadlines; hardware latency remains unqualified and prepared rendering stays disabled by default.
+
 - Repair the barycentric-overflow fixture after adding opt-in prepared fragment depth. Extract the ordinary perspective-weight arithmetic without the prepared path's uniform guard; retain all 4,096 overflow, degenerate and linear/perspective GPU cases and the original-path byte comparison.
 
 - Retain the prepared-renderer work on libretro behind the disabled-by-default XEMU_EXPERIMENTAL_READY_VSH build flag. Normal builds retain the existing renderer. Experimental cold-play recovery remains unqualified, with incomplete coverage, software-GPU timeout and measured performance gaps still open. The numerically failing fixed-function prototype and uncommitted balanced-write experiment are excluded.

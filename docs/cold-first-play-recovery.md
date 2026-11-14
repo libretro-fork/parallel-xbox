@@ -855,3 +855,49 @@ The a347 public CI rerun passes unchanged thresholds after its initial compiler
 stage timing was inconclusive; this is evidence for that source checkpoint,
 not a pass for the current commit or physical-GPU cold-play qualification.
 The feature remains disabled by default and is not merged to libretro.
+
+
+### Prepared fragment register exits (2026-11-14 checkpoint)
+
+The prepared fragment writers keep their original constant-index switches,
+but each case returns after its component write instead of joining through a
+`break`. The default case also returns. This changes no selected register,
+component, arithmetic expression, key, uniform ABI, native owner, pool size or
+renderer default. `XEMU_EXPERIMENTAL_READY_VSH` remains disabled by default.
+
+The return-only source is SHA-256
+`25d23392478013187e653bf8732657bf967294a0b3be142ed1fbffd599935ad6`.
+The full numerical suite passed on the NVIDIA RTX 5090 (621.01) and Mesa
+llvmpipe (25.2.8, LLVM 20.1.2): 1,308 cases, 418,560 exact color/depth checks,
+two invariant prepared fragment sources, the independent helper-lane oracle,
+and all ten required negative controls. The existing 300-second per-process
+watchdog and complete corpus were retained. These are functional results,
+not clean compiler or gameplay timing measurements.
+
+ASan/UBSan source-owner checks also passed: 73,728 legacy sources and
+614,644,992 source bytes stayed identical to the pinned historical reference;
+256 prepared builds retained only the returned source owner and released it.
+All five owner-failure controls were rejected. Ordinary and Vulkan generated
+source behavior is unchanged.
+
+Hardware latency for this return-only change is **unqualified**. An isolated
+experimental release build exists, with only `psh.o` differing and all 543
+other objects identical to its rebuilt parent. A separate local graphics
+build prevented the final isolated performance measurement. No gameplay
+speedup or stutter recovery is claimed, and remote CI remains necessary.
+
+The larger grouped-write and balanced-read rewrites were tested separately
+and are excluded from this checkpoint. Their numerical passes and faster
+warm GPU fixtures did not establish gameplay recovery. In particular, the
+balanced-read experiment recorded an 803.689 ms fight callback at live frame
+155 (run 4,392), with seven fight deadline misses. That callback advanced
+16,683,333 ns of guest time and exactly one guest Present/completion; the
+stall was not hidden by dropping a guest frame. The separate local build
+started after that run and does not explain it. Keep this adverse evidence
+and the uncontrolled driver-cache/run-to-run limits; a later warm result does
+not erase it.
+
+Full prepared coverage, remaining synchronous misses, native first-use
+behavior on both renderers, cold/warm tail recovery and remaining gameplay
+allocations are still open. The overall cold-first-play regression stays
+**BAD/unqualified**.
