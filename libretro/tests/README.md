@@ -5313,3 +5313,12 @@ Vulkan resolution without a Vulkan loader or GPU: direct device function pointer
 optional misses, required failures, device replacement and complete table clearing.
 GPU fixtures use the current test driver loader when comparing historical candidates;
 the production core never opens an OS Vulkan loader.
+
+
+`test-ready-vsh-owner.py CHECKOUT [CC]` compiles the actual experimental
+native vertex owner/transport against controlled GL boundaries. It checks
+finite interface owners, unsupported formats and validation failures, direct
+bounded code/flag uploads, byte-identical resident reuse, cache-node replacement,
+and full/partial teardown. Required mutation controls reject missing validation,
+missed invalidation, wrong control offsets and wrong interface owners. This
+fixture is ownership coverage, not hardware GPU cost or full PSO readiness.

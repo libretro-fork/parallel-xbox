@@ -456,6 +456,16 @@ typedef struct PGRAPHGLState {
     Lru shader_cache;
     ShaderBinding *shader_cache_entries;
     ShaderBinding *shader_binding;
+#ifdef XEMU_EXPERIMENTAL_READY_VSH
+    /* Four finite GL interface variants; not members of the persistent LRU. */
+    struct {
+        ShaderModuleCacheEntry stage[4];
+        GLuint code_buffer;
+        const ShaderBinding *uploaded_binding; /* cancelled before node reuse */
+        bool ready;
+        uint64_t covered_binds, code_uploads; /* Opt-in diagnostic writes only. */
+    } ready_vsh;
+#endif
     /* Borrowed native cache slot; eviction/flush cancels before reuse. */
     ShaderBinding *spec_binding;
     /* Disk worker publishes immutable binaries; only render owns the LRU. */

@@ -28,4 +28,14 @@ void pgraph_glsl_gen_vsh_prog(uint16_t version, const uint32_t *tokens,
                               unsigned int length, MString *header,
                               MString *body);
 
+/* Builder for a precompiled programmable fallback. No microcode is consumed
+ * during source generation. The caller provides ivec4 vpCode[136], c[], the
+ * normal vertex input/output declarations and the shared transform uniforms.
+ * Call after local attribute conversions; their values are captured in main.
+ * Uploaded programs must have a final terminator and validated live operands
+ * and destinations; writable constants and unknown opcodes are unsupported.
+ * This builder alone does not prepare a native pipeline or establish readiness.
+ */
+void pgraph_glsl_gen_vsh_prog_interpreter(MString *header, MString *body);
+
 #endif

@@ -498,3 +498,34 @@ Reference: https://github.com/libretro/parallel-gx1/blob/master/AGENTS.md
   independently verified quotations or a hardware performance result.
 - `parallel_cores_implementation_plan.pdf`: proposed mechanisms requiring
   the audit and corrections above, not authoritative descriptions of either core.
+
+## Experimental programmable vertex readiness, 2026-11-14
+
+The `XEMU_EXPERIMENTAL_READY_VSH` build flag prepares four completed GL
+separable vertex programs before guest execution: smooth/flat shading times
+ordinary/geometry-prefixed interfaces. It is disabled in release builds.
+Selection currently covers programmable shaders with ordinary streamed vertex
+attributes only. It reuses the allocation-free instruction validator; malformed
+or unsupported input keeps the existing correct path. Fixed-function vertices,
+other attribute encodings and the non-SSO path remain uncovered.
+
+A device-generation owner holds the programs and one 2,192-byte code/control
+UBO. The existing immutable binding owns an upload's source bytes. Repeated
+bindings or byte-identical code reuse the current contents; eviction cancels
+the witness before that cache node can be reused. No second microcode payload
+snapshot is retained. `glBufferSubData` still permits driver copies, stalls or
+allocations; this is not a global zero-copy or allocation-free claim.
+
+Ordinary shader keys, source output, persistent-cache formats and savestate
+layouts are unchanged. These native generic owners bypass persistent module
+storage. Current native checks include the complete programmable numerical
+corpus and negative controls, ordinary source-text equivalence, NGB restore
+images and a DOA3 first fight. They do not establish general cold-play recovery.
+The callback ABBA probe uses an uncontrolled driver cache and does not measure
+GPU execution or displayed-frame latency. The full target above remains open.
+
+Next integrate ready complete pipeline ownership and optional exact promotion.
+The prototype still creates pipeline objects for raw-code binding identities;
+fragment/geometry misses and utility paths can still block required draws.
+Do not promote permanent interpreter selection as a complete or performance-
+qualified solution merely because its stage links moved to startup.

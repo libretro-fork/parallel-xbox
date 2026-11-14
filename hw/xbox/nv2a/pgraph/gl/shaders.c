@@ -4,7 +4,7 @@
  * Copyright (c) 2015 espes
  * Copyright (c) 2015 Jannik Vogel
  * Copyright (c) 2020-2025 Matt Borgerson
- * Copyright (c) 2026 Réda Chérif-Touil
+ * Copyright (c) 2026 RÃƒÂ©da ChÃƒÂ©rif-Touil
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -713,6 +713,11 @@ GLuint pgraph_gl_separable_program(GLenum kind, const char *src,
     return prog;
 }
 
+#ifdef XEMU_EXPERIMENTAL_READY_VSH
+#include "../spv/vsh.h"
+#include "ready-vsh.inc"
+#endif
+
 /* The module keys of a state: geometry (kind 0 unless the state needs one),
  * vertex, fragment. Returns whether the geometry stage is needed. */
 static bool state_module_keys(const ShaderState *st,
@@ -741,6 +746,10 @@ static bool state_module_keys(const ShaderState *st,
 static ShaderModuleCacheEntry *get_shader_module_for_key(
     PGRAPHGLState *r, const ShaderModuleCacheKey *key)
 {
+#ifdef XEMU_EXPERIMENTAL_READY_VSH
+    ShaderModuleCacheEntry *ready = ready_vsh_find(r, key);
+    if (ready) return ready;
+#endif
     uint64_t hash = xxh3_64((void *)key, sizeof(ShaderModuleCacheKey), 0);
     LruNode *node = lru_lookup(&r->shader_module_cache, hash, key);
     return container_of(node, ShaderModuleCacheEntry, node);
@@ -976,6 +985,10 @@ static void shader_write_lru_list_entry_to_disk(Lru *lru, LruNode *node, void *o
 void pgraph_gl_shader_write_cache_reload_list(PGRAPHState *pg)
 {
     PGRAPHGLState *r = pg->gl_renderer_state;
+#ifdef XEMU_READY_VSH_DIAGNOSTICS
+    fprintf(stderr, "READY_VSH snapshot ready=%d covered=%"PRIu64" uploads=%"PRIu64"\n",
+            r->ready_vsh.ready, r->ready_vsh.covered_binds, r->ready_vsh.code_uploads);
+#endif
 
     /* Join before draining, including when caching was disabled mid-session.
      * A later writeback/finalize must not join an already-consumed handle. */
@@ -1228,6 +1241,9 @@ static void shader_cache_entry_post_evict(Lru *lru, LruNode *node)
      * driver as "GL error 0x502 at touch fresh textures". The next draw
      * looks the binding up again, so dropping it here costs nothing. */
     PGRAPHGLState *r = container_of(lru, PGRAPHGLState, shader_cache);
+#ifdef XEMU_EXPERIMENTAL_READY_VSH
+    ready_vsh_invalidate(r, binding);
+#endif
     if (r->shader_binding == binding) {
         r->shader_binding = NULL;
     }
@@ -1349,6 +1365,9 @@ void pgraph_gl_init_shaders(PGRAPHState *pg)
                                                   shader_gl_vendor, shader_gl_version,
                                                   MAX(sizeof(ModuleDiskSave), sizeof(ShaderDiskResult)));
     init_texture_touch(r);
+#ifdef XEMU_EXPERIMENTAL_READY_VSH
+    ready_vsh_init(r);
+#endif
     r->seed.state = -1;
     r->prewarm.state = -1;
 }
@@ -1388,6 +1407,9 @@ void pgraph_gl_finalize_shaders(PGRAPHState *pg)
     lru_flush(&r->shader_module_cache);
     g_free(r->shader_module_cache_entries);
     r->shader_module_cache_entries = NULL;
+#ifdef XEMU_EXPERIMENTAL_READY_VSH
+    ready_vsh_finalize(r); /* All cached pipelines have released the stages. */
+#endif
     gl_disk_writer_destroy(r->cache_writer);
     r->cache_writer=NULL;
 }
@@ -1866,6 +1888,9 @@ static bool gen_jobs_have_free(unsigned needed)
 /* Already generated, queued, or cached? Skip regenerating. */
 static bool module_known(PGRAPHGLState *r, const ShaderModuleCacheKey *key)
 {
+#ifdef XEMU_EXPERIMENTAL_READY_VSH
+    if (ready_vsh_find(r, key)) return true;
+#endif
     uint64_t hash = xxh3_64((const void *)key, sizeof(*key), 0);
     Lru *cache = &r->shader_module_cache;
     unsigned bin = lru_hash_to_bin(cache, hash);
@@ -1894,6 +1919,9 @@ static bool state_modules_known(PGRAPHGLState *r, const ShaderState *state)
  * Borrow only for this predicate; no cache entry escapes or changes owner. */
 static bool module_ready(PGRAPHGLState *r, const ShaderModuleCacheKey *key)
 {
+#ifdef XEMU_EXPERIMENTAL_READY_VSH
+    if (ready_vsh_find(r, key)) return true;
+#endif
     uint64_t hash = xxh3_64((const uint8_t *)key, sizeof(*key), 0);
     Lru *cache = &r->shader_module_cache;
     unsigned bin = lru_hash_to_bin(cache, hash);
@@ -2767,6 +2795,9 @@ void pgraph_gl_bind_shaders(PGRAPHState *pg)
 update_uniforms:
     assert(r->shader_binding);
     assert(r->shader_binding->initialized);
+#ifdef XEMU_EXPERIMENTAL_READY_VSH
+    ready_vsh_upload(r, r->shader_binding);
+#endif
     update_shader_uniforms(pg, r->shader_binding);
 }
 
