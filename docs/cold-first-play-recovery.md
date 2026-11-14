@@ -631,3 +631,83 @@ cache state remains uncontrolled, and total boot callback counts differ.
 No stutter-recovery gate or acceptance budget has been relaxed. The feature
 stays disabled; fragment misses, full native pipeline creation and Vulkan
 readiness remain open violations. Fewer shader objects alone are not recovery.
+
+
+### Experimental regular fragment source preparation
+
+The source API generates two location-matched native GL 4.1 fragment variants,
+smooth and flat, carrying regular texture/depth/clipping controls in uniforms.
+Controls are eight 32-bit words of metadata, packed only after all supported
+state checks succeed. Rejection leaves caller storage untouched. No native
+fragment owners or sampler aliases are selected by gameplay yet; this is not
+stutter recovery, complete pipeline readiness or an allocation-free renderer.
+
+NONE, PROJECT2D, PROJECT3D, CUBEMAP, PASSTHRU and CLIPPLANE use typed 2D, 3D
+and cube sampler parameters. Integration must assign twelve distinct units,
+query unit capacity, borrow existing texture objects without a payload clone,
+track alias invalidation/name reuse and disabled stages, and prepare both
+native fragment links before readiness publication. Existing uniform caches
+are indexed by native program, not guest binding; preserve that ownership.
+Shadows, convolution, signed G8B8 and bump/dot modes remain uncovered.
+Static all-zero final-combiner keys are rejected because their legacy output
+is unset; dynamic zero-final keys have an explicitly zero output. There is
+no prepared Vulkan fragment/PSO path in this API.
+
+#### Explicit helper-liveness semantics and compatibility
+
+The first 912-case mipmapped llvmpipe comparison failed at case 141. Raw texels,
+coordinates and LOD queries agreed, but conditional volume sampling differed
+and changed an alpha kill. Sampler unrolling, re-binding, control masking,
+projection expansion and gradients computed inside the helper did not fix it.
+Deferring ready-path kills fixed the isolated case, but the complete comparison
+then failed at case 30 on both NVIDIA and llvmpipe against legacy eager kills.
+Those runs remain failed evidence, not accepted baselines.
+
+The GLSL specification makes derivatives after nonuniform discard undefined:
+https://registry.khronos.org/OpenGL/specs/gl/GLSLangSpec.4.60.html
+The replacement must preserve helper execution in both the ordinary reference
+and the ready path; merely blessing a different output is insufficient.
+
+DEPTH_FORMAT_HELPER_LIVENESS (bit 9 in the existing depth-format word) explicitly
+versions the new semantic domain. Its GLSL accumulates window, depth, clip-plane,
+texture alpha and color-key kill conditions and discards after texture work.
+No shader image stores or atomics are emitted, so killed invocations publish no
+framebuffer/depth result. Native SPIR-V 1.5 uses a Function-local boolean and one
+final OpKill; 1.6 retains its existing OpDemoteToHelperInvocation behavior.
+Legacy bit-clear keys, source and seeds retain their previous behavior. Struct
+size is unchanged, but the bit is part of exact/hash shader and linked-program
+keys, so compiled legacy programs cannot be adopted for helper-preserving keys.
+The flag is not yet captured from guest state or added to seed metadata. No
+release default or cache default changes. Ready controls reject bit-clear keys.
+
+The source domain has no conditional per-pixel texture dispatch other than its
+kill predicates: sampler/type/mode controls are uniform. Delayed kills can
+increase work for ultimately discarded pixels. GPU-cost and cold gameplay
+qualification are still required before renderer adoption; no throughput or
+latency improvement is claimed.
+
+#### Numerical checks
+
+The GL fixture compares 912 constructed helper-preserving ordinary/ready
+programs per device: 291,840 exact color/depth values, all four texture stages,
+zero through eight observable chained combiners, volume slices, cube faces,
+zero/negative projective q, interpolation modes, three mip levels, six
+minification modes, both magnification filters, addressing modes, LOD bias,
+and reserved-bit poisoning. The two ready sources must remain invariant.
+NaN payload differences are ignored only when both results are NaN.
+An independent half-plane/window/constant-volume oracle requires exactly eight
+live pixels and analytic color/depth on both paths. Per-device raster coverage
+may differ; comparisons use that device's own reference, not a cross-vendor
+raster-equivalence claim. Wrong depth/mode/cube/volume/clip/alpha/combiner
+controls and removal of the reference helper-liveness flag must fail. Eleven
+unsupported-state checks require atomic rejection without a source owner.
+
+Native SPIR-V contracts add 128 explicit helper-preserving 1.5/1.6 modules:
+1.5 must have exactly one kill after the final image operation; 1.6 must retain
+byte-identical demotion code. The legacy 65,024-module corpus remains intact.
+Four 512-case Vulkan numerical subsets exercise both versions against
+helper-preserving GLSL; it supplements, never replaces, the full legacy suite.
+Ordinary 73,728-source byte/lifetime checks remain required against pinned
+396d8f1f0a. Readbacks, reference compilation and comparison storage are test-only
+correctness work, not gameplay allocation or timing evidence. Public CI and
+local checks do not qualify full native pipeline readiness or cold first play.

@@ -624,6 +624,7 @@ struct PSStageInfo {
 struct PixelShader {
     GenPshGlslOptions opts;
     const PshState *state;
+    bool ready; /* Experimental generator mode, never a persistent key field. */
 
     int num_stages, flags;
     struct PSStageInfo stage[8];
@@ -1178,13 +1179,30 @@ static void psh_append_shadowmap(const struct PixelShader *ps, int i, bool compa
     }
 }
 
+/* No shader image stores or atomics are emitted. Delaying framebuffer/depth
+ * suppression preserves texture helper lanes without publishing killed pixels.
+ * The key flag is explicit so legacy compiled binaries cannot match this mode. */
+static bool psh_preserve_helpers(const struct PixelShader *ps)
+{
+    return ps->ready || (ps->state->depth_format & DEPTH_FORMAT_HELPER_LIVENESS);
+}
+static const char *psh_kill_statement(const struct PixelShader *ps)
+{
+    return psh_preserve_helpers(ps) ? "fsKill=true;" : "discard;";
+}
+
 static void psh_append_depth_range_test(const struct PixelShader *ps,
                                         MString *out)
 {
-    if (ps->state->depth_clipping) {
-        mstring_append(out, "if (zvalue < clipRange.z || clipRange.w < zvalue) {\n"
-                            "  discard;\n"
-                            "}\n");
+    if (ps->ready) {
+        mstring_append(out,
+            "if((fsControl[0].x&4u)!=0u){\n"
+            "if(zvalue<clipRange.z||clipRange.w<zvalue)fsKill=true;\n"
+            "}else{zvalue=clamp(zvalue,clipRange.z,clipRange.w); }\n");
+    } else if (ps->state->depth_clipping) {
+        mstring_append(out, psh_preserve_helpers(ps) ?
+            "if (zvalue < clipRange.z || clipRange.w < zvalue) {\n  fsKill=true;\n}\n" :
+            "if (zvalue < clipRange.z || clipRange.w < zvalue) {\n  discard;\n}\n");
     } else {
         mstring_append(out, "zvalue = clamp(zvalue, clipRange.z, clipRange.w);\n");
     }
@@ -1390,7 +1408,7 @@ static void emit_dynamic_combiner(struct PixelShader *ps, MString *preflight)
         case 9: init = "t1"; break;
         case 10: init = "t2"; break;
         case 11: init = "t3"; break;
-        case 12: init = ps->tex_modes[0] != PS_TEXTUREMODES_NONE ?
+        case 12: init = ps->ready || ps->tex_modes[0] != PS_TEXTUREMODES_NONE ?
                         "vec4(0.0, 0.0, 0.0, t0.a)" : "vec4(0.0, 0.0, 0.0, 1.0)";
             break;
         default: init = "vec4(0.0)"; break;
@@ -1761,6 +1779,8 @@ static void psh_append_dotmap(MString *preflight, unsigned mapping,
     }
 }
 
+#include "hw/xbox/nv2a/pgraph/glsl/psh-ready.inc"
+
 static MString* psh_convert(struct PixelShader *ps)
 {
     MString *preflight = mstring_new();
@@ -1806,6 +1826,9 @@ static MString* psh_convert(struct PixelShader *ps)
         mstring_append(preflight, "};\n");
     }
 
+    if (ps->ready) mstring_append(preflight, "uniform uvec4 fsControl[2];\n");
+    if (psh_preserve_helpers(ps)) mstring_append(preflight, "bool fsKill;\n");
+
     const char *dotmap_funcs[] = {
         "dotmap_zero_to_one",
         "dotmap_minus1_to_1_d3d",
@@ -1841,6 +1864,9 @@ static MString* psh_convert(struct PixelShader *ps)
         "\n");
 
     MString *clip = mstring_new();
+    if (ps->ready) {
+        psh_ready_window_clip(clip);
+    } else {
     mstring_append_fmt(clip, "/*  Window-clip (%slusive) */\n",
                        ps->state->window_clip_exclusive ? "Exc" : "Inc");
     if (!ps->state->window_clip_exclusive) {
@@ -1853,7 +1879,7 @@ static MString* psh_convert(struct PixelShader *ps)
                          "      greaterThanEqual(coord, vec2(clipRegion[i].zw))));\n"
                          "  if (!outside) {\n");
     if (ps->state->window_clip_exclusive) {
-        mstring_append(clip, "    discard;\n");
+        mstring_append(clip, psh_preserve_helpers(ps) ? "    fsKill=true;\n" : "    discard;\n");
     } else {
         mstring_append(clip, "    clipContained = true;\n"
                              "    break;\n");
@@ -1861,9 +1887,11 @@ static MString* psh_convert(struct PixelShader *ps)
     mstring_append(clip, "  }\n"
                          "}\n");
     if (!ps->state->window_clip_exclusive) {
-        mstring_append(clip, "if (!clipContained) {\n"
-                             "  discard;\n"
-                             "}\n");
+        mstring_append(clip, psh_preserve_helpers(ps) ?
+            "if (!clipContained) {\n  fsKill=true;\n}\n" :
+            "if (!clipContained) {\n  discard;\n}\n");
+    }
+
     }
 
     /* Barycentric depth: the perspective mode divides the weights by w
@@ -1871,14 +1899,16 @@ static MString* psh_convert(struct PixelShader *ps)
     mstring_append(
         clip,
         "vec2 unscaled_xy = gl_FragCoord.xy / surfaceScale;\n");
-    bool ui_clamp = ps->state->depth_format & DEPTH_FORMAT_UI_CLAMP;
+    bool ui_clamp = ps->ready || (ps->state->depth_format & DEPTH_FORMAT_UI_CLAMP);
     if (ui_clamp) {
         /* A right-triangle half of an axis-aligned rectangle has its full
          * sampling bounds prepared once by the existing geometry stage.
          * Its negative-zero slope marker selects constant finite depth and
          * reuses the otherwise unneeded plane positions for UV bounds. */
+        mstring_append(clip, ps->ready ?
+            "bool uiRect=((fsControl[0].x>>8u)&7u)!=0u && floatBitsToUint(triMZ)==0x80000000u;\n" :
+            "bool uiRect = floatBitsToUint(triMZ) == 0x80000000u;\n");
         mstring_append(clip,
-            "bool uiRect = floatBitsToUint(triMZ) == 0x80000000u;\n"
             "precise float uiBc1=0.0,uiBc2=0.0;\n"
             "if(!uiRect){\n"
         );
@@ -1911,10 +1941,12 @@ static MString* psh_convert(struct PixelShader *ps)
         "    bc2 = area(sample_xy, pos0_xy, pos1_xy);\n"
         "  }\n"
         "}\n");
-    if (ps->state->z_perspective) {
+    if (ps->ready || ps->state->z_perspective) {
+        if (ps->ready) mstring_append(clip,"if((fsControl[0].x&8u)!=0u){\n");
         mstring_append(clip, "bc0 /= vtxPos0.w;\n"
                              "bc1 /= vtxPos1.w;\n"
                              "bc2 /= vtxPos2.w;\n");
+        if (ps->ready) mstring_append(clip,"}\n");
     }
     mstring_append(
         clip,
@@ -1932,7 +1964,9 @@ static MString* psh_convert(struct PixelShader *ps)
             "precise float bc1=uiBc1,bc2=uiBc2;\n");
     }
 
-    if (ps->state->z_perspective) {
+    if (ps->ready) {
+        psh_ready_depth_value(clip);
+    } else if (ps->state->z_perspective) {
         mstring_append(
             clip,
             "precise float zvalue = vtxPos0.w + (bc1*(vtxPos1.w - vtxPos0.w) + bc2*(vtxPos2.w - vtxPos0.w));\n"
@@ -1981,13 +2015,20 @@ static MString* psh_convert(struct PixelShader *ps)
     mstring_append(vars, "vec4 pT0 = vtxT0;\n");
     mstring_append(vars, "vec4 pT1 = vtxT1;\n");
     mstring_append(vars, "vec4 pT2 = vtxT2;\n");
-    if (ps->state->point_sprite) {
+    if (ps->ready) {
+        mstring_append(vars,"vec4 pT3=(fsControl[0].x&16u)!=0u?vec4(gl_PointCoord,1.0,1.0):vtxT3;\n");
+    } else if (ps->state->point_sprite) {
         assert(!ps->state->rect_tex[3]);
         mstring_append(vars, "vec4 pT3 = vec4(gl_PointCoord, 1.0, 1.0);\n");
     } else {
         mstring_append(vars, "vec4 pT3 = vtxT3;\n");
     }
-    if (ui_clamp) {
+    if (ps->ready) {
+        for (unsigned stage=0;stage<4;stage++)
+            mstring_append_fmt(vars,
+                "if(uiRect&&((fsControl[0].x>>8u)&7u)==%uu)pT%u.xy=clamp(pT%u.xy,vtxPos1.xy,vtxPos2.xy);\n",
+                stage+1,stage,stage);
+    } else if (ui_clamp) {
         unsigned stage = pgraph_glsl_ui_clamp_stage(ps->state) - 1;
         mstring_append_fmt(vars,
             "if(uiRect) pT%u.xy=clamp(pT%u.xy,vtxPos1.xy,vtxPos2.xy);\n",
@@ -2009,7 +2050,9 @@ static MString* psh_convert(struct PixelShader *ps)
 
     bool color_key_comparator_defined = false;
 
-    for (int i = 0; i < 4; i++) {
+    if (ps->ready) {
+        psh_ready_textures(ps,preflight,vars);
+    } else for (int i = 0; i < 4; i++) {
 
         const char *sampler_type = get_sampler_type(ps, ps->tex_modes[i], i);
 
@@ -2108,9 +2151,10 @@ static MString* psh_convert(struct PixelShader *ps)
             mstring_append_fmt(vars, "vec4 t%d = vec4(0.0); /* PS_TEXTUREMODES_CLIPPLANE */\n",
                                i);
             for (j = 0; j < 4; j++) {
-                mstring_append_fmt(vars, "  if(pT%d.%c %s 0.0) { discard; };\n",
+                mstring_append_fmt(vars, "  if(pT%d.%c %s 0.0) { %s };\n",
                                    i, "xyzw"[j],
-                                   ps->state->compare_mode[i][j] ? ">=" : "<");
+                                   ps->state->compare_mode[i][j] ? ">=" : "<",
+                                   psh_kill_statement(ps));
             }
             break;
         }
@@ -2324,10 +2368,10 @@ static MString* psh_convert(struct PixelShader *ps)
             if (ps->state->alpha_dynamic) {
                 mstring_append_fmt(vars,
                     "if ((alphaKillMask & %du) != 0u && t%d.a == 0.0)"
-                    " { discard; };\n", 1 << i, i);
+                    " { %s };\n", 1 << i, i, psh_kill_statement(ps));
             } else if (ps->state->alphakill[i]) {
-                mstring_append_fmt(vars, "if (t%d.a == 0.0) { discard; };\n",
-                                   i);
+                mstring_append_fmt(vars, "if (t%d.a == 0.0) { %s };\n",
+                                   i, psh_kill_statement(ps));
             }
 
             enum PS_COLORKEYMODE color_key_mode = ps->state->colorkey_mode[i];
@@ -2346,7 +2390,7 @@ static MString* psh_convert(struct PixelShader *ps)
 
                 switch (color_key_mode) {
                 case COLOR_KEY_DISCARD:
-                    mstring_append(vars, "  discard;\n");
+                    mstring_append(vars, psh_preserve_helpers(ps) ? "  fsKill=true;\n" : "  discard;\n");
                     break;
 
                 case COLOR_KEY_KILL_ALPHA:
@@ -2477,7 +2521,13 @@ static MString* psh_convert(struct PixelShader *ps)
      * due to rounding.)
      */
 
-    switch (ps->state->depth_format & DEPTH_FORMAT_MASK) {
+    if (ps->ready) {
+        mstring_append(ps->code,
+            "uint fsDepth=fsControl[0].x&3u;\n"
+            "if(fsDepth==1u)gl_FragDepth=floor(zvalue)/65535.0;\n"
+            "else if(fsDepth==0u)gl_FragDepth=uintBitsToFloat(floatBitsToUint(floor(zvalue)/16777216.0)+1u);\n"
+            "else gl_FragDepth=zvalue/clipRange.y;\n");
+    } else switch (ps->state->depth_format & DEPTH_FORMAT_MASK) {
     case DEPTH_FORMAT_D16:
         // 16-bit unsigned int
         mstring_append(
@@ -2501,9 +2551,11 @@ static MString* psh_convert(struct PixelShader *ps)
      * GString storage instead of cloning the whole prefix into another owner. */
     MString *final = preflight;
     mstring_append(final, "void main() {\n");
+    if (psh_preserve_helpers(ps)) mstring_append(final,"fsKill=false;\n");
     mstring_append(final, mstring_get_str(clip));
     mstring_append(final, mstring_get_str(vars));
     mstring_append(final, mstring_get_str(ps->code));
+    if (psh_preserve_helpers(ps)) mstring_append(final,"if(fsKill)discard;\n");
     mstring_append(final, "}\n");
 
     mstring_unref(clip);
@@ -2596,6 +2648,17 @@ MString *pgraph_glsl_gen_psh(const PshState *state, GenPshGlslOptions opts)
         ps.final_input.inv_r0 = flags & PS_FINALCOMBINERSETTING_COMPLEMENT_R0;
     }
 
+    return psh_convert(&ps);
+}
+
+MString *pgraph_glsl_gen_psh_ready(const PshState *state, GenPshGlslOptions opts)
+{
+    uint32_t controls[8];
+    if (opts.vulkan || !opts.locations ||
+        !pgraph_glsl_psh_ready_controls(state,controls)) return NULL;
+    PshState canonical = { .smooth_shading=state->smooth_shading,
+                           .combiner_dynamic=true, .alpha_dynamic=true };
+    struct PixelShader ps = { .opts=opts, .state=&canonical, .ready=true };
     return psh_convert(&ps);
 }
 

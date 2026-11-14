@@ -26,6 +26,45 @@ static void poison_dead(PshState *s,unsigned i){
 int main(int argc,char **argv)
 {
     assert(argc==2);
+    /* Explicit helper-liveness keys must not terminate sampling lanes early.
+     * 1.5 uses a Function-local boolean and one final kill; 1.6 already demotes.
+     * The ordinary legacy corpus below remains unchanged. */
+    for(unsigned i=0;i<128;i++){
+        PshState state={.final_inputs_0=0x20090000,.final_inputs_1=0x1900,
+            .shader_stage_program=1u|(2u<<5)|(5u<<10)|(3u<<15),
+            .dim_tex={2,3,2,2},.tex_cubemap={false,false,false,true},
+            .alphakill={true,true,false,true},.depth_clipping=true};
+        state.smooth_shading=i&1;state.window_clip_exclusive=i&2;
+        state.alpha_dynamic=i&4;state.alpha_test=i&8;
+        state.z_perspective=i&16;state.depth_format=(i/32)%4;
+        for(unsigned j=0;j<4;j++)state.compare_mode[2][j]=(i>>j)&1;
+        SpvPshOptions opts={.spirv_1_6=!!(i&64),.ubo_binding=1,.tex_binding=2};
+        GlslcResult legacy,ready;allocations=0;
+        assert(pgraph_spv_psh(&state,opts,&legacy) && allocations==2);
+        state.depth_format|=DEPTH_FORMAT_HELPER_LIVENESS;
+        assert(pgraph_spv_psh(&state,opts,&ready) && allocations==4);
+        unsigned kills=0,demotes=0,locals=0;size_t last_sample=0,kill=0;
+        for(size_t k=5;k<ready.num_words;k+=ready.words[k]>>16){
+            unsigned opcode=ready.words[k]&65535;
+            if(opcode>=SpvOpImageSampleImplicitLod && opcode<=SpvOpImageDrefGather)last_sample=k;
+            if(opcode==SpvOpKill){kills++;kill=k;}
+            demotes+=opcode==SpvOpDemoteToHelperInvocation;
+            if(opcode==SpvOpVariable && ready.words[k+3]==SpvStorageClassFunction)locals++;
+        }
+        assert(last_sample);
+        if(opts.spirv_1_6){
+            assert(!kills && demotes && !locals);
+            assert(legacy.num_words==ready.num_words && !memcmp(legacy.words,ready.words,ready.num_words*4));
+        }else{
+            assert(kills==1 && kill>last_sample && !demotes && locals==1);
+            assert(legacy.num_words!=ready.num_words || memcmp(legacy.words,ready.words,legacy.num_words*4));
+        }
+        char path[4096];snprintf(path,sizeof(path),"%s/helper-%u.spv",argv[1],i);
+        FILE *f=fopen(path,"wb");assert(f);assert(fwrite(ready.words,4,ready.num_words,f)==ready.num_words);fclose(f);
+        glslc_result_free_words(&legacy);free(legacy.uniforms.members);
+        glslc_result_free_words(&ready);free(ready.uniforms.members);
+    }
+    puts("Helper liveness: 128 native 1.5/1.6 modules retain lanes through sampling; legacy 1.6 byte-identical");
     for(unsigned i=0;i<4096;i++){
         PshState s={.final_inputs_0=0x04200000,.final_inputs_1=0x1400,.combiner_control=(i%9) | ((i&7)<<8)};
         s.smooth_shading=i&1;s.depth_clipping=i&2;s.z_perspective=i&4;s.alpha_test=i&8;s.alpha_dynamic=i&16;s.window_clip_exclusive=i&32;s.depth_format=(i/64)%4;

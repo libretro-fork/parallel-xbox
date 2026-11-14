@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Experimental GL fragment-source preparation: two interpolation variants carry regular 2D/3D/cube sampling, clipping and depth controls in bounded uniforms. Reject uncovered texture modes and formats before publishing controls. Legacy ordinary source remains unchanged; an explicit helper-liveness key flag lets the experimental reference and prepared source retain texture helper lanes through sampling. It is not enabled by guest-state capture or seed migration. Native owner/alias integration and performance qualification are still pending; this generator is not selected by gameplay.
+
 - Assemble fragment GLSL directly in its declaration buffer and transfer that owner to the caller, avoiding a separate final MString/GString and whole-prefix copy. Shader source stays byte-identical; remaining source assembly and driver allocations are unchanged.
 
 - Release temporary clipping-source storage after fragment generation. Each generated source previously retained one MString/GString and its buffer (up to 4,136 bytes in the ownership corpus). Use immutable normalization-function names instead of allocating formatted names for texture stages, shadow sampling and convolution. Generated GL and Vulkan shader text stays byte-identical; this fixes retained CPU allocations, not draw-time compilation or shader stutters.
