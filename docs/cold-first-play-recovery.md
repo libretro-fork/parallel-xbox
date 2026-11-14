@@ -537,3 +537,52 @@ not establish driver-lazy-compilation freedom. Fragment/geometry misses and
 utility paths can still block required draws.
 Do not promote permanent interpreter selection as a complete or performance-
 qualified solution merely because its stage links moved to startup.
+
+
+### Experimental finite geometry readiness
+
+The opt-in GL build also prepares 22 finite geometry stages before guest execution. Winding rotations, provoking-vertex selection, depth perspective
+and the atlas-stage tag travel as four packed integers. Topology, output
+primitive type and interpolation remain native stage variants. The stages
+reserve slots from the existing 51,200-slot module pool; no logical module
+capacity is added. A partial startup failure deletes all native owners and
+returns every reservation to the ordinary LRU. Normal teardown flushes shader
+bindings before native owners, and owners before the backing module pool.
+Ordinary geometry state/options, cache keys, serialized formats and emitted
+specialized source bytes remain unchanged. Finished shader objects detach after
+linking; native program owners retain their executables through the last
+binding.
+
+The geometry source builder changes its private final buffer in place to
+lower indirect input reads to constant-indexed selectors. The equal-length
+substitutions happen after all appends and before publication; no second
+whole source payload is created. Driver compilation may still allocate or
+copy internally. Runtime control packing/shadows are 16 bytes per native
+stage, allocated with renderer metadata; this is not an allocation-free
+renderer claim. A borrowed last-binding witness is cancelled before node
+reuse. Controls are uploaded only when their normalized values change.
+
+Native NVIDIA and llvmpipe correctness checks cover the full 12,960-state
+matrix and 50,872,320 scalar outputs, including signed zero, subnormal,
+degenerate, NaN and infinity inputs, with 38,880 ordinary source comparisons
+across GL/Vulkan targets and an
+independent emitted-color CPU oracle. llvmpipe also miscompiles indirect
+inputs in some ordinary reference states. The test-only reference lowers
+those reads independently with ternary selectors after checking original
+source bytes against the pinned parent. Do not count the unlowered failing
+reference or an arbitrary exception as a pass. Required bad depth, provoking,
+winding and atlas controls must still fail. These GL checks do not qualify
+Vulkan native readiness or general rendering/GPU execution performance.
+
+The initial 94-stage prototype was correct but produced a 707.13 ms DOA3
+startup callback. Retain that observed startup spike as a possible regression, not an accepted
+baseline: it came from a functional diagnostic run, not clean timing
+qualification.
+Moving atlas selection into controls reduces the finite domain to 22 stages.
+Functional checks restore byte-identical NGB images, reach 600 live DOA3 first-
+fight callbacks with exact audio cadence, and pass GL reset/restore. DOA3 still
+records roughly 468 ms startup callbacks in diagnostic runs. Startup and GPU
+execution costs remain unqualified; this is not accepted stutter recovery. Fragment misses, complete pipeline
+creation, fixed-function vertex coverage and utility paths remain separate
+open work. No permanent generic-stage selection is performance-qualified
+without GPU-cost evidence and optional complete exact-pipeline promotion.

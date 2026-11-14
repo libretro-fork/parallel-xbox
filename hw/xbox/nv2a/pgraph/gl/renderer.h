@@ -210,6 +210,7 @@ typedef struct ShaderBinding {
     GLuint gl_prog_vs, gl_prog_fs, gl_prog_gs;
 #ifdef XEMU_EXPERIMENTAL_READY_VSH
     struct ShaderBinding *pipeline_next, *pipeline_prev, *pipeline_hash_next;
+    int ready_geom_variant;
 #endif
     GLenum gl_primitive_mode;
     unsigned long uses;
@@ -475,6 +476,15 @@ typedef struct PGRAPHGLState {
         bool ready;
         uint64_t covered_binds, code_uploads; /* Opt-in diagnostic writes only. */
     } ready_vsh;
+    struct {
+        ShaderModuleCacheEntry *stages; /* Reserved in the existing module pool. */
+        GLint control_locs[GEOM_DYNAMIC_VARIANTS];
+        int controls[GEOM_DYNAMIC_VARIANTS][4];
+        bool controls_valid[GEOM_DYNAMIC_VARIANTS];
+        const ShaderBinding *uploaded_binding; /* Cancelled before node reuse. */
+        bool ready;
+        uint64_t covered_binds, control_uploads; /* Diagnostic writes only. */
+    } ready_geom;
 #endif
     /* Borrowed native cache slot; eviction/flush cancels before reuse. */
     ShaderBinding *spec_binding;

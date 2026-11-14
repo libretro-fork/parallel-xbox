@@ -29,6 +29,7 @@ with tempfile.TemporaryDirectory(prefix='ready-vsh-owner-') as temporary:
     for name,before,after in [
         ('unvalidated microcode','if (!pgraph_spv_vsh_supported(s, (SpvVshOptions){ .preserve_float32 = true }))','if (false)'),
         ('lost cache-owner invalidation','r->ready_vsh.uploaded_binding = NULL;','(void)r;'),
+        ('linked shader object retained','glDetachShader(stage->gl_stage_program, shader);','(void)glDetachShader;'),
         ('wrong flags offset','GL_UNIFORM_BUFFER, VSH_INTERPRETER_FLAGS_OFFSET,','GL_UNIFORM_BUFFER, VSH_INTERPRETER_FLAGS_OFFSET + 4,'),
         ('wrong interface owner','key->vsh.glsl_opts.prefix_outputs ? 1u : 0u','key->vsh.glsl_opts.prefix_outputs ? 0u : 0u'),
     ]:

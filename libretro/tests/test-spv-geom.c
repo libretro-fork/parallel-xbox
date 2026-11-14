@@ -33,6 +33,8 @@ static MString *mstring_from_fmt(const char *fmt,...){MString*s=calloc(1,sizeof(
 static void mstring_append_fmt(MString*s,const char*fmt,...){va_list a;va_start(a,fmt);appendv(s,fmt,a);va_end(a);}
 static void mstring_append(MString*s,const char*t){mstring_append_fmt(s,"%s",t);}
 static void mstring_unref(MString*s){free(s->str);free(s);}
+static inline const char *mstring_get_str(MString*s){return s->str;}
+static inline size_t mstring_get_length(MString*s){return s->len;}
 /* TYPES */
 /* GENERATORS */
 #ifdef TEST_VULKAN

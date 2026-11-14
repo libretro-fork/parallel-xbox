@@ -115,14 +115,20 @@ bool pgraph_glsl_need_geom(const GeomState *state)
 
 /* The 3/4 input positions are already on the GPU. Emit constant indices so
  * the small UI classifier has no shader loops or dynamic attribute indexing. */
-static void append_ui_prepare(MString *out, unsigned stage, unsigned count)
+static void append_ui_prepare_impl(MString *out, unsigned stage, unsigned count,
+                                    bool dynamic)
 {
     mstring_append(out,
         "bool uiValid;\nvec2 uiUVLo,uiUVHi;\nvoid ui_prepare(){\n");
     for (unsigned i = 0; i < count; i++) {
+        if (dynamic) {
+            mstring_append_fmt(out,
+                "vec4 uiP%u=v_vtxPos[%u],uiT%u=gsUITex(%u);\n", i,i,i,i);
+        } else {
         mstring_append_fmt(out,
             "vec4 uiP%u=v_vtxPos[%u],uiT%u=v_vtxT%u[%u];\n",
             i, i, i, stage, i);
+        }
     }
     mstring_append(out,
         "vec2 lo=uiP0.xy,hi=lo;\n"
@@ -181,7 +187,46 @@ static void append_ui_prepare(MString *out, unsigned stage, unsigned count)
         "uiValid=uiValid&&all(lessThanEqual(first,last));\n}\n");
 }
 
-MString *pgraph_glsl_gen_geom(const GeomState *state, GenGeomGlslOptions opts)
+static void append_ui_prepare(MString *out, unsigned stage, unsigned count)
+{
+    append_ui_prepare_impl(out, stage, count, false);
+}
+
+static void append_ui_prepare_dynamic(MString *out, unsigned count)
+{
+    append_ui_prepare_impl(out, 0, count, true);
+}
+
+/* This output is private to the builder until return. End all appends before
+ * the mutable lend; equal-length token substitutions preserve length/capacity.
+ * Helper definitions precede begin, so their constant GS loads stay direct. */
+static void geom_rewrite_inputs(MString *output, size_t begin)
+{
+    const char *names[] = { "v_vtxD0", "v_vtxD1", "v_vtxB0", "v_vtxB1",
+                            "v_vtxFog", "v_vtxT0", "v_vtxT1", "v_vtxT2",
+                            "v_vtxT3", "v_vtxPos" };
+    char *body = (char *)mstring_get_str(output) + begin;
+    for (char *p = body; *p; p++) {
+        for (unsigned i = 0; i < ARRAY_SIZE(names); i++) {
+            size_t n = strlen(names[i]);
+            if (strncmp(p, names[i], n) || p[n] != '[') continue;
+            char *close = p + n + 1;
+            unsigned depth = 1;
+            while (*close && depth) {
+                depth += (*close == '[') - (*close == ']');
+                if (depth) close++;
+            }
+            assert(!depth);
+            p[0] = 'g';
+            p[n] = '(';
+            *close = ')';
+            break;
+        }
+    }
+}
+
+static MString *pgraph_glsl_gen_geom_impl(const GeomState *state,
+                                         GenGeomGlslOptions opts, bool dynamic)
 {
     /* FIXME: Missing support for 2-sided-poly mode */
     assert(state->polygon_front_mode == state->polygon_back_mode);
@@ -372,6 +417,12 @@ MString *pgraph_glsl_gen_geom(const GeomState *state, GenGeomGlslOptions opts)
         return NULL;
     }
 
+    if (dynamic) {
+        /* Atlas stage selection is carried in packed controls. Keep its
+         * classifier available for every non-line source in the finite set. */
+        opts.ui_clamp_stage = need_triz || need_quadz ? 1 : 0;
+    }
+
     /* generate a geometry shader to support deprecated primitive types */
     assert(layout_in);
     assert(layout_out);
@@ -400,20 +451,60 @@ MString *pgraph_glsl_gen_geom(const GeomState *state, GenGeomGlslOptions opts)
     pgraph_glsl_get_vtx_header(output, opts.vulkan || opts.locations,
                                state->smooth_shading, false, false, false);
 
+    if (dynamic) {
+        mstring_append(output, "uniform ivec4 gsControl;\n");
+    }
+
+    if (dynamic) {
+        /* Keep every GS input load constant-indexed, including flat colors.
+         * Some software GL implementations miscompile indirect GS inputs. */
+        unsigned count = need_quadz ? 4 : need_triz ? 3 : 2;
+        const char *names[] = { "vtxD0", "vtxD1", "vtxB0", "vtxB1",
+                                "vtxFog", "vtxT0", "vtxT1", "vtxT2", "vtxT3",
+                                "vtxPos", "Position", "PointSize" };
+        for (unsigned i = 0; i < ARRAY_SIZE(names); i++) {
+            mstring_append_fmt(output, "%s g_%s(int i){\n",
+                               i == 4 || i == 11 ? "float" : "vec4", names[i]);
+            for (unsigned j = 0; j < count; j++) {
+                if (j + 1 < count) mstring_append_fmt(output,"if(i==%u)",j);
+                if (i >= 10)
+                    mstring_append_fmt(output,"return gl_in[%u].gl_%s;\n",j,names[i]);
+                else
+                    mstring_append_fmt(output,"return v_%s[%u];\n",
+                                       i == 9 ? "vtxPos0" : names[i],j);
+            }
+            mstring_append(output, "}\n");
+        }
+    }
+    if (dynamic && opts.ui_clamp_stage) {
+        mstring_append(output,
+            "vec4 gsUITex(int i){int t=(gsControl.x>>1)&7;\n"
+            "if(t==1)return g_vtxT0(i);if(t==2)return g_vtxT1(i);\n"
+            "if(t==3)return g_vtxT2(i);return g_vtxT3(i); }\n");
+    }
+    size_t dynamic_body_start = mstring_get_length(output);
+
     const char *ui_emit = "";
     const char *ui_setup = "";
     if (opts.ui_clamp_stage) {
         unsigned stage = opts.ui_clamp_stage - 1;
-        append_ui_prepare(output, stage,
-            state->primitive_mode == PRIM_TYPE_QUADS ||
-            state->primitive_mode == PRIM_TYPE_QUAD_STRIP ? 4 : 3);
+        unsigned count = state->primitive_mode == PRIM_TYPE_QUADS ||
+                         state->primitive_mode == PRIM_TYPE_QUAD_STRIP ? 4 : 3;
+        if (dynamic) append_ui_prepare_dynamic(output, count);
+        else append_ui_prepare(output, stage, count);
         ui_emit = "if (uiValid) {\n    vtxPos1.xy = uiUVLo; vtxPos2.xy = uiUVHi;\n    triMZ = uintBitsToFloat(0x80000000u);\n}\n";
         ui_setup = state->primitive_mode == PRIM_TYPE_QUAD_STRIP ?
             "if ((gl_PrimitiveIDIn & 1) != 0) return; ui_prepare();\n" :
             "ui_prepare();\n";
+        if (dynamic) {
+            ui_setup = state->primitive_mode == PRIM_TYPE_QUAD_STRIP ?
+                "if ((gl_PrimitiveIDIn & 1) != 0) return;uiValid=false;\n"
+                "if((gsControl.x&14)!=0)ui_prepare();\n" :
+                "uiValid=false;if((gsControl.x&14)!=0)ui_prepare();\n";
+        }
     }
 
-    char vertex_order_buf[80];
+    char vertex_order_buf[256];
     const char *vertex_order_body = "";
 
     if (need_triz) {
@@ -425,7 +516,11 @@ MString *pgraph_glsl_gen_geom(const GeomState *state, GenGeomGlslOptions opts)
          * regarding floating-point rounding when calculating with vtxPos0/1/2.
          */
         mstring_append(output, "ivec3 v;\n");
-        if (state->tri_rot0 == state->tri_rot1) {
+        if (dynamic) {
+            snprintf(vertex_order_buf, sizeof(vertex_order_buf),
+                     "  int rot = (gl_PrimitiveIDIn & 1) == 0 ? gsControl.z : gsControl.w;\n"
+                     "  v = rot == 0 ? ivec3(0, 1, 2) : rot == 1 ? ivec3(2, 0, 1) : ivec3(1, 2, 0);\n");
+        } else if (state->tri_rot0 == state->tri_rot1) {
             snprintf(vertex_order_buf, sizeof(vertex_order_buf), "  v = %s;\n",
                      get_vertex_order(state->tri_rot0));
         } else {
@@ -437,6 +532,11 @@ MString *pgraph_glsl_gen_geom(const GeomState *state, GenGeomGlslOptions opts)
         vertex_order_body = vertex_order_buf;
     }
 
+    if (dynamic) {
+        provoking_index = need_triz ?
+            "v[gsControl.y == 3 ? 2 - (gl_PrimitiveIDIn & 1) : gsControl.y]" :
+            "gsControl.y";
+    }
     if (state->smooth_shading) {
         provoking_index = "index";
     }
@@ -444,8 +544,8 @@ MString *pgraph_glsl_gen_geom(const GeomState *state, GenGeomGlslOptions opts)
     mstring_append_fmt(
         output,
         "void emit_vertex(int index, mat4 pz) {\n"
-        "  gl_Position = gl_in[index].gl_Position;\n"
-        "  gl_PointSize = gl_in[index].gl_PointSize;\n"
+        "  gl_Position = %s;\n"
+        "  gl_PointSize = %s;\n"
         "  vtxD0 = v_vtxD0[%s];\n"
         "  vtxD1 = v_vtxD1[%s];\n"
         "  vtxB0 = v_vtxB0[%s];\n"
@@ -462,6 +562,8 @@ MString *pgraph_glsl_gen_geom(const GeomState *state, GenGeomGlslOptions opts)
         "%s"
         "  EmitVertex();\n"
         "}\n",
+        dynamic ? "g_Position(index)" : "gl_in[index].gl_Position",
+        dynamic ? "g_PointSize(index)" : "gl_in[index].gl_PointSize",
         provoking_index,
         provoking_index,
         provoking_index,
@@ -488,7 +590,29 @@ MString *pgraph_glsl_gen_geom(const GeomState *state, GenGeomGlslOptions opts)
         const char *ui_plane = opts.ui_clamp_stage ?
             "  if(uiValid) return mat4(v_vtxPos[i0],v_vtxPos[i1],v_vtxPos[i2],"
             "uintBitsToFloat(0x80000000u),vec3(0.0));\n" : "";
-        if (state->z_perspective) {
+        if (dynamic) {
+            mstring_append_fmt(
+                output,
+                "mat4 calc_triz(int i0, int i1, int i2) {\n"
+                "%s"
+                "  mat2 m = mat2(v_vtxPos[i1].xy - v_vtxPos[i0].xy,\n"
+                "                v_vtxPos[i2].xy - v_vtxPos[i0].xy);\n"
+                "  precise vec2 b;\n"
+                "  if ((gsControl.x & 1) != 0) {\n"
+                "    b = vec2(v_vtxPos[i0].w - v_vtxPos[i1].w,\n"
+                "             v_vtxPos[i0].w - v_vtxPos[i2].w);\n"
+                "    b /= vec2(v_vtxPos[i1].w, v_vtxPos[i2].w) * v_vtxPos[i0].w;\n"
+                "  } else {\n"
+                "    b = vec2(v_vtxPos[i1].z - v_vtxPos[i0].z,\n"
+                "             v_vtxPos[i2].z - v_vtxPos[i0].z);\n"
+                "  }\n"
+                "  float det = kahan_det(m[0].x, m[1].y, m[1].x, m[0].y);\n"
+                "  float dzx = kahan_det(b.x, m[1].y, b.y, m[0].y) / det;\n"
+                "  float dzy = kahan_det(b.y, m[0].x, b.x, m[1].x) / det;\n"
+                "  float dz = max(abs(dzx), abs(dzy));\n"
+                "  return mat4(v_vtxPos[i0], v_vtxPos[i1], v_vtxPos[i2], dz, vec3(0.0));\n"
+                "}\n", ui_plane);
+        } else if (state->z_perspective) {
             mstring_append_fmt(
                 output,
                 "mat4 calc_triz(int i0, int i1, int i2) {\n"
@@ -554,7 +678,7 @@ MString *pgraph_glsl_gen_geom(const GeomState *state, GenGeomGlslOptions opts)
             "uniform int gsKeepWinding;\n"
             "void emit_wide_vertex(int index, mat4 pz, vec4 pos) {\n"
             "  gl_Position = pos;\n"
-            "  gl_PointSize = gl_in[index].gl_PointSize;\n"
+            "  gl_PointSize = %s;\n"
             "  vtxD0 = v_vtxD0[%s];\n"
             "  vtxD1 = v_vtxD1[%s];\n"
             "  vtxB0 = v_vtxB0[%s];\n"
@@ -574,8 +698,8 @@ MString *pgraph_glsl_gen_geom(const GeomState *state, GenGeomGlslOptions opts)
             "  vec2 delta = v_vtxPos[i1].xy - v_vtxPos[i0].xy;\n"
             "  vec2 v2 = vec2(-delta.y, delta.x) + v_vtxPos[i0].xy;\n"
             "  mat4 pz = mat4(v_vtxPos[i0], v_vtxPos[i1], v2, v_vtxPos[i0].zw, dz, vec3(0.0));\n"
-            "  vec4 p0 = gl_in[i0].gl_Position;\n"
-            "  vec4 p1 = gl_in[i1].gl_Position;\n"
+            "  vec4 p0 = %s;\n"
+            "  vec4 p1 = %s;\n"
             "  vec2 s0 = p0.xy / p0.w;\n"
             "  vec2 s1 = p1.xy / p1.w;\n"
             "  vec2 d = (s1 - s0) * gsSurfaceSize;\n"
@@ -595,7 +719,10 @@ MString *pgraph_glsl_gen_geom(const GeomState *state, GenGeomGlslOptions opts)
             "  emit_wide_vertex(i1, pz, vec4((s1 - off) * p1.w, p1.zw));\n"
             "  EndPrimitive();\n"
             "}\n",
-            provoking_index, provoking_index, provoking_index, provoking_index);
+            dynamic ? "g_PointSize(index)" : "gl_in[index].gl_PointSize",
+            provoking_index, provoking_index, provoking_index, provoking_index,
+            dynamic ? "g_Position(i0)" : "gl_in[i0].gl_Position",
+            dynamic ? "g_Position(i1)" : "gl_in[i1].gl_Position");
     }
 
     if (need_quadz) {
@@ -616,5 +743,101 @@ MString *pgraph_glsl_gen_geom(const GeomState *state, GenGeomGlslOptions opts)
                        "}\n",
                        vertex_order_body, ui_setup, body);
 
+    if (dynamic) geom_rewrite_inputs(output, dynamic_body_start);
     return output;
+}
+
+MString *pgraph_glsl_gen_geom(const GeomState *state, GenGeomGlslOptions opts)
+{
+    return pgraph_glsl_gen_geom_impl(state, opts, false);
+}
+
+MString *pgraph_glsl_gen_geom_dynamic(const GeomState *state,
+                                    GenGeomGlslOptions opts)
+{
+    return pgraph_glsl_gen_geom_impl(state, opts, true);
+}
+
+/* Native topology/interpolation and the atlas stage are the remaining finite
+ * source domain. Guest depth/provoking/winding controls travel separately. */
+int pgraph_glsl_geom_dynamic_variant(const GeomState *state,
+                                    GenGeomGlslOptions opts)
+{
+    if (state->polygon_front_mode != state->polygon_back_mode ||
+        state->polygon_front_mode > POLY_MODE_LINE ||
+        state->polygon_front_mode < POLY_MODE_FILL || opts.ui_clamp_stage > 4)
+        return -1;
+    unsigned family;
+    switch (state->primitive_mode) {
+    case PRIM_TYPE_LINES: case PRIM_TYPE_LINE_LOOP: case PRIM_TYPE_LINE_STRIP:
+        family = state->wide_lines ? 1 : 0;
+        break;
+    case PRIM_TYPE_TRIANGLES: case PRIM_TYPE_TRIANGLE_STRIP:
+    case PRIM_TYPE_TRIANGLE_FAN:
+        family = 2 + state->polygon_front_mode;
+        break;
+    case PRIM_TYPE_QUADS:
+        family = 5 + state->polygon_front_mode;
+        break;
+    case PRIM_TYPE_QUAD_STRIP:
+        family = 8 + state->polygon_front_mode;
+        break;
+    case PRIM_TYPE_POLYGON:
+        if (state->polygon_front_mode == POLY_MODE_POINT) return -1;
+        family = state->polygon_front_mode == POLY_MODE_FILL ? 2 : 0;
+        break;
+    default:
+        return -1;
+    }
+    if (family < 2) {
+        if (opts.ui_clamp_stage) return -1;
+        return family * 2 + state->smooth_shading;
+    }
+    return 4 + (family - 2) * 2 + state->smooth_shading;
+}
+
+void pgraph_glsl_geom_dynamic_state(unsigned variant, GeomState *state,
+                                    GenGeomGlslOptions *opts)
+{
+    assert(variant < GEOM_DYNAMIC_VARIANTS);
+    memset(state, 0, sizeof(*state));
+    *opts = (GenGeomGlslOptions){ .locations = true };
+    state->smooth_shading = variant & 1;
+    unsigned family;
+    if (variant < 4) {
+        family = variant / 2;
+        state->primitive_mode = PRIM_TYPE_LINES;
+        state->wide_lines = family == 1;
+    } else {
+        family = 2 + (variant - 4) / 2;
+        state->primitive_mode = family < 5 ? PRIM_TYPE_TRIANGLES :
+                                family < 8 ? PRIM_TYPE_QUADS : PRIM_TYPE_QUAD_STRIP;
+        state->polygon_front_mode = (family - 2) % 3;
+    }
+    state->polygon_back_mode = state->polygon_front_mode;
+}
+
+void pgraph_glsl_geom_dynamic_controls(const GeomState *state, unsigned ui_stage,
+                                      int controls[4])
+{
+    int provoking;
+    switch (state->primitive_mode) {
+    case PRIM_TYPE_LINES: case PRIM_TYPE_LINE_LOOP: case PRIM_TYPE_LINE_STRIP:
+        provoking = state->first_vertex_is_provoking ? 0 : 1; break;
+    case PRIM_TYPE_TRIANGLES: case PRIM_TYPE_TRIANGLE_STRIP:
+    case PRIM_TYPE_TRIANGLE_FAN:
+        provoking = state->first_vertex_is_provoking ? 0 :
+                    state->primitive_mode == PRIM_TYPE_TRIANGLE_STRIP ? 3 :
+                    state->primitive_mode == PRIM_TYPE_TRIANGLE_FAN ? 1 : 2;
+        break;
+    case PRIM_TYPE_POLYGON:
+        provoking = state->polygon_front_mode == POLY_MODE_FILL ? 2 : 0; break;
+    default:
+        provoking = 3; break;
+    }
+    assert(ui_stage <= 4);
+    controls[0] = state->z_perspective | (ui_stage << 1);
+    controls[1] = provoking;
+    controls[2] = state->tri_rot0 == 0 ? 0 : state->tri_rot0 == 1 ? 1 : 2;
+    controls[3] = state->tri_rot1 == 0 ? 0 : state->tri_rot1 == 1 ? 1 : 2;
 }

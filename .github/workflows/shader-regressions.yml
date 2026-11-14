@@ -385,10 +385,46 @@ jobs:
           name: dynamic-programmable-interpreter-${{ matrix.commit }}
           path: results/
 
+  geometry-ready-gpu:
+    name: Finite ready geometry numerics (${{ matrix.commit }})
+    needs: revisions
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.revisions.outputs.candidates) }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ matrix.commit }}
+          filter: blob:none
+      - name: Install software GL headers and preserve the ordinary reference
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y libegl1-mesa-dev libgl-dev
+          git fetch --no-tags --depth=1 origin f3d5d52760bccdf0d48cfc175f311267d5e3866e
+          mkdir -p results
+          git show f3d5d52760bccdf0d48cfc175f311267d5e3866e:hw/xbox/nv2a/pgraph/glsl/geom.c > results/reference-geom.c
+      - name: Check reserved pool ownership and every partial-init failure
+        run: |
+          set -euo pipefail
+          python3 libretro/tests/test-ready-geom-owner.py . cc 2>&1 | tee results/owners.log
+      - name: Compare every geometry source and native output, with CPU oracle controls
+        run: |
+          set -euo pipefail
+          export LIBGL_ALWAYS_SOFTWARE=1 EGL_PLATFORM=surfaceless
+          python3 libretro/tests/test-geom-dynamic-gl.py . cc --reference results/reference-geom.c --keep results/gpu 2>&1 | tee results/geometry.log
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ready-geometry-${{ matrix.commit }}
+          path: results/
+
   shader-gate:
     name: Shader and PSO required gate
     if: always()
-    needs: [revisions, contracts, compilation, software-gpu, interpreter-gpu, interpreter-dynamic-gpu]
+    needs: [revisions, contracts, compilation, software-gpu, interpreter-gpu, interpreter-dynamic-gpu, geometry-ready-gpu]
     runs-on: ubuntu-24.04
     steps:
       - name: Require every revision and reference job to pass

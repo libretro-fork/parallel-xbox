@@ -32,7 +32,7 @@ typedef struct { struct { ShaderModuleCacheEntry stage[4]; GLuint code_buffer;
     const ShaderBinding *uploaded_binding; bool ready;
     uint64_t covered_binds, code_uploads; } ready_vsh; } PGRAPHGLState;
 typedef struct { char text[8]; } MString;
-static bool sso=true, alive[8], buffer_alive, missing_block;
+static bool sso=true, alive[8], attached[8], buffer_alive, missing_block;
 static unsigned creates, deletes, uniform_resolves, writes, owners, fail_at;
 static GLint bound=77;
 static uint8_t storage[VSH_INTERPRETER_BUFFER_SIZE+16];
@@ -48,14 +48,15 @@ static const char *mstring_get_str(MString *m) { return m->text; }
 static void mstring_unref(MString *m) { assert(owners);owners--;free(m); }
 static GLuint pgraph_gl_separable_program(unsigned kind,const char *text,GLuint *shader)
 { assert(kind==GL_VERTEX_SHADER&&creates<4&&strtoul(text,NULL,10)==creates);
-  GLuint p=++creates;alive[p]=true;*shader=p+10;return p; }
+  GLuint p=++creates;alive[p]=attached[p]=true;*shader=p+10;return p; }
+static void glDetachShader(GLuint p,GLuint shader) { assert(alive[p]&&attached[p]&&shader==p+10&&p!=fail_at);attached[p]=false; }
 static void glDeleteShader(GLuint s) { assert(s>10&&s<=14); }
 static void glGetProgramiv(GLuint p,unsigned name,GLint *out)
 { assert(alive[p]&&name==GL_LINK_STATUS);*out=p!=fail_at; }
 static void glGetProgramInfoLog(GLuint p,size_t n,void *length,char *out)
 { assert(p==fail_at&&n>8&&!length);strcpy(out,"fixture"); }
 static void delete_program(PGRAPHGLState *r,GLuint p)
-{ (void)r;assert(alive[p]);alive[p]=false;deletes++; }
+{ (void)r;assert(alive[p]);alive[p]=attached[p]=false;deletes++; }
 static GLuint glGetUniformBlockIndex(GLuint p,const char *name)
 { assert(alive[p]&&!strcmp(name,"XvsCode"));return missing_block?GL_INVALID_INDEX:9; }
 static void glUniformBlockBinding(GLuint p,GLuint block,GLuint binding)
@@ -84,6 +85,7 @@ int main(void)
 {
     PGRAPHGLState r={0};sso=false;ready_vsh_init(&r);assert(!creates&&!r.ready_vsh.ready);
     sso=true;ready_vsh_init(&r);assert(creates==4&&uniform_resolves==4&&!owners&&bound==77&&r.ready_vsh.ready);
+    for(unsigned i=1;i<=4;i++)assert(!attached[i]);
     ShaderModuleCacheKey k={.kind=GL_VERTEX_SHADER};k.vsh.state.programmable.program_length=1;
     for(unsigned smooth=0;smooth<2;smooth++)for(unsigned prefix=0;prefix<2;prefix++) {
         k.vsh.state.smooth_shading=smooth;k.vsh.glsl_opts.prefix_outputs=prefix;

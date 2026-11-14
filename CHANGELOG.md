@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Experimental GL geometry coverage: prepare the finite native stage set before guest execution, using slots from the existing module pool. Carry winding, provoking-vertex, depth and atlas-stage controls in bounded uniform updates. Preserve the specialized path on unsupported states or failed initialization. Ordinary shader keys and source output remain unchanged; fragment/full-pipeline coverage, startup and GPU-cost qualification remain open.
+
 - Experimental GL coverage shares completed native pipeline objects across bindings with identical stage programs, avoiding repeated driver creation for different guest microcode. Existing binding nodes retain the shared owners through eviction and context teardown; no extra resource pool or payload snapshot is added. First-use and uncovered compilation remain open.
 
 - Repair the vertex-emitter regression fixture after removal of standalone Vulkan device creation; it still requires float-control publication for the frontend-owned device.

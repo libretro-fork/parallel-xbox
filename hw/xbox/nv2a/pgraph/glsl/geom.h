@@ -52,4 +52,15 @@ bool pgraph_glsl_need_geom(const GeomState *state);
 
 MString *pgraph_glsl_gen_geom(const GeomState *state, GenGeomGlslOptions opts);
 
+/* Experimental finite geometry source domain; ordinary keys stay unchanged. */
+#define GEOM_DYNAMIC_VARIANTS 22
+MString *pgraph_glsl_gen_geom_dynamic(const GeomState *state,
+                                    GenGeomGlslOptions opts);
+int pgraph_glsl_geom_dynamic_variant(const GeomState *state,
+                                    GenGeomGlslOptions opts);
+void pgraph_glsl_geom_dynamic_state(unsigned variant, GeomState *state,
+                                    GenGeomGlslOptions *opts);
+void pgraph_glsl_geom_dynamic_controls(const GeomState *state, unsigned ui_stage,
+                                      int controls[4]);
+
 #endif

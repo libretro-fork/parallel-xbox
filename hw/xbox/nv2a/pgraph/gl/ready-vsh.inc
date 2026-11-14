@@ -75,6 +75,7 @@ static void ready_vsh_init(PGRAPHGLState *r)
             ready_vsh_finalize(r);
             return; /* Keep the existing correct specialized path. */
         }
+        glDetachShader(stage->gl_stage_program, shader); /* Linked executable survives. */
         GLuint block = glGetUniformBlockIndex(stage->gl_stage_program, "XvsCode");
         if (block == GL_INVALID_INDEX) {
             fprintf(stderr, "Experimental ready vertex stage lacks its code block\n");
