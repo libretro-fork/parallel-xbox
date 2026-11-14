@@ -39,7 +39,7 @@ QEMU_CFLAGS := -std=gnu11 -fno-strict-aliasing -fno-common -fwrapv \
 	$(QEMU_WARNINGS) $(QEMU_DEFINES) $(OS_CFLAGS) $(QEMU_INCFLAGS) \
 	$(DEPS_CFLAGS)
 
-VULKAN_INCFLAGS := -DVK_NO_PROTOTYPES -I$(CORE_DIR)/deps/volk \
+VULKAN_INCFLAGS := -DVK_NO_PROTOTYPES -I$(CORE_DIR)/libretro \
 	-I$(CORE_DIR)/deps/nv2a_vsh_cpu/src
 
 # By the sources' groups below
@@ -66,7 +66,7 @@ endif
 # The core's GLib (libretro/glib): GLib's API on libretro-common
 CFLAGS_GLIB := -std=gnu11 -Wall -I$(CORE_DIR)/libretro/glib \
 	-I$(CORE_DIR)/libretro-common/include $(OS_CFLAGS)
-CFLAGS_VOLK := -I$(CORE_DIR)/deps/volk -DVK_NO_PROTOTYPES $(OS_CFLAGS) \
+CFLAGS_VK_DISPATCH := -I$(CORE_DIR)/libretro -DVK_NO_PROTOTYPES $(OS_CFLAGS) \
 	$(DEPS_CFLAGS)
 # The GLSL to SPIR-V compiler: plain C, nothing of QEMU; the SPIR-V header
 # comes from the standalone Khronos definitions header
@@ -642,8 +642,8 @@ ifeq ($(HOST_OS),darwin)
 SOURCES_LRCOMMON += $(CORE_DIR)/libretro-common/memmap/memmap.c
 endif
 
-SOURCES_VOLK := \
-	$(CORE_DIR)/deps/volk/volk.c \
+SOURCES_VK_DISPATCH := \
+	$(CORE_DIR)/libretro/vk_dispatch.c \
 
 SOURCES_GLSLC := \
 	$(CORE_DIR)/hw/xbox/nv2a/pgraph/spv/glslc.c \

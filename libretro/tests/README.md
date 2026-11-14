@@ -437,7 +437,7 @@ The fixture exposes no host readback or wait APIs. Matching padded guest pitches
 supported; padding is omitted and the capacity check counts active pixels.
 
 Set `TEXTURE_TRANSFER_GPU_TEST=1` when running `test-texture-reinterpret.py` to
-additionally compile the production transfer against Volk and run it on the
+additionally compile the production transfer against the Vulkan dispatch table and run it on the
 first Vulkan GPU. The oracle uploads nonuniform native color bytes, then checks
 every destination byte for 22 source/destination pairs at scale 1/2/4 with
 tight/padded source rows and two updates per image (264 cases). It extracts the
@@ -916,8 +916,8 @@ once. Reflection independently verifies that no descriptor or push-constant
 layouts are needed. The optional GPU test checks 88 combinations of RGBA8/float
 raster output, viewport/scissor cases and indexed/non-indexed vertex indices
 against a CPU oracle and the original shaders in both SPIR-V versions. The
-static modules additionally pass spirv-val under Vulkan 1.0. Tests use bundled
-Volk and report validation-layer availability; GPU readbacks are test-only.
+static modules additionally pass spirv-val under Vulkan 1.0. Tests use the
+test-only native loader and report validation-layer availability; GPU readbacks are test-only.
 
 `python libretro/tests/test-spv-geom.py . gcc --gpu` compares the direct
 line, triangle and quad emitters with the production GLSL generator/compiler.
@@ -933,7 +933,7 @@ compares old/new values bit for bit (NaN payloads may differ), then checks an
 independent CPU oracle. Only the CPU slope oracle tolerates GPU division
 rounding. Test-only capture writes/readbacks never enter the renderer.
 Installed spirv-val checks original, direct and instrumented modules. The
-Vulkan test uses bundled Volk and reports whether validation layers exist.
+Vulkan test uses the test-only native loader and reports whether validation layers exist.
 Compile microbenchmarks exclude GLSL generation and driver PSO compilation.
 
 `python libretro/tests/test-shader-layout.py . gcc` checks compiler-provided
@@ -1723,7 +1723,7 @@ including 64-512-byte atoms during randomized submissions, 128-byte adjacent
 uploads and a growth that changes memory type. Staging alignment is selected
 after growth so the replacement allocation's properties control it.
 
-`test-vk-crosshair.py` uses the bundled Volk loader to execute the production
+`test-vk-crosshair.py` uses the frontend dispatch table with the test-only native loader to execute the production
 crosshair attachment clears on a Vulkan GPU. It compares 384 full images with
 an independent pixel reference using the former transfer path's byte colors.
 Cases cover hidden players, overlaps, clipping at every edge, tiny and tall
@@ -3077,7 +3077,7 @@ The runtime reuses the presentation draw. Vulkan reserves and maps eight small l
 
 `python libretro/tests/test-single-axis-readback-vulkan.py CHECKOUT [CC]`
 executes the production `download_surface_to_buffer`, routing helper and host
-visibility barrier on a real Vulkan device via Volk. It checks 1,152 combinations
+visibility barrier on a real Vulkan device via the test-only native loader. It checks 1,152 combinations
 of R8, RGB565, ARGB8888 and D16, horizontal/vertical single-axis and 2D linear
 extents, scale 1/2/4, immediate/single-entry batch completion, two updates and
 swizzled/tight-linear/padded-linear destinations. Destination RAM bytes, row
@@ -5306,3 +5306,10 @@ core image through module destruction. Only mutable128-byte push values share
 the final module owner. The unused1024-byte host gamma reflection allocation
 per variant disappears; the real GPU LUT/descriptors/upload ring stay unchanged.
 Driver allocation/copy behavior and cold-play smoothness remain unqualified.
+
+
+`python libretro/tests/test-vk-dispatch.py CHECKOUT [CC]` verifies frontend-only
+Vulkan resolution without a Vulkan loader or GPU: direct device function pointers,
+optional misses, required failures, device replacement and complete table clearing.
+GPU fixtures use the current test driver loader when comparing historical candidates;
+the production core never opens an OS Vulkan loader.

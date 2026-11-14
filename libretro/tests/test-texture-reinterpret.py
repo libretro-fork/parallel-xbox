@@ -1,6 +1,8 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 """Exercise the production alias eligibility gate. Usage: python SCRIPT CHECKOUT [CC]."""
 from pathlib import Path
+
+vk_loader_root = Path(__file__).resolve().parents[2]
 import os
 import re
 import subprocess
@@ -38,7 +40,7 @@ depth = 1
 while depth:
     depth += (source[end] == "{") - (source[end] == "}")
     end += 1
-transfer = (repo / "libretro/tests/test-linear-transfer.c").read_text().replace(
+transfer = (vk_loader_root / "libretro/tests/test-linear-transfer.c").read_text().replace(
     "/* PRODUCTION */", source[start:end])
 with tempfile.TemporaryDirectory(prefix="linear-transfer-", dir=repo.parent) as directory:
     folder = Path(directory)
@@ -94,7 +96,7 @@ if (os.environ.get("TEXTURE_TRANSFER_GPU_TEST") == "1" or
     constants = (repo / "hw/xbox/nv2a/pgraph/vk/constants.h").read_text()
     start = constants.index("static const VkColorFormatInfo kelvin_color_format_vk_map[")
     end = constants.index("\n};", start) + 3
-    oracle = (repo / "libretro/tests/test-linear-transfer-vulkan.c").read_text()
+    oracle = (vk_loader_root / "libretro/tests/test-linear-transfer-vulkan.c").read_text()
     oracle = oracle.replace("/* FORMAT_MAP */", constants[start:end])
     start = source.index("static void copy_surface_to_linear_texture(")
     end = source.index("{", start) + 1
@@ -110,7 +112,7 @@ if (os.environ.get("TEXTURE_TRANSFER_GPU_TEST") == "1" or
         subprocess.run([cc, "-O2", "-std=gnu11", "-Wall", "-Wextra", "-Werror",
                         "-Wno-missing-field-initializers", "-I", str(repo),
                         "-I", str(repo / "deps/vulkan-headers"),
-                        "-I", str(repo / "deps/volk"), str(folder / "test.c"),
-                        str(repo / "deps/volk/volk.c"), "-o", str(exe)] +
+                        "-I", str(vk_loader_root / "libretro"), str(folder / "test.c"),
+                        str(vk_loader_root / "libretro/vk_dispatch.c"),str(vk_loader_root / "libretro/tests/vk-test-loader.c"), "-o", str(exe)] +
                        ([] if os.name == "nt" else ["-ldl"]), check=True)
         subprocess.run([str(exe)], check=True)

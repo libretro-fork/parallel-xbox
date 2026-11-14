@@ -3,6 +3,8 @@
 import argparse
 import os
 from pathlib import Path
+
+vk_loader_root = Path(__file__).resolve().parents[2]
 import subprocess
 import tempfile
 
@@ -12,7 +14,7 @@ parser.add_argument('--cc', default='gcc')
 parser.add_argument('--baseline', help='Git revision to run as a negative control')
 args = parser.parse_args()
 repo = args.repo.resolve()
-helpers = (repo / 'libretro/tests/spv-clear-vulkan.h').read_text().split('static VkPipeline pipeline(')[0]
+helpers = (vk_loader_root / 'libretro/tests/spv-clear-vulkan.h').read_text().split('static VkPipeline pipeline(')[0]
 source = Path(__file__).with_suffix('.c').read_text().replace('/* GPU HELPERS */', helpers)
 env = os.environ.copy()
 env['PATH'] = str(Path(args.cc).resolve().parent) + os.pathsep + env.get('PATH', '')
@@ -29,10 +31,10 @@ with tempfile.TemporaryDirectory(prefix='glsl-local-') as directory:
         command = [args.cc, '-O2', '-std=gnu11', '-Wall', '-Wextra', '-Werror',
             '-Wno-missing-field-initializers', '-Wno-unused-variable',
             '-fsanitize=undefined', '-fsanitize-undefined-trap-on-error',
-            '-I' + str(repo), '-I' + str(repo / 'deps/volk'),
+            '-I' + str(repo), '-I' + str(vk_loader_root / 'libretro'),
             '-I' + str(repo / 'deps/vulkan-headers'), '-I' + str(repo / 'deps/spirv-headers/include'),
             '-I' + str(repo / 'hw/xbox/nv2a/pgraph/spv'), str(test), str(compiler),
-            str(repo / 'hw/xbox/nv2a/pgraph/spv/glslc_lex.c'), str(repo / 'deps/volk/volk.c'),
+            str(repo / 'hw/xbox/nv2a/pgraph/spv/glslc_lex.c'), str(vk_loader_root / 'libretro/vk_dispatch.c'),str(vk_loader_root / 'libretro/tests/vk-test-loader.c'),
             '-lm', '-o', str(exe)]
         if os.name != 'nt': command += ['-ldl']
         subprocess.run(command, check=True, env=env)

@@ -27,13 +27,10 @@ static void create_command_pool(PGRAPHState *pg)
 {
     PGRAPHVkState *r = pg->vk_renderer_state;
 
-    QueueFamilyIndices indices =
-        pgraph_vk_find_queue_families(r->physical_device);
-
     VkCommandPoolCreateInfo create_info = {
         .sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
         .flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT,
-        .queueFamilyIndex = indices.queue_family,
+        .queueFamilyIndex = xemu_libretro_vk.queue_family,
     };
     VK_CHECK(
         vkCreateCommandPool(r->device, &create_info, NULL, &r->command_pool));

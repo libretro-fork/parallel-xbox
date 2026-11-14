@@ -5,7 +5,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <volk.h>
+#include <vk-test-loader.h>
 #include "hw/xbox/nv2a/pgraph/spv/glslc.h"
 /* GPU HELPERS */
 typedef struct SurfaceBinding {bool color,in_shader_read;VkImage image;struct {VkFormat vk_format;} host_fmt;unsigned borrow_submit;} SurfaceBinding;

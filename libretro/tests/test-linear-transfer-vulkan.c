@@ -5,7 +5,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include "volk.h"
+#include "vk-test-loader.h"
 #include "hw/xbox/nv2a/nv2a_regs.h"
 
 #define CHECK(call) do { VkResult check_result = (call); if (check_result != VK_SUCCESS) { \
@@ -115,13 +115,13 @@ static unsigned char pattern(unsigned x, unsigned y, unsigned byte, unsigned gen
 { return x * 37 + y * 71 + byte * 53 + generation * 109; }
 int main(void)
 {
-    CHECK(volkInitialize());
+    CHECK(test_vk_initialize());
     VkApplicationInfo app = { .sType = VK_STRUCTURE_TYPE_APPLICATION_INFO,
         .pApplicationName = "linear byte transfer oracle", .apiVersion = VK_API_VERSION_1_1 };
     VkInstanceCreateInfo ii = { .sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO, .pApplicationInfo = &app };
     VkInstance instance;
     CHECK(vkCreateInstance(&ii, NULL, &instance));
-    volkLoadInstance(instance);
+    test_vk_load_instance(instance);
     unsigned count = 0;
     CHECK(vkEnumeratePhysicalDevices(instance, &count, NULL));
     assert(count);
@@ -146,7 +146,7 @@ int main(void)
     VkDeviceCreateInfo di = { .sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
         .queueCreateInfoCount = 1, .pQueueCreateInfos = &qi };
     CHECK(vkCreateDevice(gpu, &di, NULL, &device));
-    volkLoadDevice(device);
+    test_vk_load_device(device);
     VkQueue queue;
     vkGetDeviceQueue(device, family, 0, &queue);
     VkCommandPoolCreateInfo pi = { .sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,

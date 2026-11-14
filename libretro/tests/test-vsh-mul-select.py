@@ -3,6 +3,8 @@
 import argparse
 import os
 from pathlib import Path
+
+vk_loader_root = Path(__file__).resolve().parents[2]
 import subprocess
 import shutil
 import tempfile
@@ -73,10 +75,10 @@ with tempfile.TemporaryDirectory(prefix='nv2a-mul-') as directory:
         command = [args.cc, '-O2', '-std=gnu11', '-Wall', '-Wextra', '-Werror',
             '-Wno-missing-field-initializers', '-Wno-unused-variable',
             '-fsanitize=undefined', '-fsanitize-undefined-trap-on-error',
-            '-I' + str(repo), '-I' + str(repo / 'deps/volk'),
+            '-I' + str(repo), '-I' + str(vk_loader_root / 'libretro'),
             '-I' + str(repo / 'deps/vulkan-headers'), '-I' + str(repo / 'deps/spirv-headers/include'),
             '-I' + str(repo / 'hw/xbox/nv2a/pgraph/spv'), str(test), str(compiler),
-            str(repo / 'hw/xbox/nv2a/pgraph/spv/glslc_lex.c'), str(repo / 'deps/volk/volk.c'),
+            str(repo / 'hw/xbox/nv2a/pgraph/spv/glslc_lex.c'), str(vk_loader_root / 'libretro/vk_dispatch.c'),str(vk_loader_root / 'libretro/tests/vk-test-loader.c'),
             '-lm', '-o', str(exe)]
         if os.name != 'nt': command += ['-ldl']
         subprocess.run(command, check=True, env=env)

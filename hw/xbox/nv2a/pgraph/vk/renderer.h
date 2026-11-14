@@ -39,7 +39,7 @@
 #include "hw/xbox/nv2a/pgraph/glsl/uniform-cache.h"
 
 #include <vulkan/vulkan.h>
-#include <volk.h>
+#include <vk_dispatch.h>
 #include "memory.h"
 #include "frame-handoff.h"
 
@@ -51,10 +51,6 @@
 #include "vertex-format.h"
 
 #define HAVE_EXTERNAL_MEMORY 1
-
-typedef struct QueueFamilyIndices {
-    int queue_family;
-} QueueFamilyIndices;
 
 typedef struct MemorySyncRequirement {
     hwaddr addr, size;
@@ -1005,7 +1001,6 @@ void pgraph_vk_end_debug_marker(PGRAPHVkState *r, VkCommandBuffer cmd);
 // instance.c
 void pgraph_vk_init_instance(PGRAPHState *pg, Error **errp);
 void pgraph_vk_finalize_instance(PGRAPHState *pg);
-QueueFamilyIndices pgraph_vk_find_queue_families(VkPhysicalDevice device);
 uint32_t pgraph_vk_get_memory_type(PGRAPHState *pg, uint32_t type_bits,
                                    VkMemoryPropertyFlags properties);
 

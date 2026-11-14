@@ -5,6 +5,8 @@ import argparse
 import ast
 import shutil
 from pathlib import Path
+
+vk_loader_root = Path(__file__).resolve().parents[2]
 import os
 import re
 import subprocess
@@ -27,7 +29,7 @@ def function(path,name):
         depth+=(source[end]=='{')-(source[end]=='}');end+=1
     return source[m.start():end]
 parts=[function('hw/xbox/nv2a/prmdio.c','prmdio_write'),function('hw/xbox/nv2a/nv2a.c','nv2a_get_dac_palette_snapshot')]
-source=(r/'libretro/tests/test-display-gamma.c').read_text().replace('/* PRODUCTION */','\n'.join(parts))
+source=(vk_loader_root/'libretro/tests/test-display-gamma.c').read_text().replace('/* PRODUCTION */','\n'.join(parts))
 env=dict(os.environ)
 if Path(a.cc).is_absolute():env['PATH']=str(Path(a.cc).parent)+os.pathsep+env['PATH']
 with tempfile.TemporaryDirectory(prefix='display-gamma-') as folder:
@@ -57,17 +59,17 @@ if a.gpu:
         sources={'display-gl.frag':gl,'display-vk.frag':vk.replace('const bool byte_scanout = true;','const bool byte_scanout = false;',1),'display-byte.frag':vk,'display.vert':vertex}
         for name,text in sources.items():(out/name).write_bytes(text.encode())
         flags=['-O2','-std=gnu11','-Wall','-Wextra','-Werror','-Wno-misleading-indentation',
-               '-I'+str(r),'-I'+str(r/'libretro/tests')]
+               '-I'+str(r),'-I'+str(vk_loader_root/'libretro/tests')]
         if not a.vulkan_only:
             gl_exe=out/('gamma-gl.exe' if os.name=='nt' else 'gamma-gl')
-            command=[a.cc,*flags,str(r/'libretro/tests/test-display-gamma-gl.c'),'-o',str(gl_exe)]
+            command=[a.cc,*flags,str(vk_loader_root/'libretro/tests/test-display-gamma-gl.c'),'-o',str(gl_exe)]
             if os.name=='nt':
                 epoxy=(a.epoxy_root or r/'deps').resolve()
                 command+=['-I'+str(epoxy/'libepoxy/include'),str(epoxy/'libepoxy.a'),'-lopengl32','-lgdi32','-static']
             else:command+=['-lEGL','-lGL']
             subprocess.run(command,check=True,env=env)
             subprocess.run([str(gl_exe),str(out/'display-gl.frag')],check=True,env=dict(env,EGL_PLATFORM='surfaceless'))
-        helper=(r/'libretro/tests/spv-clear-vulkan.h').read_text()
+        helper=(vk_loader_root/'libretro/tests/spv-clear-vulkan.h').read_text()
         helper=helper[:helper.index('static void raster_tests')]
         helper=helper.replace('VkInstanceCreateInfo ci={',
             'VkValidationFeatureEnableEXT feature=VK_VALIDATION_FEATURE_ENABLE_SYNCHRONIZATION_VALIDATION_EXT;'
@@ -83,14 +85,14 @@ if a.gpu:
             'if(demote)assert(queried13.shaderDemoteToHelperInvocation);'
             'VkPhysicalDeviceVulkan13Features enabled13={.sType=VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES,.shaderDemoteToHelperInvocation=demote};'
             'VkDeviceCreateInfo di={.pNext=demote?&enabled13:NULL,',1)
-        fixture=(r/'libretro/tests/test-display-gamma-vk.c').read_text().replace('/* GPU HELPERS */',helper)
+        fixture=(vk_loader_root/'libretro/tests/test-display-gamma-vk.c').read_text().replace('/* GPU HELPERS */',helper)
         test=out/'gamma-vk.c';test.write_bytes(fixture.encode())
         exe=out/('gamma-vk.exe' if os.name=='nt' else 'gamma-vk')
         command=[a.cc,*flags,'-Wno-unused-function','-Wno-unused-variable','-Wno-sign-compare',
-                 '-Wno-missing-field-initializers','-I'+str(r/'deps/volk'),'-I'+str(r/'deps/vulkan-headers'),
+                 '-Wno-missing-field-initializers','-I'+str(vk_loader_root/'libretro'),'-I'+str(r/'deps/vulkan-headers'),
                  '-I'+str(r/'deps/spirv-headers/include'),str(test),
                  str(r/'hw/xbox/nv2a/pgraph/spv/glslc.c'),str(r/'hw/xbox/nv2a/pgraph/spv/glslc_lex.c'),str(r/'hw/xbox/nv2a/pgraph/spv/display.c'),
-                 str(r/'deps/volk/volk.c'),'-lm','-o',str(exe)]
+                 str(vk_loader_root/'libretro/vk_dispatch.c'),str(vk_loader_root/'libretro/tests/vk-test-loader.c'),'-lm','-o',str(exe)]
         if os.name!='nt':command+=['-ldl']
         subprocess.run(command,check=True,env=env)
         subprocess.run([str(exe),str(out/'display.vert'),str(out/'display-vk.frag'),str(out/'display-byte.frag')],check=True,env=env)

@@ -3,6 +3,8 @@
 import argparse
 import os
 from pathlib import Path
+
+vk_loader_root = Path(__file__).resolve().parents[2]
 import re
 import subprocess
 import tempfile
@@ -86,9 +88,9 @@ with tempfile.TemporaryDirectory(prefix="d16-borrow-") as directory:
     if not a.gpu:
         raise SystemExit(0)
 
-    helper_source = (r / "libretro/tests/spv-clear-vulkan.h").read_text()
+    helper_source = (vk_loader_root / "libretro/tests/spv-clear-vulkan.h").read_text()
     helpers = helper_source.split("static VkPipeline pipeline(")[0]
-    pipeline = function(r / "libretro/tests/spv-clear-vulkan.h", "pipeline")
+    pipeline = function(vk_loader_root / "libretro/tests/spv-clear-vulkan.h", "pipeline")
     helpers += pipeline
     depth_pipeline = pipeline.replace("pipeline(", "depth_pipeline(").replace(".attachmentCount=gs?0:1", ".attachmentCount=0").replace("VkGraphicsPipelineCreateInfo gp=", "VkPipelineDepthStencilStateCreateInfo depth={.sType=VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO,.depthTestEnable=VK_TRUE,.depthWriteEnable=VK_TRUE,.depthCompareOp=VK_COMPARE_OP_ALWAYS};VkGraphicsPipelineCreateInfo gp=").replace(".pColorBlendState=&cb", ".pDepthStencilState=&depth,.pColorBlendState=&cb")
     helpers += "\n" + depth_pipeline
@@ -109,7 +111,7 @@ with tempfile.TemporaryDirectory(prefix="d16-borrow-") as directory:
     test = folder / "gpu.c"
     test.write_text(gpu)
     exe = folder / ("gpu.exe" if os.name == "nt" else "gpu")
-    command = [a.cc, "-O2", "-std=gnu11", "-Wall", "-Wextra", "-Werror", "-Wno-unused-function", "-Wno-unused-parameter", "-Wno-unused-variable", "-Wno-maybe-uninitialized", "-Wno-misleading-indentation", "-Wno-missing-field-initializers", "-Wno-sign-compare", "-I" + str(r), "-I" + str(r / "deps/volk"), "-I" + str(r / "deps/vulkan-headers"), "-I" + str(r / "deps/spirv-headers/include"), str(test), str(r / "hw/xbox/nv2a/pgraph/spv/glslc.c"), str(r / "hw/xbox/nv2a/pgraph/spv/glslc_lex.c"), str(r / "deps/volk/volk.c"), "-o", str(exe)]
+    command = [a.cc, "-O2", "-std=gnu11", "-Wall", "-Wextra", "-Werror", "-Wno-unused-function", "-Wno-unused-parameter", "-Wno-unused-variable", "-Wno-maybe-uninitialized", "-Wno-misleading-indentation", "-Wno-missing-field-initializers", "-Wno-sign-compare", "-I" + str(r), "-I" + str(vk_loader_root / "libretro"), "-I" + str(r / "deps/vulkan-headers"), "-I" + str(r / "deps/spirv-headers/include"), str(test), str(r / "hw/xbox/nv2a/pgraph/spv/glslc.c"), str(r / "hw/xbox/nv2a/pgraph/spv/glslc_lex.c"), str(vk_loader_root / "libretro/vk_dispatch.c"),str(vk_loader_root / "libretro/tests/vk-test-loader.c"), "-o", str(exe)]
     if os.name != "nt":
         command += ["-ldl", "-lm"]
     subprocess.run(command, check=True, env=env)

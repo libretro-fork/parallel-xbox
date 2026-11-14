@@ -1,6 +1,8 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 """Run the production native color/D16 readback against a real Vulkan device."""
 from pathlib import Path
+
+vk_loader_root = Path(__file__).resolve().parents[2]
 import os
 import subprocess
 import sys
@@ -28,7 +30,7 @@ with tempfile.TemporaryDirectory(prefix="single-axis-readback-", dir=repo.parent
                     # Unused variables belong to deliberately rejected fallback stubs.
                     "-Wno-unused-variable", "-Wno-unused-but-set-variable",
                     "-I", str(repo / "deps/vulkan-headers"),
-                    "-I", str(repo / "deps/volk"), str(folder / "test.c"),
-                    str(repo / "deps/volk/volk.c"), "-o", str(exe)] +
+                    "-I", str(vk_loader_root / "libretro"), str(folder / "test.c"),
+                    str(vk_loader_root / "libretro/vk_dispatch.c"),str(vk_loader_root / "libretro/tests/vk-test-loader.c"), "-o", str(exe)] +
                    ([] if os.name == "nt" else ["-ldl"]), check=True)
     subprocess.run([str(exe)], check=True, timeout=120)

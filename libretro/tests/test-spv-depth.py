@@ -1,6 +1,8 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 """Validate fixed depth kernels, allocation-free dispatch and optional GPU parity."""
 from pathlib import Path
+
+vk_loader_root = Path(__file__).resolve().parents[2]
 import argparse,ctypes,os,re,shutil,subprocess,tempfile
 
 def function(s,name):
@@ -14,13 +16,13 @@ def run(r,cc,folder,gpu):
  env=os.environ.copy();env['PATH']=str(Path(cc).resolve().parent)+os.pathsep+env.get('PATH','')
  s=(r/'hw/xbox/nv2a/pgraph/vk/surface-compute.c').read_text();g=(r/'hw/xbox/nv2a/pgraph/vk/glsl.c').read_text()
  code=Path(__file__).with_suffix('.c').read_text().replace('/* PRODUCTION */','\n'.join([function(g,'pgraph_vk_create_shader_module_from_words')]+[function(s,n) for n in ['create_compute_pipeline','get_compute_pipeline','get_dispatch','create_compute_pipelines','destroy_compute_pipelines']]))
- q=(r/'libretro/tests/test-spv-geom.c').read_text();a=q.index('#ifdef _WIN32\nstatic void quiet_test_abort');b=q.index('int line_tests(',a);code=code.replace('/* QUIET ERRORS */',q[a:b])
- prefix=(r/'libretro/tests/spv-clear-vulkan.h').read_text();prefix=prefix[:prefix.index('static VkPipeline pipeline(')].replace('Utility GPU:','Depth GPU:')
+ q=(vk_loader_root/'libretro/tests/test-spv-geom.c').read_text();a=q.index('#ifdef _WIN32\nstatic void quiet_test_abort');b=q.index('int line_tests(',a);code=code.replace('/* QUIET ERRORS */',q[a:b])
+ prefix=(vk_loader_root/'libretro/tests/spv-clear-vulkan.h').read_text();prefix=prefix[:prefix.index('static VkPipeline pipeline(')].replace('Utility GPU:','Depth GPU:')
  prefix=prefix.replace('static unsigned memory_type(unsigned bits,VkMemoryPropertyFlags flags){for(unsigned i=0;i<memory_properties.memoryTypeCount;i++)if((bits&(1u<<i))&&(memory_properties.memoryTypes[i].propertyFlags&flags)==flags)return i;abort();}', 'static unsigned memory_type(unsigned bits,VkMemoryPropertyFlags flags){for(unsigned pass=0;pass<2;pass++){unsigned required=flags|(pass?0:VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);for(unsigned i=0;i<memory_properties.memoryTypeCount;i++)if((bits&(1u<<i))&&(memory_properties.memoryTypes[i].propertyFlags&required)==required)return i;}abort();}')
  (folder/'gpu-common.h').write_text(prefix);(folder/'test.c').write_text(code);exe=folder/('test.exe' if os.name=='nt' else 'test')
- cmd=[cc,'-O2','-std=gnu11','-Wall','-Wextra','-Werror','-Wno-sign-compare','-Wno-unused-function','-Wno-missing-field-initializers','-Wno-misleading-indentation','-fsanitize=undefined','-fsanitize-undefined-trap-on-error','-I'+str(r),'-I'+str(r/'libretro/tests'),'-I'+str(folder),'-I'+str(r/'deps/spirv-headers/include'),'-I'+str(r/'deps/vulkan-headers'),'-I'+str(r/'deps/volk')]
+ cmd=[cc,'-O2','-std=gnu11','-Wall','-Wextra','-Werror','-Wno-sign-compare','-Wno-unused-function','-Wno-missing-field-initializers','-Wno-misleading-indentation','-fsanitize=undefined','-fsanitize-undefined-trap-on-error','-I'+str(r),'-I'+str(vk_loader_root/'libretro/tests'),'-I'+str(folder),'-I'+str(r/'deps/spirv-headers/include'),'-I'+str(r/'deps/vulkan-headers'),'-I'+str(vk_loader_root/'libretro')]
  sources=[str(folder/'test.c')]+[str(r/'hw/xbox/nv2a/pgraph/spv'/n) for n in ['depth.c','glslc.c','glslc_lex.c']]
- if gpu:cmd+=['-DTEST_VULKAN'];sources+=[str(r/'deps/volk/volk.c')]
+ if gpu:cmd+=['-DTEST_VULKAN'];sources+=[str(vk_loader_root/'libretro/vk_dispatch.c'),str(vk_loader_root/'libretro/tests/vk-test-loader.c')]
  cmd+=sources+['-Wl,--wrap=malloc,--wrap=calloc,--wrap=realloc','-lm']
  if gpu and os.name!='nt':cmd+=['-ldl']
  subprocess.run(cmd+['-o',str(exe)],check=True,env=env);subprocess.run([str(exe),str(folder)],check=True,timeout=180,env=env)

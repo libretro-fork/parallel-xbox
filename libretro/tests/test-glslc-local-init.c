@@ -5,7 +5,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <volk.h>
+#include <vk-test-loader.h>
 #include "hw/xbox/nv2a/pgraph/spv/glslc.h"
 /* GPU HELPERS */
 
