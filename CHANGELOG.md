@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Experimental GL coverage shares completed native pipeline objects across bindings with identical stage programs, avoiding repeated driver creation for different guest microcode. Existing binding nodes retain the shared owners through eviction and context teardown; no extra resource pool or payload snapshot is added. First-use and uncovered compilation remain open.
+
 - Repair the vertex-emitter regression fixture after removal of standalone Vulkan device creation; it still requires float-control publication for the frontend-owned device.
 
 - Experimental programmable vertex coverage: add uniform-controlled interpreter builders and opt-in native GL stages with bounded code upload ownership. Ordinary cache keys and formats remain unchanged. Failed or incomplete startup stages retain the existing exact path after releasing partial owners. Complete pipeline, fragment/geometry, unsupported vertex-format coverage and performance qualification remain open; this path is not enabled in release builds.

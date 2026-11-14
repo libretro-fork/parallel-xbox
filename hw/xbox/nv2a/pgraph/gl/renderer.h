@@ -186,6 +186,11 @@ typedef struct ShaderModuleCacheEntry {
     } locs;
 } ShaderModuleCacheEntry;
 
+#ifdef XEMU_EXPERIMENTAL_READY_VSH
+/* Index only: pipeline resources remain bounded by the existing binding LRU. */
+#define GL_PIPELINE_OWNER_BUCKETS 1024
+#endif
+
 typedef struct ShaderBinding {
     LruNode node;
     bool initialized;
@@ -203,6 +208,9 @@ typedef struct ShaderBinding {
     GLuint gl_program;
     GLuint gl_pipeline;
     GLuint gl_prog_vs, gl_prog_fs, gl_prog_gs;
+#ifdef XEMU_EXPERIMENTAL_READY_VSH
+    struct ShaderBinding *pipeline_next, *pipeline_prev, *pipeline_hash_next;
+#endif
     GLenum gl_primitive_mode;
     unsigned long uses;
 
@@ -457,6 +465,8 @@ typedef struct PGRAPHGLState {
     ShaderBinding *shader_cache_entries;
     ShaderBinding *shader_binding;
 #ifdef XEMU_EXPERIMENTAL_READY_VSH
+    ShaderBinding *pipeline_owners[GL_PIPELINE_OWNER_BUCKETS];
+    uint64_t pipeline_owner_created, pipeline_owner_reused; /* Diagnostic writes only. */
     /* Four finite GL interface variants; not members of the persistent LRU. */
     struct {
         ShaderModuleCacheEntry stage[4];

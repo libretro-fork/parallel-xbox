@@ -5322,3 +5322,13 @@ bounded code/flag uploads, byte-identical resident reuse, cache-node replacement
 and full/partial teardown. Required mutation controls reject missing validation,
 missed invalidation, wrong control offsets and wrong interface owners. This
 fixture is ownership coverage, not hardware GPU cost or full PSO readiness.
+
+
+`test-gl-pipeline-owners.py CHECKOUT [CC]` exercises the experimental native
+pipeline owner implementation with every tuple forced into one hash bucket.
+It checks exact VS/GS/FS identity, absent geometry, 200,000 arbitrary acquire/
+retire transitions, representative transfer, immediate cache-node reuse and
+fresh context generations with recycled native names. Required mutations
+reject lost stage identity, early deletion and broken borrower/index repair.
+This proves CPU ownership only; native driver execution and full cold-play
+qualification remain separate.

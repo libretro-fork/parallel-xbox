@@ -716,6 +716,7 @@ GLuint pgraph_gl_separable_program(GLenum kind, const char *src,
 #ifdef XEMU_EXPERIMENTAL_READY_VSH
 #include "../spv/vsh.h"
 #include "ready-vsh.inc"
+#include "pipeline-owners.inc"
 #endif
 
 /* The module keys of a state: geometry (kind 0 unless the state needs one),
@@ -812,6 +813,10 @@ static void generate_shaders(PGRAPHGLState *r, ShaderBinding *binding)
     }
 
     if (gl_sso_enabled()) {
+#ifdef XEMU_EXPERIMENTAL_READY_VSH
+        bool shared_pipeline = pipeline_owner_acquire(r, binding);
+        if (!shared_pipeline) {
+#endif
         glGenProgramPipelines(1, &binding->gl_pipeline);
         glUseProgramStages(binding->gl_pipeline, GL_VERTEX_SHADER_BIT,
                            binding->gl_prog_vs);
@@ -821,6 +826,16 @@ static void generate_shaders(PGRAPHGLState *r, ShaderBinding *binding)
             glUseProgramStages(binding->gl_pipeline, GL_GEOMETRY_SHADER_BIT,
                                binding->gl_prog_gs);
         }
+#ifdef XEMU_EXPERIMENTAL_READY_VSH
+            pipeline_owner_publish(r, binding);
+#ifdef XEMU_READY_VSH_DIAGNOSTICS
+            r->pipeline_owner_created++;
+#endif
+        }
+#ifdef XEMU_READY_VSH_DIAGNOSTICS
+        else r->pipeline_owner_reused++;
+#endif
+#endif
         binding->gl_program = 0;
         glUseProgram(0);
         glBindProgramPipeline(binding->gl_pipeline);
@@ -988,6 +1003,8 @@ void pgraph_gl_shader_write_cache_reload_list(PGRAPHState *pg)
 #ifdef XEMU_READY_VSH_DIAGNOSTICS
     fprintf(stderr, "READY_VSH snapshot ready=%d covered=%"PRIu64" uploads=%"PRIu64"\n",
             r->ready_vsh.ready, r->ready_vsh.covered_binds, r->ready_vsh.code_uploads);
+    fprintf(stderr, "PIPELINE_OWNERS created=%"PRIu64" reused=%"PRIu64"\n",
+            r->pipeline_owner_created, r->pipeline_owner_reused);
 #endif
 
     /* Join before draining, including when caching was disabled mid-session.
@@ -1209,6 +1226,10 @@ static void shader_cache_entry_init(Lru *lru, LruNode *node, const void *state)
     binding->uses = 0;
     binding->gl_program = 0;
     binding->gl_pipeline = 0;
+#ifdef XEMU_EXPERIMENTAL_READY_VSH
+    binding->pipeline_next = binding->pipeline_prev = NULL;
+    binding->pipeline_hash_next = NULL;
+#endif
     binding->gl_prog_vs = 0;
     binding->gl_prog_fs = 0;
     binding->gl_prog_gs = 0;
@@ -1254,10 +1275,14 @@ static void shader_cache_entry_post_evict(Lru *lru, LruNode *node)
 
     forget_binding_program_uniforms(r, binding);
     glDeleteProgram(binding->gl_program);
+#ifdef XEMU_EXPERIMENTAL_READY_VSH
+    pipeline_owner_release(r, binding);
+#else
     if (binding->gl_pipeline) {
         glDeleteProgramPipelines(1, &binding->gl_pipeline);
         binding->gl_pipeline = 0;
     }
+#endif
     if (binding->program) {
         shader_binary_release(binding->program, &binding->program_owner);
     }
@@ -1366,6 +1391,10 @@ void pgraph_gl_init_shaders(PGRAPHState *pg)
                                                   MAX(sizeof(ModuleDiskSave), sizeof(ShaderDiskResult)));
     init_texture_touch(r);
 #ifdef XEMU_EXPERIMENTAL_READY_VSH
+    pipeline_owner_finalize(r); /* No live owners may cross context generations. */
+#ifdef XEMU_READY_VSH_DIAGNOSTICS
+    r->pipeline_owner_created = r->pipeline_owner_reused = 0;
+#endif
     ready_vsh_init(r);
 #endif
     r->seed.state = -1;
@@ -1408,6 +1437,7 @@ void pgraph_gl_finalize_shaders(PGRAPHState *pg)
     g_free(r->shader_module_cache_entries);
     r->shader_module_cache_entries = NULL;
 #ifdef XEMU_EXPERIMENTAL_READY_VSH
+    pipeline_owner_finalize(r);
     ready_vsh_finalize(r); /* All cached pipelines have released the stages. */
 #endif
     gl_disk_writer_destroy(r->cache_writer);

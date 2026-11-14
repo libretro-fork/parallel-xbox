@@ -525,7 +525,15 @@ The callback ABBA probe uses an uncontrolled driver cache and does not measure
 GPU execution or displayed-frame latency. The full target above remains open.
 
 Next integrate ready complete pipeline ownership and optional exact promotion.
-The prototype still creates pipeline objects for raw-code binding identities;
-fragment/geometry misses and utility paths can still block required draws.
+Native GL pipelines are now shared by the exact three native stage-program
+handles within one context generation. A ring of existing binding nodes owns
+each pipeline; its indexed representative transfers before eviction, and the
+last binding deletes it. This adds three pointers per existing binding and an
+8 KiB index on 64-bit hosts, with no increased resource capacity or extra
+payload storage. Lookup collisions compare all three stage handles. Different
+guest microcode can reuse a completed pipeline when its selected programs are
+identical; genuinely new stage tuples still create a native object. This does
+not establish driver-lazy-compilation freedom. Fragment/geometry misses and
+utility paths can still block required draws.
 Do not promote permanent interpreter selection as a complete or performance-
 qualified solution merely because its stage links moved to startup.
