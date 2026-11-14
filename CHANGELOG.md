@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Collect core build artifacts without the deleted local .info file, fixing packaging failures across Windows, Linux, Android and macOS CI jobs.
+
 - Use libretro-common rthreads directly for worker lifecycle and host-thread identity. Remove QEMU native thread handles, Windows per-thread join bookkeeping and the unused vCPU signal/semaphore wake path. Drop the unused abstract Windows stdin backend, whose concrete stdio subclass was already excluded. Keep owner-local cleanup callbacks, stop/join ordering and lock-free data queues. Shared GPU/BQL mutexes remain required; this is not a claim that the whole emulator is lock-free.
 
 - Call libretro-common XXH3 and UTF-8 file opening directly, removing the redundant QEMU hash implementation and file-opening wrappers. Hash seeds and cache identities are unchanged; this is consolidation, not a measured gameplay speedup.

@@ -311,7 +311,6 @@ jobs:
         run: |
           mkdir -p dist
           cp parallel_xbox_libretro.dll dist/
-          cp ui/parallel_xbox_libretro.info dist/
           x86_64-w64-mingw32-objdump -p dist/parallel_xbox_libretro.dll | grep 'DLL Name'
           x86_64-w64-mingw32-strip --strip-unneeded dist/parallel_xbox_libretro.dll
           ls -la dist
@@ -373,7 +372,6 @@ jobs:
         run: |
           mkdir -p dist
           cp parallel_xbox_libretro.so dist/
-          cp ui/parallel_xbox_libretro.info dist/
           # the unstripped core too, for profiling and crash backtraces
           mkdir -p symbols
           cp parallel_xbox_libretro.so symbols/
@@ -417,7 +415,6 @@ jobs:
         run: |
           mkdir -p dist
           cp parallel_xbox_libretro_android.so dist/
-          cp ui/parallel_xbox_libretro.info dist/
           T=$ANDROID_NDK_LATEST_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin
           $T/llvm-strip --strip-unneeded dist/parallel_xbox_libretro_android.so
           ls -la dist
@@ -475,7 +472,6 @@ jobs:
         run: |
           mkdir -p dist
           cp parallel_xbox_libretro.dylib dist/parallel_xbox_libretro.dylib
-          cp ui/parallel_xbox_libretro.info dist/
           strip -x dist/parallel_xbox_libretro.dylib
           # The MacPorts libraries (libepoxy) go along in a
           # folder of their own next to the core, as upstream bundles them
