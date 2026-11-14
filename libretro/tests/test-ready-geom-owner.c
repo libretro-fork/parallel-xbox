@@ -105,6 +105,20 @@ int main(void)
     pgraph_glsl_geom_dynamic_controls(&b.state.geom,b.state.psh,controls);
     assert(!memcmp(programs[b.gl_prog_gs].values,controls,16));
     ready_geom_upload(&r,&unused);assert(writes==2);
+    /* Quads and quad strips borrow the same executable, but switching the
+     * strip bit must update its controls even with identical texture state. */
+    ShaderBinding quad=binding(&r,10),strip=quad;
+    assert(quad.state.geom.primitive_mode==PRIM_TYPE_QUADS);
+    strip.state.geom.primitive_mode=PRIM_TYPE_QUAD_STRIP;
+    ShaderModuleCacheKey strip_key={.kind=GL_GEOMETRY_SHADER,
+        .geom={.state=strip.state.geom,.glsl_opts={.locations=true}}};
+    assert(ready_geom_find(&r,&strip_key)==&pool[10]);
+    ready_geom_upload(&r,&quad);unsigned quad_writes=writes;
+    ready_geom_upload(&r,&strip);assert(writes==quad_writes+1);
+    assert(programs[strip.gl_prog_gs].values[0]==16);
+    ready_geom_upload(&r,&quad);assert(writes==quad_writes+2);
+    assert(programs[quad.gl_prog_gs].values[0]==0);
+    assert(allocations==before);
     ready_geom_finalize(&r);assert(!r.ready_geom.ready&&!r.ready_geom.stages&&alive==0);
     ready_geom_finalize(&r);assert(alive==0);
     /* Every partial startup returns its reservation exactly once, restoring
@@ -117,6 +131,6 @@ int main(void)
         ready_geom_finalize(&r);
     }
     assert(created==deleted&&created==shader_deletes);
-    puts("PASS: 22 native geometry owners, fixed pool capacity, all partial-init failures, bounded uniform transport, invalidation and teardown");
+    printf("PASS: %u native geometry owners, fixed pool capacity, all partial-init failures, bounded uniform transport, strip switching, invalidation and teardown\n",GEOM_DYNAMIC_VARIANTS);
     return 0;
 }

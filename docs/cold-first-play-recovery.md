@@ -541,7 +541,7 @@ qualified solution merely because its stage links moved to startup.
 
 ### Experimental finite geometry readiness
 
-The opt-in GL build also prepares 22 finite geometry stages before guest execution. Winding rotations, provoking-vertex selection, depth perspective
+The opt-in GL build also prepares 16 finite geometry stages before guest execution. Winding rotations, provoking-vertex selection, depth perspective
 and the atlas-stage tag travel as four packed integers. Topology, output
 primitive type and interpolation remain native stage variants. The stages
 reserve slots from the existing 51,200-slot module pool; no logical module
@@ -586,3 +586,20 @@ execution costs remain unqualified; this is not accepted stutter recovery. Fragm
 creation, fixed-function vertex coverage and utility paths remain separate
 open work. No permanent generic-stage selection is performance-qualified
 without GPU-cost evidence and optional complete exact-pipeline promotion.
+
+
+The 22-stage clean ABBA callback probe (diagnostics/readbacks disabled) did
+not establish a fight-window speedup: parent p99 10.815/10.181 ms, candidate
+11.383/10.152 ms. All four runs preserve 600 live callbacks, audio cadence
+and video delivery. Startup maxima regress consistently: parent 71.297/73.943
+ms versus candidate 94.801/97.302 ms. Driver cache state is uncontrolled;
+retain this rejection evidence rather than accepting the increase as normal.
+
+The next experimental reduction shares quad and quad-strip stages: their
+native layouts match, while packed control bit 4 selects the exact old emitted
+order, plane association and odd-strip suppression. The finite set becomes
+16 programs. The complete existing state/value corpus is retained, plus a
+required strip-bit mutation and same-owner uniform-switch lifetime checks.
+Quad provoking selection is always vertex 3, so it is emitted as a constant
+rather than a uniform-dependent input selector. This is a work reduction,
+not yet a qualified startup or gameplay latency improvement.

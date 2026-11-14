@@ -60,6 +60,7 @@ def prepare(root, baseline, mutation=''):
         text = text.replace('/* '+marker+' */', value)
     mutations = {
         'depth': ('if ((gsControl.x & 1) != 0)', 'if (false)'),
+        'strip': ('/* MUTATE_CONTROLS */', 'controls[0]^=16;'),
         'ui_enable': ('/* MUTATE_CONTROLS */', 'controls[0]&=1;'),
         'ui_stage': ('/* MUTATE_CONTROLS */', 'if((controls[0]>>1)&7)controls[0]=(controls[0]&1)|((((controls[0]>>1)&7)%4+1)<<1);'),
         'provoking': ('/* MUTATE_CONTROLS */', 'controls[1]=0;'),
@@ -87,7 +88,7 @@ def main():
     with tempfile.TemporaryDirectory(prefix='native-geom-controls-') as temporary:
         directory = args.keep.resolve() if args.keep else Path(temporary)
         directory.mkdir(exist_ok=True, parents=True)
-        for mutation in ['', 'depth', 'provoking', 'rotation', 'ui_enable', 'ui_stage']:
+        for mutation in ['', 'depth', 'provoking', 'rotation', 'ui_enable', 'ui_stage', 'strip']:
             tag = mutation or 'positive'
             c = directory/(tag+'.c')
             c.write_text(prepare(root, baseline, mutation), encoding='utf-8')

@@ -228,6 +228,14 @@ static void geom_rewrite_inputs(MString *output, size_t begin)
 static MString *pgraph_glsl_gen_geom_impl(const GeomState *state,
                                          GenGeomGlslOptions opts, bool dynamic)
 {
+    /* Both quad paths have identical native layouts. Their exact emitted
+     * order and odd-strip suppression travel in a control bit instead. */
+    GeomState canonical;
+    if (dynamic && state->primitive_mode == PRIM_TYPE_QUAD_STRIP) {
+        canonical = *state;
+        canonical.primitive_mode = PRIM_TYPE_QUADS;
+        state = &canonical;
+    }
     /* FIXME: Missing support for 2-sided-poly mode */
     assert(state->polygon_front_mode == state->polygon_back_mode);
     enum ShaderPolygonMode polygon_mode = state->polygon_front_mode;
@@ -339,6 +347,36 @@ static MString *pgraph_glsl_gen_geom_impl(const GeomState *state,
                    "  EndPrimitive();\n"
                    "  emit_vertex(3, mat4(pz2[2], pz2[2], pz2[2], pz2[3]));\n"
                    "  EndPrimitive();\n";
+        }
+        if (dynamic) {
+            if (polygon_mode == POLY_MODE_FILL) {
+                body = "  bool strip=(gsControl.x&16)!=0;\n"
+                       "  mat4 pz,pz2;\n"
+                       "  calc_quadz(strip?2:0,strip?0:1,strip?1:2,3,pz,pz2);\n"
+                       "  emit_vertex(strip?0:1,pz);\n"
+                       "  emit_vertex(strip?1:2,pz);\n"
+                       "  emit_vertex(strip?2:0,pz);EndPrimitive();\n"
+                       "  emit_vertex(2,pz2);\n"
+                       "  emit_vertex(strip?1:3,pz2);\n"
+                       "  emit_vertex(strip?3:0,pz2);EndPrimitive();\n";
+            } else if (polygon_mode == POLY_MODE_LINE) {
+                body = "  bool strip=(gsControl.x&16)!=0;\n"
+                       "  mat4 pz,pzs;\n"
+                       "  calc_quadz(strip?2:0,strip?0:1,strip?1:2,3,pz,pzs);\n"
+                       "  emit_line(0,1,pz[3].x);\n"
+                       "  emit_line(1,strip?3:2,strip?pzs[3].x:pz[3].x);\n"
+                       "  emit_line(strip?3:2,strip?2:3,pzs[3].x);\n"
+                       "  emit_line(strip?2:3,0,strip?pz[3].x:pzs[3].x);\n";
+            } else {
+                body = "  bool strip=(gsControl.x&16)!=0;\n"
+                       "  mat4 pz,pz2;\n"
+                       "  calc_quadz(strip?2:0,strip?0:1,strip?1:2,3,pz,pz2);\n"
+                       "  vec4 a=pz[strip?1:0],b=pz[strip?2:1],c=pz[strip?0:2];\n"
+                       "  emit_vertex(0,mat4(a,a,a,pz[3]));EndPrimitive();\n"
+                       "  emit_vertex(1,mat4(b,b,b,pz[3]));EndPrimitive();\n"
+                       "  emit_vertex(2,mat4(c,c,c,pz[3]));EndPrimitive();\n"
+                       "  emit_vertex(3,mat4(pz2[2],pz2[2],pz2[2],pz2[3]));EndPrimitive();\n";
+            }
         }
         break;
     case PRIM_TYPE_QUAD_STRIP:
@@ -497,9 +535,9 @@ static MString *pgraph_glsl_gen_geom_impl(const GeomState *state,
             "if ((gl_PrimitiveIDIn & 1) != 0) return; ui_prepare();\n" :
             "ui_prepare();\n";
         if (dynamic) {
-            ui_setup = state->primitive_mode == PRIM_TYPE_QUAD_STRIP ?
-                "if ((gl_PrimitiveIDIn & 1) != 0) return;uiValid=false;\n"
-                "if((gsControl.x&14)!=0)ui_prepare();\n" :
+            ui_setup = need_quadz ?
+                "if ((gsControl.x&16)!=0 && (gl_PrimitiveIDIn&1)!=0) return;\n"
+                "uiValid=false;if((gsControl.x&14)!=0)ui_prepare();\n" :
                 "uiValid=false;if((gsControl.x&14)!=0)ui_prepare();\n";
         }
     }
@@ -535,7 +573,7 @@ static MString *pgraph_glsl_gen_geom_impl(const GeomState *state,
     if (dynamic) {
         provoking_index = need_triz ?
             "v[gsControl.y == 3 ? 2 - (gl_PrimitiveIDIn & 1) : gsControl.y]" :
-            "gsControl.y";
+            need_quadz ? "3" : "gsControl.y";
     }
     if (state->smooth_shading) {
         provoking_index = "index";
@@ -776,11 +814,8 @@ int pgraph_glsl_geom_dynamic_variant(const GeomState *state,
     case PRIM_TYPE_TRIANGLE_FAN:
         family = 2 + state->polygon_front_mode;
         break;
-    case PRIM_TYPE_QUADS:
+    case PRIM_TYPE_QUADS: case PRIM_TYPE_QUAD_STRIP:
         family = 5 + state->polygon_front_mode;
-        break;
-    case PRIM_TYPE_QUAD_STRIP:
-        family = 8 + state->polygon_front_mode;
         break;
     case PRIM_TYPE_POLYGON:
         if (state->polygon_front_mode == POLY_MODE_POINT) return -1;
@@ -810,8 +845,7 @@ void pgraph_glsl_geom_dynamic_state(unsigned variant, GeomState *state,
         state->wide_lines = family == 1;
     } else {
         family = 2 + (variant - 4) / 2;
-        state->primitive_mode = family < 5 ? PRIM_TYPE_TRIANGLES :
-                                family < 8 ? PRIM_TYPE_QUADS : PRIM_TYPE_QUAD_STRIP;
+        state->primitive_mode = family < 5 ? PRIM_TYPE_TRIANGLES : PRIM_TYPE_QUADS;
         state->polygon_front_mode = (family - 2) % 3;
     }
     state->polygon_back_mode = state->polygon_front_mode;
@@ -836,7 +870,8 @@ void pgraph_glsl_geom_dynamic_controls(const GeomState *state, unsigned ui_stage
         provoking = 3; break;
     }
     assert(ui_stage <= 4);
-    controls[0] = state->z_perspective | (ui_stage << 1);
+    controls[0] = state->z_perspective | (ui_stage << 1) |
+                  (state->primitive_mode == PRIM_TYPE_QUAD_STRIP ? 16 : 0);
     controls[1] = provoking;
     controls[2] = state->tri_rot0 == 0 ? 0 : state->tri_rot0 == 1 ? 1 : 2;
     controls[3] = state->tri_rot1 == 0 ? 0 : state->tri_rot1 == 1 ? 1 : 2;

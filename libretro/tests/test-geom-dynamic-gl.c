@@ -275,14 +275,18 @@ int main(void)
         /* MUTATE_CONTROLS */
         glUseProgramStages(pipeline,GL_GEOMETRY_SHADER_BIT,ready[lane]);
         glProgramUniform4iv(ready[lane],glGetUniformLocation(ready[lane],"gsControl"),1,controls);
-        unsigned actual=capture(vs[smooth],ready[lane],&s,1);assert(actual==expected);
+        unsigned actual=capture(vs[smooth],ready[lane],&s,1);
+        if(actual!=expected){
+            fprintf(stderr,"vertex count difference lane=%d case=%u: %u != %u\n",lane,tests,actual,expected);
+            return 1;
+        }
         check_colors(expected,&s,0);check_colors(actual,&s,1);
         compare(expected,lane,tests);compared+=expected;tests++;glDeleteProgram(exact);
     }
     for(unsigned i=0;i<GEOM_DYNAMIC_VARIANTS;i++){glDeleteProgram(ready[i]);mstring_unref(sources[i]);}
     glDeleteProgram(vs[0]);glDeleteProgram(vs[1]);glDeleteProgramPipelines(1,&pipeline);
     glDeleteQueries(1,&query);glDeleteBuffers(1,&buffer);glDeleteVertexArrays(1,&vao);
-    printf("PASS geometry: %u cases, %llu scalar checks, 22 invariant startup stages; ordinary sources byte-exact\n",
-           tests,(unsigned long long)compared);
+    printf("PASS geometry: %u cases, %llu scalar checks, %u invariant startup stages; ordinary sources byte-exact\n",
+           tests,(unsigned long long)compared,GEOM_DYNAMIC_VARIANTS);
     return 0;
 }
