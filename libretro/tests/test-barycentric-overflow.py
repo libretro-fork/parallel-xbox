@@ -23,11 +23,19 @@ def strings(text):
 
 helpers=strings(source[source.index('        "float kahan_det('):source.index('    MString *clip =',source.index('        "float kahan_det('))])
 start=source.index('    /* Barycentric depth:')
-divide=source.index('    if (ps->state->z_perspective)',start)
+divide_match=re.search(r'    if \((?:ps->ready \|\| )?ps->state->z_perspective\)',source[start:])
+assert divide_match, 'missing general perspective-weight path'
+divide=start+divide_match.start()
 barycentric=strings(source[start:divide])
 normalization=source.rfind('    mstring_append(',divide,source.index('"float inv_bcsum',divide))
-depth=source.index('    if (ps->state->z_perspective)',normalization)
-perspective_divide=strings(source[divide:normalization])
+depth_match=re.search(r'    (?:} else )?if \(ps->state->z_perspective\)',source[normalization:])
+assert depth_match, 'missing ordinary perspective-depth path'
+depth=normalization+depth_match.start()
+# Extract only the ordinary weight arithmetic, excluding the ready path's
+# uniform guard. Its ready-depth expression has separate numerical coverage.
+weight_call=re.search(r'    mstring_append\(clip, \"bc0 /=.*?\);\n',source[divide:normalization],re.S)
+assert weight_call, 'missing production perspective-weight emission'
+perspective_divide=strings(weight_call.group(0))
 normalize=strings(source[normalization:depth])
 linear=source.index('    } else {',depth)
 end=source.index('    /* Depth clipping.',linear)
