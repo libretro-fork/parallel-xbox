@@ -56,12 +56,10 @@ void nv2a_update_irq(NV2AState *d)
         d->pmc.pending_interrupts &= ~NV_PMC_INTR_0_PTIMER;
     }
 
-    if (d->pmc.pending_interrupts && d->pmc.enabled_interrupts) {
-        trace_nv2a_irq(d->pmc.pending_interrupts);
+    if (d->pmc.pending_interrupts && d->pmc.enabled_interrupts)
         pci_irq_assert(PCI_DEVICE(d));
-    } else {
+    else
         pci_irq_deassert(PCI_DEVICE(d));
-    }
 }
 
 /* Establish host views only at reset/restore boundaries, with the FIFO stopped.
@@ -174,8 +172,6 @@ void *nv_dma_map(NV2AState *d, hwaddr dma_obj_address, hwaddr *len)
     DMAObject dma = nv_dma_load(d, dma_obj_address);
 
     /* TODO: Handle targets and classes properly */
-    trace_nv2a_dma_map(dma_obj_address, dma.dma_class, dma.dma_target,
-                       dma.address, dma.limit);
     dma.address &= 0x07FFFFFF;
 
     assert(dma.address < memory_region_size(d->vram));

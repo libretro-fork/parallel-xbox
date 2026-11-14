@@ -633,8 +633,6 @@ void bind_textures(NV2AState *d, bool highres_depth)
         if (surf_to_tex && binding->draw_time < surface->draw_time) {
             sampled_texture_key_store(binding->recycle_key, 0);
 
-            trace_nv2a_pgraph_surface_render_to_texture(
-                surface->vram_addr, surface->width, surface->height);
             if (surf_to_tex_bytes) {
                 pgraph_gl_reinterpret_surface_to_texture(d, surface, binding);
             } else if (highres_depth) {

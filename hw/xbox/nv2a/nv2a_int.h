@@ -233,20 +233,16 @@ static inline
 void nv2a_reg_log_read(int block, hwaddr addr, unsigned int size, uint64_t val)
 {
     const char *block_name = "UNK";
-    if (block < ARRAY_SIZE(blocktable) && blocktable[block].name) {
+    if (block < ARRAY_SIZE(blocktable) && blocktable[block].name)
         block_name = blocktable[block].name;
-    }
-    trace_nv2a_reg_read(block_name, addr, size, val);
 }
 
 static inline
 void nv2a_reg_log_write(int block, hwaddr addr, unsigned int size, uint64_t val)
 {
     const char *block_name = "UNK";
-    if (block < ARRAY_SIZE(blocktable) && blocktable[block].name) {
+    if (block < ARRAY_SIZE(blocktable) && blocktable[block].name)
         block_name = blocktable[block].name;
-    }
-    trace_nv2a_reg_write(block_name, addr, size, val);
 }
 
 #define DEFINE_PROTO(n) \

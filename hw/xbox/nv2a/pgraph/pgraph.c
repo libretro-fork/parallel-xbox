@@ -1065,7 +1065,7 @@ int pgraph_method(NV2AState *d, unsigned int subchannel,
             }
             break;
         default:
-            goto unhandled;
+	    return num_processed;
         }
         break;
     }
@@ -1075,7 +1075,7 @@ int pgraph_method(NV2AState *d, unsigned int subchannel,
             pgraph_fence_publish(pg, parameter);
             break;
         default:
-            goto unhandled;
+	    return num_processed;
         }
         break;
     }
@@ -1104,7 +1104,7 @@ int pgraph_method(NV2AState *d, unsigned int subchannel,
             context_surfaces_2d->dest_offset = parameter & 0x07FFFFFF;
             break;
         default:
-            goto unhandled;
+	    return num_processed;
         }
         break;
     }
@@ -1136,16 +1136,15 @@ int pgraph_method(NV2AState *d, unsigned int subchannel,
             }
             break;
         default:
-            goto unhandled;
+	    return num_processed;
         }
         break;
     }
     case NV_KELVIN_PRIMITIVE: {
         MethodFunc handler =
             pgraph_kelvin_methods[METHOD_ADDR_TO_INDEX(method)].handler;
-        if (handler == NULL) {
-            goto unhandled;
-        }
+        if (handler == NULL)
+	    return num_processed;
         size_t num_words_consumed = 1;
         handler(d, pg, subchannel, method, parameter, parameters,
                 num_words_available, &num_words_consumed, inc);
@@ -1174,14 +1173,9 @@ int pgraph_method(NV2AState *d, unsigned int subchannel,
         break;
     }
     default:
-        goto unhandled;
+	break;
     }
 
-    return num_processed;
-
-unhandled:
-    trace_nv2a_pgraph_method_unhandled(subchannel, graphics_class,
-                                           method, parameter);
     return num_processed;
 }
 
@@ -1262,13 +1256,11 @@ DEF_METHOD(NV097, FLIP_INCREMENT_WRITE)
     uint32_t new =
         PG_GET_MASK(NV_PGRAPH_SURFACE, NV_PGRAPH_SURFACE_WRITE_3D);
 
-    trace_nv2a_pgraph_flip_increment_write(old, new);
     pg->frame_time++;
 }
 
 DEF_METHOD(NV097, FLIP_STALL)
 {
-    trace_nv2a_pgraph_flip_stall();
     pgraph_renderer(&d->pgraph)->ops.surface_update(d, false, true, true);
     pgraph_renderer(&d->pgraph)->ops.flip_stall(d);
 

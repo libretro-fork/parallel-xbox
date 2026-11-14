@@ -1175,9 +1175,6 @@ static void copy_zeta_surface_to_texture(PGRAPHState *pg, SurfaceBinding *surfac
 
     nv2a_profile_inc_counter(NV2A_PROF_SURF_TO_TEX);
 
-    trace_nv2a_pgraph_surface_render_to_texture(
-        surface->vram_addr, surface->width, surface->height);
-
     unsigned int scaled_width = surface->width,
                  scaled_height = surface->height;
     pgraph_apply_scaling_factor(pg, &scaled_width, &scaled_height);
@@ -1715,9 +1712,6 @@ static void copy_surface_to_texture(PGRAPHState *pg, SurfaceBinding *surface,
     PGRAPHVkState *r = pg->vk_renderer_state;
 
     nv2a_profile_inc_counter(NV2A_PROF_SURF_TO_TEX);
-
-    trace_nv2a_pgraph_surface_render_to_texture(
-        surface->vram_addr, surface->width, surface->height);
 
     VkCommandBuffer cmd = pgraph_vk_begin_nondraw_commands(pg);
     pgraph_vk_begin_debug_marker(r, cmd, RGBA_GREEN, __func__);
@@ -2676,15 +2670,8 @@ static void create_texture(PGRAPHState *pg, int texture_idx)
             surface_to_texture |= surface_to_texture_bytes;
         }
 
-        if (!surface_to_texture && surface->color) {
-            trace_nv2a_pgraph_surface_texture_compat_failed(
-                surface->shape.color_format,
-                state.color_format);
-        }
-
-        if (surface_to_texture && surface->upload_pending) {
+        if (surface_to_texture && surface->upload_pending)
             pgraph_vk_upload_surface_data(d, surface, false);
-        }
     }
 
     /* Native ARGB cubes can combine disjoint live faces with RAM faces.
