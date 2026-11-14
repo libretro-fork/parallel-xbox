@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Release temporary clipping-source storage after fragment generation. Each generated source previously retained one MString/GString and its buffer (up to 4,136 bytes in the ownership corpus). Use immutable normalization-function names instead of allocating formatted names for texture stages, shadow sampling and convolution. Generated GL and Vulkan shader text stays byte-identical; this fixes retained CPU allocations, not draw-time compilation or shader stutters.
+
 - Repair the vertex-emitter regression fixture after removal of standalone Vulkan device creation; it still requires float-control publication for the frontend-owned device.
 
 - Repair index/constant-upload, reset and GL surface tests after trace removal: assert guest values, bounds, memory reads and ownership rather than diagnostic callbacks, and extract functions without trace anchors. Remove orphaned register-log wrappers, Kelvin method-name metadata, DSP trace buffers/helpers, unused debugger code and MMIO trace helpers. Keep the DSP instruction-length decoder and existing savestate padding.

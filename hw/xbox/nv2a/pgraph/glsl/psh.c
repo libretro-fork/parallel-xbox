@@ -640,6 +640,8 @@ struct PixelShader {
     char const_refs[32][32];
 };
 
+static const char *const psh_norm_names[4] = { "norm0", "norm1", "norm2", "norm3" };
+
 static void add_var_ref(struct PixelShader *ps, const char *var)
 {
     int i;
@@ -1128,8 +1130,7 @@ static void psh_append_shadowmap(const struct PixelShader *ps, int i, bool compa
         return;
     }
 
-    g_autofree gchar *normalize_tex_coords = g_strdup_printf("norm%d", i);
-    const char *tex_remap = ps->state->rect_tex[i] ? normalize_tex_coords : "";
+    const char *tex_remap = ps->state->rect_tex[i] ? psh_norm_names[i] : "";
 
     const char *comparison = shadow_comparison_map[ps->state->shadow_depth_func];
 
@@ -1229,8 +1230,7 @@ static void apply_convolution_filter(const struct PixelShader *ps, MString *vars
     /* The convolution footprint is measured in texels after projection;
      * adding offsets before the divide would scale the kernel by 1/Q. */
 
-    g_autofree gchar *normalize_tex_coords = g_strdup_printf("norm%d", tex);
-    const char *tex_remap = ps->state->rect_tex[tex] ? normalize_tex_coords : "";
+    const char *tex_remap = ps->state->rect_tex[tex] ? psh_norm_names[tex] : "";
 
     mstring_append_fmt(vars,
         "vec3 convCoord%d = %s(pT%d.xyw);\n"
@@ -2011,8 +2011,7 @@ static MString* psh_convert(struct PixelShader *ps)
 
         const char *sampler_type = get_sampler_type(ps, ps->tex_modes[i], i);
 
-        g_autofree gchar *normalize_tex_coords = g_strdup_printf("norm%d", i);
-        const char *tex_remap = ps->state->rect_tex[i] ? normalize_tex_coords : "";
+        const char *tex_remap = ps->state->rect_tex[i] ? psh_norm_names[i] : "";
 
         assert(ps->dot_map[i] < 8);
         const char *dotmap_func = dotmap_funcs[ps->dot_map[i]];
@@ -2505,6 +2504,7 @@ static MString* psh_convert(struct PixelShader *ps)
     mstring_append(final, mstring_get_str(ps->code));
     mstring_append(final, "}\n");
 
+    mstring_unref(clip);
     mstring_unref(preflight);
     mstring_unref(vars);
     mstring_unref(ps->code);
