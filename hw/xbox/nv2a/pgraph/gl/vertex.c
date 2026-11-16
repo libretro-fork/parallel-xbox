@@ -393,6 +393,9 @@ void pgraph_gl_bind_vertex_attributes(NV2AState *d, unsigned int min_element,
         hwaddr start = 0;
         if (inline_data) {
             attrib_data_addr = attr->inline_array_offset;
+#ifdef XEMU_EXPERIMENTAL_INLINE_STREAM
+            attrib_data_addr += r->inline_stream.draw_offset;
+#endif
             stride = inline_stride;
         } else {
             hwaddr dma_len;
@@ -428,8 +431,12 @@ void pgraph_gl_bind_vertex_attributes(NV2AState *d, unsigned int min_element,
             continue;
         }
 
+        GLuint inline_buffer = r->gl_inline_array_buffer;
+#ifdef XEMU_EXPERIMENTAL_INLINE_STREAM
+        inline_buffer = r->inline_stream.draw_buffer;
+#endif
         pgraph_gl_attr_pointer(r, i,
-                               inline_data ? r->gl_inline_array_buffer :
+                               inline_data ? inline_buffer :
                                              r->gl_memory_buffer,
                                gl_count, gl_type, gl_normalize, stride,
                                attrib_data_addr, needs_conversion);
@@ -465,10 +472,31 @@ unsigned int pgraph_gl_bind_inline_array(NV2AState *d)
     NV2A_DPRINTF("draw inline array %d, %d\n", vertex_size, index_count);
 
     nv2a_profile_inc_counter(NV2A_PROF_GEOM_BUFFER_UPDATE_2);
-    glBindBuffer(GL_ARRAY_BUFFER, r->gl_inline_array_buffer);
     GLsizeiptr buffer_size = index_count * vertex_size;
-    glBufferData(GL_ARRAY_BUFFER, buffer_size, NULL, GL_STREAM_DRAW);
-    glBufferSubData(GL_ARRAY_BUFFER, 0, buffer_size, pgraph_inline_array_data(pg));
+    bool streamed = false;
+#ifdef XEMU_EXPERIMENTAL_INLINE_STREAM
+    r->inline_stream.draw_buffer = r->gl_inline_array_buffer;
+    r->inline_stream.draw_offset = 0;
+    size_t stream_offset;
+    if (r->inline_stream.mapping && buffer_size > 0 &&
+        gl_inline_stream_reserve(&r->inline_stream.cursor, buffer_size,
+                                 r->sampled_texture_pool.completed,
+                                 &stream_offset)) {
+        /* The guest span ends its CPU lend at this copy into the final mapped
+         * GPU owner. Its range stays immutable until the existing flip fence
+         * retires the slice. No payload clone or draw-side allocation/wait. */
+        memcpy(r->inline_stream.mapping + stream_offset,
+               pgraph_inline_array_data(pg), buffer_size);
+        r->inline_stream.draw_buffer = r->inline_stream.buffer;
+        r->inline_stream.draw_offset = stream_offset;
+        streamed = true;
+    }
+#endif
+    if (!streamed) {
+        glBindBuffer(GL_ARRAY_BUFFER, r->gl_inline_array_buffer);
+        glBufferData(GL_ARRAY_BUFFER, buffer_size, NULL, GL_STREAM_DRAW);
+        glBufferSubData(GL_ARRAY_BUFFER, 0, buffer_size, pgraph_inline_array_data(pg));
+    }
     pgraph_gl_bind_vertex_attributes(d, 0, index_count-1, true, vertex_size,
                                   index_count-1, false);
 
@@ -489,6 +517,70 @@ static bool vertex_cache_entry_compare(Lru *lru, LruNode *node, const void *key)
 }
 
 static const size_t element_cache_size = 50*1024;
+
+#ifdef XEMU_EXPERIMENTAL_INLINE_STREAM
+static void init_inline_stream(PGRAPHGLState *r)
+{
+    if (!glBufferStorage || !glo_check_extension("GL_ARB_buffer_storage")) {
+        return;
+    }
+    GLint previous;
+    glGetIntegerv(GL_ARRAY_BUFFER_BINDING, &previous);
+    GLuint buffer = 0;
+    glGenBuffers(1, &buffer);
+    GLenum generated = glGetError();
+    if (!buffer || generated != GL_NO_ERROR) {
+        if (buffer) {
+            glDeleteBuffers(1, &buffer);
+        }
+        return;
+    }
+    glBindBuffer(GL_ARRAY_BUFFER, buffer);
+    GLbitfield flags = GL_MAP_WRITE_BIT | GL_MAP_PERSISTENT_BIT | GL_MAP_COHERENT_BIT;
+    glBufferStorage(GL_ARRAY_BUFFER, GL_INLINE_STREAM_BYTES, NULL, flags);
+    if (glGetError() != GL_NO_ERROR) {
+        goto unavailable;
+    }
+    uint8_t *mapping = glMapBufferRange(GL_ARRAY_BUFFER, 0,
+                                       GL_INLINE_STREAM_BYTES, flags);
+    GLenum error = glGetError();
+    if (!mapping || error != GL_NO_ERROR) {
+        if (mapping) {
+            glUnmapBuffer(GL_ARRAY_BUFFER);
+            glGetError();
+        }
+        goto unavailable;
+    }
+    /* Touch the bounded final owner during preparation, not on its first
+     * gameplay write. This does not create an intermediate payload buffer. */
+    memset(mapping, 0, GL_INLINE_STREAM_BYTES);
+    r->inline_stream.buffer = buffer;
+    r->inline_stream.mapping = mapping;
+    memset(&r->inline_stream.cursor, 0, sizeof(r->inline_stream.cursor));
+    glBindBuffer(GL_ARRAY_BUFFER, previous);
+    return;
+unavailable:
+    glDeleteBuffers(1, &buffer);
+    glBindBuffer(GL_ARRAY_BUFFER, previous);
+}
+
+static void finalize_inline_stream(PGRAPHGLState *r)
+{
+    GLuint buffer = r->inline_stream.buffer;
+    if (!buffer) {
+        return;
+    }
+    GLint previous;
+    glGetIntegerv(GL_ARRAY_BUFFER_BINDING, &previous);
+    glBindBuffer(GL_ARRAY_BUFFER, buffer);
+    glUnmapBuffer(GL_ARRAY_BUFFER);
+    /* CPU lends have ended. GL retains queued GPU consumers of deleted
+     * buffers; do not add a wait on the frontend/context teardown path. */
+    glDeleteBuffers(1, &buffer);
+    glBindBuffer(GL_ARRAY_BUFFER, (GLuint)previous == buffer ? 0 : previous);
+    memset(&r->inline_stream, 0, sizeof(r->inline_stream));
+}
+#endif
 
 void pgraph_gl_init_buffers(NV2AState *d)
 {
@@ -531,12 +623,21 @@ void pgraph_gl_init_buffers(NV2AState *d)
     glGenVertexArrays(1, &r->gl_vertex_array);
     glBindVertexArray(r->gl_vertex_array);
 
+#ifdef XEMU_EXPERIMENTAL_INLINE_STREAM
+    assert(glGetError() == GL_NO_ERROR);
+    init_inline_stream(r);
+#endif
+
     assert(glGetError() == GL_NO_ERROR);
 }
 
 void pgraph_gl_finalize_buffers(PGRAPHState *pg)
 {
     PGRAPHGLState *r = pg->gl_renderer_state;
+
+#ifdef XEMU_EXPERIMENTAL_INLINE_STREAM
+    finalize_inline_stream(r);
+#endif
 
     GLuint element_cache_buffers[element_cache_size];
     for (int i = 0; i < element_cache_size; i++) {

@@ -196,8 +196,16 @@ static void pgraph_gl_flip_stall(NV2AState *d)
     }
     if (sampled_texture_rollover(&r->sampled_texture_pool)) {
         r->sampled_flip_serial = r->sampled_flip_wait_serial = 0;
+#ifdef XEMU_EXPERIMENTAL_INLINE_STREAM
+        /* Dropped fence labels cannot retire mapped CPU-write ranges. Keep
+         * the owner alive and use the ordinary upload path after rollover. */
+        r->inline_stream.cursor.disabled = true;
+#endif
     }
     uint64_t sampled_serial = sampled_texture_seal(&r->sampled_texture_pool);
+#ifdef XEMU_EXPERIMENTAL_INLINE_STREAM
+    gl_inline_stream_seal(&r->inline_stream.cursor, sampled_serial);
+#endif
     if (xemu_cost_segn) {
         /* Query slots cannot be reused until this frame completes. Its
          * fence also covers all preceding work, so the old one is redundant. */

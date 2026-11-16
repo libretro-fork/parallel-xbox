@@ -45,6 +45,9 @@
 #include "gloffscreen.h"
 #include "constants.h"
 #include "texture-recycle.h"
+#ifdef XEMU_EXPERIMENTAL_INLINE_STREAM
+#include "inline-stream.h"
+#endif
 
 /* Composition parameters stay on the render thread. A published ticket
  * identifies an already-composed display image rather than a live surface. */
@@ -325,6 +328,15 @@ typedef struct PGRAPHGLState {
     Lru element_cache;
     VertexLruNode *element_cache_entries;
     GLuint gl_inline_array_buffer;
+#ifdef XEMU_EXPERIMENTAL_INLINE_STREAM
+    struct {
+        GLuint buffer;
+        uint8_t *mapping;
+        GlInlineStreamCursor cursor;
+        GLuint draw_buffer; /* Borrowed arena or existing fallback buffer. */
+        size_t draw_offset;
+    } inline_stream;
+#endif
     GLuint gl_memory_buffer;
     unsigned long *vertex_stale_bitmap;
     size_t vertex_stale_pages;

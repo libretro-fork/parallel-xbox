@@ -1,5 +1,60 @@
 # Cold-first-play recovery and regression prevention
 
+## Experimental GL inline-array streaming, 2026-11-16
+
+`XEMU_EXPERIMENTAL_INLINE_STREAM` is disabled by default. It prepares one
+768 KiB mapped GPU buffer, divided into three 256 KiB slices. This is final
+vertex storage, not a source/cache clone. The measured DOA3 boot/menu trace
+peaked at 165,984 requested inline bytes per callback before alignment; this
+bound informs the modest arena size, not a claim that arbitrary games fit it.
+Existing cache capacities, thread counts and reservations are unchanged.
+
+The renderer copies an inline packet once into its final mapped range and
+binds vertex attributes at that range's base plus their original offsets.
+The guest packet owner remains borrowed only through the synchronous copy
+and provoking-value reads. No guest pointer escapes. Submitted ranges stay
+immutable until the existing flip fence retires their serial. The arena adds
+no fences, host-time pacing, draw-side mapping, allocation or waits. Its
+client write visibility uses the coherent mapping rules in
+[ARB_buffer_storage](https://registry.khronos.org/OpenGL/extensions/ARB/ARB_buffer_storage.txt).
+Driver placement and internal copying are not observable guarantees; this
+is one explicit copy into final mapped storage, not a universal zero-copy claim.
+
+Unsupported extensions, partial setup failures, exhausted/busy slices and
+oversized packets preserve the old orphan/upload path. These remain explicit
+allocation opportunities. Serial rollover disables mapped reuse for the
+remaining renderer lifetime rather than aliasing an old GPU consumer. Unload
+ends the CPU lend, unmaps and deletes the native owner through normal GL
+resource lifetime; it does not add a frontend-thread GPU wait. Reset, renderer
+replacement and savestate paths must retain the same ownership guarantees.
+
+The cursor fixture executes 20,000 frame schedules, 369,841 nonoverlapping
+reservations and 435,815 pressure/oversize fallbacks, and rejects five unsafe
+reuse mutations. The production setup/upload fixture checks coherent flags,
+published owners/ranges, capability absence, five partial setup failures,
+preparation-time owner initialization, idempotent teardown and deleted-binding restoration; six deliberate faults
+must fail. The real-GL fixture executes the production upload, format,
+pointer-shadow and provoking-read functions across all six input formats:
+2,592 draws, 524,768 exact scalar bit patterns, 432 mapped and 2,160 fallback
+draws, including delayed retirement, forced exhaustion, oversized packets and
+repeated wraps. Native RTX 5090 and llvmpipe pass, including both upload-fault
+controls. DMA/RAM paths are modeled and forbidden in that inline-only fixture;
+feedback/readback allocations are test-only. Fresh-process NGB and DOA3 arena
+restores also retain exact parent images after repeated external loads.
+
+Private DOA3 counters report 20,965 mapped fight uploads (4,360,720 bytes)
+with zero fallbacks in each sampled 599-callback fight window, replacing that
+many storage and separate upload API calls. About 1.44 million pre-fight tiny
+uploads also use the arena. Other VRAM uploads remain. Neither parent nor
+candidate recorded C malloc/calloc/realloc calls in those fight windows; this
+does not cover OS or driver allocators. Counters alter execution cost and
+cannot establish release frame-time gains. Two release ABBA attempts were interrupted by unrelated compiler/build
+processes, including the final parent trial of the second attempt. Completed
+trials are retained as individual observations, not a qualified comparison or
+a speedup claim. Cold-driver evidence and full CI remain unqualified. The larger shader-readiness
+and cold-play regression remain **BAD/unqualified**.
+
+
 ## Experimental Vulkan masked-clear readiness, 2026-11-16
 
 `XEMU_EXPERIMENTAL_READY_CLEAR` is an opt-in build flag, disabled by default.

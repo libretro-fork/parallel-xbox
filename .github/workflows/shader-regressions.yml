@@ -155,6 +155,12 @@ jobs:
           else
             echo 'Pre-ready-clear baseline: existing clear contracts apply; new readiness coverage not applicable' | tee results/vk-ready-clear.log
           fi
+          if test -f candidate/hw/xbox/nv2a/pgraph/gl/inline-stream.h; then
+            python3 driver/libretro/tests/test-gl-inline-stream.py candidate cc 2>&1 | tee results/gl-inline-stream.log
+            python3 driver/libretro/tests/test-gl-inline-stream-owner.py candidate cc 2>&1 | tee results/gl-inline-stream-owner.log
+          else
+            echo 'Pre-stream baseline: existing inline upload contracts apply' | tee results/gl-inline-stream.log
+          fi
           python3 driver/libretro/tests/test-pipeline-seed-full.py candidate cc 2>&1 | tee results/pipeline-seed-full.log
           python3 driver/libretro/tests/test-dirty-range-owner.py candidate cc 2>&1 | tee results/dirty-range-owner.log
           python3 driver/libretro/tests/test-pvideo-dirty.py candidate cc 2>&1 | tee results/pvideo-dirty.log
@@ -292,6 +298,11 @@ jobs:
           mkdir -p results
           python3 driver/libretro/tests/test-gl-texture-shadow.py candidate cc 2>&1 | tee results/gl-texture-shadow.log
           python3 driver/libretro/tests/test-gl-volume-compression.py candidate cc 2>&1 | tee results/gl-volume-compression.log
+          if test -f candidate/hw/xbox/nv2a/pgraph/gl/inline-stream.h; then
+            python3 driver/libretro/tests/test-gl-inline-stream-gpu.py candidate cc 2>&1 | tee results/gl-inline-stream-gpu.log
+          else
+            echo 'Pre-stream baseline: existing vertex and utility GPU oracles apply' | tee results/gl-inline-stream-gpu.log
+          fi
           python3 driver/libretro/tests/test-glslc-local-init.py candidate --cc cc 2>&1 | tee results/local-init.log
           python3 driver/libretro/tests/test-vsh-mul-select.py candidate --cc cc --validator spirv-val 2>&1 | tee results/vsh-mul-select.log
           python3 driver/libretro/tests/test-spv-clear.py candidate cc --gpu 2>&1 | tee results/clear.log

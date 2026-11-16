@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Experimental GL inline-array uploads can use a bounded, persistently mapped GPU buffer instead of recreating storage and submitting a separate upload for every tiny batch. The existing flip fences protect three slices, and unsupported capabilities, failed setup, oversized draws or busy slices retain the normal upload path without adding a wait. `XEMU_EXPERIMENTAL_INLINE_STREAM` remains disabled by default while release timing and CI qualification are pending; this does not fix shader stutters by itself.
+
 - Experimental Vulkan masked color clears can use up to fifteen ready pipelines prepared at renderer startup, with dynamic channel masks and depth/stencil writes left to the following attachment clear. Enable only with `XEMU_EXPERIMENTAL_READY_CLEAR`; it remains off by default. Unsupported capabilities or preparation failure keep the correct existing miss path. Exact native/software GPU color, depth and stencil checks pass, but the sampled NGB/DOA3 checkpoints did not use masked clears and establish no gameplay speedup or stutter recovery.
 
 - In separable-shader mode, skip the legacy linked-program cache loader and leave its reload list intact. This mode consumes stage binaries instead; reading linked programs only creates unused cache I/O and storage. Disabled caching no longer starts the reader thread. Stage-cache loading, shader seeds and legacy-mode reload/writeback remain supported; this is not complete shader-stutter recovery.
