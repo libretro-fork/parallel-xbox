@@ -24,7 +24,13 @@ bool pgraph_glsl_psh_ready_controls(const PshState *s, uint32_t controls[8])
         }
         if (!bump && (mode < PS_TEXTUREMODES_PROJECT2D || mode > PS_TEXTUREMODES_CUBEMAP)) continue;
         if (s->dim_tex[i] != 2 && s->dim_tex[i] != 3) return false;
-        if (s->shadow_map[i] || s->colorkey_mode[i] < 0 || s->colorkey_mode[i] > 3) return false;
+        if (s->colorkey_mode[i] < 0 || s->colorkey_mode[i] > 3) return false;
+        if (s->shadow_map[i] &&
+            (s->shadow_map[i] != 1 ||
+             (mode != PS_TEXTUREMODES_PROJECT2D && mode != PS_TEXTUREMODES_PROJECT3D) ||
+             s->dim_tex[i] != 2 || s->tex_cubemap[i] ||
+             s->shadow_depth_func < SHADOW_DEPTH_FUNC_NEVER ||
+             s->shadow_depth_func > SHADOW_DEPTH_FUNC_ALWAYS)) return false;
         if (mode == PS_TEXTUREMODES_PROJECT2D && s->conv_tex[i]) return false;
         if ((s->dim_tex[i] == 3 && (s->rect_tex[i] || s->tex_cubemap[i])) ||
             (mode == PS_TEXTUREMODES_CUBEMAP && s->dim_tex[i] != 2) ||
@@ -52,6 +58,11 @@ bool pgraph_glsl_psh_ready_controls(const PshState *s, uint32_t controls[8])
             /* Bump modes do not apply border adjustment. Borrow two unused
              * per-stage control bits for a validated earlier-stage owner. */
             flags = (flags & ~8u) | (input << 12);
+        }
+        if (s->shadow_map[i] == 1 && (mode == 1 || mode == 2)) {
+            /* Fixed depth is sampled as RGBA metadata and compared manually,
+             * exactly like the ordinary generator. No shadow sampler alias. */
+            flags = (flags & ~8u) | 64u | ((unsigned)s->shadow_depth_func << 7);
         }
         controls[4 + i] = flags;
     }
@@ -104,6 +115,15 @@ static void psh_ready_textures(struct PixelShader *ps, MString *preflight, MStri
         " if(mode==4u)return p;\n"
         " if(mode==5u){for(int a=0;a<4;a++){\n"
         " if(((f&(1u<<uint(a+8)))!=0u)?p[a]>=0.0:p[a]<0.0)fsKill=true;}return vec4(0.0);}\n"
+        " if((f&64u)!=0u){\n"
+        "  uint cmp=(f>>7u)&7u;if(cmp==0u)return vec4(0.0);if(cmp==7u)return vec4(1.0);\n"
+        "  vec3 coord=p.xyw;if((f&1u)!=0u)coord=vec3(p.xy/(textureSize(s2,0)/texScale[stage]),p.w);\n"
+        "  vec4 depth=textureProj(s2,coord);float ref=0.0;\n"
+        "  if(mode==2u){float maximum=depth.y>0.0?float(0xFFFFFF):(depth.z>0.0?511.9375:float(0xFFFF));\n"
+        "   depth.x*=maximum;ref=clamp(p.z/p.w,0.0,maximum);}\n"
+        "  bool pass=cmp==1u?depth.x<ref:cmp==2u?depth.x==ref:cmp==3u?depth.x<=ref:\n"
+        "            cmp==4u?depth.x>ref:cmp==5u?depth.x!=ref:depth.x>=ref;return vec4(pass?1.0:0.0);\n"
+        " }\n"
         " if(mode==6u||mode==7u){\n"
         "  vec2 dsdt=vec2(sign3(bump.b),sign3(bump.g));dsdt=bumpMat[stage]*dsdt;\n"
         "  vec2 coord=p.xy+dsdt;vec4 sampled;\n"

@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Extend the disabled-by-default prepared GL fragment prototype to fixed-depth shadow comparisons in PROJECT2D/PROJECT3D. Reuse existing 2D sampler routes, uniforms, control words and two fragment owners. Preserve rectangle projection, D16/D24/float depth metadata, all eight comparisons, alpha/color-key handling and atomic rejection of unsupported encodings. Current-main experimental restores match NGB/DOA3, and DOA3 now uses 2,598 prepared shadow uploads instead of shadow fallback lookups. Timing and full cold-play recovery remain unqualified.
+
 - Extend the disabled-by-default prepared GL fragment prototype to unsigned bump environment/luminance stages using validated prior-stage inputs, the existing typed sampler owners and existing uniforms. Two invariant native fragment sources cover 288 added dependent-texture cases without new shader variants. The integrated native/software numerical suite and seventeen fault controls pass, ordinary shader bytes and owners remain unchanged, and NGB/DOA3 restored images match. Current-main integration, cold/warm and latency qualification remain pending. This is not promoted or complete stutter recovery.
 
 - Experimental prepared fragments keep the alpha product rounded before output bias, matching the dynamic combiner rather than allowing multiply-add contraction. Use independent constant-index register-write predicates instead of switch exit paths. Extend the exact GPU fixture with 108 varied-constant dynamic cases and an independent 72-probe C0/C1 slot oracle. Literal-combiner precision mismatches and cold-play qualification remain open; prepared rendering stays disabled by default.

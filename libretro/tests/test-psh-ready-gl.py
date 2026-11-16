@@ -28,7 +28,7 @@ def main():
         context=(function(geometry,'static void quiet_abort(')+'\n'+function(geometry,'static void init_gl(')).replace('Geometry GL device=', 'Fragment GL device=')
         driver=Path(__file__).with_suffix('.c').read_text(encoding='utf-8').replace('/* CONTEXT */',context)
         env=dict(os.environ,EGL_PLATFORM='surfaceless',LP_NUM_THREADS='1');env['PATH']=str(Path(shutil.which(args.cc) or args.cc).resolve().parent)+os.pathsep+env.get('PATH','')
-        for mutation in ['', 'depth', 'mode', 'target', 'volume', 'clip', 'alpha', 'combiner', 'helper', 'zero', 'final', 'constant_c0', 'constant_c1', 'constant_final', 'bump-matrix', 'bump-sign', 'bump-lum', 'bump-input']:
+        for mutation in ['', 'depth', 'mode', 'target', 'volume', 'clip', 'alpha', 'combiner', 'helper', 'zero', 'final', 'constant_c0', 'constant_c1', 'constant_final', 'bump-matrix', 'bump-sign', 'bump-lum', 'bump-input', 'shadow-enable', 'shadow-compare', 'shadow-range', 'shadow-projection', 'shadow-rect']:
             code=driver
             emitted=generator
             if mutation=='zero':
@@ -46,10 +46,15 @@ def main():
                     'constant_final':'        {"stage == 8 ||", "false ||"},\n        {"stage == 8 ||", "false ||"},',
                 }
                 emitted=emitted.replace(marker,faults[mutation]+'\n'+marker)
-            if mutation.startswith('bump-'):
+            if mutation.startswith(('bump-','shadow-')):
                 include='#include "hw/xbox/nv2a/pgraph/glsl/psh-ready.inc"'
                 ready=(r/'hw/xbox/nv2a/pgraph/glsl/psh-ready.inc').read_text(encoding='utf-8')
                 faults={
+                    'shadow-enable':('if((f&64u)!=0u)','if(false)'),
+                    'shadow-compare':('uint cmp=(f>>7u)&7u','uint cmp=((f>>7u)&7u)^1u'),
+                    'shadow-range':('depth.y>0.0?float(0xFFFFFF):(depth.z>0.0?511.9375:float(0xFFFF))','float(0xFFFF)'),
+                    'shadow-projection':('if(mode==2u){float maximum','if(false){float maximum'),
+                    'shadow-rect':('coord=vec3(p.xy/(textureSize(s2,0)/texScale[stage]),p.w)','coord=p.xyw'),
                     'bump-matrix':('dsdt=bumpMat[stage]*dsdt','dsdt=vec2(0.0)'),
                     'bump-sign':('sign3(bump.b)','bump.b'),
                     'bump-lum':('sampled=sampled*(bumpScale[stage]*bump.r+bumpOffset[stage])','sampled=sampled'),
@@ -73,12 +78,18 @@ def main():
                 libs=['-lopengl32','-lgdi32','-luser32']
             else:sources += [r/'libretro-common/compat/compat_strl.c'];libs=['-lEGL','-lGL']
             subprocess.run(flags+list(map(str,sources))+['-Wl,--gc-sections','-lm',*libs,'-o',str(exe)],check=True,env=env)
-            with c.with_suffix('.log').open('w') as out: result=subprocess.run([str(exe)]+(['--constants-only'] if mutation.startswith('constant_') else ['--bump-only'] if mutation.startswith('bump-') else []),env=env,stdout=out,stderr=subprocess.STDOUT,timeout=300)
+            with c.with_suffix('.log').open('w') as out: result=subprocess.run([str(exe)]+(['--constants-only'] if mutation.startswith('constant_') else ['--bump-only'] if mutation.startswith('bump-') else ['--shadow-only'] if mutation.startswith('shadow-') else []),env=env,stdout=out,stderr=subprocess.STDOUT,timeout=300)
             log=c.with_suffix('.log').read_text(errors='replace')
             if not mutation:
                 print(log,end='',flush=True);assert result.returncode==0,(result.returncode,log)
             else:
                 wanted='constant register mismatch' if mutation.startswith('constant_') else 'fragment difference case='
+                if mutation.startswith('shadow-'):
+                    import re
+                    match=re.search(r'fragment difference case=(\d+)',log)
+                    if match:assert int(match.group(1))>=1704,log
+                    else:assert re.search(r'shadow (?:coordinate )?oracle mismatch[^\n]*path=1',log),log
+                    wanted='fragment difference case=' if match else 'oracle mismatch'
                 assert result.returncode!=0 and wanted in log,(mutation,result.returncode,log)
                 if mutation.startswith('bump-'):
                     import re

@@ -29,6 +29,15 @@ static GLuint program(GLenum stage,MString *source)
 }
 static PshState state_for(unsigned test)
 {
+    if(test>=1704){
+        unsigned k=test-1704,unit=k%4;
+        PshState s={.depth_format=DEPTH_FORMAT_HELPER_LIVENESS,.dim_tex={2,2,2,2},.combiner_dynamic=true};
+        s.smooth_shading=(k/4)&1;s.shader_stage_program=(1u+((k/32)&1))<<(unit*5);
+        s.shadow_map[unit]=1;s.shadow_depth_func=(k/4)%8;s.rect_tex[unit]=(k/64)&1;
+        s.border_adjust[unit]=(k/128)&1;
+        s.final_inputs_0=(0x08u+unit)<<16|0x13000000;s.final_inputs_1=(0x18u+unit)<<8;
+        return s;
+    }
     if(test>=1416){
         unsigned k=test-1416,unit=1+k%3,src=(k/3)%unit;
         PshState s={.depth_format=DEPTH_FORMAT_HELPER_LIVENESS,.dim_tex={2,2,2,2},.combiner_dynamic=true};
@@ -154,13 +163,14 @@ static PshState state_for(unsigned test)
 static MString *vertex(bool smooth)
 {
     MString *s=mstring_from_str("#version 410\nout gl_PerVertex{vec4 gl_Position;float gl_PointSize;};\n");pgraph_glsl_get_vtx_header(s,true,smooth,false,false,false);
-    mstring_append(s,"uniform int fixture;uniform int ui;\nvoid main(){\n"
+    mstring_append(s,"uniform int fixture;uniform int ui;uniform vec4 shadowCoord;\nvoid main(){\n"
         "vec2 pos=gl_VertexID==0?vec2(-1,-1):gl_VertexID==1?vec2(3,-1):vec2(-1,3);\n"
         "gl_Position=vec4(pos,0,1);gl_PointSize=5.0;\n"
         "vtxD0=vec4(float(gl_VertexID)*0.25,0.5,0.75,0.5);vtxD1=vec4(0.125);vtxB0=vec4(0.75,0.25,0.5,1);vtxB1=vec4(0.25);vtxFog=0.5;\n"
         "float q=fixture%7==0?0.0:fixture%7==1?-1.0:2.0;\n"
         "vtxT0=vec4((pos*0.5+0.5)*float(1<<(fixture%4)),0.25,q);vtxT1=vtxT0*vec4(-1,2,1,1);vtxT2=vtxT0*vec4(2,-1,1,1);vtxT3=vtxT0*vec4(-2,-2,1,1);\n"
         "if(fixture==1000)vtxT0.x-=0.5;\n"
+        "if(fixture==4000){vtxT0=shadowCoord;vtxT1=shadowCoord;vtxT2=shadowCoord;vtxT3=shadowCoord;}\n"
         "vtxPos0=vec4(0,0,128.5,1);vtxPos1=vec4(8,0,160.5,2);vtxPos2=vec4(0,8,192.5,3);triMZ=0.125;\n"
         "if(ui!=0){vtxPos1.xy=vec2(0.125,0.25);vtxPos2.xy=vec2(0.375,0.75);triMZ=uintBitsToFloat(0x80000000u);}\n"
         "}\n");return s;
@@ -272,11 +282,86 @@ static void constant_register_oracle(GLuint pipeline, const GLuint vs[2],
     puts("PASS independent constant-register oracle: 72 shared/unique/final C0/C1 probes, 576 exact channel checks");
 }
 
+/* Independent comparison oracle: one constant RGBA depth texel and explicit
+ * coordinates isolate the guest compare semantics from either GLSL generator. */
+static bool shadow_compare_cpu(unsigned fn,float depth,float reference)
+{
+    switch(fn){case 0:return false;case 1:return depth<reference;
+    case 2:return depth==reference;case 3:return depth<=reference;
+    case 4:return depth>reference;case 5:return depth!=reference;
+    case 6:return depth>=reference;case 7:return true;}abort();
+}
+static void shadow_depth_oracle(GLuint pipeline,const GLuint vs[2],
+                                const GLuint ready[2],const GLuint tex[12])
+{
+    GLuint depth_tex;glGenTextures(1,&depth_tex);unsigned probes=0,checks=0;
+    for(unsigned unit=0;unit<4;unit++){
+        glActiveTexture(GL_TEXTURE0+unit);glBindTexture(GL_TEXTURE_2D,depth_tex);
+        glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MIN_FILTER,GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAG_FILTER,GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_BASE_LEVEL,0);glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAX_LEVEL,0);
+        glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_WRAP_S,GL_CLAMP_TO_EDGE);glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_WRAP_T,GL_CLAMP_TO_EDGE);
+        glTexImage2D(GL_TEXTURE_2D,0,GL_RGBA32F,1,1,0,GL_RGBA,GL_FLOAT,NULL);
+        for(unsigned mode=1;mode<=2;mode++)for(unsigned rect=0;rect<2;rect++)for(unsigned fn=0;fn<8;fn++){
+            PshState state={.depth_format=DEPTH_FORMAT_D16|DEPTH_FORMAT_HELPER_LIVENESS,.dim_tex={2,2,2,2},.combiner_dynamic=true};
+            state.shader_stage_program=mode<<(unit*5);state.shadow_map[unit]=1;state.shadow_depth_func=fn;state.rect_tex[unit]=rect;
+            state.final_inputs_0=0x20000000u|((8u+unit)<<16);state.final_inputs_1=(0x18u+unit)<<8;
+            MString *text=pgraph_glsl_gen_psh(&state,(GenPshGlslOptions){.locations=true});GLuint exact=program(GL_FRAGMENT_SHADER,text);mstring_unref(text);
+            for(unsigned format=0;format<4;format++)for(unsigned relation=0;relation<3;relation++){
+                float maximum=(format&1)?16777215.0f:format==2?511.9375f:65535.0f;
+                float sample[4]={mode==1?((int)relation-1)*.25f:.25f+relation*.25f,(format&1)?1.0f:0.0f,format>=2?1.0f:0.0f,1.0f};
+                float reference=mode==1?0.0f:maximum*.5f;
+                float depth=mode==1?sample[0]:sample[0]*maximum;
+                float expected=shadow_compare_cpu(fn,depth,reference)?1.0f:0.0f;
+                glActiveTexture(GL_TEXTURE0+unit);glTexSubImage2D(GL_TEXTURE_2D,0,0,0,1,1,GL_RGBA,GL_FLOAT,sample);
+                for(unsigned path=0;path<2;path++){
+                    GLuint fs=path?ready[0]:exact;uniforms(fs,&state,0,path);
+                    glUseProgramStages(pipeline,GL_VERTEX_SHADER_BIT,vs[0]);glUseProgramStages(pipeline,GL_FRAGMENT_SHADER_BIT,fs);
+                    glProgramUniform1i(vs[0],glGetUniformLocation(vs[0],"fixture"),4000);glProgramUniform1i(vs[0],glGetUniformLocation(vs[0],"ui"),0);
+                    glProgramUniform4f(vs[0],glGetUniformLocation(vs[0],"shadowCoord"),.25f,.5f,maximum,2.0f);
+                    glClearColor(.9375f,.8125f,.6875f,.5625f);glClearDepth(.625);glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT);glDrawArrays(GL_TRIANGLES,0,3);
+                    float value[4];glReadPixels(3,3,1,1,GL_RGBA,GL_FLOAT,value);REQUIRE(glGetError()==GL_NO_ERROR);
+                    for(unsigned channel=0;channel<4;channel++){
+                        if(value[channel]!=expected){fprintf(stderr,"shadow oracle mismatch unit=%u mode=%u rect=%u fn=%u format=%u relation=%u path=%u channel=%u got=%a expected=%a\n",unit,mode,rect,fn,format,relation,path,channel,value[channel],expected);exit(1);}checks++;
+                    }
+                }
+                probes++;
+            }
+            glDeleteProgram(exact);
+        }
+        /* Coordinate oracle: rectangle normalization must choose the left
+         * depth texel while normalized coordinates choose the right one. */
+        const float two_depths[8]={.25f,0,0,1,.75f,0,0,1};
+        glActiveTexture(GL_TEXTURE0+unit);glTexImage2D(GL_TEXTURE_2D,0,GL_RGBA32F,2,1,0,GL_RGBA,GL_FLOAT,two_depths);
+        for(unsigned rect=0;rect<2;rect++){
+            PshState state={.depth_format=DEPTH_FORMAT_D16|DEPTH_FORMAT_HELPER_LIVENESS,.dim_tex={2,2,2,2},.combiner_dynamic=true};
+            state.shader_stage_program=2u<<(unit*5);state.shadow_map[unit]=1;state.shadow_depth_func=SHADOW_DEPTH_FUNC_LESS;state.rect_tex[unit]=rect;
+            state.final_inputs_0=0x20000000u|((8u+unit)<<16);state.final_inputs_1=(0x18u+unit)<<8;
+            MString *text=pgraph_glsl_gen_psh(&state,(GenPshGlslOptions){.locations=true});GLuint exact=program(GL_FRAGMENT_SHADER,text);mstring_unref(text);
+            for(unsigned path=0;path<2;path++){
+                GLuint fs=path?ready[0]:exact;uniforms(fs,&state,0,path);
+                glUseProgramStages(pipeline,GL_VERTEX_SHADER_BIT,vs[0]);glUseProgramStages(pipeline,GL_FRAGMENT_SHADER_BIT,fs);
+                glProgramUniform1i(vs[0],glGetUniformLocation(vs[0],"fixture"),4000);glProgramUniform1i(vs[0],glGetUniformLocation(vs[0],"ui"),0);
+                glProgramUniform4f(vs[0],glGetUniformLocation(vs[0],"shadowCoord"),1.5f,.5f,65535.0f,2.0f);
+                glClearColor(.9375f,.8125f,.6875f,.5625f);glClearDepth(.625);glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT);glDrawArrays(GL_TRIANGLES,0,3);
+                float value[4];glReadPixels(3,3,1,1,GL_RGBA,GL_FLOAT,value);REQUIRE(glGetError()==GL_NO_ERROR);
+                for(unsigned channel=0;channel<4;channel++){
+                    if(value[channel]!=(float)rect){fprintf(stderr,"shadow coordinate oracle mismatch unit=%u rect=%u path=%u channel=%u got=%a expected=%u\n",unit,rect,path,channel,value[channel],rect);exit(1);}checks++;
+                }
+            }
+            probes++;glDeleteProgram(exact);
+        }
+        glActiveTexture(GL_TEXTURE0+unit);glBindTexture(GL_TEXTURE_2D,tex[unit]);
+    }
+    glDeleteTextures(1,&depth_tex);
+    printf("PASS independent shadow oracle: %u depth/comparison probes, %u exact channels, four stages, both projection modes, rectangle, D16/D24/float and marker priority\n",probes,checks);
+}
 int main(int argc,char **argv)
 {
     bool only_constants=argc==2&&!strcmp(argv[1],"--constants-only");
     bool only_bump=argc==2&&!strcmp(argv[1],"--bump-only");
-    REQUIRE(argc==1||only_constants||only_bump);
+    bool only_shadow=argc==2&&!strcmp(argv[1],"--shadow-only");
+    REQUIRE(argc==1||only_constants||only_bump||only_shadow);
     signal(SIGABRT,quiet_abort);setvbuf(stdout,NULL,_IONBF,0);init_gl();
     GLint units;glGetIntegerv(GL_MAX_TEXTURE_IMAGE_UNITS,&units);REQUIRE(units>=12);
     GLuint fb,rb[2],vao,pipeline,tex[12];glGenFramebuffers(1,&fb);glBindFramebuffer(GL_FRAMEBUFFER,fb);glGenRenderbuffers(2,rb);
@@ -303,9 +388,9 @@ int main(int argc,char **argv)
         }
     }
     /* Reject uncovered domains atomically; never publish partial controls. */
-    for(unsigned bad=0;bad<16;bad++){
+    for(unsigned bad=0;bad<22;bad++){
         PshState reject={.final_inputs_0=0x20090000,.depth_format=DEPTH_FORMAT_HELPER_LIVENESS,.shader_stage_program=1,.dim_tex={2,2,2,2}};
-        if(bad==0)reject.shadow_map[0]=1;
+        if(bad==0)reject.shadow_map[0]=3;
         if(bad==1)reject.conv_tex[0]=CONVOLUTION_FILTER_GAUSSIAN;
         if(bad==2)reject.g8b8_signed[0]=1;
         if(bad==3)reject.shader_stage_program=PS_TEXTUREMODES_DOT_ST;
@@ -321,6 +406,12 @@ int main(int argc,char **argv)
         if(bad==13){reject.shader_stage_program=4|(PS_TEXTUREMODES_BUMPENVMAP_LUM<<15);reject.other_stage_input=4u<<20;}
         if(bad==14){reject.shader_stage_program=4|(PS_TEXTUREMODES_BUMPENVMAP<<5);reject.tex_cubemap[1]=true;}
         if(bad==15){reject.shader_stage_program=4|(PS_TEXTUREMODES_BUMPENVMAP_LUM<<5);reject.shadow_map[1]=true;}
+        if(bad==16){reject.shadow_map[0]=1;reject.shadow_depth_func=8;}
+        if(bad==17){reject.shadow_map[0]=1;reject.shadow_depth_func=(enum PshShadowDepthFunc)-1;}
+        if(bad==18){reject.shadow_map[0]=1;reject.dim_tex[0]=3;}
+        if(bad==19){reject.shadow_map[0]=1;reject.tex_cubemap[0]=true;}
+        if(bad==20){reject.shadow_map[0]=2;}
+        if(bad==21){reject.shadow_map[0]=1;reject.shader_stage_program=PS_TEXTUREMODES_CUBEMAP;}
         uint32_t untouched[8],before[8];memset(untouched,0xa5,sizeof(untouched));memcpy(before,untouched,sizeof(before));
         REQUIRE(!pgraph_glsl_psh_ready_controls(&reject,untouched));REQUIRE(!memcmp(before,untouched,sizeof(before)));
         REQUIRE(!pgraph_glsl_gen_psh_ready(&reject,(GenPshGlslOptions){.locations=true}));
@@ -330,7 +421,7 @@ int main(int argc,char **argv)
     GLuint vs[2],ready[2];MString *ready_source[2];
     for(unsigned i=0;i<2;i++){MString *v=vertex(i);vs[i]=program(GL_VERTEX_SHADER,v);mstring_unref(v);PshState s={.depth_format=DEPTH_FORMAT_HELPER_LIVENESS,.combiner_dynamic=true,.smooth_shading=i};ready_source[i]=pgraph_glsl_gen_psh_ready(&s,(GenPshGlslOptions){.locations=true});REQUIRE(ready_source[i]);ready[i]=program(GL_FRAGMENT_SHADER,ready_source[i]);}
     uint64_t checked=0;unsigned written=0,discarded=0;
-    for(unsigned test=only_bump?1416:0;!only_constants&&test<1704;test++){
+    for(unsigned test=only_shadow?1704:only_bump?1416:0;!only_constants&&test<1960;test++){
         unsigned fixture=test>=1308?912+test-1308:test;
         static const GLint filters[]={GL_NEAREST,GL_LINEAR,GL_NEAREST_MIPMAP_NEAREST,GL_LINEAR_MIPMAP_NEAREST,GL_NEAREST_MIPMAP_LINEAR,GL_LINEAR_MIPMAP_LINEAR};
         static const GLint wraps[]={GL_REPEAT,GL_CLAMP_TO_EDGE,GL_CLAMP_TO_BORDER,GL_MIRRORED_REPEAT};
@@ -355,6 +446,7 @@ int main(int argc,char **argv)
         for(unsigned i=0;i<64;i++){if(values[0][i*4]==.9375f)discarded++;else written++;}glDeleteProgram(exact);
     }
     constant_register_oracle(pipeline,vs,ready,tex);
+    shadow_depth_oracle(pipeline,vs,ready,tex);
     if(only_constants){for(unsigned i=0;i<2;i++){glDeleteProgram(ready[i]);glDeleteProgram(vs[i]);mstring_unref(ready_source[i]);}return 0;}
     /* Independent analytic oracle: a half-plane kill cuts a 4x4 window to
      * eight pixels. A one-texel volume mip is constant regardless of UV/LOD;
@@ -385,6 +477,6 @@ int main(int argc,char **argv)
     glDeleteProgram(oracle_exact);
     puts("PASS independent half-plane/window/volume oracle: eight live pixels and exact color/depth on each path");
     REQUIRE(written>0&&discarded>0);
-    printf("PASS ready fragment: 1704 cases (1416 retained + 288 dependent bump/luminance), %llu exact color/depth checks, written=%u discarded=%u, two invariant native fragments\n",(unsigned long long)checked,written,discarded);
+    printf("PASS ready fragment: 1960 cases (1704 retained + 256 fixed-depth shadow), %llu exact color/depth checks, written=%u discarded=%u, two invariant native fragments\n",(unsigned long long)checked,written,discarded);
     for(unsigned i=0;i<2;i++){glDeleteProgram(ready[i]);glDeleteProgram(vs[i]);mstring_unref(ready_source[i]);}glDeleteTextures(12,tex);glDeleteProgramPipelines(1,&pipeline);glDeleteVertexArrays(1,&vao);glDeleteRenderbuffers(2,rb);glDeleteFramebuffers(1,&fb);return 0;
 }

@@ -1,5 +1,61 @@
 # Cold-first-play recovery and regression prevention
 
+## Pending fixed-depth shadow coverage, 2026-11-16
+
+The local prepared GL fragment prototype adds shadow-map encoding 1 for
+PROJECT2D/PROJECT3D, matching the four observed shadow states in the DOA3
+first-fight inventory. Existing per-stage control bits select manual depth
+comparison; the same two native fragment owners and existing 2D samplers are
+used. No shadow-sampler alias, native program, host payload buffer, worker,
+reservation, seed layout or ordinary generated source is added. Stage texture
+owners remain live through their draw. Encoded F16/filter variants, unsupported
+dimensions/cube routes and invalid comparison values stay correctly uncovered.
+
+The shader preserves the ordinary generator's early NEVER/ALWAYS behavior,
+rectangle coordinate normalization, no shadow border adjustment, comparison
+against zero in PROJECT2D and against clamped projected z in PROJECT3D. Depth
+RGBA metadata selects D24 first, otherwise float depth or D16. A CPU oracle
+checks 1,544 comparison/coordinate probes and 12,352 exact channels, including
+all eight comparisons, four stages, both projection modes, three depth ranges,
+marker priority and a two-texel rectangle selection test. The ordinary/ready
+comparison retains all 1,704 cases and adds 256 shadow states: 627,200 exact
+color/depth values and two invariant ready sources. Six added invalid domains
+reject before touching controls. Native and software positive tests and all twenty-two required fault controls
+pass within the unchanged per-process 300-second limit.
+
+Ordinary source/ownership checks retain all 73,728 byte-identical shaders
+(614,644,992 bytes), 256 prepared-owner schedules and all five owner faults.
+Native fragment orchestration retains its 29 startup failures and eleven
+fault controls. There is no extra per-bind source owner or payload copy. These
+counts do not prove that the driver performs no internal allocations.
+
+Matched experimental builds on current libretro base 27d3a4628f coherently
+rebuild every GL object; all 543 non-fragment objects match between parent and
+candidate. Both use the same alpha-rounding/bump checkpoint and exclude the
+unqualified fixed-function prototype. Only glsl/psh.o changes. DOA3 arena and
+NGB images match byte-for-byte after two fresh-process restores, with correct
+audio/video cadence. A separate fresh DOA3 first-fight diagnostic reports 2,598
+prepared-shadow uploads, four ready module lookups and zero shadow fallback
+lookups, versus zero prepared lookups/uploads and six fallback lookups in the
+parent. Lookups are not compilation API counts; no six-compilation or timing
+improvement is claimed. Diagnostics are private atomic counters, restored out
+of all release objects and source after collection.
+
+Readbacks, concurrent software checks and uncontrolled driver caches leave
+those diagnostic/image timings unqualified. Fresh-boot camera positions are
+not paired, so throughput alone cannot prove equal scene work. An isolated ABBA run preserves 599 guest presents/completions and 600 fight
+callbacks per run without a 16.683 ms fight deadline miss. Parent guest rates
+are 113.340/117.895 FPS versus 119.455/119.351 for the candidate; fight p99
+values are 12.011/10.247 ms versus 10.072/11.067 ms and fight maxima
+13.179/10.819 ms versus 11.907/12.786 ms. Scene variation and timing spread
+prevent a speedup claim. The first candidate's frame zero costs 1,216.359 ms,
+versus 93.064 ms on its repeat and 93.106/93.030 ms in the parent. This spike is
+retained as an open startup qualification failure; private driver-cache state
+is uncontrolled and shader-API timing attribution is still needed. Full
+cold/warm qualification and remaining fixed-function/fragment precision
+coverage are open. This is local experimental work; default rendering remains
+unchanged and shader-stutter recovery remains BAD/unqualified.
+
 ## Pending dependent bump-texture coverage, 2026-11-16
 
 The local experimental fragment prototype now covers unsigned bump environment
