@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Spread the complete 42,512-case software Vulkan vertex oracle across its existing sixteen batch budgets, retaining the 300-second shared deadline and four-worker cap. Verify exact per-worker case bitmaps and all 69,379,584 scalar comparisons; require ownership, manifest and child-retirement fault controls. The numerical case bodies and rendering operations are unchanged.
+
+- Sample each shader compiler input/target fifty times in the positive CI comparison instead of five. Keep the same corpus, ABBA order, 5% slowdown/noise limits and 180-second process watchdog; retain the separately injected slow-compiler rejection control. This addresses short-sample noise, not renderer performance or cold-play qualification.
+
 - Run the existing 1,308-case ready-fragment regression corpus across at most four independent contexts under its original shared 300-second deadline. Keep every exact comparison, the analytic oracle and all ten deliberate shader faults. Require CPU-only manifest and child-retirement controls; this backports scheduling to the older corpus without importing later fragment features or reducing coverage.
 
 - In separable-shader mode, skip the legacy linked-program cache loader and leave its reload list intact. This mode consumes stage binaries instead; reading linked programs only creates unused cache I/O and storage. Disabled caching no longer starts the reader thread. Stage-cache loading, shader seeds and legacy-mode reload/writeback remain supported; this is not complete shader-stutter recovery.

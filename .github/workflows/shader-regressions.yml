@@ -220,9 +220,11 @@ jobs:
         id: compiler-comparison
         run: |
           set -o pipefail
+          # Keep every module, both targets, ABBA order and the existing limits.
+          # Longer samples reduce the relative cost of scheduler interruptions.
           cpu=$(python3 -c 'import os; print(max(os.sched_getaffinity(0)))')
           lscpu > results/cpu.txt
-          python3 driver/libretro/tests/benchmark-shader-compile.py --baseline reference --candidate candidate --corpus corpus --output results/comparison --prepare-corpus --validator spirv-val --cpu "$cpu" 2>&1 | tee results/comparison.log
+          python3 driver/libretro/tests/benchmark-shader-compile.py --baseline reference --candidate candidate --corpus corpus --output results/comparison --iterations 50 --prepare-corpus --validator spirv-val --cpu "$cpu" 2>&1 | tee results/comparison.log
       - name: Require the timing gate to reject an injected slow compiler
         # A real comparison failure must remain red, but must not hide a broken
         # rejection control. Skip only when comparison never ran or was canceled.

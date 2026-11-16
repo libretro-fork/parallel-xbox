@@ -49,6 +49,12 @@ def prepare(r, p, mutation=''):
         source = p / 'vsh-prog.c'
 
     script = (r / 'libretro/tests/test-spv-vsh-gpu.py').read_text()
+    # Domain metadata is explicit; human-readable trace labels are not gates.
+    # Historical base runners have neither the marker nor the native ledger.
+    if 'DIRECT_VERTEX_FIXTURE = True' in script:
+        assert script.count('DIRECT_VERTEX_FIXTURE = True') == 1
+        script = script.replace('DIRECT_VERTEX_FIXTURE = True',
+                                'DIRECT_VERTEX_FIXTURE = False')
     needle = "ref+=function(r/'hw/xbox/nv2a/pgraph/glsl/vsh.c','pgraph_glsl_gen_vsh')+'\\n'"
     assert script.count(needle) == 1
     extra = "\n impl=function(r/'hw/xbox/nv2a/pgraph/glsl/vsh.c','pgraph_glsl_gen_vsh_impl')\n"

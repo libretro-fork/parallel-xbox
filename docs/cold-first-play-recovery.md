@@ -1,5 +1,51 @@
 # Cold-first-play recovery and regression prevention
 
+## Balanced software-vertex scheduling experiment, 2026-11-16
+
+Job 133624500023 passed the first 7,168-case batch with exact values, then
+timed out in the unchanged [7168,14096) batch at its shared 300-second
+deadline. A private no-draw key probe found zero exact native-pipeline hits
+in a 32-entry cache for that range, so a fixture pipeline cache was rejected
+as unhelpful; that probe is not numerical validation.
+
+The scheduling experiment spreads adjacent sixteen-case groups across the
+existing sixteen rounds instead of concentrating whole expensive families
+in one batch. Each round still has one shared 300-second watchdog and at
+most four workers. Total nominal batch budget remains 16 times 300 seconds;
+no numeric case, generator, uniform setup, draw, readback, independent oracle
+or comparison rule changes. Exact bitmaps verify every one of 42,512 cases
+and 69,379,584 scalar comparisons, with no missing or duplicate ownership.
+The derived programmable GL/interpreter fixtures retain their own runner
+and domains. Required CPU controls cover edge ranges, 1/2/3/4 workers and
+1/2/4/16 rounds, four broken ownership rules and eight manifest/process
+faults. Windows and Linux CPU controls pass, including explicit live-child kills
+and terminal waits. The full validation-enabled software Vulkan run passes
+all sixteen rounds with two allowed CPUs and disk shader caching disabled:
+42,512 cases, 69,379,584 exact scalar checks and zero validation errors.
+The native numerical case bodies remain byte-identical to the parent.
+Derived GL and Vulkan interpreter extraction smokes check their separate
+domains; selection is explicit metadata, not a human-readable trace label.
+These are correctness and budget checks, not renderer speedups; CI and
+physical cold-play qualification remain unqualified.
+
+
+## Compiler timing sample experiment, 2026-11-16
+
+Runs 43959933516 and 43960072862 retained identical compiler source hashes,
+module sizes and instruction counts, with zero per-shader regressions, but
+failed timing qualification because aggregate or individual stage samples
+varied beyond the existing 5% noise limit. These failures remain unqualified.
+The experiment increases positive comparison iterations from five to fifty
+per input/target while retaining every selected module, both targets, two
+ABBA blocks, stage and per-module ratchets, and the existing 180-second
+process watchdog. Negative-control timing stays separate with its original
+five iterations. No gate threshold, runtime source or cache capacity changes.
+The local fifty-iteration comparison passes all stages on 138 selected
+modules, with no code growth or isolated regressions; the unchanged injected
+slow-compiler control is rejected. This sampling change still requires CI
+evidence; one local comparison is not a general variance guarantee.
+
+
 ## Ready-fragment CI scheduling repair, 2026-11-16
 
 The old 1,308-case fragment fixture gets the same bounded context scheduling

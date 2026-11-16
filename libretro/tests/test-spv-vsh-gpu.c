@@ -151,6 +151,25 @@ static void unselected_output(uint32_t t[4], unsigned variant, bool invalid)
     }
 }
 
+/* Scheduling only: preserve the complete numeric corpus and total batch
+ * budget while spreading each costly family across the existing batches. */
+static bool fixture_case_owned(unsigned test, unsigned first, unsigned slot,
+                               unsigned slots, unsigned round, unsigned rounds)
+{
+ assert(test>=first && slots>=1 && slots<=4 && slot<slots);
+ assert(rounds>=1 && rounds<=16 && round<rounds);
+ unsigned block=(test-first)/16;
+ return (block/slots)%rounds==round &&
+        (block+block/(slots*rounds))%slots==slot;
+}
+static uint8_t fixture_seen[(42512+7)/8];
+static unsigned fixture_cases;
+static void fixture_note_case(unsigned test)
+{
+ assert(test<42512 && !(fixture_seen[test/8]&(1u<<(test%8))));
+ fixture_seen[test/8]|=1u<<(test%8);fixture_cases++;
+}
+
 int main(int argc, char **argv) {
  assert(argc==1 || argc==3 || argc==5);
  unsigned first=argc>=3?strtoul(argv[1],NULL,10):0, limit=argc>=3?strtoul(argv[2],NULL,10):42512;
@@ -213,9 +232,13 @@ int main(int argc, char **argv) {
   if(argc==5){
    unsigned slot=strtoul(argv[3],NULL,10),slots=strtoul(argv[4],NULL,10);
    assert(slots>=1 && slots<=4 && slot<slots);
-   unsigned block=(test-first)/16;
-   if((block+block/slots)%slots!=slot)continue;
+   const char *round_env=getenv("SPV_VSH_FIXTURE_ROUND");
+   const char *rounds_env=getenv("SPV_VSH_FIXTURE_ROUNDS");
+   unsigned round=round_env?strtoul(round_env,NULL,10):0;
+   unsigned rounds=rounds_env?strtoul(rounds_env,NULL,10):1;
+   if(!fixture_case_owned(test,first,slot,slots,round,rounds))continue;
   }
+  fixture_note_case(test);
 
   VshState state={0};state.smooth_shading=test&1;state.fog_dynamic=true;state.specular_enable=test&2;state.ignore_specular_alpha=test&4;
   unsigned variant=(test%1568)/112,m=test%14,l=(test%112)/14;state.programmable.program_length=5;
@@ -638,6 +661,12 @@ int main(int argc, char **argv) {
   release(&modules[0]);release(&modules[1]);
  }
  drop(input);drop(output);drop(uniform);vkDestroyFramebuffer(device,framebuffer,NULL);vkDestroyRenderPass(device,pass,NULL);vkDestroyDescriptorPool(device,descriptor_pool,NULL);vkDestroyPipelineLayout(device,layout,NULL);vkDestroyDescriptorSetLayout(device,set_layout,NULL);vkDestroyCommandPool(device,pool,NULL);if(pipeline_cache)vkDestroyPipelineCache(device,pipeline_cache,NULL);vkDestroyDevice(device,NULL);if(validated)destroy(instance,messenger,NULL);vkDestroyInstance(instance,NULL);
+ if(getenv("SPV_VSH_FIXTURE_ROUNDS")) {
+  assert(compared==fixture_cases*1632u);
+  printf("FIXTURE_CASES count=%u checks=%u bitmap=",fixture_cases,compared);
+  for(unsigned i=0;i<sizeof(fixture_seen);i++)printf("%02x",fixture_seen[i]);
+  puts("");
+ }
  printf("Independent relative constants: %u exact output checks\n",constant_checks);
  printf("Translation CPU clock: GLSL %.3f ms, direct %.3f ms; emitted words GLSL=%zu direct=%zu (work counts; not frame latency)\n",1000.0*reference_ticks/CLOCKS_PER_SEC,1000.0*direct_ticks/CLOCKS_PER_SEC,reference_words,direct_words);
  printf("Direct VSH Vulkan: %u scalar results, %u differences, %u validation errors; validation=%s\n",compared,failures,errors,validated?"enabled":"DISABLED");return failures||errors?1:0;
