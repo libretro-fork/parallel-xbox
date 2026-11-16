@@ -1,5 +1,41 @@
 # Cold-first-play recovery and regression prevention
 
+## Zero-stride packed vertex input correction, 2026-11-16
+
+The GL binder already decodes zero-stride CMP (11/11/10) values on the CPU
+and publishes them with glVertexAttrib4fv. It nevertheless marked these
+constants as compressed shader inputs, selecting integer input declarations
+and a second unpack operation. A native parent probe reproduces wrong GPU
+values in both slow and basevertex paths: the CPU publishes (1/3,0,0,1),
+while the packed-input shader produces approximately
+(0.668,-0.668,0.489,1). Correcting the metadata gives exact CPU/GPU values.
+
+Only strided packed arrays set the compressed-input mask. The existing
+zero-stride decoder, current-attribute publication, array input transport,
+shader generators and instruction math remain intact. Existing cache keys
+keep their meanings: floating and packed integer input representations are
+already distinct. The corrected producer now selects the floating key. Old
+seed recipes can remain unused preparation work; they cannot override the
+new live input representation. No cache schema, payload owner, allocation,
+thread, clock, guest pacing or buffer capacity changes.
+
+The new native/software GL fixture runs actual decoder, displacement,
+attribute-shadow and binding functions, with bounded DMA/upload models. It
+checks all sixteen lanes and every signed component value, both DMA banks,
+slow/basevertex paths, and packed-array/current-float transitions. Its
+327,680 draws cover 2,621,440 exact scalar bits; array checks preserve raw
+packed payloads, while constants match an independent signed decoder. It
+does not redefine packed array normalization or NV2A lighting precision.
+Required controls restore each old key mistake, lose array classification
+or break CPU clamping. Native RTX 5090 and llvmpipe pass all draws and all four fault controls.
+The exact parent implementation fails the unchanged new oracle at its first
+zero-stride transition. Existing sparse-upload, fetch-span, inline-storage
+and index-bound contracts also pass. CI and retail qualification remain
+pending.
+This is a correctness fix and a readiness opportunity, not proof of shader
+stutter recovery; the larger regression remains **BAD/unqualified**.
+
+
 ## Ready-fragment CI scheduling repair, 2026-11-16
 
 The old 1,308-case fragment fixture gets the same bounded context scheduling

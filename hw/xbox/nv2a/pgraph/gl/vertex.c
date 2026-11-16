@@ -332,7 +332,7 @@ void pgraph_gl_bind_vertex_attributes(NV2AState *d, unsigned int min_element,
                 }
                 /* The shader is keyed on this: the slow path sets it from
                  * the same test, so the fast path must too. */
-                if (attr->format ==
+                if (attr->stride && attr->format ==
                     NV097_SET_VERTEX_DATA_ARRAY_FORMAT_TYPE_CMP) {
                     pg->compressed_attrs |= (1 << i);
                 }
@@ -386,10 +386,6 @@ void pgraph_gl_bind_vertex_attributes(NV2AState *d, unsigned int min_element,
         size_t element_size = attr->size * attr->count;
         assert(element_size <= sizeof(attr->inline_value));
 
-        if (needs_conversion) {
-            pg->compressed_attrs |= (1 << i);
-        }
-
         hwaddr start = 0;
         if (inline_data) {
             attrib_data_addr = attr->inline_array_offset;
@@ -426,6 +422,12 @@ void pgraph_gl_bind_vertex_attributes(NV2AState *d, unsigned int min_element,
             pgraph_gl_attr_enable(r, i, false);
             pgraph_gl_attr_value(r, i, attr->inline_value);
             continue;
+        }
+
+        /* Zero-stride values were decoded on the CPU and published as float
+         * current attributes. Only enabled arrays still carry packed words. */
+        if (needs_conversion) {
+            pg->compressed_attrs |= (1 << i);
         }
 
         pgraph_gl_attr_pointer(r, i,

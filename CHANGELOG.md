@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- GL zero-stride packed vertex attributes now keep floating shader inputs after the CPU decodes them. This fixes constant values being interpreted as packed integers in both ordinary and basevertex binding paths, and avoids selecting packed shader variants for those constants. Enabled packed arrays retain their integer input representation.
+
 - Run the existing 1,308-case ready-fragment regression corpus across at most four independent contexts under its original shared 300-second deadline. Keep every exact comparison, the analytic oracle and all ten deliberate shader faults. Require CPU-only manifest and child-retirement controls; this backports scheduling to the older corpus without importing later fragment features or reducing coverage.
 
 - In separable-shader mode, skip the legacy linked-program cache loader and leave its reload list intact. This mode consumes stage binaries instead; reading linked programs only creates unused cache I/O and storage. Disabled caching no longer starts the reader thread. Stage-cache loading, shader seeds and legacy-mode reload/writeback remain supported; this is not complete shader-stutter recovery.
