@@ -31,22 +31,32 @@ typedef struct {PGRAPHState pgraph;} NV2AState;
 #define NV097_GET_REPORT_TYPE_ZPASS_PIXEL_CNT 1
 #define GET_MASK(value,mask) ((value)>>24)
 static struct {bool exists,ready;GLuint value;} queries[100000];
-static GLuint next_id,open_id;static unsigned deleted,flushes,ends,writes;
+static GLuint next_id,open_id;static unsigned deleted,flushes,ends,writes,intervals;
 static uint32_t last_parameter,last_result;
-static void glGenQueries(unsigned n,GLuint *out){while(n--){GLuint q=++next_id;assert(q<ARRAY_SIZE(queries));queries[q].exists=true;queries[q].ready=false;queries[q].value=q*73u+19;*out++=q;}}
+static void glGenQueries(unsigned n,GLuint *out){while(n--){GLuint q=++next_id;assert(q<ARRAY_SIZE(queries));queries[q].exists=true;queries[q].ready=false;*out++=q;}}
 static void glDeleteQueries(unsigned n,const GLuint *ids){while(n--){GLuint q=*ids++;assert(q&&! (q==open_id)&&queries[q].exists);queries[q].exists=false;deleted++;}}
 static void glGetQueryObjectuiv(GLuint q,unsigned what,GLuint *out){assert(q&&q!=open_id&&queries[q].exists);if(what==GL_QUERY_RESULT_AVAILABLE)*out=queries[q].ready;else {assert(what==GL_QUERY_RESULT);*out=queries[q].value;queries[q].ready=true;}}
 static void glEndQuery(unsigned target){assert(target==GL_SAMPLES_PASSED&&open_id);open_id=0;ends++;}
 static void glFlush(void){flushes++;}
 static void pgraph_write_zpass_pixel_cnt_report(NV2AState *d,uint32_t p,uint32_t result){(void)d;writes++;last_parameter=p;last_result=result;}
 /* PRODUCTION */
-static uint32_t add_query(NV2AState *d,bool ready){GLuint q=pgraph_gl_alloc_zpass_query(d);queries[q].ready=ready;return queries[q].value/(d->pgraph.surface_scale_factor*d->pgraph.surface_scale_factor);}
-static void open_query(NV2AState *d){assert(!open_id);open_id=pgraph_gl_alloc_zpass_query(d);d->pgraph.gl_renderer_state->gl_zpass_query_open=true;}
+static void begin_interval(NV2AState *d,GLuint q,bool ready)
+{
+ PGRAPHGLState *r=d->pgraph.gl_renderer_state;QueryReport *report;
+ assert(q&&queries[q].exists&&q!=open_id&&r->zpass_report);
+ for(unsigned i=0;i+1<r->zpass_report->query_count;i++)assert(r->zpass_report->queries[i]!=q);
+ QSIMPLEQ_FOREACH(report,&r->report_queue,entry)for(unsigned i=0;i<report->query_count;i++)assert(report->queries[i]!=q);
+ /* A reused name represents a new query, not its prior result/availability. */
+ queries[q].ready=ready;queries[q].value=++intervals*73u+19;
+}
+static uint32_t add_query(NV2AState *d,bool ready){GLuint q=pgraph_gl_alloc_zpass_query(d);begin_interval(d,q,ready);return queries[q].value/(d->pgraph.surface_scale_factor*d->pgraph.surface_scale_factor);}
+static void open_query(NV2AState *d){assert(!open_id);GLuint q=pgraph_gl_alloc_zpass_query(d);begin_interval(d,q,false);open_id=q;d->pgraph.gl_renderer_state->gl_zpass_query_open=true;}
 int main(void)
 {
  PGRAPHGLState r={0};NV2AState d={{&r,1,false}};pgraph_gl_init_reports(&d);size_t warm=allocations;assert(warm==2);
  uint32_t sum=0;unsigned cases=0;
- /* Pooled inline lists: no query-array allocation, no ownership copy. */
+ /* Pooled inline lists: no query-array allocation, no ownership copy, and
+  * at most eight native names across 1,500 consumed intervals. */
  for(unsigned cycle=0;cycle<1500;cycle++) {
   unsigned count=cycle%9;for(unsigned i=0;i<count;i++)sum+=add_query(&d,true);
   QueryReport *active=r.zpass_report;GLuint *ids=active?active->queries:NULL;
@@ -54,14 +64,25 @@ int main(void)
   if(active)assert(queued==active&&queued->queries==ids&&ids==queued->inline_queries);
   unsigned before=writes;pgraph_gl_process_pending_reports(&d);assert(writes==before+1&&last_result==sum&&last_parameter==0x01000000u+cycle);assert(!r.zpass_report&&allocations==warm);cases++;
  }
+#ifdef GL_REPORT_REUSE
+ assert(next_id==8&&deleted==0&&intervals>5000);
+#else
+ assert(next_id==intervals&&deleted==next_id);
+#endif
  /* Overflow grows geometrically, retains IDs, scales each result. */
  unsigned counts[]={9,17,33,129,2049};
  for(unsigned scale=1;scale<=4;scale++)for(unsigned c=0;c<ARRAY_SIZE(counts);c++) {
-  d.pgraph.surface_scale_factor=scale;size_t before=allocations;
+  d.pgraph.surface_scale_factor=scale;size_t before=allocations;unsigned generated=next_id;
   for(unsigned i=0;i<counts[c];i++)sum+=add_query(&d,true);
   unsigned growth=0,capacity=8;while(capacity<counts[c]){growth++;capacity*=2;}
   assert(allocations-before==growth&&r.zpass_report->queries!=r.zpass_report->inline_queries);
-  QueryReport *active=r.zpass_report;pgraph_gl_get_report(&d,0x01010000+c);assert(QSIMPLEQ_FIRST(&r.report_queue)==active);pgraph_gl_process_pending_reports(&d);assert(last_result==sum&&live==2);cases++;
+  QueryReport *active=r.zpass_report;pgraph_gl_get_report(&d,0x01010000+c);assert(QSIMPLEQ_FIRST(&r.report_queue)==active);pgraph_gl_process_pending_reports(&d);assert(last_result==sum&&live==2);
+#ifdef GL_REPORT_REUSE
+  assert(next_id-generated==counts[c]-8);
+#else
+  assert(next_id-generated==counts[c]);
+#endif
+  cases++;
  }
  d.pgraph.surface_scale_factor=1;
  /* No younger clear/report may pass an unavailable older report. */
@@ -69,15 +90,34 @@ int main(void)
  uint32_t younger=add_query(&d,true);pgraph_gl_get_report(&d,0x01020001);unsigned before=writes;pgraph_gl_process_pending_reports(&d);assert(writes==before&&QSIMPLEQ_FIRST(&r.report_queue)==older&&d.pgraph.reports_pending);
  unsigned prior_flushes=flushes;for(unsigned i=0;i<1000;i++)assert(pgraph_gl_poll_pending_report(&d)==0&&!queries[held].ready&&writes==before&&flushes==prior_flushes);queries[held].ready=true;assert(pgraph_gl_poll_pending_report(&d)==1);pgraph_gl_process_pending_reports(&d);assert(writes==before+2&&last_result==younger&&!d.pgraph.reports_pending);sum=younger;cases++;
  /* An open, unreported interval is ended and discarded by CLEAR. */
- open_query(&d);unsigned old_deleted=deleted,old_ends=ends;pgraph_gl_clear_report_value(&d);assert(!open_id&&!r.zpass_report&&deleted==old_deleted+1&&ends==old_ends+1);pgraph_gl_process_pending_reports(&d);assert(!r.zpass_pixel_count_result);sum=0;cases++;
+ open_query(&d);GLuint discarded=open_id;unsigned old_deleted=deleted,old_ends=ends;pgraph_gl_clear_report_value(&d);assert(!open_id&&!r.zpass_report&&ends==old_ends+1);
+#ifdef GL_REPORT_REUSE
+ assert(deleted==old_deleted&&queries[discarded].exists);
+#else
+ assert(deleted==old_deleted+1&&!queries[discarded].exists);
+#endif
+ pgraph_gl_process_pending_reports(&d);assert(!r.zpass_pixel_count_result);sum=0;cases++;
  /* Queue pool exhaustion and empty reports preserve order and free fallback. */
  size_t old_allocations=allocations;for(unsigned i=0;i<1030;i++)pgraph_gl_get_report(&d,0x01030000+i);assert(allocations==old_allocations+6);before=writes;pgraph_gl_drain_pending_reports(&d);assert(writes==before+1030&&last_result==0&&live==2&&r.report_pool.nfree==1024);cases++;
+ /* Fallback reports have no retained-name owner. Release every native name,
+  * including their inline prefix; do not lend a pending name to a peer. */
+ for(unsigned i=0;i<1024;i++)pgraph_gl_get_report(&d,0x01031000+i);
+ unsigned generated=next_id;old_deleted=deleted;before=writes;
+ for(unsigned j=0;j<2;j++){
+  for(unsigned i=0;i<9;i++)sum+=add_query(&d,true);
+#ifdef GL_REPORT_REUSE
+  assert(!r.zpass_report->pooled);
+#endif
+  pgraph_gl_get_report(&d,0x01032000+j);
+ }
+ pgraph_gl_drain_pending_reports(&d);assert(writes==before+1026&&last_result==sum&&next_id-generated==18&&deleted-old_deleted==18&&live==2&&r.report_pool.nfree==1024);
+ pgraph_gl_clear_report_value(&d);pgraph_gl_process_pending_reports(&d);sum=0;cases++;
  /* Save-state drain resolves unavailable overflow lists, then teardown must
   * free queued overflow, clear nodes and an open active overflow interval. */
  for(unsigned i=0;i<70;i++)sum+=add_query(&d,false);pgraph_gl_get_report(&d,0x01040000);pgraph_gl_drain_pending_reports(&d);assert(last_result==sum&&live==2);cases++;
  for(unsigned i=0;i<19;i++)add_query(&d,false);pgraph_gl_get_report(&d,0x01050000);pgraph_gl_clear_report_value(&d);
  for(unsigned i=0;i<19;i++)add_query(&d,false);open_query(&d);pgraph_gl_finalize_reports(&d.pgraph);assert(!live&&!open_id&&deleted==next_id);cases++;
  pgraph_gl_init_reports(&d);pgraph_gl_get_report(&d,0x01060000);pgraph_gl_process_pending_reports(&d);pgraph_gl_finalize_reports(&d.pgraph);assert(!live&&last_result==sum);cases++;
- printf("GL report storage: %u schedules, %u query lifetimes; pooled inline/overflow ownership, scale, FIFO availability, clear, drain, pool exhaustion, teardown and reinit PASS\n",cases,next_id);
+ printf("GL report storage: %u schedules, %u intervals, %u native query lifetimes; fresh results, pooled inline/overflow ownership, scale, FIFO availability, clear, drain, pool exhaustion, teardown and reinit PASS\n",cases,intervals,next_id);
  return 0;
 }

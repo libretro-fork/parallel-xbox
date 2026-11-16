@@ -265,6 +265,7 @@ typedef struct TextureLruNode {
 typedef struct QueryReport {
     QSIMPLEQ_ENTRY(QueryReport) entry;
     bool clear;
+    bool pooled; /* This slot retains its inline native query names. */
     uint32_t parameter;
     unsigned int query_count;
     GLuint *queries;
@@ -277,8 +278,9 @@ typedef struct PGRAPHGLState {
     /* The surface bindings, the textures, the query reports and the
      * display tickets' references come from pools, and the surface
      * copies (swizzle, pitch, the surface-to-texture read, the video
-     * overlay's conversion) go through kept buffers: nothing allocates
-     * mid-game (pool.h). The report pool is shared with the pfifo thread
+     * overlay's conversion) go through kept buffers. Pool exhaustion,
+     * scratch growth and long report intervals can still allocate (pool.h).
+     * The report pool is shared with the pfifo thread
      * under the reports' own ordering, the display one is the render
      * thread's alone. */
     ObjPool surface_pool, texture_pool, report_pool;

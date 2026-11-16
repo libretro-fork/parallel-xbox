@@ -1,5 +1,47 @@
 # Cold-first-play recovery and regression prevention
 
+## GL query allocation audit, 2026-11-16
+
+Pooled GL reports now retain at most their existing eight inline query names.
+Only actual use creates a name; the 1,024-slot pool is unchanged and no names
+are generated eagerly. The retained prefix therefore has an upper bound of
+8,192 names. A queued report owns its prefix until its results are consumed or
+explicitly discarded. CLEAR ends any open interval before returning its owner;
+starting a new GL query resets result availability. All cached names, including
+ones unused by the last interval, retire before the renderer's report pool.
+Overflow vectors/names and pool-exhaustion fallback objects retain their
+existing allocation/release behavior. This is not allocation-free rendering.
+
+The sanitizer fixture keeps the original schedules and adds fallback/reuse
+coverage with fresh values per query interval. Its 15,069 intervals create
+8,907 native query names versus the parent's 15,069. In the first 1,500 pooled
+schedules, the names grow only to the actual inline high-water mark of eight.
+Three mandatory faults reject lost cache state, aliased live/queued query
+names and leaked cached names. The runner still checks the parent with its
+original ownership behavior; CI requires the new reuse contract explicitly
+for the candidate.
+
+A separate real-GL fixture verifies 1,146 exact report writes against CPU
+sample-count expectations on NVIDIA and llvmpipe. It covers changing results,
+all scale factors, CLEAR with an open interval followed by reuse, overflow,
+genuine pool exhaustion, queued/active teardown and reinitialization. It creates
+237 native names versus the parent's 669 and rejects the same three faults.
+Driver calls are counted only in this fixture. GPU completion waits and its
+small shaders are test-only; no release diagnostic or new gameplay wait is
+introduced. These are work-count and correctness results, not proof of reduced
+driver allocations, faster frames, or shader/PSO cold-play recovery.
+
+Clean default Windows parent/candidate builds differ only in `reports.o`; all
+other 543 objects match byte-for-byte. The report remains 72 bytes with every
+existing field offset unchanged. Separate diagnostic DOA3 first-fight and NGB
+external-restore runs create no visibility queries, and OutRun 2's 3,600-run
+title-screen test serves seventeen empty reports but creates no queries.
+NGB and OutRun 2 images match their parents byte-for-byte. These retail samples
+therefore establish no query-reuse performance benefit and do not attribute
+their shader stutters to this path. Isolated release timing remains pending
+while another build occupies the machine. The core's existing frontend GL
+context-replacement/reload limitations are unchanged.
+
 Status, 2026-11-08: **BAD / REGRESSED / NOT QUALIFIED**. DOA3's first fights
 have reported obvious shader/PSO hitches. This is the defect to recover from,
 not an acceptable new baseline. The separately fixed CPU carry regression

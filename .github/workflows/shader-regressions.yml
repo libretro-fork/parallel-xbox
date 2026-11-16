@@ -22,6 +22,7 @@ jobs:
       software: ${{ steps.revisions.outputs.software }}
       candidates: ${{ steps.revisions.outputs.candidates }}
       native_pipelines: ${{ steps.revisions.outputs.native_pipelines }}
+      query_reports: ${{ steps.revisions.outputs.query_reports }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -67,6 +68,11 @@ jobs:
                     if git('ls-tree', '--name-only', commit, '--', native_path) == native_path]
           if not native:
               native = [after]  # Missing current implementation never becomes a pass.
+          report_path = 'libretro/tests/test-gl-report-storage-gpu.c'
+          reports = [commit for commit in commits
+                     if git('ls-tree', '--name-only', commit, '--', report_path) == report_path]
+          if not reports:
+              reports = [after]  # A missing current fixture is a failure.
           software = [dict(**row, suite=suite) for row in rows for suite in ['utilities', 'vertex']+['fragment-'+str(i) for i in range(8)]]
           if len(software) > 256:
               raise SystemExit('Unqualified: software matrix exceeds 256 jobs; split this push')
@@ -75,6 +81,7 @@ jobs:
               f.write('software='+json.dumps(dict(include=software))+'\n')
               f.write('candidates='+json.dumps(dict(commit=commits))+'\n')
               f.write('native_pipelines='+json.dumps(dict(commit=native))+'\n')
+              f.write('query_reports='+json.dumps(dict(commit=reports))+'\n')
           with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as f:
               f.write('Every new commit in this push is compared, not just its tip.\n\n')
               f.write('Pinned accepted reference: '+(accepted or '**UNQUALIFIED: not configured; parent comparison only**')+'\n\n')
@@ -508,10 +515,43 @@ jobs:
       - name: Validate complete tuples, rollback and borrowed lifetime
         run: python3 libretro/tests/test-ready-pipelines.py . cc
 
+  gl-report-reuse:
+    name: GL report ownership and reuse (${{ matrix.commit }})
+    needs: revisions
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.revisions.outputs.query_reports) }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ matrix.commit }}
+          fetch-depth: 0
+          filter: blob:none
+      - name: Install test-only GL driver and compiler
+        run: |
+          sudo apt-get -qy update
+          sudo apt-get -qy install build-essential libegl-dev libgl-dev libegl-mesa0 libgl1-mesa-dri
+      - name: Compare report ownership and exact GPU results with the parent
+        run: |
+          set -euo pipefail
+          mkdir -p results
+          git worktree add --detach ../report-parent HEAD^
+          python3 libretro/tests/test-gl-report-storage.py ../report-parent cc 2>&1 | tee results/parent-owners.log
+          GL_REPORT_REQUIRE_REUSE=1 python3 libretro/tests/test-gl-report-storage.py . cc 2>&1 | tee results/candidate-owners.log
+          python3 libretro/tests/test-gl-report-storage.py ../report-parent cc --gpu 2>&1 | tee results/parent-gpu.log
+          GL_REPORT_REQUIRE_REUSE=1 python3 libretro/tests/test-gl-report-storage.py . cc --gpu 2>&1 | tee results/candidate-gpu.log
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: gl-report-reuse-${{ matrix.commit }}
+          path: results/
+
   shader-gate:
     name: Shader and PSO required gate
     if: always()
-    needs: [revisions, contracts, compilation, software-gpu, interpreter-gpu, interpreter-dynamic-gpu, geometry-ready-gpu, fragment-ready-gpu, native-pipeline-ready]
+    needs: [revisions, contracts, compilation, software-gpu, interpreter-gpu, interpreter-dynamic-gpu, geometry-ready-gpu, fragment-ready-gpu, native-pipeline-ready, gl-report-reuse]
     runs-on: ubuntu-24.04
     steps:
       - name: Require every revision and reference job to pass

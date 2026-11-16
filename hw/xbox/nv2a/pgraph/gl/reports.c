@@ -25,10 +25,16 @@
 #include "ui/xemu-settings.h"
 
 /* The active interval list becomes the queued report without copying IDs.
- * Most reports fit in pooled storage; long intervals grow geometrically. */
+ * Pooled reports retain up to their eight inline query names. These names
+ * cannot be lent again until the report is consumed or explicitly discarded.
+ * Long intervals keep their existing geometrically grown, temporary list. */
 static QueryReport *query_report_take(PGRAPHGLState *r)
 {
-    QueryReport *report = obj_pool_take(&r->report_pool);
+    ObjPool *pool = &r->report_pool;
+    /* Unlike obj_pool_take, preserve the pooled slot's inline names and tag.
+     * Fallback objects still use the pool's zeroed allocation path. */
+    QueryReport *report = pool->nfree ? pool->free[--pool->nfree] :
+                                     obj_pool_take(pool);
     report->clear = false;
     report->parameter = 0;
     report->query_count = 0;
@@ -39,8 +45,9 @@ static QueryReport *query_report_take(PGRAPHGLState *r)
 
 static void query_report_release(PGRAPHGLState *r, QueryReport *report)
 {
-    if (report->query_count) {
-        glDeleteQueries(report->query_count, report->queries);
+    unsigned keep = report->pooled ? ARRAY_SIZE(report->inline_queries) : 0;
+    if (report->query_count > keep) {
+        glDeleteQueries(report->query_count - keep, report->queries + keep);
     }
     if (report->queries != report->inline_queries) {
         g_free(report->queries);
@@ -68,8 +75,12 @@ GLuint pgraph_gl_alloc_zpass_query(NV2AState *d)
         }
         report->query_capacity = capacity;
     }
-    GLuint query;
-    glGenQueries(1, &query);
+    unsigned index = report->query_count;
+    GLuint query = index < ARRAY_SIZE(report->inline_queries) ?
+                   report->inline_queries[index] : 0;
+    if (!query) {
+        glGenQueries(1, &query);
+    }
     report->queries[report->query_count++] = query;
     return query;
 }
@@ -201,6 +212,13 @@ void pgraph_gl_init_reports(NV2AState *d)
     r->zpass_report = NULL;
     /* The reports of a frame's draws, well beyond what a game queues */
     obj_pool_init(&r->report_pool, sizeof(QueryReport), 1024);
+    memset(r->report_pool.block, 0,
+           r->report_pool.size * r->report_pool.count);
+    for (size_t i = 0; i < r->report_pool.count; i++) {
+        QueryReport *report = (QueryReport *)(r->report_pool.block +
+                                             i * r->report_pool.size);
+        report->pooled = true;
+    }
 }
 
 void pgraph_gl_get_report(NV2AState *d, uint32_t parameter)
@@ -243,6 +261,20 @@ void pgraph_gl_finalize_reports(PGRAPHState *pg)
     if (r->zpass_report) {
         query_report_release(r, r->zpass_report);
         r->zpass_report = NULL;
+    }
+    /* Queued and active intervals have ended above. Idle pooled slots still
+     * own their cached names, including names unused by their last interval. */
+    for (size_t i = 0; i < r->report_pool.count; i++) {
+        QueryReport *slot = (QueryReport *)(r->report_pool.block +
+                                           i * r->report_pool.size);
+        unsigned count = 0;
+        while (count < ARRAY_SIZE(slot->inline_queries) &&
+               slot->inline_queries[count]) {
+            count++;
+        }
+        if (count) {
+            glDeleteQueries(count, slot->inline_queries);
+        }
     }
     obj_pool_finalize(&r->report_pool);
 }

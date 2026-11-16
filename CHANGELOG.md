@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Reuse up to eight native GL occlusion-query names in each existing pooled report instead of recreating them every interval. Keep FIFO results, CLEAR, snapshot draining and teardown ownership; overflow queries and pool-exhaustion fallbacks still release their names. This reduces query creation/deletion work, not shader compilation, and does not establish a frame-time improvement or cold-play recovery.
+
 - Use case-local returns in the experimental prepared fragment register writers. Preserve every constant-index destination and component write, ordinary shader text, keys and ownership. Native and software-GPU correctness and lifetime checks pass under the existing deadlines; hardware latency remains unqualified and prepared rendering stays disabled by default.
 
 - Repair the barycentric-overflow fixture after adding opt-in prepared fragment depth. Extract the ordinary perspective-weight arithmetic without the prepared path's uniform guard; retain all 4,096 overflow, degenerate and linear/perspective GPU cases and the original-path byte comparison.
