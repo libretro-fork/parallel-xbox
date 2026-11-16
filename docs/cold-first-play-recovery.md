@@ -1,5 +1,22 @@
 # Cold-first-play recovery and regression prevention
 
+## Ready-fragment CI scheduling repair, 2026-11-16
+
+The old 1,308-case fragment fixture gets the same bounded context scheduling
+used by the separate newer experimental branch, without taking that branch's
+larger generator or corpus. It retains 418,560 exact color/depth comparisons,
+the independent half-plane/window/volume oracle and all ten serial fault
+controls. Per-context ranges/check counts must sum exactly, with no gaps or
+duplicates; required CPU-only faults verify metadata, the shared watchdog and
+child retirement. The old serial CI timeout is not treated as a numerical
+pass, and software-vertex timeout work remains separate and open.
+
+The complete llvmpipe run passes on two allowed CPUs with all 418,560 exact
+comparisons and all ten shader-fault controls. Runtime sources and generators
+are byte-identical to the parent. The Mesa driver-cache initial state was not
+verified, so this is numerical coverage, not cold-cache timing qualification.
+
+
 ## GL disk-cache mode selection, 2026-11-16
 
 The separable-program renderer never consumes legacy linked-program binaries.
