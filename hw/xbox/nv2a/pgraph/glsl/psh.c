@@ -1283,16 +1283,38 @@ static void define_colorkey_comparator(MString *preflight)
  * them as scalar registers instead of a local-memory array. Selection uses
  * uniform register numbers; no arithmetic or component-write order changes.
  * This is source assembly from immutable spans, not a second payload owner. */
+/* Append immutable helper spans directly to the final source owner. The
+ * prepared bank has named scalar-register owners, never an indexed array.
+ * Dynamic accesses have already been replaced by cbget/cbset at the caller. */
+static void psh_ready_register_span(MString *out,const char *source,size_t length)
+{
+    static const char *const names[16]={
+        "cbreg0","cbreg1","cbreg2","cbreg3","cbreg4","cbreg5","cbreg6","cbreg7",
+        "cbreg8","cbreg9","cbreg10","cbreg11","cbreg12","cbreg13","cbreg14","cbreg15"};
+    const char *end=source+length;
+    while(source<end){
+        const char *at=strstr(source,"cregs[");
+        if(!at||at>=end){g_string_append_len(out->gstr,source,end-source);break;}
+        const char *index=at+6;
+        assert(index<end&&*index>='0'&&*index<='9');
+        unsigned reg=*index++-'0';
+        if(index<end&&*index>='0'&&*index<='9')reg=reg*10+(*index++-'0');
+        assert(index<end&&*index==']'&&reg<ARRAY_SIZE(names));
+        g_string_append_len(out->gstr,source,at-source);
+        mstring_append(out,names[reg]);source=index+1;
+    }
+}
+
 static void psh_ready_combiner_helpers(MString *out, const char *source)
 {
     static const char declaration[] = "vec4 cregs[16];\n";
     assert(!strncmp(source, declaration, sizeof(declaration) - 1));
-    mstring_append(out, declaration);
+    mstring_append(out, "vec4 cbreg0,cbreg1,cbreg2,cbreg3,cbreg4,cbreg5,cbreg6,cbreg7,cbreg8,cbreg9,cbreg10,cbreg11,cbreg12,cbreg13,cbreg14,cbreg15;\n");
     mstring_append(out, "bool cbfast(uint ri,uint ro,uint ai,uint ao,int s);\n"
                         "bool cbfinal();\n");
     mstring_append(out, "vec4 cbget(uint reg) { switch(reg) {\n");
     for (unsigned i = 0; i < 16; i++)
-        mstring_append_fmt(out, "case %uu: return cregs[%u];\n", i, i);
+        mstring_append_fmt(out, "case %uu: return cbreg%u;\n", i, i);
     mstring_append(out, "default: return vec4(0.0); } }\n");
     for (unsigned component = 0; component < 3; component++) {
         const char *type = component == 0 ? "vec3" : component == 1 ? "float" : "vec4";
@@ -1300,7 +1322,7 @@ static void psh_ready_combiner_helpers(MString *out, const char *source)
         unsigned width = component == 0 ? 3 : component == 1 ? 1 : 4;
         mstring_append_fmt(out, "void cbset%u(uint reg,%s x) {\n", width, type);
         for (unsigned i = 1; i < 16; i++)
-            mstring_append_fmt(out, "if(reg==%uu){cregs[%u].%s=x;}\n", i, i, field);
+            mstring_append_fmt(out, "if(reg==%uu){cbreg%u.%s=x;}\n", i, i, field);
         mstring_append(out, "}\n");
     }
     static const struct { const char *before, *after; } edits[] = {
@@ -1315,11 +1337,11 @@ static void psh_ready_combiner_helpers(MString *out, const char *source)
     for (unsigned i = 0; i < ARRAY_SIZE(edits); i++) {
         const char *end = strstr(cursor, edits[i].before);
         assert(end);
-        g_string_append_len(out->gstr, cursor, end - cursor);
+        psh_ready_register_span(out, cursor, end - cursor);
         mstring_append(out, edits[i].after);
         cursor = end + strlen(edits[i].before);
     }
-    mstring_append(out, cursor);
+    psh_ready_register_span(out, cursor, strlen(cursor));
     /* Uniform descriptors select this exact RGBA modulation shape before any
      * bank mutation. Other shapes retain the complete interpreter. */
     mstring_append(out,
@@ -1360,8 +1382,8 @@ static void psh_ready_combiner_helpers(MString *out, const char *source)
         "  fragColor.rgb=comb_in_rgb(12u,8)+mix(comb_in_rgb(0u,8),comb_in_rgb(0u,8),comb_in_rgb(0u,8));\n"
         " }else{vec3 b;\n"
         "  if(combFinal0==0x130c0300u)b=comb_in_rgb(12u,8);\n"
-        "  else{vec3 sum=cregs[5].rgb+cregs[12].rgb;\n"
-        "   if((combFinal1&128u)!=0u)sum=clamp(sum,0.0,1.0);cregs[14]=vec4(sum,0.0);b=comb_in_rgb(14u,8); }\n"
+        "  else{vec3 sum=cbreg5.rgb+cbreg12.rgb;\n"
+        "   if((combFinal1&128u)!=0u)sum=clamp(sum,0.0,1.0);cbreg14=vec4(sum,0.0);b=comb_in_rgb(14u,8); }\n"
         "  fragColor.rgb=comb_in_rgb(0u,8)+mix(comb_in_rgb(3u,8),b,comb_in_rgb(0x13u,8));\n"
         " }fragColor.a=comb_in_a(0x1cu,8);return true;}\n");
 }
@@ -1503,7 +1525,8 @@ static void emit_dynamic_combiner(struct PixelShader *ps, MString *preflight)
             break;
         default: init = "vec4(0.0)"; break;
         }
-        mstring_append_fmt(ps->code, "cregs[%d] = %s;\n", i, init);
+        mstring_append_fmt(ps->code, ps->ready ? "cbreg%d = %s;\n" :
+                                               "cregs[%d] = %s;\n", i, init);
     }
     mstring_append(ps->code,
         "for (int s = 0; s < int(combCtl & 0xFFu); s++) { comb_stage(s); }\n"

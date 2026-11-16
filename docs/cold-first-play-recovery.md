@@ -1,5 +1,60 @@
 # Cold-first-play recovery and regression prevention
 
+## Pending named fragment registers, 2026-11-16
+
+The local disabled-by-default prepared fragment generator now emits sixteen
+named vec4 registers instead of a constant-index array. Dynamic selection still
+uses the existing getter and predicated component writes. Immutable helper
+spans append directly into the final source owner; there is no second source
+payload or new runtime resource. Ordinary GL/Vulkan source remains byte-identical
+across 73,728 cases / 614,644,992 bytes. The 256 prepared-source owner schedules
+and five deliberate ownership failures still pass.
+
+The complete positive GPU corpus passes on NVIDIA and llvmpipe: 1,960 cases /
+627,200 exact color/depth checks, plus the independent constant, kill, window,
+volume and 1,544-probe shadow oracles. Native fragment orchestration retains
+29 startup failure points and eleven required fault controls. All 23 GPU fault
+controls pass on both drivers, including a new named-register alias mutation.
+The full corpus, per-process 300-second limit and worker cap are unchanged.
+The existing literal-combiner witnesses 948, 988 and 1008 produce the same
+one-bit differences in both parent and candidate. They remain failures; this
+rewrite does not solve their contraction differences.
+
+Private startup profiling attributes the long first-use delay to GL_LINK_STATUS,
+not shader-source assembly, shader deletion or native-pipeline validation.
+Fresh-identifier paired diagnostics report array link waits of 622.657, 611.994
+and 602.972 ms versus named registers at 584.177, 577.617 and 576.757 ms.
+The repeat gain is roughly five percent, superseding the earlier apparent
+halving from unmatched cache histories. Private driver cache state remains
+uncontrolled; these are API-phase diagnostics, not cache-cold recovery.
+
+Matched GPU execution in one native context uses twelve alternating batches,
+four warm draws, sixteen measured draws and 1,048,576 pixels. Parent/candidate
+median microseconds for zero/one/four/eight 2D stages are
+17.602/17.548, 23.928/23.916, 53.172/53.166 and 94.674/94.620;
+four-stage volume and cube results are 53.306/53.306 and 53.362/53.358.
+This simple warmed fixture shows essentially unchanged GPU cost. It does not
+measure a retail workload, complete frame latency or a cold first encounter.
+
+Experimental current-main builds use libretro base 27d3a4628f and the same
+shadow/alpha/bump checkpoint, coherently rebuilding all GL objects. Only the
+fragment-generator object differs; all 543 other objects match. NGB and DOA3
+arena images match byte-for-byte after two external restores per process,
+with correct audio/video cadence. These correctness runs overlap other
+correctness checks and are not latency evidence. The build root's default
+source, objects and DLL are restored byte-for-byte after private builds.
+
+Two attempted gameplay timing comparisons are invalid: the first overlapped
+a recording test at launch, and the second was stopped by a private process
+monitor when unrelated builds started during its candidate run. They are
+retained as failed qualification attempts. There is no gameplay-speedup claim
+for this rewrite and no change to the timing or correctness gates.
+
+First startup still exceeds half a second in the diagnostic. Cold-first-play
+recovery remains BAD/unqualified, prepared rendering stays off by default,
+and the broader fixed-function, literal precision, Vulkan readiness and
+allocation work remains open. This checkpoint is not promoted to libretro.
+
 ## Pending fixed-depth shadow coverage, 2026-11-16
 
 The local prepared GL fragment prototype adds shadow-map encoding 1 for

@@ -28,7 +28,7 @@ def main():
         context=(function(geometry,'static void quiet_abort(')+'\n'+function(geometry,'static void init_gl(')).replace('Geometry GL device=', 'Fragment GL device=')
         driver=Path(__file__).with_suffix('.c').read_text(encoding='utf-8').replace('/* CONTEXT */',context)
         env=dict(os.environ,EGL_PLATFORM='surfaceless',LP_NUM_THREADS='1');env['PATH']=str(Path(shutil.which(args.cc) or args.cc).resolve().parent)+os.pathsep+env.get('PATH','')
-        for mutation in ['', 'depth', 'mode', 'target', 'volume', 'clip', 'alpha', 'combiner', 'helper', 'zero', 'final', 'constant_c0', 'constant_c1', 'constant_final', 'bump-matrix', 'bump-sign', 'bump-lum', 'bump-input', 'shadow-enable', 'shadow-compare', 'shadow-range', 'shadow-projection', 'shadow-rect']:
+        for mutation in ['', 'depth', 'mode', 'target', 'volume', 'clip', 'alpha', 'combiner', 'helper', 'zero', 'final', 'constant_c0', 'constant_c1', 'constant_final', 'bump-matrix', 'bump-sign', 'bump-lum', 'bump-input', 'shadow-enable', 'shadow-compare', 'shadow-range', 'shadow-projection', 'shadow-rect', 'register_bank']:
             code=driver
             emitted=generator
             if mutation=='zero':
@@ -63,6 +63,9 @@ def main():
                 before,after=faults[mutation]
                 assert ready.count(before)==1 and emitted.count(include)==1
                 emitted=emitted.replace(include,ready.replace(before,after))
+            if mutation=='register_bank':
+                assert emitted.count('\"cbreg12\"')==1
+                emitted=emitted.replace('\"cbreg12\"','\"cbreg13\"')
             (d/'generator.c').write_text(emitted,encoding='utf-8')
             change={'depth':'controls[0]^=1;','mode':'controls[1]=0;','target':'for(unsigned j=4;j<8;j++)controls[j]&=~2u;','volume':'for(unsigned j=4;j<8;j++)controls[j]&=~4u;','clip':'controls[0]^=32;','alpha':'glProgramUniform1ui(p,glGetUniformLocation(p,"alphaKillMask"),0);','combiner':'glProgramUniform1ui(p,glGetUniformLocation(p,"combCtl"),s->combiner_control?s->combiner_control-1:0);'}.get(mutation,'')
             code=code.replace('/* MUTATE */',change)
