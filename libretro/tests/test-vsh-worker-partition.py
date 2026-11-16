@@ -14,15 +14,22 @@ source = (root/'libretro/tests/test-spv-vsh-gpu.c').read_text()
 start = source.index('  if(argc==5){')
 end = source.index('\n  }', start) + len('\n  }')
 guard = source[start:end]
+helpers = ''
+if 'static bool fixture_case_owned(' in source:
+    start = source.index('static bool fixture_case_owned(')
+    end = source.index('\n}', start) + len('\n}')
+    helpers = source[start:end]
 tree = ast.parse((root/'libretro/tests/test-spv-vsh-gpu.py').read_text())
 batches = next(ast.literal_eval(n.value) for n in ast.walk(tree)
                if isinstance(n, ast.Assign) and isinstance(n.value, ast.List)
                and any(isinstance(t, ast.Name) and t.id == 'batches' for t in n.targets))
 assert [case for first, limit in batches for case in range(first, limit)] == list(range(42512))
 code = '''#include <assert.h>
+#include <stdbool.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+HELPERS
 static unsigned ranges[][2]={RANGES};
 int main(void){
  unsigned char seen[42512];int argc=5;
@@ -48,13 +55,20 @@ GUARD
 '''.replace('RANGES', ','.join('{%u,%u}' % row for row in batches))
 with tempfile.TemporaryDirectory(prefix='vsh-partition-') as temporary:
     directory = Path(temporary)
-    for name, body in [('positive', guard), ('lost slot', guard.replace('%slots', '%(slots+1)'))]:
-        assert name == 'positive' or body != guard
+    env = dict(os.environ)
+    # This contract checks the original one-round partition. The independent
+    # scheduling contract also proves the native multi-round/bitmap domain.
+    env.pop('SPV_VSH_FIXTURE_ROUND', None)
+    env.pop('SPV_VSH_FIXTURE_ROUNDS', None)
+    for name, body, functions in [('positive', guard, helpers),
+                                 ('lost slot', guard.replace('%slots', '%(slots+1)'),
+                                  helpers.replace('%slots', '%(slots+1)'))]:
+        assert name == 'positive' or (body, functions) != (guard, helpers)
         path = directory/'test.c'
-        path.write_text(code.replace('GUARD', body))
+        path.write_text(code.replace('GUARD', body).replace('HELPERS', functions))
         executable = directory/('test.exe' if os.name == 'nt' else 'test')
         subprocess.run([compiler, '-O2', str(path), '-o', str(executable)], check=True)
-        result = subprocess.run([str(executable)], capture_output=True, text=True)
+        result = subprocess.run([str(executable)], capture_output=True, text=True, env=env)
         if name == 'positive':
             assert result.returncode == 0, result.stderr
             print(result.stdout, end='')
