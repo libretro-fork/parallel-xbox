@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Extend the disabled GL fixed-function startup bank to unlit literal CSV0_C/texgen states whose fog is already register-driven. Reuse the same 56 stages and 252 native tuples, with existing live control uniforms and no new reservations. Keep lit and literal-fog states on their correct existing paths; software-GPU fog differences explicitly block broader conversion. Cold/warm latency and full stutter recovery remain unqualified.
+
 - Add a disabled-by-default GL startup bank for register-driven fixed-function vertices. It uses 56 byte-identical ordinary vertex sources and validates 252 complete native tuples before publishing coverage, borrowing existing cache slots. Unsupported states and failed preparation retain the correct existing path. This extends experimental readiness only; literal fixed-function classes, Vulkan, gameplay allocations and cold/warm performance qualification remain open.
 
 - Compile the vertex partition fixture with the guard's real scheduling helper after its extraction into a function. Retain the independent 42,512-case coverage/balance oracle and lost-slot rejection control, including older inline guards. This fixes a contracts-link failure; runtime code and numerical corpora are unchanged.

@@ -13,10 +13,23 @@
 static inline int ready_ff_state_index(const VshState *s, bool prefix)
 {
     if (!s->is_fixed_function || !s->fog_dynamic ||
-        !s->fixed_function.csv0c_dynamic || !s->fixed_function.texgen_dynamic ||
         s->compressed_attrs || s->uniform_attrs || s->swizzle_attrs ||
         s->const_attrs_dynamic || (unsigned)s->fixed_function.skinning > 6)
         return -1;
+    bool register_driven = s->fixed_function.csv0c_dynamic &&
+                           s->fixed_function.texgen_dynamic;
+    bool unlit = !s->fixed_function.csv0c_dynamic &&
+                 !s->fixed_function.lighting;
+    if (!register_driven && !unlit) return -1;
+    if (unlit && !s->fixed_function.texgen_dynamic) {
+        for (unsigned t = 0; t < 4; t++)
+            for (unsigned a = 0; a < 4; a++)
+                if ((unsigned)s->fixed_function.texgen[t][a] >
+                    TEXGEN_REFLECTION_MAP) return -1;
+    }
+    /* Unlit literal controls already upload through the ordinary csv0cCtl,
+     * texgenMode and texMatEnable locations. Fog must remain register-driven:
+     * converting literal fog changes exact results on llvmpipe. */
     return (((unsigned)s->fixed_function.skinning * 2u +
              s->point_params_enable) * 2u + s->smooth_shading) * 2u + prefix;
 }

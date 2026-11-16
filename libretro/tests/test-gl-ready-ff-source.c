@@ -33,8 +33,13 @@ int main(void){
   state.const_attrs_dynamic=true;assert(ready_ff_state_index(&state,i&1)<0);state.const_attrs_dynamic=false;
   state.is_fixed_function=false;assert(ready_ff_state_index(&state,i&1)<0);state.is_fixed_function=true;
   state.fog_dynamic=false;assert(ready_ff_state_index(&state,i&1)<0);state.fog_dynamic=true;
-  state.fixed_function.csv0c_dynamic=false;assert(ready_ff_state_index(&state,i&1)<0);state.fixed_function.csv0c_dynamic=true;
+  state.fixed_function.lighting=true;state.fixed_function.csv0c_dynamic=false;assert(ready_ff_state_index(&state,i&1)<0);state.fixed_function.csv0c_dynamic=true;
   state.fixed_function.texgen_dynamic=false;assert(ready_ff_state_index(&state,i&1)<0);state.fixed_function.texgen_dynamic=true;
+  state.fixed_function.csv0c_dynamic=false;state.fixed_function.lighting=false;
+  assert(ready_ff_state_index(&state,i&1)==(int)i);
+  state.fixed_function.texgen_dynamic=false;assert(ready_ff_state_index(&state,i&1)==(int)i);
+  state.fixed_function.texgen[0][0]=(enum VshTexgen)6;assert(ready_ff_state_index(&state,i&1)<0);
+  state.fixed_function.texgen_dynamic=true;assert(ready_ff_state_index(&state,i&1)==(int)i);
   state.fixed_function.skinning=7;assert(ready_ff_state_index(&state,i&1)<0);
  }
  for(unsigned i=0;i<GL_READY_FF_STAGE_COUNT;i++)for(unsigned j=0;j<i;j++)

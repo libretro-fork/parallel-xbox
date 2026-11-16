@@ -1,10 +1,38 @@
 # Cold-first-play recovery and regression prevention
 
+## Unlit controls in the existing startup bank, 2026-11-17
+
+A private cold-boot DOA3 capture identified nine actual draw-scoped compiler
+calls, all through module-cache creation: seven literal fixed-function vertex
+keys and two fragment keys using fixed-depth shadow comparison. Three vertex
+keys are unlit, with fog already register-driven. The new predicate admits
+that semantic class through the existing 56 stages and 252 native tuples;
+it does not add programs, pipelines, cache capacity or descriptor copies.
+Literal texgen coordinates must be supported enums. Live normalization,
+specular flags, texgen and texture-matrix enables already upload through the
+ordinary CSV0_C/texgen uniform ABI. Keys and persistent schemas stay exact.
+
+Keep the complete original 33,232-case FF domain and its ordinary reference
+source in the new separable-GL fixture. Count 816 eligible cases with 1,331,712
+exact scalar checks and explicitly count the remaining outside-domain cases.
+Require point/skin/source and specular/matrix/fog uniform fault controls. These
+tests cover the new unlit class, not all fixed-function rendering. Existing
+full vertex, ownership, source-identity and fragment corpora remain required.
+
+The broader private prototype also converted literal fog. It passed native
+NVIDIA output checks but failed twelve exact fog channels on llvmpipe in the
+[4160,5120) batch. That conversion is rejected. The production predicate still
+requires register-driven fog; lit and literal-fog classes retain the correct
+existing fallback, and full coverage remains open. Native separable programs
+are checked explicitly rather than inferring production precision from
+monolithic-only output. No recovery or latency claim follows from numerical
+equivalence or fewer uncovered state classes.
+
 ## Ordinary fixed-function startup bank experiment, 2026-11-17
 
 `XEMU_EXPERIMENTAL_READY_FF` requires the existing experimental prepared
 renderer flag `XEMU_EXPERIMENTAL_READY_VSH`; both remain disabled by default.
-The new class requires fixed-function vertices, register-driven fog, CSV0_C
+The original class requires fixed-function vertices, register-driven fog, CSV0_C
 and texgen, and no packed, swizzled or uniform attributes. Seven skin modes,
 point parameters, interpolation and the stage-interface prefix require 56
 distinct **ordinary unchanged GLSL** sources. No universal lighting rewrite
