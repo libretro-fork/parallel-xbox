@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Keep CPU source-owner checks and extended interpreter cases in their own test domains. They no longer inherit the direct Vulkan oracle's temporary-file dependency or its fixed 42,512-case bitmap. Preserve their complete original corpora, exact comparisons and fault controls; production renderer code is unchanged.
+
 - Spread the complete 42,512-case software Vulkan vertex oracle across its existing sixteen batch budgets, retaining the 300-second shared deadline and four-worker cap. Verify exact per-worker case bitmaps and all 69,379,584 scalar comparisons; require ownership, manifest and child-retirement fault controls. The numerical case bodies and rendering operations are unchanged.
 
 - Sample each shader compiler input/target fifty times in the positive CI comparison instead of five. Keep the same corpus, ABBA order, 5% slowdown/noise limits and 180-second process watchdog; retain the separately injected slow-compiler rejection control. This addresses short-sample noise, not renderer performance or cold-play qualification.

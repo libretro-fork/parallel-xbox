@@ -23,6 +23,11 @@ def prepare(root, directory, mutation=''):
     spec.loader.exec_module(fixture)
     fixture.prepare(root, directory, mutation)
     original = (root / 'libretro/tests/test-spv-vsh-gpu.c').read_text()
+    # GL rebuilds its case body independently of the Vulkan preparation.
+    # Its extended corpus has no direct-Vulkan fixed bitmap owner.
+    if '  fixture_note_case(test);' in original:
+        assert original.count('  fixture_note_case(test);') == 1
+        original = original.replace('  fixture_note_case(test);', '')
     corpus = original[original.index(' for(unsigned test=first;'):original.index('  GlslcResult modules[2];')]
     needle = 'opts.preserve_float32=fp.shaderSignedZeroInfNanPreserveFloat32;'
     assert corpus.count(needle) == 1

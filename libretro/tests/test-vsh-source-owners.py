@@ -16,6 +16,9 @@ import tempfile
 
 def prepare(root, directory, mutation=False):
     original = (root/'libretro/tests/test-spv-vsh-gpu.c').read_text()
+    if '  fixture_note_case(test);' in original:
+        assert original.count('  fixture_note_case(test);') == 1
+        original = original.replace('  fixture_note_case(test);', '')
     pieces = {
         'TOKEN_HELPERS': original[original.index('static void token('):original.index('static void pack(')],
         'KEY_HELPERS': original[original.index('/* Test-only guard'):original.index('int main(')],
@@ -34,6 +37,11 @@ void mstring_test_free(void *p){unsigned i=0;while(i<128 && owners[i]!=p)i++;ass
 size_t mstring_test_live(MString *returned){size_t n=0;bool found=false;for(unsigned i=0;i<128;i++)if(owners[i]){n++;if(owners[i]==returned)found=true;}assert(!returned || found);return n;}
 ''')
     script = (root/'libretro/tests/test-spv-vsh-gpu.py').read_text()
+    # CPU ownership has its own case domain and no Vulkan ledger/runner.
+    if 'DIRECT_VERTEX_FIXTURE = True' in script:
+        assert script.count('DIRECT_VERTEX_FIXTURE = True') == 1
+        script = script.replace('DIRECT_VERTEX_FIXTURE = True',
+                                'DIRECT_VERTEX_FIXTURE = False')
     # This fixture emits source on the CPU and discards the GPU driver body.
     # Keep the vendored headers, but do not inherit the GPU fixture's loader
     # dependency: the contracts runner intentionally has no Vulkan SDK.

@@ -90,6 +90,12 @@ def prepare(r, p, mutation=''):
     (p / 'driver.py').write_text(script)
 
     c=(r/'libretro/tests/test-spv-vsh-gpu.c').read_text()
+    # The direct oracle's fixed 42,512-bit ledger cannot record extensions
+    # such as the dynamic interpreter's 384 additional control cases. Derived
+    # fixtures retain their original full ranges/comparison counts instead.
+    if '  fixture_note_case(test);' in c:
+        assert c.count('  fixture_note_case(test);') == 1
+        c=c.replace('  fixture_note_case(test);', '')
     c=c.replace('assert(pgraph_spv_vsh(&state,opts,&modules[1]));direct_ticks+=clock()-before;direct_words+=modules[1].num_words;', 'assert(pgraph_spv_vsh_supported(&state,opts));')
     needle='  VshUniformValues values={0};';assert c.count(needle)==1
     c=c.replace(needle,'''  before=clock();

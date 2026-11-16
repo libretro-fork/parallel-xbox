@@ -1,5 +1,18 @@
 # Cold-first-play recovery and regression prevention
 
+## Derived vertex fixture domain repair, 2026-11-17
+
+The first balanced direct-vertex scheduler exposed two inherited-fixture bugs
+in CI: the CPU source-owner runner tried to launch a sibling scheduling script
+from its temporary directory, and extended dynamic interpreter case 42,512
+hit the direct oracle's fixed bitmap bound. Keep the explicit direct-domain
+marker false in CPU ownership, and remove the direct-only case-note call from
+derived interpreter and CPU bodies. Their complete existing ranges, exact
+comparisons, sanitizers and deliberate fault controls remain unchanged. The
+direct Vulkan oracle retains its required exact bitmap and retirement checks.
+This is test machinery only; it does not fix the remaining compiler timing
+noise, fragment watchdog failures or qualify shader-stutter recovery.
+
 ## Balanced software-vertex scheduling experiment, 2026-11-16
 
 Job 133624500023 passed the first 7,168-case batch with exact values, then

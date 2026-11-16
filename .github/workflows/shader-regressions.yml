@@ -158,6 +158,7 @@ jobs:
           python3 driver/libretro/tests/test-shader-gpu-shards.py candidate 2>&1 | tee results/gpu-shards.log
           python3 driver/libretro/tests/test-shader-gpu-batch.py 2>&1 | tee results/gpu-batch.log
           python3 driver/libretro/tests/test-vsh-worker-partition.py candidate cc 2>&1 | tee results/vsh-worker-partition.log
+          python3 driver/libretro/tests/test-vsh-derived-domains.py candidate 2>&1 | tee results/vsh-derived-domains.log
           python3 driver/libretro/tests/test-throughput-gate.py 2>&1 | tee results/throughput-gate.log
           python3 driver/libretro/tests/test-shader-compile-gate.py 2>&1 | tee results/compiler-gate.log
           python3 driver/libretro/tests/test-cold-play-frame-gate.py candidate 2>&1 | tee results/cold-play-frame-gate.log
