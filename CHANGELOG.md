@@ -4,6 +4,8 @@
 
 - Add a disabled-by-default GL startup bank for register-driven fixed-function vertices. It uses 56 byte-identical ordinary vertex sources and validates 252 complete native tuples before publishing coverage, borrowing existing cache slots. Unsupported states and failed preparation retain the correct existing path. This extends experimental readiness only; literal fixed-function classes, Vulkan, gameplay allocations and cold/warm performance qualification remain open.
 
+- Compile the vertex partition fixture with the guard's real scheduling helper after its extraction into a function. Retain the independent 42,512-case coverage/balance oracle and lost-slot rejection control, including older inline guards. This fixes a contracts-link failure; runtime code and numerical corpora are unchanged.
+
 - Keep CPU source-owner checks and extended interpreter cases in their own test domains. They no longer inherit the direct Vulkan oracle's temporary-file dependency or its fixed 42,512-case bitmap. Preserve their complete original corpora, exact comparisons and fault controls; production renderer code is unchanged.
 
 - Spread the complete 42,512-case software Vulkan vertex oracle across its existing sixteen batch budgets, retaining the 300-second shared deadline and four-worker cap. Verify exact per-worker case bitmaps and all 69,379,584 scalar comparisons; require ownership, manifest and child-retirement fault controls. The numerical case bodies and rendering operations are unchanged.

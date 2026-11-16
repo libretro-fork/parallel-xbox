@@ -41,6 +41,18 @@ fresh-process restoration, cold first fights, matched parent/warm tails and
 draw-critical compile counts require separate integrated validation. Current
 cold-play smoothness remains **BAD/unqualified**.
 
+## Vertex guard dependency repair, 2026-11-17
+
+The CPU worker-partition fixture copied the actual guard after the scheduler
+change but omitted its newly extracted `fixture_case_owned` helper, causing
+an undefined-reference failure in CI. Compile both actual bodies and apply
+the existing lost-slot mutation to whichever body contains the modulus.
+Keep all 42,512 original cases, the independent balance/ownership oracle,
+worker counts one through four and the older inline-guard path. Clear inherited
+round environment variables for this one-round contract; the separate native
+multi-round/bitmap contract remains required. No runtime or numerical corpus
+changes, timing qualification or cold-play recovery are implied.
+
 ## Derived vertex fixture domain repair, 2026-11-17
 
 The first balanced direct-vertex scheduler exposed two inherited-fixture bugs
