@@ -1,5 +1,46 @@
 # Cold-first-play recovery and regression prevention
 
+## Ordinary fixed-function startup bank experiment, 2026-11-17
+
+`XEMU_EXPERIMENTAL_READY_FF` requires the existing experimental prepared
+renderer flag `XEMU_EXPERIMENTAL_READY_VSH`; both remain disabled by default.
+The new class requires fixed-function vertices, register-driven fog, CSV0_C
+and texgen, and no packed, swizzled or uniform attributes. Seven skin modes,
+point parameters, interpolation and the stage-interface prefix require 56
+distinct **ordinary unchanged GLSL** sources. No universal lighting rewrite
+or new uniform ABI is introduced. Vertex z-perspective does not affect these
+sources; its geometry behavior remains in the geometry owner. Persistent
+keys, schema and capacities remain unchanged.
+
+The constructor writes directly into 56 final reserved module-key owners.
+It resolves their native programs and uniforms, then creates and validates
+252 complete VS/GS/FS tuples. These anchors borrow slots from the existing
+binding pool and use its native pipeline-owner index. Only completion of
+every tuple publishes vertex coverage. Preparation failure releases every
+partial native owner and returns all reserved slots; unsupported states keep
+the existing correct synchronous fallback. Ordinary borrowers retire before
+anchors, which retire before stage owners. Existing pool capacities remain
+50*1024 entries; the reservation reduces ordinary available entries instead
+of adding a second payload cache.
+
+CPU tests compare 14,336 ordinary source strings, reject unsupported inputs,
+check all 56 stages and 252 tuples, exercise 618 partial/unavailable failures
+and 50,400 borrow/release operations, and reject eight ownership/publication faults.
+Native RTX 5090 and software GL tests each prepare and retire two owner
+generations with all 252 actual complete tuples validated. Native tuple
+validation is not a numerical draw or gameplay test. Source identity avoids
+changing vertex math but cannot establish retail readiness counts, image
+equivalence through the integrated renderer or a latency improvement.
+
+A private prior DOA3 seed capture has 19 covered keys out of 49 fixed-function
+keys (81 total); these are unique descriptors, not draw or compilation counts.
+The other fixed-function classes, unsupported attributes and Vulkan remain
+uncovered. First-use source generation still allocates during startup; native
+driver allocation/copy behavior remains external. Gameplay allocations,
+fresh-process restoration, cold first fights, matched parent/warm tails and
+draw-critical compile counts require separate integrated validation. Current
+cold-play smoothness remains **BAD/unqualified**.
+
 ## Derived vertex fixture domain repair, 2026-11-17
 
 The first balanced direct-vertex scheduler exposed two inherited-fixture bugs

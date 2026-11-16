@@ -159,6 +159,8 @@ jobs:
           python3 driver/libretro/tests/test-shader-gpu-batch.py 2>&1 | tee results/gpu-batch.log
           python3 driver/libretro/tests/test-vsh-worker-partition.py candidate cc 2>&1 | tee results/vsh-worker-partition.log
           python3 driver/libretro/tests/test-vsh-derived-domains.py candidate 2>&1 | tee results/vsh-derived-domains.log
+          python3 driver/libretro/tests/test-gl-ready-ff-owners.py candidate cc 2>&1 | tee results/gl-ready-ff-owners.log
+          python3 driver/libretro/tests/test-gl-ready-ff-source.py candidate cc 2>&1 | tee results/gl-ready-ff-source.log
           python3 driver/libretro/tests/test-throughput-gate.py 2>&1 | tee results/throughput-gate.log
           python3 driver/libretro/tests/test-shader-compile-gate.py 2>&1 | tee results/compiler-gate.log
           python3 driver/libretro/tests/test-cold-play-frame-gate.py candidate 2>&1 | tee results/cold-play-frame-gate.log
@@ -289,6 +291,7 @@ jobs:
           set -euo pipefail
           mkdir -p results
           python3 driver/libretro/tests/test-gl-texture-shadow.py candidate cc 2>&1 | tee results/gl-texture-shadow.log
+          python3 driver/libretro/tests/test-gl-ready-ff-source.py candidate cc native 2>&1 | tee results/gl-ready-ff-native.log
           python3 driver/libretro/tests/test-gl-volume-compression.py candidate cc 2>&1 | tee results/gl-volume-compression.log
           python3 driver/libretro/tests/test-glslc-local-init.py candidate --cc cc 2>&1 | tee results/local-init.log
           python3 driver/libretro/tests/test-vsh-mul-select.py candidate --cc cc --validator spirv-val 2>&1 | tee results/vsh-mul-select.log

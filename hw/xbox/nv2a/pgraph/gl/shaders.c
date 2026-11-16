@@ -719,6 +719,7 @@ GLuint pgraph_gl_separable_program(GLenum kind, const char *src,
 #include "ready-geom.inc"
 #include "ready-psh.inc"
 #include "pipeline-owners.inc"
+#include "ready-ff.inc"
 #include "ready-pipelines.inc"
 #endif
 
@@ -752,6 +753,7 @@ static ShaderModuleCacheEntry *get_shader_module_for_key(
 {
 #ifdef XEMU_EXPERIMENTAL_READY_VSH
     ShaderModuleCacheEntry *ready = ready_vsh_find(r, key);
+    if (!ready) ready = ready_ff_find(r, key);
     if (!ready) ready = ready_geom_find(r, key);
     if (!ready) ready = ready_psh_find(r, key);
     if (ready) return ready;
@@ -1411,6 +1413,13 @@ void pgraph_gl_init_shaders(PGRAPHState *pg)
         r->ready_pipelines = r->shader_cache_entries;
         memset(r->ready_pipelines, 0,
                reserved_bindings * sizeof(*r->ready_pipelines));
+#ifdef XEMU_EXPERIMENTAL_READY_FF
+        r->ready_ff.pipelines = r->shader_cache_entries + reserved_bindings;
+        memset(r->ready_ff.pipelines, 0,
+               GL_READY_FF_PIPELINE_COUNT * sizeof(*r->ready_ff.pipelines));
+        reserved_bindings += GL_READY_FF_PIPELINE_COUNT;
+        assert(reserved_bindings <= shader_cache_size);
+#endif
     }
 #endif
     for (int i = reserved_bindings; i < shader_cache_size; i++) {
@@ -1440,6 +1449,13 @@ void pgraph_gl_init_shaders(PGRAPHState *pg)
         r->ready_psh.stages = r->shader_module_cache_entries + reserved_geometry;
         memset(r->ready_psh.stages, 0, 2 * sizeof(*r->ready_psh.stages));
         reserved_geometry += 2;
+#ifdef XEMU_EXPERIMENTAL_READY_FF
+        r->ready_ff.stages = r->shader_module_cache_entries + reserved_geometry;
+        memset(r->ready_ff.stages, 0,
+               GL_READY_FF_STAGE_COUNT * sizeof(*r->ready_ff.stages));
+        reserved_geometry += GL_READY_FF_STAGE_COUNT;
+        assert(reserved_geometry <= shader_module_cache_size);
+#endif
     }
 #endif
     for (int i = reserved_geometry; i < shader_module_cache_size; i++) {
@@ -1463,6 +1479,9 @@ void pgraph_gl_init_shaders(PGRAPHState *pg)
     ready_geom_init(r);
     ready_psh_init(r);
     ready_pipelines_init(r);
+#ifdef XEMU_EXPERIMENTAL_READY_FF
+    ready_ff_init(r);
+#endif
 #endif
     r->seed.state = -1;
     r->prewarm.state = -1;
@@ -1499,6 +1518,9 @@ void pgraph_gl_finalize_shaders(PGRAPHState *pg)
     lru_flush(&r->shader_cache);
 #ifdef XEMU_EXPERIMENTAL_READY_VSH
     ready_pipelines_finalize(r); /* After borrowers, before pool/stage owners. */
+#ifdef XEMU_EXPERIMENTAL_READY_FF
+    ready_ff_pipelines_finalize(r);
+#endif
 #endif
     free(r->shader_cache_entries);
     r->shader_cache_entries = NULL;
@@ -1507,6 +1529,9 @@ void pgraph_gl_finalize_shaders(PGRAPHState *pg)
 #ifdef XEMU_EXPERIMENTAL_READY_VSH
     ready_geom_finalize(r); /* Reserved owners precede backing-pool release. */
     ready_psh_finalize(r);
+#ifdef XEMU_EXPERIMENTAL_READY_FF
+    ready_ff_stages_finalize(r);
+#endif
 #endif
     g_free(r->shader_module_cache_entries);
     r->shader_module_cache_entries = NULL;
@@ -1996,7 +2021,8 @@ static bool gen_jobs_have_free(unsigned needed)
 static bool module_known(PGRAPHGLState *r, const ShaderModuleCacheKey *key)
 {
 #ifdef XEMU_EXPERIMENTAL_READY_VSH
-    if (ready_vsh_find(r, key) || ready_geom_find(r, key) || ready_psh_find(r, key)) return true;
+    if (ready_vsh_find(r, key) || ready_ff_find(r, key) ||
+        ready_geom_find(r, key) || ready_psh_find(r, key)) return true;
 #endif
     uint64_t hash = xxh3_64((const void *)key, sizeof(*key), 0);
     Lru *cache = &r->shader_module_cache;
@@ -2027,7 +2053,8 @@ static bool state_modules_known(PGRAPHGLState *r, const ShaderState *state)
 static bool module_ready(PGRAPHGLState *r, const ShaderModuleCacheKey *key)
 {
 #ifdef XEMU_EXPERIMENTAL_READY_VSH
-    if (ready_vsh_find(r, key) || ready_geom_find(r, key) || ready_psh_find(r, key)) return true;
+    if (ready_vsh_find(r, key) || ready_ff_find(r, key) ||
+        ready_geom_find(r, key) || ready_psh_find(r, key)) return true;
 #endif
     uint64_t hash = xxh3_64((const uint8_t *)key, sizeof(*key), 0);
     Lru *cache = &r->shader_module_cache;
