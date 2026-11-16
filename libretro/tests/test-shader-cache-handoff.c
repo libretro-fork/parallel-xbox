@@ -52,6 +52,12 @@ static struct { struct { bool cache_shaders; } perf; } g_config;
 static PGRAPHGLState renderer;
 static ShaderBinding bindings[128];
 static _Thread_local bool owner;
+#ifdef HAVE_SHADER_CACHE_MODE_FILTER
+static bool mode_sso,track_mode_io;
+static const char *mode_lru_path;
+static unsigned mode_reads,mode_writes,mode_maps,mode_seeds,mode_releases;
+static bool gl_sso_enabled(void){assert(owner);return mode_sso;}
+#endif
 static retro_atomic_int_t done;
 static const char *directory, *shader_gl_vendor = "test-vendor", *shader_gl_version = "test-version";
 #define container_of(p, type, field) ((type *)((char *)(p) - offsetof(type, field)))
@@ -66,6 +72,12 @@ static retro_atomic_int_t hold_save,save_entered;
 static retro_eventcount_t save_entered_event,save_release_event;
 static FILE *fopen_utf8(const char *path,const char *mode)
 {
+#ifdef HAVE_SHADER_CACHE_MODE_FILTER
+    if(track_mode_io&&!strcmp(path,mode_lru_path)){
+        if(!strcmp(mode,"rb"))mode_reads++;
+        if(!strcmp(mode,"wb"))mode_writes++;
+    }
+#endif
     if (!strcmp(mode,"wb") && retro_atomic_load_acquire_int(&hold_save)) {
         assert(!owner);
         retro_atomic_store_release_int(&save_entered,1);
@@ -110,6 +122,9 @@ static bool shader_read_cache_version(FileCursor *c) {
 }
 static unsigned map_shift;
 bool xemu_file_map(XemuFileMap *m,const char *path) {
+#ifdef HAVE_SHADER_CACHE_MODE_FILTER
+    if(track_mode_io)mode_maps++;
+#endif
     FILE *f=fopen(path,"rb");if(!f)return false;
     assert(!fseek(f,0,SEEK_END));long size=ftell(f);assert(size>=0);rewind(f);
     unsigned char *base=malloc((size_t)size+32);assert(base);
@@ -117,7 +132,11 @@ bool xemu_file_map(XemuFileMap *m,const char *path) {
     *m=(XemuFileMap){base+map_shift,(size_t)size,base,base};return true;
 }
 static char *shader_get_lru_cache_path(void) { return shader_get_binary_path(directory, 0); }
-static void seed_write_files(PGRAPHGLState *r) { assert(owner); }
+static void seed_write_files(PGRAPHGLState *r) { assert(owner);
+#ifdef HAVE_SHADER_CACHE_MODE_FILTER
+    if(track_mode_io)mode_seeds++;
+#endif
+}
 static void pgraph_clear_and_notify(unsigned *complete, unsigned *pending)
 {
     assert(owner);
@@ -149,6 +168,13 @@ static void evict(Lru *lru, LruNode *node)
 {
     ShaderBinding *binding = container_of(node, ShaderBinding, node);
     assert(owner);
+#ifdef HAVE_SHADER_CACHE_MODE_FILTER
+    if(track_mode_io&&binding->program){
+        assert(binding->state.id==42&&binding->program_size==16&&binding->program_format==77);
+        for(unsigned i=0;i<16;i++)assert(((const unsigned char*)binding->program)[i]==0xab);
+        mode_releases++;
+    }
+#endif
     shader_binary_release(binding->program, &binding->program_owner);
     binding->program = NULL;
 }
@@ -345,6 +371,40 @@ int main(int argc, char **argv)
         assert(retro_atomic_load_acquire_int(&renderer.shader_disk_mappings)==0);
         file=fopen(name,"rb");assert(!file);
     }
+#ifdef HAVE_SHADER_CACHE_MODE_FILTER
+    /* The linked-program reader is ineligible in SSO mode. Its reload list
+     * must survive SSO shutdown, while seed/flush/notification still run. */
+    map_shift=0;
+    for(unsigned sso=0;sso<2;sso++)for(unsigned cache=0;cache<2;cache++){
+        fprintf(stderr,"Checking cache mode sso=%u cache=%u\n",sso,cache);
+        file=fopen(name,"wb");assert(file);assert(fwrite(bytes,1,size,file)==size);fclose(file);
+        char *list=shader_get_lru_cache_path();uint64_t hash=123;
+        file=fopen(list,"wb");assert(file);assert(fwrite(&hash,sizeof(hash),1,file)==1);fclose(file);
+        mode_sso=sso;g_config.perf.cache_shaders=cache;mode_lru_path=list;
+        mode_reads=mode_writes=mode_maps=mode_seeds=mode_releases=0;
+        unsigned allocations=poisoned_allocations,complete=renderer.shader_cache_writeback_complete;
+        track_mode_io=true;
+        shader_reload_lru_start(&pg);
+        assert(!!renderer.shader_disk_thread==!!(cache&&!sso));
+        if(!cache||sso){
+            ShaderState key={900};ShaderBinding *active=container_of(lru_lookup(&renderer.shader_cache,900,&key),ShaderBinding,node);
+            active->initialized=true;
+        }
+        renderer.shader_cache_writeback_pending=1;
+        pgraph_gl_shader_write_cache_reload_list(&pg);
+        assert(!renderer.shader_disk_thread&&!renderer.shader_disk_pending&&retro_mpsc_empty(&renderer.shader_disk_results));
+        assert(renderer.shader_cache_writeback_complete==complete+1&&!renderer.shader_cache_writeback_pending);
+        assert(mode_reads==(cache&&!sso)&&mode_writes==(cache&&!sso)&&mode_maps==(cache&&!sso));
+        assert(mode_seeds==cache&&mode_releases==(cache&&!sso));
+        assert(poisoned_allocations==allocations+(cache&&!sso));
+        assert(renderer.shader_cache.num_used==(cache?0:1));
+        file=fopen(list,"rb");assert(file);uint64_t saved=0;assert(fread(&saved,sizeof(saved),1,file)==1&&saved==hash);assert(fgetc(file)==EOF);fclose(file);
+        lru_flush(&renderer.shader_cache);assert(retro_atomic_load_acquire_int(&renderer.shader_disk_mappings)==0);
+        track_mode_io=false;free(list);
+    }
+    mode_sso=false;g_config.perf.cache_shaders=false;
+    puts("Shader cache modes: SSO/linked x enabled/disabled, eligible worker/read/adoption, retained legacy list, seeds, flush and notification PASS");
+#endif
     free(name);
     puts("Shader cache: 18000 publications, render-only LRU, shutdown joins and immutable disk-save snapshot, 64 poisoned mapped/capped reader round trips and all binary truncations passed");
     return 0;

@@ -23,6 +23,7 @@ jobs:
       candidates: ${{ steps.revisions.outputs.candidates }}
       native_pipelines: ${{ steps.revisions.outputs.native_pipelines }}
       query_reports: ${{ steps.revisions.outputs.query_reports }}
+      cache_modes: ${{ steps.revisions.outputs.cache_modes }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -73,6 +74,11 @@ jobs:
                      if git('ls-tree', '--name-only', commit, '--', report_path) == report_path]
           if not reports:
               reports = [after]  # A missing current fixture is a failure.
+          mode_path = 'libretro/tests/test-gl-cache-mode.py'
+          modes = [commit for commit in commits
+                   if git('ls-tree', '--name-only', commit, '--', mode_path) == mode_path]
+          if not modes:
+              modes = [after]
           software = [dict(**row, suite=suite) for row in rows for suite in ['utilities', 'vertex']+['fragment-'+str(i) for i in range(8)]]
           if len(software) > 256:
               raise SystemExit('Unqualified: software matrix exceeds 256 jobs; split this push')
@@ -82,6 +88,7 @@ jobs:
               f.write('candidates='+json.dumps(dict(commit=commits))+'\n')
               f.write('native_pipelines='+json.dumps(dict(commit=native))+'\n')
               f.write('query_reports='+json.dumps(dict(commit=reports))+'\n')
+              f.write('cache_modes='+json.dumps(dict(commit=modes))+'\n')
           with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as f:
               f.write('Every new commit in this push is compared, not just its tip.\n\n')
               f.write('Pinned accepted reference: '+(accepted or '**UNQUALIFIED: not configured; parent comparison only**')+'\n\n')
@@ -548,10 +555,34 @@ jobs:
           name: gl-report-reuse-${{ matrix.commit }}
           path: results/
 
+  gl-cache-mode:
+    name: GL cache mode and ownership (${{ matrix.commit }})
+    needs: revisions
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.revisions.outputs.cache_modes) }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ matrix.commit }}
+          filter: blob:none
+      - name: Check mode selection, legacy ownership and required faults
+        run: |
+          set -euo pipefail
+          mkdir -p results
+          python3 libretro/tests/test-gl-cache-mode.py . cc 2>&1 | tee results/gl-cache-mode.log
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: gl-cache-mode-${{ matrix.commit }}
+          path: results/
+
   shader-gate:
     name: Shader and PSO required gate
     if: always()
-    needs: [revisions, contracts, compilation, software-gpu, interpreter-gpu, interpreter-dynamic-gpu, geometry-ready-gpu, fragment-ready-gpu, native-pipeline-ready, gl-report-reuse]
+    needs: [revisions, contracts, compilation, software-gpu, interpreter-gpu, interpreter-dynamic-gpu, geometry-ready-gpu, fragment-ready-gpu, native-pipeline-ready, gl-report-reuse, gl-cache-mode]
     runs-on: ubuntu-24.04
     steps:
       - name: Require every revision and reference job to pass

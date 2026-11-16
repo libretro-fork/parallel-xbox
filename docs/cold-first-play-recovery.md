@@ -1,5 +1,44 @@
 # Cold-first-play recovery and regression prevention
 
+## GL disk-cache mode selection, 2026-11-16
+
+The separable-program renderer never consumes legacy linked-program binaries.
+It now skips that reload worker and preserves the legacy reload list instead
+of overwriting it with hashes of programs it never saves. Monolithic rendering
+retains its existing loader and writer. Disabled caching creates no reload
+worker. Stage-module caches and shader seeds are unchanged, as are renderer
+ownership, worker join/drain, cache flushing and completion notification.
+The redundant startup cache-directory wrapper is removed: the existing atomic
+cache writer creates both its family and bucket directories when needed.
+
+The production-function fixture retains all 18,000 publication schedules,
+64 mapped/capped round trips and truncation cases. Four mode/cache combinations
+check worker creation, legacy list I/O, mappings, seed maintenance and completion.
+Mandatory faults reject an eager SSO reader, overwriting the legacy list and
+skipping maintenance. Sanitized software and native validation pass, including
+the existing immutable-cache writer, module-export, stage-lifetime and bounded
+prewarm fixtures. Clean default Windows builds introduce no experimental flag
+or release diagnostics.
+
+A separate warm-cache DOA3 first-fight diagnostic starts with the same 109-entry
+legacy list and stage-module cache. The parent starts one legacy worker and
+attempts 109 unused linked-program loads; the candidate starts none and attempts
+none. Both prewarm the same 81 stage-module files. Release DOA3 first-fight images
+match byte-for-byte, as do NGB images after two fresh-process external restores;
+audio/video callback cadence remains correct. The candidate preserves the legacy
+list bytes. Those diagnostic/image runs overlap an unrelated build and include
+instrumentation or readback, so their latency is not qualified. An isolated default-release ABBA comparison then completed with no competing
+build/test or readback: all four runs preserve 599 guest presents/completions
+and 600 first-fight callbacks without a 16.683 ms deadline miss. Parent rates
+are 119.707/121.669 guest FPS versus candidate 121.107/123.313; fight p99 values
+are 11.500/9.584 ms versus 10.174/9.922 ms. Parent fight maxima are
+12.288/10.439 ms versus 11.901/13.117 ms. The observed spread does not establish
+a frame-time improvement or a reproducible regression. Whole-boot maxima remain
+64.610/64.772 ms versus 63.664/63.511 ms; those spikes are retained, not discarded
+as warmup. Private driver-cache state remains uncontrolled. This is a matched
+warm-cache component check, not physical-GPU cold-play recovery. It removes
+unconsumed work, not the remaining draw-critical shader compilation.
+
 ## GL query allocation audit, 2026-11-16
 
 Pooled GL reports now retain at most their existing eight inline query names.
@@ -38,8 +77,13 @@ external-restore runs create no visibility queries, and OutRun 2's 3,600-run
 title-screen test serves seventeen empty reports but creates no queries.
 NGB and OutRun 2 images match their parents byte-for-byte. These retail samples
 therefore establish no query-reuse performance benefit and do not attribute
-their shader stutters to this path. Isolated release timing remains pending
-while another build occupies the machine. The core's existing frontend GL
+their shader stutters to this path. An isolated release ABBA comparison
+completed before the next unrelated build began: parent guest-present rates
+were 120.527/120.239 FPS and candidate rates 121.715/119.890 FPS. Each run
+completed 599 guest presents; all 600 first-fight callbacks met the 16.683 ms
+deadline. Fight p99 values were 10.114/10.587 ms for the parent and
+9.942/9.966 ms for the candidate. This establishes no measurable speedup;
+private driver-cache state remains uncontrolled. The core's existing frontend GL
 context-replacement/reload limitations are unchanged.
 
 Status, 2026-11-08: **BAD / REGRESSED / NOT QUALIFIED**. DOA3's first fights

@@ -901,14 +901,6 @@ static void generate_shaders(PGRAPHGLState *r, ShaderBinding *binding)
 
 static const char *shader_gl_version = NULL;
 
-static void shader_create_cache_folder(void)
-{
-    char *shader_path = g_strdup_printf("%sshaders_boost",
-                                        xemu_settings_get_base_path());
-    qemu_mkdir(shader_path);
-    g_free(shader_path);
-}
-
 /* "_boost": a second GPU, since removed, kept its own cache under the
  * plain names; the names stay so the caches already on disk stay valid. */
 static char *shader_get_lru_cache_path(void)
@@ -1052,20 +1044,23 @@ void pgraph_gl_shader_write_cache_reload_list(PGRAPHState *pg)
         return;
     }
 
-    char *shader_lru_path = shader_get_lru_cache_path();
-
-    FILE *lru_list = fopen_utf8(shader_lru_path, "wb");
-    g_free(shader_lru_path);
-    if (!lru_list) {
-        fprintf(stderr, "nv2a: Failed to open shader LRU cache for writing\n");
-        /* the waiter is released either way: nothing more is written */
-        pgraph_clear_and_notify(&r->shader_cache_writeback_complete,
-                                &r->shader_cache_writeback_pending);
-        return;
+    /* SSO uses the stage-binary cache and shader seeds, not these linked
+     * programs. Do not replace a usable legacy reload list with SSO hashes
+     * for which no linked-program binaries were written. */
+    if (!gl_sso_enabled()) {
+        char *shader_lru_path = shader_get_lru_cache_path();
+        FILE *lru_list = fopen_utf8(shader_lru_path, "wb");
+        g_free(shader_lru_path);
+        if (!lru_list) {
+            fprintf(stderr, "nv2a: Failed to open shader LRU cache for writing\n");
+            pgraph_clear_and_notify(&r->shader_cache_writeback_complete,
+                                    &r->shader_cache_writeback_pending);
+            return;
+        }
+        lru_visit_active(&r->shader_cache,
+                         shader_write_lru_list_entry_to_disk, lru_list);
+        fclose(lru_list);
     }
-
-    lru_visit_active(&r->shader_cache, shader_write_lru_list_entry_to_disk, lru_list);
-    fclose(lru_list);
 
     seed_write_files(r);
 
@@ -1246,6 +1241,21 @@ static void shader_reload_lru_from_disk(void *arg)
     fclose(lru_shaders_list);
 }
 
+static void shader_reload_lru_start(PGRAPHState *pg)
+{
+    /* Select on the render thread: gl_sso_enabled may inspect the current
+     * context. SSO never consumes binding->program, so loading legacy blobs
+     * would only create unused mappings/copies and pollute its binding LRU. */
+    if (!g_config.perf.cache_shaders || gl_sso_enabled()) {
+        return;
+    }
+    PGRAPHGLState *r = pg->gl_renderer_state;
+    r->shader_disk_thread = sthread_create(shader_reload_lru_from_disk, pg);
+    if (!r->shader_disk_thread) {
+        abort();
+    }
+}
+
 static void shader_cache_entry_init(Lru *lru, LruNode *node, const void *state)
 {
     ShaderBinding *binding = container_of(node, ShaderBinding, node);
@@ -1387,7 +1397,6 @@ void pgraph_gl_init_shaders(PGRAPHState *pg)
 
     shader_capture_gl_identity();
 
-    shader_create_cache_folder();
 
     /* FIXME: Make this configurable */
     const size_t shader_cache_size = 50*1024;
@@ -1412,10 +1421,7 @@ void pgraph_gl_init_shaders(PGRAPHState *pg)
     r->shader_cache.compare_nodes = shader_cache_entry_compare;
     r->shader_cache.post_node_evict = shader_cache_entry_post_evict;
 
-    r->shader_disk_thread = sthread_create(shader_reload_lru_from_disk, pg);
-    if (!r->shader_disk_thread) {
-        abort();
-    }
+    shader_reload_lru_start(pg);
 
     /* FIXME: Make this configurable */
     const size_t shader_module_cache_size = 50*1024;
