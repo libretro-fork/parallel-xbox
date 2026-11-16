@@ -1,5 +1,59 @@
 # Cold-first-play recovery and regression prevention
 
+## Experimental Vulkan masked-clear readiness, 2026-11-16
+
+`XEMU_EXPERIMENTAL_READY_CLEAR` is an opt-in build flag, disabled by default.
+It prepares one fully created masked-color pipeline per supported color/depth
+attachment pair before guest execution. Five distinct mapped color formats and
+three selected depth states require at most fifteen native owners. Duplicate
+guest aliases and unused alternate depth formats are not prepared. The ordinary
+8,192-entry pipeline cache and its reservations are unchanged. This dedicated
+finite utility table adds at most fifteen native pipelines and one borrowed
+binding view; startup cost and driver memory remain qualification work.
+
+The negotiated extended dynamic color-write-mask feature lets all fourteen
+partial channel masks share a pipeline. The actual command block sets the mask
+before its draw and invalidates ordinary dynamic state afterward. Depth/stencil
+writes are performed by the following existing attachment-clear command, so the
+masked-color raster pipeline disables those writes. The correct synchronous
+fallback is retained when the feature/format is unavailable or preparation
+fails. That fallback still violates the overall no-draw-critical-creation target.
+Canonicalization affects process-local clear keys only; no persisted PipelineKey
+schema exists for these utility entries. The opaque native Vulkan pipeline cache
+continues to validate native create-info identities itself.
+
+The table owns each native pipeline. Its binding view lends handles only, with
+format compatibility metadata; it does not clone shader/source payloads. No
+clear-side allocation, LRU insertion, create or wait is needed on a prepared
+hit. This does not claim the whole renderer is allocation-free. Startup borrows
+renderer-owned shader modules, layouts and render passes. Partial preparation
+destroys all unpublished native owners without a GPU wait. Unload sends consumed
+owners through the existing GPU retirement trash, drained after all submission
+slots settle and before destroying layouts and render passes.
+
+The production-builder/owner fixture verifies fifteen owners, 3,000 hot binds,
+45 injected preparation failures (including partial and null native handles),
+unsupported capabilities/formats, alias removal, view transitions and deferred
+retirement. Nine deliberate ownership/create-info faults must fail. The GPU
+fixture executes the production builder and clear command block, comparing the
+frozen native create-info from `27d3a4628` and both candidate static/dynamic paths
+against independent exact pixels: 18,900 draws and 16,083,900 pixels across five
+color formats, absent/D16/D24S8/D32S8 depth, fourteen masks, depth/stencil flags,
+three rectangles and both clear polarities. It passes on RTX 5090 (validation
+unavailable) and llvmpipe LLVM 20.1.2 (validation enabled), and rejects four
+deliberate rendering faults under one shared 300-second watchdog. Stencil-only
+on D16 is a pre-existing invalid zero-aspect attachment-clear case; this fixture
+excludes that combination rather than claiming it fixed.
+
+Fresh-process NGB and DOA3 arena restores retain exact parent image hashes and
+audio/video callback cadence. Private diagnostic builds report fifteen startup
+creations and **zero prepared-clear hits** in both sampled checkpoints. These
+games therefore provide no masked-clear work reduction or latency improvement
+evidence. Diagnostic source is restored afterward and is not shipped. Repeated
+cold-boot gameplay, startup and driver-cache costs, native teardown/reset stress,
+other utility/general pipeline misses, CI and cold/warm tail recovery remain
+unqualified. Overall cold-first-play smoothness stays **BAD/unqualified**.
+
 ## GL disk-cache mode selection, 2026-11-16
 
 The separable-program renderer never consumes legacy linked-program binaries.

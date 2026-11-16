@@ -19,6 +19,10 @@
 #define nv2a_profile_inc_counter(...) ((void)0)
 #define pgraph_vk_begin_debug_marker(...) ((void)0)
 #define pgraph_vk_end_debug_marker(...) ((void)0)
+/* This fixture covers attachment-only clears. Masked draws have their own
+ * native pipeline/image oracle and must not enter this path. */
+#define vkCmdSetColorWriteMaskEXT(command, first, count, masks) \
+    ((void)(command), (void)(first), (void)(count), (void)(masks), assert(false))
 typedef struct { VkFormat color_format,zeta_format; } RenderPassState;
 typedef struct {
     unsigned width,height;
@@ -32,7 +36,7 @@ struct XemuVkFramebufferEntry {
 typedef struct {
     VkDevice device;VkRenderPass render_pass;VkFramebuffer framebuffer;VkCommandBuffer command_buffer;
     SurfaceBinding *color_binding,*zeta_binding;
-    bool in_command_buffer,in_render_pass;unsigned clear_parameter,framebuffer_use_counter;
+    bool in_command_buffer,in_render_pass,dyn_blend;unsigned clear_parameter,framebuffer_use_counter;
     int framebuffer_cache_n;struct XemuVkFramebufferEntry framebuffer_cache[4];
     struct { bool valid; } dyn_last;
 } PGRAPHVkState;

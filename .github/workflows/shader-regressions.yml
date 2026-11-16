@@ -150,6 +150,11 @@ jobs:
           python3 driver/libretro/tests/test-pipeline-completed-take.py candidate cc 2>&1 | tee results/pipeline-completed-take.log
           python3 driver/libretro/tests/test-dirty-page-fast.py candidate cc 2>&1 | tee results/dirty-page-fast.log
           python3 driver/libretro/tests/test-vk-clear-no-pipeline.py candidate cc 2>&1 | tee results/vk-clear-no-pipeline.log
+          if grep -q 'create_clear_native(' candidate/hw/xbox/nv2a/pgraph/vk/draw.c; then
+            python3 driver/libretro/tests/test-vk-ready-clear.py candidate cc 2>&1 | tee results/vk-ready-clear.log
+          else
+            echo 'Pre-ready-clear baseline: existing clear contracts apply; new readiness coverage not applicable' | tee results/vk-ready-clear.log
+          fi
           python3 driver/libretro/tests/test-pipeline-seed-full.py candidate cc 2>&1 | tee results/pipeline-seed-full.log
           python3 driver/libretro/tests/test-dirty-range-owner.py candidate cc 2>&1 | tee results/dirty-range-owner.log
           python3 driver/libretro/tests/test-pvideo-dirty.py candidate cc 2>&1 | tee results/pvideo-dirty.log
@@ -291,6 +296,11 @@ jobs:
           python3 driver/libretro/tests/test-vsh-mul-select.py candidate --cc cc --validator spirv-val 2>&1 | tee results/vsh-mul-select.log
           python3 driver/libretro/tests/test-spv-clear.py candidate cc --gpu 2>&1 | tee results/clear.log
           python3 driver/libretro/tests/test-vulkan-depth-clear.py candidate cc 2>&1 | tee results/attachment-clear.log
+          if grep -q 'create_clear_native(' candidate/hw/xbox/nv2a/pgraph/vk/draw.c; then
+            python3 driver/libretro/tests/test-vk-clear-images.py candidate cc 2>&1 | tee results/masked-clear-images.log
+          else
+            echo 'Pre-ready-clear baseline: existing utility/attachment image tests apply' | tee results/masked-clear-images.log
+          fi
           python3 driver/libretro/tests/test-spv-geom.py candidate cc --gpu 2>&1 | tee results/geometry.log
           python3 driver/libretro/tests/test-display-gamma.py candidate --cc cc --gpu --output results/display 2>&1 | tee results/display.log
           python3 driver/libretro/tests/test-vulkan-s3tc-decode.py candidate cc 2>&1 | tee results/static-s3tc.log

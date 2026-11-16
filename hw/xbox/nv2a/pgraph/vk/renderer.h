@@ -739,6 +739,17 @@ typedef struct PGRAPHVkState {
     /* Exact graphics-layout owners; jobs/cache entries borrow until teardown. */
     VkPipelineLayout graphics_pipeline_layouts[NV2A_VERTEXSHADER_ATTRIBUTES + 1];
     VkPipelineLayout clear_pipeline_layout;
+#ifdef XEMU_EXPERIMENTAL_READY_CLEAR
+    /* Five unique color formats x no depth/Z16/the selected Z24S8 format.
+     * These utility owners never consume/evict ordinary pipeline-cache slots. */
+    struct {
+        RenderPassState state;
+        VkPipeline pipeline;
+        VkRenderPass render_pass;
+    } ready_clear[15];
+    unsigned ready_clear_count;
+    PipelineBinding ready_clear_binding; /* Borrowed view, never native owner. */
+#endif
     Lru pipeline_cache;
     VkPipelineCache vk_pipeline_cache;
     /* Pipeline cache persistence helper (pgraph_vk_save_pipeline_cache) */

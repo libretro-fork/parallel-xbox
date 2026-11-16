@@ -39,6 +39,11 @@ static void finalize_pipeline_layouts(PGRAPHVkState *r);
 static void gpl_finalize(PGRAPHVkState *r);
 static void destroy_framebuffer_cache(PGRAPHVkState *r);
 static bool vk_cost_probe_active(PGRAPHState *pg);
+#ifdef XEMU_EXPERIMENTAL_READY_CLEAR
+static void init_ready_clear(PGRAPHVkState *r);
+static void finalize_ready_clear(PGRAPHVkState *r);
+#endif
+
 
 void pgraph_vk_draw_begin(NV2AState *d)
 {
@@ -332,6 +337,9 @@ void pgraph_vk_init_pipelines(PGRAPHState *pg)
     gpl_init(r);
     init_clear_shaders(pg);
     init_render_passes(r);
+#ifdef XEMU_EXPERIMENTAL_READY_CLEAR
+    init_ready_clear(r);
+#endif
 }
 
 void pgraph_vk_finalize_pipelines(PGRAPHState *pg)
@@ -347,6 +355,9 @@ void pgraph_vk_finalize_pipelines(PGRAPHState *pg)
      * must not retain its borrowed base or the freed retry/hash arrays. */
     memset(&r->pump, 0, sizeof(r->pump));
     destroy_framebuffer_cache(r);
+#ifdef XEMU_EXPERIMENTAL_READY_CLEAR
+    finalize_ready_clear(r);
+#endif
     finalize_clear_shaders(pg);
     finalize_pipeline_cache(pg);
     /* The linked pipelines the cache flush left in the trash go before the
@@ -596,44 +607,22 @@ static void create_frame_buffer(PGRAPHState *pg)
                                  &e->framebuffer));
     r->framebuffer = e->framebuffer;
 }
-static void create_clear_pipeline(PGRAPHState *pg)
+/* One immutable utility program; only attachment compatibility is static
+ * on devices with dynamic color masks. The source words and layout remain
+ * renderer-owned until every pipeline's last GPU consumer has retired. */
+static VkResult create_clear_native(PGRAPHVkState *r, RenderPassState *state,
+                                    uint32_t parameter, VkPipeline *pipeline)
 {
-    PGRAPHVkState *r = pg->vk_renderer_state;
-
-    NV2A_VK_DGROUP_BEGIN("Creating clear pipeline");
-
-    PipelineKey key;
-    memset(&key, 0, sizeof(key));
-    key.clear = true;
-    init_render_pass_state(pg, &key.render_pass_state);
-
-    key.regs[0] = r->clear_parameter;
-
-    uint64_t hash = xxh3_64((void *)&key, sizeof(key), 0);
-    LruNode *node = lru_lookup(&r->pipeline_cache, hash, &key);
-    PipelineBinding *snode = container_of(node, PipelineBinding, node);
-
-    if (snode->pipeline != VK_NULL_HANDLE) {
-        NV2A_VK_DPRINTF("Cache hit");
-        r->pipeline_binding_changed = r->pipeline_binding != snode;
-        r->pipeline_binding = snode;
-        NV2A_VK_DGROUP_END();
-        return;
-    }
-
-    NV2A_VK_DPRINTF("Cache miss");
-    nv2a_profile_inc_counter(NV2A_PROF_PIPELINE_GEN);
-    memcpy(&snode->key, &key, sizeof(key));
-
     bool clear_any_color_channels =
-        r->clear_parameter & NV097_CLEAR_SURFACE_COLOR;
+        parameter & NV097_CLEAR_SURFACE_COLOR;
     bool clear_all_color_channels =
-        (r->clear_parameter & NV097_CLEAR_SURFACE_COLOR) ==
+        (parameter & NV097_CLEAR_SURFACE_COLOR) ==
         (NV097_CLEAR_SURFACE_R | NV097_CLEAR_SURFACE_G | NV097_CLEAR_SURFACE_B |
          NV097_CLEAR_SURFACE_A);
     bool partial_color_clear =
         clear_any_color_channels && !clear_all_color_channels;
 
+    assert(partial_color_clear);
     int num_active_shader_stages = 0;
     VkPipelineShaderStageCreateInfo shader_stages[2];
     shader_stages[num_active_shader_stages++] =
@@ -686,39 +675,24 @@ static void create_clear_pipeline(PGRAPHState *pg)
         .rasterizationSamples = VK_SAMPLE_COUNT_1_BIT,
     };
 
+    /* The following vkCmdClearAttachments performs all requested depth and
+     * stencil writes. This masked-color draw never needs to touch either. */
     VkPipelineDepthStencilStateCreateInfo depth_stencil = {
         .sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO,
-        .depthTestEnable = VK_TRUE,
-        .depthWriteEnable =
-            (r->clear_parameter & NV097_CLEAR_SURFACE_Z) ? VK_TRUE : VK_FALSE,
-        .depthCompareOp = VK_COMPARE_OP_ALWAYS,
-        .depthBoundsTestEnable = VK_FALSE,
     };
 
-    if (r->clear_parameter & NV097_CLEAR_SURFACE_STENCIL) {
-        depth_stencil.stencilTestEnable = VK_TRUE;
-        depth_stencil.front.failOp = VK_STENCIL_OP_REPLACE;
-        depth_stencil.front.passOp = VK_STENCIL_OP_REPLACE;
-        depth_stencil.front.depthFailOp = VK_STENCIL_OP_REPLACE;
-        depth_stencil.front.compareOp = VK_COMPARE_OP_ALWAYS;
-        depth_stencil.front.compareMask = 0xff;
-        depth_stencil.front.writeMask = 0xff;
-        depth_stencil.front.reference = 0xff;
-        depth_stencil.back = depth_stencil.front;
-    }
-
     VkColorComponentFlags write_mask = 0;
-    if (r->clear_parameter & NV097_CLEAR_SURFACE_R)
+    if (parameter & NV097_CLEAR_SURFACE_R)
         write_mask |= VK_COLOR_COMPONENT_R_BIT;
-    if (r->clear_parameter & NV097_CLEAR_SURFACE_G)
+    if (parameter & NV097_CLEAR_SURFACE_G)
         write_mask |= VK_COLOR_COMPONENT_G_BIT;
-    if (r->clear_parameter & NV097_CLEAR_SURFACE_B)
+    if (parameter & NV097_CLEAR_SURFACE_B)
         write_mask |= VK_COLOR_COMPONENT_B_BIT;
-    if (r->clear_parameter & NV097_CLEAR_SURFACE_A)
+    if (parameter & NV097_CLEAR_SURFACE_A)
         write_mask |= VK_COLOR_COMPONENT_A_BIT;
 
     VkPipelineColorBlendAttachmentState color_blend_attachment = {
-        .colorWriteMask = write_mask,
+        .colorWriteMask = r->dyn_blend ? 0 : write_mask,
         .blendEnable = VK_TRUE,
         .colorBlendOp = VK_BLEND_OP_ADD,
         .dstColorBlendFactor = VK_BLEND_FACTOR_ZERO,
@@ -732,16 +706,17 @@ static void create_clear_pipeline(PGRAPHState *pg)
         .sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO,
         .logicOpEnable = VK_FALSE,
         .logicOp = VK_LOGIC_OP_COPY,
-        .attachmentCount = r->color_binding ? 1 : 0,
-        .pAttachments = r->color_binding ? &color_blend_attachment : NULL,
+        .attachmentCount = state->color_format != VK_FORMAT_UNDEFINED ? 1 : 0,
+        .pAttachments = state->color_format != VK_FORMAT_UNDEFINED ? &color_blend_attachment : NULL,
     };
 
     VkDynamicState dynamic_states[] = { VK_DYNAMIC_STATE_VIEWPORT,
                                         VK_DYNAMIC_STATE_SCISSOR,
-                                        VK_DYNAMIC_STATE_BLEND_CONSTANTS };
+                                        VK_DYNAMIC_STATE_BLEND_CONSTANTS,
+                                        VK_DYNAMIC_STATE_COLOR_WRITE_MASK_EXT };
     VkPipelineDynamicStateCreateInfo dynamic_state = {
         .sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO,
-        .dynamicStateCount = partial_color_clear ? 3 : 2,
+        .dynamicStateCount = r->dyn_blend ? 4 : 3,
         .pDynamicStates = dynamic_states,
     };
 
@@ -756,28 +731,55 @@ static void create_clear_pipeline(PGRAPHState *pg)
         .pViewportState = &viewport_state,
         .pRasterizationState = &rasterizer,
         .pMultisampleState = &multisampling,
-        .pDepthStencilState = r->zeta_binding ? &depth_stencil : NULL,
+        .pDepthStencilState = state->zeta_format != VK_FORMAT_UNDEFINED ? &depth_stencil : NULL,
         .pColorBlendState = &color_blending,
         .pDynamicState = &dynamic_state,
         .layout = layout,
-        .renderPass = get_render_pass(r, &key.render_pass_state),
+        .renderPass = get_render_pass(r, state),
         .subpass = 0,
         .basePipelineHandle = VK_NULL_HANDLE,
     };
 
+    return vkCreateGraphicsPipelines(r->device, r->vk_pipeline_cache, 1,
+                                     &pipeline_info, NULL, pipeline);
+}
+
+#ifdef XEMU_EXPERIMENTAL_READY_CLEAR
+#include "ready-clear.inc"
+#endif
+
+static void create_clear_pipeline(PGRAPHState *pg)
+{
+    PGRAPHVkState *r = pg->vk_renderer_state;
+    RenderPassState state;
+    init_render_pass_state(pg, &state);
+#ifdef XEMU_EXPERIMENTAL_READY_CLEAR
+    if (bind_ready_clear(pg, &state)) return;
+#endif
+    PipelineKey key;
+    memset(&key, 0, sizeof(key));
+    key.clear = true;
+    key.render_pass_state = state;
+    /* Z/stencil writes are attachment clears, never part of this draw. */
+    key.regs[0] = r->dyn_blend ? 0 : r->clear_parameter & NV097_CLEAR_SURFACE_COLOR;
+    uint64_t hash = xxh3_64((void *)&key, sizeof(key), 0);
+    LruNode *node = lru_lookup(&r->pipeline_cache, hash, &key);
+    PipelineBinding *snode = container_of(node, PipelineBinding, node);
+    if (snode->pipeline != VK_NULL_HANDLE) {
+        r->pipeline_binding_changed = r->pipeline_binding != snode;
+        r->pipeline_binding = snode;
+        return;
+    }
+    nv2a_profile_inc_counter(NV2A_PROF_PIPELINE_GEN);
+    memcpy(&snode->key, &key, sizeof(key));
     VkPipeline pipeline;
-    VK_CHECK(vkCreateGraphicsPipelines(r->device, r->vk_pipeline_cache, 1,
-                                       &pipeline_info, NULL, &pipeline));
-
+    VK_CHECK(create_clear_native(r, &state, r->clear_parameter, &pipeline));
     snode->pipeline = pipeline;
-    snode->layout = layout;
-    snode->render_pass = pipeline_info.renderPass;
+    snode->layout = r->clear_pipeline_layout;
+    snode->render_pass = get_render_pass(r, &state);
     snode->draw_time = pg->draw_time;
-
     r->pipeline_binding = snode;
     r->pipeline_binding_changed = true;
-
-    NV2A_VK_DGROUP_END();
 }
 
 static bool check_render_pass_dirty(PGRAPHState *pg)
@@ -4575,6 +4577,14 @@ void pgraph_vk_clear_surface(NV2AState *d, uint32_t parameter)
             pgraph_get_clear_color(pg, blend_constants);
             vkCmdSetScissor(r->command_buffer, 0, 1, &clear_rect.rect);
             vkCmdSetBlendConstants(r->command_buffer, blend_constants);
+            if (r->dyn_blend) {
+                VkColorComponentFlags mask = 0;
+                if (parameter & NV097_CLEAR_SURFACE_R) mask |= VK_COLOR_COMPONENT_R_BIT;
+                if (parameter & NV097_CLEAR_SURFACE_G) mask |= VK_COLOR_COMPONENT_G_BIT;
+                if (parameter & NV097_CLEAR_SURFACE_B) mask |= VK_COLOR_COMPONENT_B_BIT;
+                if (parameter & NV097_CLEAR_SURFACE_A) mask |= VK_COLOR_COMPONENT_A_BIT;
+                vkCmdSetColorWriteMaskEXT(r->command_buffer, 0, 1, &mask);
+            }
             vkCmdDraw(r->command_buffer, 3, 1, 0, 0);
             /* The clear set the blend constants: re-emit at the next draw. */
             r->dyn_last.valid = false;
