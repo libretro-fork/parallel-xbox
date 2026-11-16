@@ -1,5 +1,56 @@
 # Cold-first-play recovery and regression prevention
 
+## Pending dependent bump-texture coverage, 2026-11-16
+
+The local experimental fragment prototype now covers unsigned bump environment
+and luminance stages 1..3 with a validated earlier-stage source. It borrows two
+previously unused bits in each existing per-stage control word; shader/seed
+layouts and ordinary generated source stay unchanged. Existing bump matrix,
+scale/offset uniforms and typed 2D/3D sampler aliases supply the operation. No
+native program, host payload buffer or per-bind allocation is added. Native
+texture owners still remain live through the consuming draw. Signed-source,
+shadow, cube and forward/self-input cases remain correctly uncovered.
+
+A private production-source probe retained all 1,416 fragment cases and added
+288 dependent matrix/source/dimension/rectangle/luminance cases: 545,280 exact
+color/depth checks on NVIDIA and llvmpipe, two invariant prepared sources, and
+the existing independent constant-register and kill/window/volume oracles.
+Four required faults (matrix, signed-byte decode, luminance and source selector)
+fail in the added cases on both devices. Five added invalid-domain checks reject
+atomically on both devices. Early private logs inherited an incorrect 1,416-case
+label; the actual 0..1703 loop and 545,280 comparisons prove the expanded scope.
+The fixture label is corrected. The integrated fixture passes all 1,704 cases
+and all seventeen required controls on NVIDIA and llvmpipe under the existing
+per-process deadline. The source-owner fixture retains 73,728 byte-identical
+ordinary shaders (614,644,992 bytes), 256 prepared-owner lifetimes and five
+mandatory faults. Native-owner orchestration retains its 29 startup-failure
+schedules and eleven fault controls.
+
+Matched experimental binaries share the private 0863fb0c1 build base, alpha
+rounding checkpoint and all 543 non-fragment objects; only `glsl/psh.o` changes.
+They exclude the numerically failing fixed-function prototype and contain no
+release diagnostics. NGB and DOA3 arena images match byte-for-byte after two
+fresh-process restores, with correct audio/video cadence. Fresh-boot DOA3 images
+have different camera positions and do not establish equivalence; a copied
+legacy-list assertion from the newer cache fix is also inapplicable to that
+older build base. Its failure is retained, not relabelled a pass. These are
+correctness checks, not timing: readbacks and concurrent software validation
+leave latency unqualified. A separate diagnostic first-fight run records zero bump-ready uploads,
+ready lookups and fallback lookups on both binaries: these stages are not used
+in this DOA3 sample, so no retail compilation reduction is claimed. The mapped
+seed inventory contains 81 distinct states, 49 with fixed-function vertices,
+four with shadow textures, and only texture modes 0..3. These are unique-state
+counts, not draw frequencies. Fixed-function and shadow coverage are therefore
+more relevant to this observed sample. Current-main integration, other retail
+coverage counts, matched cold/warm timing and cold-play recovery remain pending. This prototype
+is local and unshipped; prepared rendering remains disabled by default.
+
+Separate arithmetic witnesses reject blanket FMA: it matches literal cases 948
+and 1008 but breaks forced-dynamic case 948 by one bit. Merely spelling the
+products together does not fix the literal mismatch. These witnesses remain
+failed evidence; no arithmetic tolerance or reference is relaxed. Existing
+literal 948/988/1008 and fixed-function numerical gaps remain open.
+
 ## Prepared-fragment qualification update, 2026-11-16
 
 The experimental path remains disabled by default. Legal non-dyadic constant

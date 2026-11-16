@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Extend the disabled-by-default prepared GL fragment prototype to unsigned bump environment/luminance stages using validated prior-stage inputs, the existing typed sampler owners and existing uniforms. Two invariant native fragment sources cover 288 added dependent-texture cases without new shader variants. The integrated native/software numerical suite and seventeen fault controls pass, ordinary shader bytes and owners remain unchanged, and NGB/DOA3 restored images match. Current-main integration, cold/warm and latency qualification remain pending. This is not promoted or complete stutter recovery.
+
 - Experimental prepared fragments keep the alpha product rounded before output bias, matching the dynamic combiner rather than allowing multiply-add contraction. Use independent constant-index register-write predicates instead of switch exit paths. Extend the exact GPU fixture with 108 varied-constant dynamic cases and an independent 72-probe C0/C1 slot oracle. Literal-combiner precision mismatches and cold-play qualification remain open; prepared rendering stays disabled by default.
 
 - Shader CI runs the new complete-tuple ownership contract for every pushed revision containing that implementation. Earlier revisions keep their existing interpreter tests instead of failing because a later fixture did not exist yet. Missing tuple fixtures in applicable revisions still fail, and the tuple job is required by the final gate. Manual replay accepts a pinned base SHA and retains the same per-commit matrix, corpora and limits.

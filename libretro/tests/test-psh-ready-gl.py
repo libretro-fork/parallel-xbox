@@ -28,7 +28,7 @@ def main():
         context=(function(geometry,'static void quiet_abort(')+'\n'+function(geometry,'static void init_gl(')).replace('Geometry GL device=', 'Fragment GL device=')
         driver=Path(__file__).with_suffix('.c').read_text(encoding='utf-8').replace('/* CONTEXT */',context)
         env=dict(os.environ,EGL_PLATFORM='surfaceless',LP_NUM_THREADS='1');env['PATH']=str(Path(shutil.which(args.cc) or args.cc).resolve().parent)+os.pathsep+env.get('PATH','')
-        for mutation in ['', 'depth', 'mode', 'target', 'volume', 'clip', 'alpha', 'combiner', 'helper', 'zero', 'final', 'constant_c0', 'constant_c1', 'constant_final']:
+        for mutation in ['', 'depth', 'mode', 'target', 'volume', 'clip', 'alpha', 'combiner', 'helper', 'zero', 'final', 'constant_c0', 'constant_c1', 'constant_final', 'bump-matrix', 'bump-sign', 'bump-lum', 'bump-input']:
             code=driver
             emitted=generator
             if mutation=='zero':
@@ -46,6 +46,18 @@ def main():
                     'constant_final':'        {"stage == 8 ||", "false ||"},\n        {"stage == 8 ||", "false ||"},',
                 }
                 emitted=emitted.replace(marker,faults[mutation]+'\n'+marker)
+            if mutation.startswith('bump-'):
+                include='#include "hw/xbox/nv2a/pgraph/glsl/psh-ready.inc"'
+                ready=(r/'hw/xbox/nv2a/pgraph/glsl/psh-ready.inc').read_text(encoding='utf-8')
+                faults={
+                    'bump-matrix':('dsdt=bumpMat[stage]*dsdt','dsdt=vec2(0.0)'),
+                    'bump-sign':('sign3(bump.b)','bump.b'),
+                    'bump-lum':('sampled=sampled*(bumpScale[stage]*bump.r+bumpOffset[stage])','sampled=sampled'),
+                    'bump-input':('fsInput%u=(fsControl[1][%u]>>12u)&3u','fsInput%u=0u;uint fsIgnored%u=0u'),
+                }
+                before,after=faults[mutation]
+                assert ready.count(before)==1 and emitted.count(include)==1
+                emitted=emitted.replace(include,ready.replace(before,after))
             (d/'generator.c').write_text(emitted,encoding='utf-8')
             change={'depth':'controls[0]^=1;','mode':'controls[1]=0;','target':'for(unsigned j=4;j<8;j++)controls[j]&=~2u;','volume':'for(unsigned j=4;j<8;j++)controls[j]&=~4u;','clip':'controls[0]^=32;','alpha':'glProgramUniform1ui(p,glGetUniformLocation(p,"alphaKillMask"),0);','combiner':'glProgramUniform1ui(p,glGetUniformLocation(p,"combCtl"),s->combiner_control?s->combiner_control-1:0);'}.get(mutation,'')
             code=code.replace('/* MUTATE */',change)
@@ -61,12 +73,15 @@ def main():
                 libs=['-lopengl32','-lgdi32','-luser32']
             else:sources += [r/'libretro-common/compat/compat_strl.c'];libs=['-lEGL','-lGL']
             subprocess.run(flags+list(map(str,sources))+['-Wl,--gc-sections','-lm',*libs,'-o',str(exe)],check=True,env=env)
-            with c.with_suffix('.log').open('w') as out: result=subprocess.run([str(exe)]+(['--constants-only'] if mutation.startswith('constant_') else []),env=env,stdout=out,stderr=subprocess.STDOUT,timeout=300)
+            with c.with_suffix('.log').open('w') as out: result=subprocess.run([str(exe)]+(['--constants-only'] if mutation.startswith('constant_') else ['--bump-only'] if mutation.startswith('bump-') else []),env=env,stdout=out,stderr=subprocess.STDOUT,timeout=300)
             log=c.with_suffix('.log').read_text(errors='replace')
             if not mutation:
                 print(log,end='',flush=True);assert result.returncode==0,(result.returncode,log)
             else:
                 wanted='constant register mismatch' if mutation.startswith('constant_') else 'fragment difference case='
                 assert result.returncode!=0 and wanted in log,(mutation,result.returncode,log)
+                if mutation.startswith('bump-'):
+                    import re
+                    assert int(re.search(r'fragment difference case=(\d+)',log).group(1))>=1416,log
                 print('Required ready-fragment control rejected:',mutation,flush=True)
 if __name__=='__main__':main()

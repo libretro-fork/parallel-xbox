@@ -29,6 +29,17 @@ static GLuint program(GLenum stage,MString *source)
 }
 static PshState state_for(unsigned test)
 {
+    if(test>=1416){
+        unsigned k=test-1416,unit=1+k%3,src=(k/3)%unit;
+        PshState s={.depth_format=DEPTH_FORMAT_HELPER_LIVENESS,.dim_tex={2,2,2,2},.combiner_dynamic=true};
+        s.smooth_shading=(k/6)&1;s.shader_stage_program=4|(4<<5)|(4<<10)|(4<<15);
+        s.shader_stage_program=(s.shader_stage_program&~(31u<<(unit*5)))|((6u+((k/12)&1))<<(unit*5));
+        if(unit==2)s.other_stage_input=src<<16;
+        if(unit==3)s.other_stage_input=src<<20;
+        s.dim_tex[unit]=(k/24)&1?3:2;s.rect_tex[unit]=s.dim_tex[unit]==2&&((k/48)&1);
+        s.final_inputs_0=(0x08u+unit)<<16|0x13000000;s.final_inputs_1=0x1000|(unit<<8);
+        return s;
+    }
     if(test>=1308){
         PshState s=state_for(912+test-1308);s.combiner_dynamic=true;return s;
     }
@@ -171,6 +182,12 @@ static void uniforms(GLuint p,const PshState *s,unsigned test,bool ready)
     glProgramUniform1uiv(p,glGetUniformLocation(p,"combRgbOut"),8,s->rgb_outputs);
     glProgramUniform1uiv(p,glGetUniformLocation(p,"combAlphaIn"),8,s->alpha_inputs);
     glProgramUniform1uiv(p,glGetUniformLocation(p,"combAlphaOut"),8,s->alpha_outputs);glProgramUniform1ui(p,glGetUniformLocation(p,"combFinal0"),s->final_inputs_0);glProgramUniform1ui(p,glGetUniformLocation(p,"combFinal1"),s->final_inputs_1);
+    for(unsigned i=0;i<4;i++){
+        char name[32];float mat[4]={.125f,-.0625f,.25f,.375f};
+        snprintf(name,sizeof(name),"bumpMat[%u]",i);glProgramUniformMatrix2fv(p,glGetUniformLocation(p,name),1,GL_FALSE,mat);
+        snprintf(name,sizeof(name),"bumpScale[%u]",i);glProgramUniform1f(p,glGetUniformLocation(p,name),.625f);
+        snprintf(name,sizeof(name),"bumpOffset[%u]",i);glProgramUniform1f(p,glGetUniformLocation(p,name),-.125f);
+    }
     float constants[72];for(unsigned i=0;i<72;i++)
         constants[i]=varied_constants?((i*37+test*13+7)&255)/255.0f:.5f;
     glProgramUniform4fv(p,glGetUniformLocation(p,"consts"),18,constants);
@@ -258,7 +275,8 @@ static void constant_register_oracle(GLuint pipeline, const GLuint vs[2],
 int main(int argc,char **argv)
 {
     bool only_constants=argc==2&&!strcmp(argv[1],"--constants-only");
-    REQUIRE(argc==1||only_constants);
+    bool only_bump=argc==2&&!strcmp(argv[1],"--bump-only");
+    REQUIRE(argc==1||only_constants||only_bump);
     signal(SIGABRT,quiet_abort);setvbuf(stdout,NULL,_IONBF,0);init_gl();
     GLint units;glGetIntegerv(GL_MAX_TEXTURE_IMAGE_UNITS,&units);REQUIRE(units>=12);
     GLuint fb,rb[2],vao,pipeline,tex[12];glGenFramebuffers(1,&fb);glBindFramebuffer(GL_FRAMEBUFFER,fb);glGenRenderbuffers(2,rb);
@@ -285,7 +303,7 @@ int main(int argc,char **argv)
         }
     }
     /* Reject uncovered domains atomically; never publish partial controls. */
-    for(unsigned bad=0;bad<11;bad++){
+    for(unsigned bad=0;bad<16;bad++){
         PshState reject={.final_inputs_0=0x20090000,.depth_format=DEPTH_FORMAT_HELPER_LIVENESS,.shader_stage_program=1,.dim_tex={2,2,2,2}};
         if(bad==0)reject.shadow_map[0]=1;
         if(bad==1)reject.conv_tex[0]=CONVOLUTION_FILTER_GAUSSIAN;
@@ -298,6 +316,11 @@ int main(int argc,char **argv)
         if(bad==8)reject.other_stage_input=8;
         if(bad==9)reject.depth_format=0;
         if(bad==10)reject.final_inputs_0=0;
+        if(bad==11)reject.shader_stage_program=PS_TEXTUREMODES_BUMPENVMAP;
+        if(bad==12){reject.shader_stage_program=4|(PS_TEXTUREMODES_BUMPENVMAP<<10);reject.other_stage_input=2u<<16;}
+        if(bad==13){reject.shader_stage_program=4|(PS_TEXTUREMODES_BUMPENVMAP_LUM<<15);reject.other_stage_input=4u<<20;}
+        if(bad==14){reject.shader_stage_program=4|(PS_TEXTUREMODES_BUMPENVMAP<<5);reject.tex_cubemap[1]=true;}
+        if(bad==15){reject.shader_stage_program=4|(PS_TEXTUREMODES_BUMPENVMAP_LUM<<5);reject.shadow_map[1]=true;}
         uint32_t untouched[8],before[8];memset(untouched,0xa5,sizeof(untouched));memcpy(before,untouched,sizeof(before));
         REQUIRE(!pgraph_glsl_psh_ready_controls(&reject,untouched));REQUIRE(!memcmp(before,untouched,sizeof(before)));
         REQUIRE(!pgraph_glsl_gen_psh_ready(&reject,(GenPshGlslOptions){.locations=true}));
@@ -307,7 +330,7 @@ int main(int argc,char **argv)
     GLuint vs[2],ready[2];MString *ready_source[2];
     for(unsigned i=0;i<2;i++){MString *v=vertex(i);vs[i]=program(GL_VERTEX_SHADER,v);mstring_unref(v);PshState s={.depth_format=DEPTH_FORMAT_HELPER_LIVENESS,.combiner_dynamic=true,.smooth_shading=i};ready_source[i]=pgraph_glsl_gen_psh_ready(&s,(GenPshGlslOptions){.locations=true});REQUIRE(ready_source[i]);ready[i]=program(GL_FRAGMENT_SHADER,ready_source[i]);}
     uint64_t checked=0;unsigned written=0,discarded=0;
-    for(unsigned test=0;!only_constants&&test<1416;test++){
+    for(unsigned test=only_bump?1416:0;!only_constants&&test<1704;test++){
         unsigned fixture=test>=1308?912+test-1308:test;
         static const GLint filters[]={GL_NEAREST,GL_LINEAR,GL_NEAREST_MIPMAP_NEAREST,GL_LINEAR_MIPMAP_NEAREST,GL_NEAREST_MIPMAP_LINEAR,GL_LINEAR_MIPMAP_LINEAR};
         static const GLint wraps[]={GL_REPEAT,GL_CLAMP_TO_EDGE,GL_CLAMP_TO_BORDER,GL_MIRRORED_REPEAT};
@@ -362,6 +385,6 @@ int main(int argc,char **argv)
     glDeleteProgram(oracle_exact);
     puts("PASS independent half-plane/window/volume oracle: eight live pixels and exact color/depth on each path");
     REQUIRE(written>0&&discarded>0);
-    printf("PASS ready fragment: 1416 cases (912 original + 108 rich + 144 product + 144 final shapes + 108 varied-constant dynamic), %llu exact color/depth checks, written=%u discarded=%u, two invariant native fragments\n",(unsigned long long)checked,written,discarded);
+    printf("PASS ready fragment: 1704 cases (1416 retained + 288 dependent bump/luminance), %llu exact color/depth checks, written=%u discarded=%u, two invariant native fragments\n",(unsigned long long)checked,written,discarded);
     for(unsigned i=0;i<2;i++){glDeleteProgram(ready[i]);glDeleteProgram(vs[i]);mstring_unref(ready_source[i]);}glDeleteTextures(12,tex);glDeleteProgramPipelines(1,&pipeline);glDeleteVertexArrays(1,&vao);glDeleteRenderbuffers(2,rb);glDeleteFramebuffers(1,&fb);return 0;
 }
