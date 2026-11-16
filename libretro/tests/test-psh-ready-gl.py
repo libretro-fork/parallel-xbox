@@ -28,7 +28,7 @@ def main():
         context=(function(geometry,'static void quiet_abort(')+'\n'+function(geometry,'static void init_gl(')).replace('Geometry GL device=', 'Fragment GL device=')
         driver=Path(__file__).with_suffix('.c').read_text(encoding='utf-8').replace('/* CONTEXT */',context)
         env=dict(os.environ,EGL_PLATFORM='surfaceless',LP_NUM_THREADS='1');env['PATH']=str(Path(shutil.which(args.cc) or args.cc).resolve().parent)+os.pathsep+env.get('PATH','')
-        for mutation in ['', 'depth', 'mode', 'target', 'volume', 'clip', 'alpha', 'combiner', 'helper', 'zero', 'final']:
+        for mutation in ['', 'depth', 'mode', 'target', 'volume', 'clip', 'alpha', 'combiner', 'helper', 'zero', 'final', 'constant_c0', 'constant_c1', 'constant_final']:
             code=driver
             emitted=generator
             if mutation=='zero':
@@ -37,6 +37,15 @@ def main():
             if mutation=='final':
                 emitted=emitted.replace('combFinal0!=0x130e0300u','combFinal0!=0x130e0300u&&combFinal0!=0x130f0300u').replace('(combFinal1&~128u)!=0x1c00u','(combFinal1&0xff7fu)!=0x1c00u')
                 assert emitted!=generator
+            if mutation.startswith('constant_'):
+                marker='        {"return cregs[reg];", "return cbget(reg);"},'
+                assert emitted.count(marker)==1
+                faults={
+                    'constant_c0':'        {"(combCtl & 0x1000u) != 0u", "false"},',
+                    'constant_c1':'        {"(combCtl & 0x10000u) != 0u", "false"},',
+                    'constant_final':'        {"stage == 8 ||", "false ||"},\n        {"stage == 8 ||", "false ||"},',
+                }
+                emitted=emitted.replace(marker,faults[mutation]+'\n'+marker)
             (d/'generator.c').write_text(emitted,encoding='utf-8')
             change={'depth':'controls[0]^=1;','mode':'controls[1]=0;','target':'for(unsigned j=4;j<8;j++)controls[j]&=~2u;','volume':'for(unsigned j=4;j<8;j++)controls[j]&=~4u;','clip':'controls[0]^=32;','alpha':'glProgramUniform1ui(p,glGetUniformLocation(p,"alphaKillMask"),0);','combiner':'glProgramUniform1ui(p,glGetUniformLocation(p,"combCtl"),s->combiner_control?s->combiner_control-1:0);'}.get(mutation,'')
             code=code.replace('/* MUTATE */',change)
@@ -52,11 +61,12 @@ def main():
                 libs=['-lopengl32','-lgdi32','-luser32']
             else:sources += [r/'libretro-common/compat/compat_strl.c'];libs=['-lEGL','-lGL']
             subprocess.run(flags+list(map(str,sources))+['-Wl,--gc-sections','-lm',*libs,'-o',str(exe)],check=True,env=env)
-            with c.with_suffix('.log').open('w') as out: result=subprocess.run([str(exe)],env=env,stdout=out,stderr=subprocess.STDOUT,timeout=300)
+            with c.with_suffix('.log').open('w') as out: result=subprocess.run([str(exe)]+(['--constants-only'] if mutation.startswith('constant_') else []),env=env,stdout=out,stderr=subprocess.STDOUT,timeout=300)
             log=c.with_suffix('.log').read_text(errors='replace')
             if not mutation:
                 print(log,end='',flush=True);assert result.returncode==0,(result.returncode,log)
             else:
-                assert result.returncode!=0 and 'fragment difference case=' in log,(mutation,result.returncode,log)
+                wanted='constant register mismatch' if mutation.startswith('constant_') else 'fragment difference case='
+                assert result.returncode!=0 and wanted in log,(mutation,result.returncode,log)
                 print('Required ready-fragment control rejected:',mutation,flush=True)
 if __name__=='__main__':main()

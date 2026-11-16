@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Experimental prepared fragments keep the alpha product rounded before output bias, matching the dynamic combiner rather than allowing multiply-add contraction. Use independent constant-index register-write predicates instead of switch exit paths. Extend the exact GPU fixture with 108 varied-constant dynamic cases and an independent 72-probe C0/C1 slot oracle. Literal-combiner precision mismatches and cold-play qualification remain open; prepared rendering stays disabled by default.
+
 - Shader CI runs the new complete-tuple ownership contract for every pushed revision containing that implementation. Earlier revisions keep their existing interpreter tests instead of failing because a later fixture did not exist yet. Missing tuple fixtures in applicable revisions still fail, and the tuple job is required by the final gate. Manual replay accepts a pinned base SHA and retains the same per-commit matrix, corpora and limits.
 
 - Experimental GL pipeline readiness: validate eighteen native VS/GS/FS combinations before guest execution, borrowing slots from the existing binding pool and retaining them through the existing pipeline-owner index. Partial failures return all slots. Existing uncovered states still create pipelines during gameplay; this is not complete coverage or qualified stutter recovery.

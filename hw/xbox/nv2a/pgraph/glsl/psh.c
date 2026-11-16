@@ -1298,10 +1298,10 @@ static void psh_ready_combiner_helpers(MString *out, const char *source)
         const char *type = component == 0 ? "vec3" : component == 1 ? "float" : "vec4";
         const char *field = component == 0 ? "rgb" : component == 1 ? "a" : "rgba";
         unsigned width = component == 0 ? 3 : component == 1 ? 1 : 4;
-        mstring_append_fmt(out, "void cbset%u(uint reg,%s x) { switch(reg) {\n", width, type);
+        mstring_append_fmt(out, "void cbset%u(uint reg,%s x) {\n", width, type);
         for (unsigned i = 1; i < 16; i++)
-            mstring_append_fmt(out, "case %uu: cregs[%u].%s=x; break;\n", i, i, field);
-        mstring_append(out, "default: break; } }\n");
+            mstring_append_fmt(out, "if(reg==%uu){cregs[%u].%s=x;}\n", i, i, field);
+        mstring_append(out, "}\n");
     }
     static const struct { const char *before, *after; } edits[] = {
         {"return cregs[reg];", "return cbget(reg);"},
@@ -1346,7 +1346,8 @@ static void psh_ready_combiner_helpers(MString *out, const char *source)
         " uvec4 r=cbprod(ri,ro,true);uvec4 a=cbprod(ai,ao,false);if(r.x==0u||a.x==0u)return false;\n"
         " vec3 ra=comb_in_rgb(r.y,s);vec3 rb=comb_in_rgb(r.z,s);\n"
         " vec3 rgb=(r.w&2u)!=0u?vec3(dot(ra,rb)):ra*rb;\n"
-        " float alpha=comb_in_a(a.y,s)*comb_in_a(a.z,s);\n"
+        /* Keep the product rounded before output bias, as in comb_stage. */
+        " precise float alpha=comb_in_a(a.y,s)*comb_in_a(a.z,s);\n"
         " if((r.w&1u)!=0u)rgb=(r.w&4u)!=0u?vec3(0.0)+rgb:rgb+vec3(0.0);\n"
         " if((a.w&1u)!=0u)alpha=(a.w&4u)!=0u?0.0+alpha:alpha+0.0;\n"
         " rgb=clamp(comb_map3(rgb,(rf>>3u)&7u),-1.0,1.0);alpha=clamp(comb_map1(alpha,(af>>3u)&7u),-1.0,1.0);\n"

@@ -1,5 +1,50 @@
 # Cold-first-play recovery and regression prevention
 
+## Prepared-fragment qualification update, 2026-11-16
+
+The experimental path remains disabled by default. Legal non-dyadic constant
+values expose precision differences hidden by the original fixture's uniform
+0.5 constants. A private 1,308-state probe on NVIDIA finds four mismatching
+states in the committed return-writer source: 922, 948, 988 and 1008. These are
+exact float-output differences, not proof of a visible retail-game defect.
+
+The alpha-product shortcut contracts multiplication with output bias in case
+922; its dynamic reference rounds the product first. An alpha-only `precise`
+intermediate fixes that witness. The expanded maintained fixture retains every
+original case and adds 108 dynamic rich-combiner cases with byte/255 constants.
+It rejects the committed source at new case 1318 and passes the candidate on
+NVIDIA with all 13 fault controls. A separate independent identity oracle checks
+72 shared/unique/final C0/C1 selections against the uploaded array, with 576
+exact channel checks and three deliberate indexing faults.
+
+This does not resolve the three literal-combiner witnesses. A broader private
+attempt to force precise RGB and RGBA products also changes software-GPU dot
+rounding (forced-dynamic case 929) and is rejected. The alpha-only candidate
+passes all 1,416 cases / 453,120 exact outputs on NVIDIA and llvmpipe under the
+existing 300-second process watchdog. Both devices pass the independent slot
+oracle; NVIDIA passes all 13 fault controls, and llvmpipe additionally rejects
+all three new slot faults. The prior independent-if software run retains its
+ten original fault-control results. ASan/UBSan verifies all 73,728 legacy
+sources / 614,644,992 bytes against the pinned source and all five lifetime
+faults, including 256 prepared builds with one final owner each.
+
+The independent-if writer retains every constant-index RGB/alpha/RGBA
+destination and never writes register zero. Matched experimental release DLLs
+differ in only the PSH object; all other 543 objects, including refreshed build
+metadata, match. Four isolated fresh-process DOA3 runs advance 599 guest
+Presents/completions per 600-live-callback window, with about 9.993 seconds of
+guest time and no fight callback over 16.683 ms. Parent fight p99 is
+10.430/11.887 ms versus candidate 10.632/10.527 ms. This does not establish a
+speedup. No test readback allocation occurs in those gameplay runs.
+
+The first candidate startup still reaches 1,077.832 ms, versus 92.665 ms on
+its repeat. Driver caches are uncontrolled, so this is not a matched
+cold-driver comparison and does not qualify recovery. Neither the arithmetic
+fix nor the independent-if writer establishes full ready coverage or
+cold-first-play recovery. The earlier experimental checkpoint is present on
+libretro, disabled by default; this follow-up remains local pending delivery
+qualification.
+
 Status, 2026-11-08: **BAD / REGRESSED / NOT QUALIFIED**. DOA3's first fights
 have reported obvious shader/PSO hitches. This is the defect to recover from,
 not an acceptable new baseline. The separately fixed CPU carry regression
