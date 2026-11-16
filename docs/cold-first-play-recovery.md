@@ -1,5 +1,56 @@
 # Cold-first-play recovery and regression prevention
 
+## Pending fragment-corpus scheduling, 2026-11-16
+
+The scalar checkpoint's public CI still times out on the full positive fragment
+corpus after 300 seconds, and the software vertex batch 7168:14096 has a separate
+300-second timeout. Compiler comparisons can remain inconclusive; these jobs
+are not declared green. A private combined-register-publication experiment
+passes the native numerical corpus but also times out with a new, initially
+empty Mesa cache after reaching roughly case 1668. Its first prepared draw is
+about 0.589 seconds, versus 0.594 seconds in a fresh-cache parent prefix probe.
+The prefix contains four cases and the independent oracles, not the full
+corpus. This experiment does not establish recovery and is not integrated.
+
+The test runner now partitions all 1,960 positive cases into contiguous ranges
+across at most four independent GL contexts. One 300-second watchdog starts
+before any child is launched and covers the entire positive corpus. Each
+child retains both invariant native fragments and its own textures, buffers,
+pipeline, readbacks and teardown. The aggregate requires exact, non-overlapping
+range boundaries, case counts, all 627,200 color/depth checks and positive
+written/discarded counts. It cannot accept an incomplete child's manifest as
+a full-corpus pass. The first range retains the complete independent constant,
+shadow and half-plane/window/volume oracles once, with their existing probes.
+All 23 deliberate GPU fault controls keep their original serial execution and
+300-second limits. No shader generator, runtime renderer, corpus case, image
+comparison or worker limit changes.
+
+A required CPU-only runner fixture executes before the GL tests. Synthetic
+child manifests test one, two, four and capped contexts; nine required bad
+controls cover wrong check counts, ranges and case counts, missing oracles,
+duplicate summaries, missing live pixels, child failure, watchdog expiry and
+partial launch failure. Every started child must be retired. These are
+metadata/process tests, never a substitute for actual GPU execution.
+
+The native positive corpus passes with four contexts, and all 23 serial GPU
+fault controls pass.
+The metadata controls pass on Windows and Linux. A separate Linux run starts
+with an empty private Mesa cache and CPU affinity restricted to two CPUs; its
+two positive ranges cover 0:980 and 980:1960, each with 313,600 exact checks,
+and all independent oracles pass inside the unchanged shared deadline. Its
+remaining serial fault controls are pending. The private cache directory
+avoids changing user caches. This establishes numerical test execution only;
+it does not establish shader-API or gameplay latency improvement.
+
+Further fixed-function diagnostics reject a final diffuse FMA rule which fixes
+case 28740 but introduces twelve other differences. A structural ambient-source
+predicate also fails: a complete four-worker lighting-cohort comparison over 24080:36368 has
+eleven parent differences and thirteen candidate differences. Earlier diagnostic
+runs stopped other workers on their first failure, so their smaller counts
+were incomplete. These math interventions remain private and unintegrated.
+Cold-first-play recovery, complete ready coverage, literal and fixed-function
+precision, Vulkan first use and gameplay allocations remain open.
+
 ## Pending named fragment registers, 2026-11-16
 
 The local disabled-by-default prepared fragment generator now emits sixteen

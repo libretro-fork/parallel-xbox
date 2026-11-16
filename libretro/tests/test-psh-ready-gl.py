@@ -6,7 +6,7 @@ Readbacks, reference compilation and separate output owners are test-only
 correctness work, never gameplay timing or a renderer zero-copy claim.
 """
 from pathlib import Path
-import argparse, os, shutil, subprocess, tempfile
+import argparse, os, re, shutil, subprocess, sys, tempfile, time
 
 def function(source, signature):
     start=source.index(signature);i=source.index('{',start)+1;depth=1
@@ -14,8 +14,47 @@ def function(source, signature):
         depth+=(source[i]=='{')-(source[i]=='}');i+=1
     return source[start:i]
 
+def run_positive(exe, env, log_path):
+    """Retain the complete corpus and one original watchdog across contexts."""
+    cpus=len(os.sched_getaffinity(0)) if hasattr(os,'sched_getaffinity') else (os.cpu_count() or 1)
+    workers=min(4,cpus)
+    ranges=[(1960*i//workers,1960*(i+1)//workers) for i in range(workers)]
+    children=[];deadline=time.monotonic()+300
+    try:
+        for index,(first,limit) in enumerate(ranges):
+            path=log_path.with_name(log_path.stem+'-'+str(index)+log_path.suffix)
+            stream=path.open('w')
+            try:child=subprocess.Popen([str(exe),'--range',str(first),str(limit)],env=env,stdout=stream,stderr=subprocess.STDOUT)
+            except BaseException:stream.close();raise
+            children.append((child,stream,path))
+        for child,stream,path in children:
+            code=child.wait(timeout=max(0,deadline-time.monotonic()))
+            if code:raise subprocess.CalledProcessError(code,child.args)
+    finally:
+        for child,stream,path in children:
+            if child.poll() is None:child.kill()
+        for child,stream,path in children:
+            child.wait();stream.close()
+        with log_path.open('w') as out:
+            out.write(f'Positive corpus: {workers} independent contexts, 1960 cases, shared 300s deadline\n')
+            for child,stream,path in children:out.write(path.read_text(errors='replace'))
+    total=written=discarded=0
+    for index,(_,_,path) in enumerate(children):
+        log=path.read_text(errors='replace')
+        matches=re.findall(r'PASS ready fragment: range=(\d+):(\d+) cases=(\d+) checked=(\d+) written=(\d+) discarded=(\d+),',log)
+        assert len(matches)==1,(path,log)
+        first,limit,cases,checked,wrote,dropped=map(int,matches[0])
+        assert (first,limit)==ranges[index] and cases==limit-first and checked==cases*320,(path,matches)
+        total+=checked;written+=wrote;discarded+=dropped
+    assert total==627200 and written>0 and discarded>0,(total,written,discarded)
+    log=children[0][2].read_text(errors='replace')
+    for marker in ['PASS independent constant-register oracle:', 'PASS independent shadow oracle:', 'PASS independent half-plane/window/volume oracle:']:
+        assert marker in log,(marker,log)
+    print(f'PASS full ready-fragment corpus: 1960 cases, {total} exact checks; {workers} independent contexts, one 300s deadline',flush=True)
+
 def main():
     ap=argparse.ArgumentParser(description=__doc__);ap.add_argument('root',type=Path);ap.add_argument('cc',nargs='?',default='cc');ap.add_argument('--keep',type=Path);args=ap.parse_args();r=args.root.resolve()
+    subprocess.run([sys.executable,str(Path(__file__).with_name('test-psh-ready-runner.py')),str(r),args.cc],check=True)
     with tempfile.TemporaryDirectory(prefix='ready-fragment-gl-') as tmp:
         d=args.keep.resolve() if args.keep else Path(tmp);d.mkdir(exist_ok=True,parents=True);(d/'qemu').mkdir()
         (d/'qemu/osdep.h').write_text('#include <stdint.h>\n#include <stddef.h>\n#include <stdbool.h>\n#include <stdlib.h>\n#include <stdio.h>\n#include <string.h>\n#include <stdarg.h>\n#include <assert.h>\n#define ARRAY_SIZE(a) (sizeof(a)/sizeof((a)[0]))\n#define stringify1(x) #x\n#define stringify(x) stringify1(x)\n')
@@ -81,7 +120,11 @@ def main():
                 libs=['-lopengl32','-lgdi32','-luser32']
             else:sources += [r/'libretro-common/compat/compat_strl.c'];libs=['-lEGL','-lGL']
             subprocess.run(flags+list(map(str,sources))+['-Wl,--gc-sections','-lm',*libs,'-o',str(exe)],check=True,env=env)
-            with c.with_suffix('.log').open('w') as out: result=subprocess.run([str(exe)]+(['--constants-only'] if mutation.startswith('constant_') else ['--bump-only'] if mutation.startswith('bump-') else ['--shadow-only'] if mutation.startswith('shadow-') else []),env=env,stdout=out,stderr=subprocess.STDOUT,timeout=300)
+            if not mutation:
+                run_positive(exe,env,c.with_suffix('.log'))
+                result=subprocess.CompletedProcess([str(exe)],0)
+            else:
+                with c.with_suffix('.log').open('w') as out: result=subprocess.run([str(exe)]+(['--constants-only'] if mutation.startswith('constant_') else ['--bump-only'] if mutation.startswith('bump-') else ['--shadow-only'] if mutation.startswith('shadow-') else []),env=env,stdout=out,stderr=subprocess.STDOUT,timeout=300)
             log=c.with_suffix('.log').read_text(errors='replace')
             if not mutation:
                 print(log,end='',flush=True);assert result.returncode==0,(result.returncode,log)

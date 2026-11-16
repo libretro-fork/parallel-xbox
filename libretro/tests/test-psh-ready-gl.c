@@ -361,7 +361,10 @@ int main(int argc,char **argv)
     bool only_constants=argc==2&&!strcmp(argv[1],"--constants-only");
     bool only_bump=argc==2&&!strcmp(argv[1],"--bump-only");
     bool only_shadow=argc==2&&!strcmp(argv[1],"--shadow-only");
-    REQUIRE(argc==1||only_constants||only_bump||only_shadow);
+    bool partition=argc==4&&!strcmp(argv[1],"--range");
+    unsigned first=only_shadow?1704:only_bump?1416:0,limit=1960;
+    if(partition){char *end;first=strtoul(argv[2],&end,10);REQUIRE(!*end);limit=strtoul(argv[3],&end,10);REQUIRE(!*end);REQUIRE(first<limit&&limit<=1960);}
+    REQUIRE(argc==1||only_constants||only_bump||only_shadow||partition);
     signal(SIGABRT,quiet_abort);setvbuf(stdout,NULL,_IONBF,0);init_gl();
     GLint units;glGetIntegerv(GL_MAX_TEXTURE_IMAGE_UNITS,&units);REQUIRE(units>=12);
     GLuint fb,rb[2],vao,pipeline,tex[12];glGenFramebuffers(1,&fb);glBindFramebuffer(GL_FRAMEBUFFER,fb);glGenRenderbuffers(2,rb);
@@ -421,7 +424,7 @@ int main(int argc,char **argv)
     GLuint vs[2],ready[2];MString *ready_source[2];
     for(unsigned i=0;i<2;i++){MString *v=vertex(i);vs[i]=program(GL_VERTEX_SHADER,v);mstring_unref(v);PshState s={.depth_format=DEPTH_FORMAT_HELPER_LIVENESS,.combiner_dynamic=true,.smooth_shading=i};ready_source[i]=pgraph_glsl_gen_psh_ready(&s,(GenPshGlslOptions){.locations=true});REQUIRE(ready_source[i]);ready[i]=program(GL_FRAGMENT_SHADER,ready_source[i]);}
     uint64_t checked=0;unsigned written=0,discarded=0;
-    for(unsigned test=only_shadow?1704:only_bump?1416:0;!only_constants&&test<1960;test++){
+    for(unsigned test=first;!only_constants&&test<limit;test++){
         unsigned fixture=test>=1308?912+test-1308:test;
         static const GLint filters[]={GL_NEAREST,GL_LINEAR,GL_NEAREST_MIPMAP_NEAREST,GL_LINEAR_MIPMAP_NEAREST,GL_NEAREST_MIPMAP_LINEAR,GL_LINEAR_MIPMAP_LINEAR};
         static const GLint wraps[]={GL_REPEAT,GL_CLAMP_TO_EDGE,GL_CLAMP_TO_BORDER,GL_MIRRORED_REPEAT};
@@ -445,6 +448,7 @@ int main(int argc,char **argv)
         for(unsigned i=0;i<320;i++){uint32_t a,b;memcpy(&a,&values[0][i],4);memcpy(&b,&values[1][i],4);if(a!=b&&!(isnan(values[0][i])&&isnan(values[1][i]))){fprintf(stderr,"fragment difference case=%u scalar=%u old=%08x new=%08x\n",test,i,a,b);return 1;}checked++;}
         for(unsigned i=0;i<64;i++){if(values[0][i*4]==.9375f)discarded++;else written++;}glDeleteProgram(exact);
     }
+    if(!partition||first==0){
     constant_register_oracle(pipeline,vs,ready,tex);
     shadow_depth_oracle(pipeline,vs,ready,tex);
     if(only_constants){for(unsigned i=0;i<2;i++){glDeleteProgram(ready[i]);glDeleteProgram(vs[i]);mstring_unref(ready_source[i]);}return 0;}
@@ -476,7 +480,9 @@ int main(int argc,char **argv)
     }
     glDeleteProgram(oracle_exact);
     puts("PASS independent half-plane/window/volume oracle: eight live pixels and exact color/depth on each path");
-    REQUIRE(written>0&&discarded>0);
-    printf("PASS ready fragment: 1960 cases (1704 retained + 256 fixed-depth shadow), %llu exact color/depth checks, written=%u discarded=%u, two invariant native fragments\n",(unsigned long long)checked,written,discarded);
+    }
+    REQUIRE(checked==320ull*(limit-first));
+    if(!partition)REQUIRE(written>0&&discarded>0);
+    printf("PASS ready fragment: range=%u:%u cases=%u checked=%llu written=%u discarded=%u, two invariant native fragments\n",first,limit,limit-first,(unsigned long long)checked,written,discarded);
     for(unsigned i=0;i<2;i++){glDeleteProgram(ready[i]);glDeleteProgram(vs[i]);mstring_unref(ready_source[i]);}glDeleteTextures(12,tex);glDeleteProgramPipelines(1,&pipeline);glDeleteVertexArrays(1,&vao);glDeleteRenderbuffers(2,rb);glDeleteFramebuffers(1,&fb);return 0;
 }

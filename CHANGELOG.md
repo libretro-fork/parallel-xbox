@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Run the complete prepared-fragment GPU correctness corpus in up to four independent contexts under one shared 300-second watchdog. Verify every contiguous range and all 627,200 exact checks, retain the independent oracles and all 23 fault controls, and require CPU-only ledger/deadline/retirement controls before GPU checks. This changes test scheduling, not renderer performance or cold-play qualification.
+
 - Experimental prepared GL fragments use named register variables and append immutable helper spans directly into the final source owner. Fresh-identifier diagnostics show roughly five percent less first-use link wait on the tested NVIDIA driver, with unchanged warmed GPU execution cost; this does not establish gameplay or cold-start recovery. Ordinary shader source stays byte-identical, restored NGB/DOA3 output matches, and all 23 native/software GPU fault controls pass. Known literal precision failures remain and prepared rendering stays disabled by default.
 
 - Extend the disabled-by-default prepared GL fragment prototype to fixed-depth shadow comparisons in PROJECT2D/PROJECT3D. Reuse existing 2D sampler routes, uniforms, control words and two fragment owners. Preserve rectangle projection, D16/D24/float depth metadata, all eight comparisons, alpha/color-key handling and atomic rejection of unsupported encodings. Current-main experimental restores match NGB/DOA3, and DOA3 now uses 2,598 prepared shadow uploads instead of shadow fallback lookups. Timing and full cold-play recovery remain unqualified.
