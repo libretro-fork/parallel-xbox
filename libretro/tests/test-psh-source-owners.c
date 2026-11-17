@@ -73,7 +73,21 @@ int main(void)
         size_t candidate_created=mstring_test_created(1)-new_created;
         REQUIRE(candidate_created+1==parent_created);
         REQUIRE(mstring_get_length(now)>0);
+#ifdef TEST_CURRENT_DEFAULT_HELPERS
+        if (!opts.vulkan) {
+            /* Actual default GL must match the explicit helper source across
+             * the full owner corpus. Historical bytes are checked separately. */
+            PshState keyed=s;keyed.depth_format|=DEPTH_FORMAT_HELPER_LIVENESS;
+            MString *reference=pgraph_glsl_gen_psh(&keyed,opts);
+            REQUIRE(mstring_test_live(1)==2);
+            REQUIRE(!strcmp(mstring_get_str(reference),mstring_get_str(now)));
+            mstring_unref(reference);REQUIRE(mstring_test_live(1)==1);
+        } else {
+            REQUIRE(!strcmp(mstring_get_str(old),mstring_get_str(now)));
+        }
+#else
         REQUIRE(!strcmp(mstring_get_str(old),mstring_get_str(now)));
+#endif
         bytes+=mstring_get_length(now);
         mstring_unref(now);mstring_unref(old);
         REQUIRE(mstring_test_live(1)==0);REQUIRE(mstring_test_live(0)==1);
@@ -82,7 +96,11 @@ int main(void)
          * a candidate leak or keep a second whole source payload snapshot. */
         mstring_test_cleanup(0);REQUIRE(mstring_test_live(0)==0);
     }
+#ifdef TEST_CURRENT_DEFAULT_HELPERS
+    printf("PASS PSH default helper owners: %u sources match explicit GL helper or historical Vulkan bytes; %zu source bytes; candidate retains no temporary owners\n",test,bytes);
+#else
     printf("PASS PSH source owners: %u sources byte-identical; %zu source bytes; candidate retains no temporary owners\n",test,bytes);
+#endif
     printf("Historical clip owner leak: %zu aggregate bytes, %zu maximum bytes per source (real MString/GString capacities)\n",leaked,maximum);
     printf("Normalization-name format calls: parent %zu, candidate %zu\n",mstring_test_norm_formats(0),mstring_test_norm_formats(1));
     printf("MString record allocations: parent %zu, candidate %zu\n",mstring_test_created(0),mstring_test_created(1));

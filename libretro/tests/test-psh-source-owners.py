@@ -5,6 +5,9 @@
 The historical parent is measured as leaking one clip owner per source, then
 that known leak is reclaimed by the test only. Candidate owners are never
 reclaimed to manufacture a pass. All payloads use real MString and GString.
+For revisions with default GL helper preservation, the complete historical
+comparison is retained under its original emitter policy. A separate full pass
+checks actual-default owners and explicit-helper GL / historical Vulkan bytes.
 """
 from pathlib import Path
 import argparse, hashlib, os, shutil, subprocess, tempfile
@@ -18,7 +21,7 @@ def function(source, signature):
         depth+=(source[p]=='{')-(source[p]=='}');p+=1
     return source[start:p]
 
-def run(root, cc, directory, baseline, mutation):
+def run(root, cc, directory, baseline, mutation, default_helpers=False):
     (directory/'qemu').mkdir()
     (directory/'qemu/osdep.h').write_text("""#include <stdint.h>
 #include <stddef.h>
@@ -70,6 +73,14 @@ void mstring_test_cleanup(unsigned g){for(unsigned i=0;i<256;i++)if(owners[i].p&
     prefix='#include "hw/xbox/nv2a/pgraph/glsl/psh.h"\n#include "hw/xbox/nv2a/nv2a_regs.h"\n#include "hw/xbox/nv2a/pgraph/glsl/g8b8-lod.h"\n#define NV2A_UNIMPLEMENTED(...) ((void)0)\ngchar *mstring_test_strdup_printf(const gchar *,...);\n#define g_strdup_printf mstring_test_strdup_printf\n'
     source=(root/'hw/xbox/nv2a/pgraph/glsl/psh.c').read_text(encoding='utf-8')
     body=source[source.index('struct InputInfo {'):source.index('void pgraph_glsl_set_psh_uniform_values(')]
+    has_default='PGRAPH_GLSL_GL_DEFAULT_HELPERS' in (root/'hw/xbox/nv2a/pgraph/glsl/psh.h').read_text()
+    if has_default and not default_helpers:
+        # Retain the entire original historical byte-comparison corpus under
+        # its original policy, then test the real default in a separate pass.
+        actual=function(source,'static bool psh_preserve_helpers(')
+        assert actual in body
+        body=body.replace(actual,'static bool psh_preserve_helpers(const struct PixelShader *ps) { return ps->ready || (ps->state->depth_format & DEPTH_FORMAT_HELPER_LIVENESS); }',1)
+
     if mutation=='ready_leak':
         needle='struct PixelShader ps = { .opts=opts, .state=&canonical, .ready=true };\n    return psh_convert(&ps);'
         assert body.count(needle)==1
@@ -103,6 +114,7 @@ void mstring_test_cleanup(unsigned g){for(unsigned i=0;i<256;i++)if(owners[i].p&
     exe=directory/('test.exe' if os.name=='nt' else 'test')
     flags=[cc,'-O2','-std=gnu11','-ffunction-sections','-fdata-sections','-Wall','-Wextra','-Wno-unused-parameter','-Wno-sign-compare',
            '-I'+str(directory),'-I'+str(root),'-I'+str(root/'include'),'-I'+str(root/'libretro/glib'),'-I'+str(root/'libretro-common/include')]
+    if default_helpers:flags+=['-DTEST_CURRENT_DEFAULT_HELPERS=1']
     if os.environ.get('SHADER_OWNER_SANITIZE'):flags+=['-fsanitize=address,undefined','-fno-omit-frame-pointer']
     sources=[Path(__file__).with_suffix('.c'),directory/'candidate.c',directory/'baseline.c',directory/'owners.c',root/'libretro/glib/gcore.c']
     if os.name=='nt':
@@ -127,7 +139,10 @@ def main():
     baseline=blob.decode('utf-8')
     with tempfile.TemporaryDirectory(prefix='psh-source-owners-') as temporary:
         directory=args.keep.resolve() if args.keep else Path(temporary);directory.mkdir(parents=True,exist_ok=True)
-        for mutation in ['', 'missing_release', 'premature_release', 'norm_format_alloc', 'prefix_clone', 'ready_leak']:
-            target=directory/(mutation or 'positive');target.mkdir()
-            run(root,args.cc,target,baseline,mutation)
+        has_default='PGRAPH_GLSL_GL_DEFAULT_HELPERS' in (root/'hw/xbox/nv2a/pgraph/glsl/psh.h').read_text()
+        for default_helpers in ([False,True] if has_default else [False]):
+            print('Owner policy:', 'actual default helpers' if default_helpers else 'historical policy reproduction',flush=True)
+            for mutation in ['', 'missing_release', 'premature_release', 'norm_format_alloc', 'prefix_clone', 'ready_leak']:
+                target=directory/(('default-' if default_helpers else '')+(mutation or 'positive'));target.mkdir()
+                run(root,args.cc,target,baseline,mutation,default_helpers)
 if __name__=='__main__':main()

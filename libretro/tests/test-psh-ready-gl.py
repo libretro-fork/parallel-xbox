@@ -121,6 +121,13 @@ def main():
             if mutation=='final':
                 emitted=emitted.replace('combFinal0!=0x130e0300u','combFinal0!=0x130e0300u&&combFinal0!=0x130f0300u').replace('(combFinal1&~128u)!=0x1c00u','(combFinal1&0xff7fu)!=0x1c00u')
                 assert emitted!=generator
+            if mutation=='helper' and 'PGRAPH_GLSL_GL_DEFAULT_HELPERS' in (r/'hw/xbox/nv2a/pgraph/glsl/psh.h').read_text():
+                # Clearing an old key bit no longer enables eager GL kills.
+                # Mutate the actual emitter to restore that fault only for
+                # ordinary sources; the prepared shader remains the comparator.
+                original=function(source,'static bool psh_preserve_helpers(')
+                assert original in emitted
+                emitted=emitted.replace(original,'static bool psh_preserve_helpers(const struct PixelShader *ps) { return ps->ready; }',1)
             (d/'generator.c').write_text(emitted,encoding='utf-8')
             change={'depth':'controls[0]^=1;','mode':'controls[1]=0;','target':'for(unsigned j=4;j<8;j++)controls[j]&=~2u;','volume':'for(unsigned j=4;j<8;j++)controls[j]&=~4u;','clip':'controls[0]^=32;','alpha':'glProgramUniform1ui(p,glGetUniformLocation(p,"alphaKillMask"),0);','combiner':'glProgramUniform1ui(p,glGetUniformLocation(p,"combCtl"),s->combiner_control?s->combiner_control-1:0);'}.get(mutation,'')
             code=code.replace('/* MUTATE */',change)

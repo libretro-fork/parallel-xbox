@@ -1181,10 +1181,15 @@ static void psh_append_shadowmap(const struct PixelShader *ps, int i, bool compa
 
 /* No shader image stores or atomics are emitted. Delaying framebuffer/depth
  * suppression preserves texture helper lanes without publishing killed pixels.
- * The key flag is explicit so legacy compiled binaries cannot match this mode. */
+ * An early non-uniform discard makes later implicit derivatives undefined:
+ * a rejected helper can otherwise select mip 0 instead of mip 8 in NGB.
+ * GL's generator revision invalidates old binaries; Vulkan keeps its existing
+ * explicitly keyed mode and byte-identical source behavior. */
 static bool psh_preserve_helpers(const struct PixelShader *ps)
 {
-    return ps->ready || (ps->state->depth_format & DEPTH_FORMAT_HELPER_LIVENESS);
+    return (PGRAPH_GLSL_GL_DEFAULT_HELPERS && !ps->opts.vulkan) ||
+           ps->ready ||
+           (ps->state->depth_format & DEPTH_FORMAT_HELPER_LIVENESS);
 }
 static const char *psh_kill_statement(const struct PixelShader *ps)
 {
