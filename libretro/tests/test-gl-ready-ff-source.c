@@ -40,6 +40,27 @@ int main(void){
   state.fixed_function.texgen_dynamic=false;assert(ready_ff_state_index(&state,i&1)==(int)i);
   state.fixed_function.texgen[0][0]=(enum VshTexgen)6;assert(ready_ff_state_index(&state,i&1)<0);
   state.fixed_function.texgen_dynamic=true;assert(ready_ff_state_index(&state,i&1)==(int)i);
+
+#ifdef GL_READY_FF_IDLE_LIGHTING
+  state.fixed_function.lighting=true;state.fixed_function.light_dynamic=false;
+  state.fixed_function.emission_src=state.fixed_function.ambient_src=MATERIAL_COLOR_SRC_MATERIAL;
+  state.fixed_function.diffuse_src=state.fixed_function.specular_src=MATERIAL_COLOR_SRC_MATERIAL;
+  memset(state.fixed_function.light,0,sizeof(state.fixed_function.light));
+  assert(ready_ff_state_index(&state,i&1)==(int)i);
+  for(unsigned l=0;l<8;l++){
+   state.fixed_function.light[l]=LIGHT_INFINITE;assert(ready_ff_state_index(&state,i&1)<0);
+   state.fixed_function.light[l]=LIGHT_OFF;
+  }
+  state.fixed_function.light_dynamic=true;assert(ready_ff_state_index(&state,i&1)<0);state.fixed_function.light_dynamic=false;
+  state.fixed_function.ambient_src=MATERIAL_COLOR_SRC_DIFFUSE;assert(ready_ff_state_index(&state,i&1)<0);state.fixed_function.ambient_src=MATERIAL_COLOR_SRC_MATERIAL;
+  state.fixed_function.emission_src=MATERIAL_COLOR_SRC_DIFFUSE;assert(ready_ff_state_index(&state,i&1)<0);state.fixed_function.emission_src=MATERIAL_COLOR_SRC_MATERIAL;
+  state.fixed_function.diffuse_src=MATERIAL_COLOR_SRC_DIFFUSE;assert(ready_ff_state_index(&state,i&1)<0);state.fixed_function.diffuse_src=MATERIAL_COLOR_SRC_MATERIAL;
+  state.fixed_function.specular_src=MATERIAL_COLOR_SRC_DIFFUSE;assert(ready_ff_state_index(&state,i&1)<0);state.fixed_function.specular_src=MATERIAL_COLOR_SRC_MATERIAL;
+  state.fixed_function.texgen_dynamic=false;memset(state.fixed_function.texgen,0,sizeof(state.fixed_function.texgen));
+  assert(ready_ff_state_index(&state,i&1)==(int)i);
+  state.fixed_function.texgen[3][3]=(enum VshTexgen)6;assert(ready_ff_state_index(&state,i&1)<0);
+  state.fixed_function.texgen[3][3]=TEXGEN_DISABLE;assert(ready_ff_state_index(&state,i&1)==(int)i);
+#endif
   state.fixed_function.skinning=7;assert(ready_ff_state_index(&state,i&1)<0);
  }
  for(unsigned i=0;i<GL_READY_FF_STAGE_COUNT;i++)for(unsigned j=0;j<i;j++)

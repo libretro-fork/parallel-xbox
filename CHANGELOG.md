@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Extend the disabled GL startup bank to all-material-sourced lighting with no active lights and already-dynamic fog. Reuse the same 56 ordinary stages and 252 native tuples, without new programs or reservations. Active lights, live light-mode controls, mixed material sources and literal fog keep their correct existing paths. Broad lit equivalence and cold-play latency remain unqualified.
+
 - Extend the disabled experimental GL fragment path to fixed-depth 2D shadow comparisons using its existing RGBA texture aliases and control uniforms. Prepare both interpolation variants before draws, with no new sampler owners or cache reservations. Unsupported float-filter shadow modes retain the correct existing path; full cold-play recovery and latency remain unqualified.
 
 - Extend the disabled GL fixed-function startup bank to unlit literal CSV0_C/texgen states whose fog is already register-driven. Reuse the same 56 stages and 252 native tuples, with existing live control uniforms and no new reservations. Keep lit and literal-fog states on their correct existing paths; software-GPU fog differences explicitly block broader conversion. Cold/warm latency and full stutter recovery remain unqualified.

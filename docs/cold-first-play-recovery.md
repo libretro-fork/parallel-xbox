@@ -1203,3 +1203,23 @@ its own cold run. Driver cache state is uncontrolled and fight cameras are not
 paired. Private stack/key capture and allocator instrumentation alter timing.
 Four cold lit-stage misses, GPU shader cost, startup cost, repeatable latency
 and Vulkan ready coverage remain open. No default experimental flag was enabled.
+
+### Material lighting with no active lights (2026-11-17, experimental)
+
+The existing 56-stage prepared FF bank now admits literal CSV0_C lighting when
+all four material sources are MATERIAL and all eight static lights are OFF.
+Live light-mode controls remain excluded because a zeroed key is not proof that
+its lightMode uniform is zero. Fog must already be dynamic; literal texgen enums
+are validated as before. No generated stage, owner reservation, cache schema,
+uniform ABI or default changes. Active and mixed-source lighting retain fallback.
+
+A supplementary dynamic-fog/material/no-light projection is applied to BOTH
+ordinary reference and prepared candidate while retaining all original case
+bodies and exact comparisons. The 33,232-case domain ledger contains 2,464
+eligible cases / 4,021,248 scalar checks; other cases are explicitly outside this
+additional class. Lighting-master, material-source and light-mode faults must
+produce numerical differences. The original unlit corpus and its five faults
+remain required. CPU checks reject every active light slot, dynamic light mode,
+each non-material source, invalid texgen and all existing unsupported boundaries.
+Broad literal lighting conversion is still rejected, not reclassified as passing.
+GPU latency, whole coverage and cold-play recovery remain BAD/unqualified.

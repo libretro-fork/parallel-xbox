@@ -7,6 +7,7 @@
 /* Ordinary, unchanged GLSL: seven skin modes, point parameters, interpolation
  * and interface prefix. z_perspective is not consumed by the vertex generator;
  * geometry still owns it. No persistent key is rewritten by this projection. */
+#define GL_READY_FF_IDLE_LIGHTING 1
 #define GL_READY_FF_STAGE_COUNT 56u
 #define GL_READY_FF_PIPELINE_COUNT 252u
 
@@ -20,14 +21,24 @@ static inline int ready_ff_state_index(const VshState *s, bool prefix)
                            s->fixed_function.texgen_dynamic;
     bool unlit = !s->fixed_function.csv0c_dynamic &&
                  !s->fixed_function.lighting;
-    if (!register_driven && !unlit) return -1;
-    if (unlit && !s->fixed_function.texgen_dynamic) {
+    const FixedFunctionVshState *ff = &s->fixed_function;
+    bool idle_lighting = GL_READY_FF_IDLE_LIGHTING && !ff->csv0c_dynamic && ff->lighting &&
+                         !ff->light_dynamic &&
+                         ff->ambient_src == MATERIAL_COLOR_SRC_MATERIAL &&
+                         ff->emission_src == MATERIAL_COLOR_SRC_MATERIAL &&
+                         ff->diffuse_src == MATERIAL_COLOR_SRC_MATERIAL &&
+                         ff->specular_src == MATERIAL_COLOR_SRC_MATERIAL;
+    for (unsigned i = 0; i < NV2A_MAX_LIGHTS && idle_lighting; i++)
+        if (ff->light[i] != LIGHT_OFF) idle_lighting = false;
+    if (!register_driven && !unlit && !idle_lighting) return -1;
+    if ((unlit || idle_lighting) && !s->fixed_function.texgen_dynamic) {
         for (unsigned t = 0; t < 4; t++)
             for (unsigned a = 0; a < 4; a++)
                 if ((unsigned)s->fixed_function.texgen[t][a] >
                     TEXGEN_REFLECTION_MAP) return -1;
     }
-    /* Unlit literal controls already upload through the ordinary csv0cCtl,
+    /* Unlit and all-material lit controls with no active lights already upload
+     * through the ordinary csv0cCtl,
      * texgenMode and texMatEnable locations. Fog must remain register-driven:
      * converting literal fog changes exact results on llvmpipe. */
     return (((unsigned)s->fixed_function.skinning * 2u +

@@ -100,10 +100,18 @@ def main():
                 assert rows and sum(int(a)+int(b) for a,b,c in rows)==33232,rows
                 count=sum(int(a) for a,b,c in rows);checks=sum(int(c) for a,b,c in rows)
                 assert count==816 and checks==count*1632,(count,checks)
-                print(f'PASS unlit FF: full 33232-case domain ledger; {count} eligible / {checks} exact scalar checks; literal fog and lit classes retain fallback',flush=True)
+                print(f'PASS unlit FF: full 33232-case domain ledger; {count} eligible / {checks} exact scalar checks; literal fog and active-light classes retain fallback',flush=True)
             else:
                 assert result.returncode!=0 and re.search(r'[1-9][0-9]* differences;',log),(mutation,result.returncode,log[-4000:])
                 print('Required unlit FF fault rejected:',mutation,flush=True)
+    # A historical candidate without this later capability retains its
+    # complete original corpus. Advertised coverage with a missing fixture
+    # must fail, rather than silently skipping the additional proof.
+    idle=root/'libretro/tests/test-gl-ready-ff-idle.py'
+    header=(root/'hw/xbox/nv2a/pgraph/gl/ready-ff-state.h').read_text()
+    if idle.is_file() or 'GL_READY_FF_IDLE_LIGHTING' in header:
+        assert idle.is_file(), 'Advertised idle-lighting coverage has no numerical fixture'
+        subprocess.run([sys.executable,str(idle),str(root),cc],check=True)
 
 
 if __name__=='__main__':main()
