@@ -9,6 +9,7 @@
  * geometry still owns it. No persistent key is rewritten by this projection. */
 #define GL_READY_FF_IDLE_LIGHTING 1
 #define GL_READY_FF_LITERAL_LIGHTING 1
+#define GL_READY_FF_CSV_LITERAL_TEXGEN 1
 #define GL_READY_FF_FAMILY_STAGES 56u
 #define GL_READY_FF_STAGE_COUNT (2u * GL_READY_FF_FAMILY_STAGES)
 #define GL_READY_FF_PIPELINE_COUNT (GL_READY_FF_STAGE_COUNT / 4u * 18u)
@@ -19,8 +20,7 @@ static inline int ready_ff_state_index(const VshState *s, bool prefix)
         s->compressed_attrs || s->uniform_attrs || s->swizzle_attrs ||
         s->const_attrs_dynamic || (unsigned)s->fixed_function.skinning > 6)
         return -1;
-    bool register_driven = s->fixed_function.csv0c_dynamic &&
-                           s->fixed_function.texgen_dynamic;
+    bool register_driven = s->fixed_function.csv0c_dynamic;
     bool unlit = !s->fixed_function.csv0c_dynamic &&
                  !s->fixed_function.lighting;
     const FixedFunctionVshState *ff = &s->fixed_function;
@@ -49,8 +49,7 @@ static inline int ready_ff_state_index(const VshState *s, bool prefix)
     }
     if (!register_driven && !unlit && !idle_lighting && !literal_lighting)
         return -1;
-    if ((unlit || idle_lighting || literal_lighting) &&
-        !s->fixed_function.texgen_dynamic) {
+    if (!s->fixed_function.texgen_dynamic) {
         for (unsigned t = 0; t < 4; t++)
             for (unsigned a = 0; a < 4; a++)
                 if ((unsigned)s->fixed_function.texgen[t][a] >

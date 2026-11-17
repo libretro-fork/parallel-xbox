@@ -1362,3 +1362,37 @@ exact numerical channels with eight required faults rejected. The eye fault
 uses original unsaturated-curve cases 20016:20032; the later constant-curve
 interval did not exercise eye dependence and is not accepted as a witness.
 Integrated software-GPU and gameplay qualification remain pending.
+
+### Dynamic CSV with literal texgen (2026-11-17, experimental)
+
+After the literal material family eliminated the three observed GL draw
+compilations, a private cold DOA3 run still constructed two pipelines in draws:
+one during boot and one at fight entry before the counted live callbacks.
+Both had ready geometry and fragment stages, but their FF vertex recipes had
+dynamic CSV controls and literal texgen. The old eligibility predicate required
+both CSV and texgen to be dynamic, so these vertices used prewarmed exact modules
+and then constructed a native tuple in the draw. The diagnostic ff field means
+fixed-function, not readiness; a stage-module hit alone does not prove a ready
+complete tuple. This was a coverage gap, not evidence to alter publication
+gates or ignore the two calls as startup.
+
+The existing register-driven family now accepts valid literal texgen/matrix
+controls with independently packed uniforms. Invalid literal modes still reject.
+No program, tuple, reservation, key, generator revision or uniform ABI is added:
+the bank remains 112 ordinary stages and 504 fully validated tuples, with the
+experimental flags off by default. Literal fog remains outside this conversion.
+
+The supplementary corpus retains all original FF case bodies and the original
+raw CSV/light inputs, projects dynamic fog onto both paths, and independently
+packs the literal texgen controls. Private NVIDIA and llvmpipe probes each
+passed 400 new-domain recipes and 652,800 exact scalar comparisons. The
+integrated fixture uses the real classifier and requires numerical faults for
+point parameters, skinning, CSV, light modes, texgen and matrix enable. Original
+corpora, budgets and all older fault controls remain required. Integrated GPU,
+owner/lifecycle, cold/warm gameplay and latency qualification are still pending;
+shader/PSO cold-play recovery remains BAD/open.
+
+The integrated native classifier fixture passed all 652,800 positive channels
+and all six numerical faults. The source identity/unsupported-boundary and
+1,234-case owner rollback tests passed as well. Integrated software-GPU,
+cold/warm gameplay and performance qualification remain pending.

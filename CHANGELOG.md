@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Let the disabled GL ready bank serve register-driven CSV lighting with literal texgen and texture-matrix controls. Reuse the existing prepared stages and complete native tuples, while rejecting unsupported literal modes. Rendering math, cache capacity, keys and defaults are unchanged; cold-play and latency qualification remain open.
+
 - Extend the disabled GL startup bank to material-sourced lighting with literal normal/eye/back-face and specular controls, while retaining dynamic light modes and texgen. Prepare 56 additional ordinary vertex stages and 252 complete native tuples using existing cache slots. Other lighting controls and literal fog keep their correct existing paths. Cold-play recovery and latency remain unqualified.
 
 - Keep hash-interception regression fixtures compatible with RetroArch’s XXH3 dispatch macros. Explicitly undefine the public macro before installing each test wrapper, retaining strict compiler warnings, real-hash helper calls and all numerical, collision, ownership and failure controls. Runtime hashing is unchanged.

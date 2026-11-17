@@ -116,6 +116,10 @@ def main():
         literal=root/'libretro/tests/test-gl-ready-ff-literal.py'
         assert literal.is_file(), 'Advertised literal-lighting coverage has no numerical fixture'
         subprocess.run([sys.executable,str(literal),str(root),cc],check=True)
+    if 'GL_READY_FF_CSV_LITERAL_TEXGEN' in header:
+        csv_texgen=root/'libretro/tests/test-gl-ready-ff-csv-texgen.py'
+        assert csv_texgen.is_file(), 'Advertised CSV/literal-texgen coverage has no numerical fixture'
+        subprocess.run([sys.executable,str(csv_texgen),str(root),cc],check=True)
 
 
 if __name__=='__main__':main()

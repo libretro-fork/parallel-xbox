@@ -38,7 +38,15 @@ int main(void){
   state.fog_dynamic=false;assert(ready_ff_state_index(&state,i&1)<0);state.fog_dynamic=true;
   state.fixed_function.normalization=true; /* Outside literal-control lighting. */
   state.fixed_function.lighting=true;state.fixed_function.csv0c_dynamic=false;assert(ready_ff_state_index(&state,i&1)<0);state.fixed_function.csv0c_dynamic=true;
-  state.fixed_function.texgen_dynamic=false;assert(ready_ff_state_index(&state,i&1)<0);state.fixed_function.texgen_dynamic=true;
+  state.fixed_function.texgen_dynamic=false;
+#ifdef GL_READY_FF_CSV_LITERAL_TEXGEN
+  assert(ready_ff_state_index(&state,i&1)==(int)i);
+  state.fixed_function.texgen[3][3]=(enum VshTexgen)6;assert(ready_ff_state_index(&state,i&1)<0);
+  state.fixed_function.texgen[3][3]=TEXGEN_DISABLE;
+#else
+  assert(ready_ff_state_index(&state,i&1)<0);
+#endif
+  state.fixed_function.texgen_dynamic=true;
   state.fixed_function.csv0c_dynamic=false;state.fixed_function.lighting=false;
   assert(ready_ff_state_index(&state,i&1)==(int)i);
   state.fixed_function.texgen_dynamic=false;assert(ready_ff_state_index(&state,i&1)==(int)i);
