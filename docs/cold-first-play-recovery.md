@@ -1320,3 +1320,45 @@ concurrently, private instrumentation changes timing, driver-cache state is not
 controlled, and fight cameras are not paired. No frame-time or global allocation
 claim follows. Three cold active-lit misses, GPU cost, cold/warm latency recovery
 and Vulkan coverage remain open; experimental defaults remain disabled.
+
+### Literal material-lighting startup family (2026-11-17, experimental)
+
+Keeping the lighting controls literal avoids the exact arithmetic differences
+from converting material selectors into uniform-controlled selects. The new
+family uses the ordinary generator unchanged: lighting on; normalization, local
+eye and two-sided lighting off; all four color sources material; specular,
+separate specular and ignore-specular-alpha on. Light modes and texgen remain
+register-driven, and fog must already be dynamic. All seven skin modes, both
+point-parameter modes, interpolation variants and interface prefixes are
+prepared. Other control settings retain the correct existing path.
+
+The two families now occupy 112 stage entries and 504 native tuple entries
+borrowed from the existing 50*1024 module and binding pools. Pool capacities,
+cache keys, generator revision, uniform ABI and experimental defaults do not
+change. Every tuple must validate before either family is published; partial
+startup failure returns every borrowed slot. Existing generic owners retain
+priority for states they already cover. Queue and owner retirement rules are
+unchanged; no new runtime payload copies or worker waits are introduced.
+
+Before integration, independent supplementary probes retained all original
+33,232 FF case bodies while projecting the admitted literal controls and
+dynamic fog onto both reference and candidate. NVIDIA and llvmpipe each passed
+2,464 eligible recipes and 4,021,248 exact scalar checks. Converting those same
+controls into the older generic CSV source instead produced 3,171 NVIDIA
+differences and was rejected. No thresholds or original corpora were changed.
+
+The integrated fixture uses the actual classifier and canonical initializer,
+independent light/control packing and required numerical faults. Owner tests
+cover every stage creation/link and tuple creation/validation failure, both
+unavailable prerequisites, repeated borrowing and teardown. Native tuple,
+current-corpus, cold/warm gameplay, fresh-process restore and latency
+qualification must finish before delivery. The broader shader/PSO cold-play
+regression remains BAD/open; Vulkan and other lighting controls remain open.
+
+Initial integrated native checks passed: 28,672 source comparisons across
+112 distinct ordinary sources; 1,234 partial/unavailable rollback cases; two
+owner generations validating and retiring all 504 tuples each; and 4,021,248
+exact numerical channels with eight required faults rejected. The eye fault
+uses original unsaturated-curve cases 20016:20032; the later constant-curve
+interval did not exercise eye dependence and is not accepted as a witness.
+Integrated software-GPU and gameplay qualification remain pending.

@@ -49,8 +49,8 @@ static GLuint prepare(GLenum kind,MString *source){
 int main(void){
  init_gl();
  for(unsigned generation=0;generation<2;generation++){
-  PGRAPHGLState r={0};ShaderModuleCacheEntry *stages=calloc(56,sizeof(*stages)),gs[16]={0},fs[2]={0};
-  ShaderBinding anchors[252]={0};assert(stages);resolved=0;
+  PGRAPHGLState r={0};ShaderModuleCacheEntry *stages=calloc(GL_READY_FF_STAGE_COUNT,sizeof(*stages)),gs[16]={0},fs[2]={0};
+  ShaderBinding anchors[GL_READY_FF_PIPELINE_COUNT]={0};assert(stages);resolved=0;
   for(unsigned i=0;i<16;i++){
    GeomState state;GenGeomGlslOptions opts;pgraph_glsl_geom_dynamic_state(i,&state,&opts);
    gs[i].gl_stage_program=prepare(GL_GEOMETRY_SHADER,pgraph_glsl_gen_geom_dynamic(&state,opts));
@@ -64,20 +64,21 @@ int main(void){
    }
   }
   r.ready_ff.stages=stages;r.ready_ff.pipelines=anchors;r.ready_geom.stages=gs;r.ready_geom.ready=true;r.ready_psh.stages=fs;r.ready_psh.ready=true;
-  ready_ff_init(&r);assert(r.ready_ff.ready&&resolved==56&&glGetError()==GL_NO_ERROR);
-  GLuint native[252],vs[56];for(unsigned i=0;i<56;i++)vs[i]=stages[i].gl_stage_program;
-  for(unsigned i=0;i<252;i++){
+  ready_ff_init(&r);assert(r.ready_ff.ready&&resolved==GL_READY_FF_STAGE_COUNT&&glGetError()==GL_NO_ERROR);
+  GLuint native[GL_READY_FF_PIPELINE_COUNT],vs[GL_READY_FF_STAGE_COUNT];for(unsigned i=0;i<GL_READY_FF_STAGE_COUNT;i++)vs[i]=stages[i].gl_stage_program;
+  for(unsigned i=0;i<GL_READY_FF_PIPELINE_COUNT;i++){
    ShaderBinding borrower={.gl_prog_vs=anchors[i].gl_prog_vs,.gl_prog_gs=anchors[i].gl_prog_gs,.gl_prog_fs=anchors[i].gl_prog_fs};
    assert(pipeline_owner_acquire(&r,&borrower));native[i]=borrower.gl_pipeline;
    GLint valid;glGetProgramPipelineiv(native[i],GL_VALIDATE_STATUS,&valid);assert(valid&&glIsProgramPipeline(native[i]));
    glBindProgramPipeline(native[i]);pipeline_owner_release(&r,&borrower);assert(glIsProgramPipeline(native[i]));
   }
   glBindProgramPipeline(0);ready_ff_pipelines_finalize(&r);pipeline_owner_finalize(&r);
-  for(unsigned i=0;i<252;i++)assert(!glIsProgramPipeline(native[i]));
-  ready_ff_stages_finalize(&r);for(unsigned i=0;i<56;i++)assert(!glIsProgram(vs[i]));free(stages);
+  for(unsigned i=0;i<GL_READY_FF_PIPELINE_COUNT;i++)assert(!glIsProgramPipeline(native[i]));
+  ready_ff_stages_finalize(&r);for(unsigned i=0;i<GL_READY_FF_STAGE_COUNT;i++)assert(!glIsProgram(vs[i]));free(stages);
   for(unsigned i=0;i<16;i++)glDeleteProgram(gs[i].gl_stage_program);
   for(unsigned i=0;i<2;i++)glDeleteProgram(fs[i].gl_stage_program);
   assert(glGetError()==GL_NO_ERROR);
  }
- puts("PASS native FF: two owner generations, each 56 ordinary stages and 252 complete validated VS/GS/FS tuples; all borrowed then retired. NO numerical draws or gameplay timing qualification.");
+ printf("PASS native FF: two owner generations, each %u ordinary stages and %u complete validated VS/GS/FS tuples; all borrowed then retired. NO numerical draws or gameplay timing qualification.\n",
+        GL_READY_FF_STAGE_COUNT,GL_READY_FF_PIPELINE_COUNT);
 }

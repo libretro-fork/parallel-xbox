@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: LGPL-2.1-or-later */
-/* The register-driven fixed-function class uses ordinary shader math and its
+/* The fixed-function families use ordinary shader math and their
  * existing uniform ABI. Only fully validated startup tuples publish coverage.
  * Every owner is borrowed from an existing cache pool on the context thread. */
 static ShaderModuleCacheEntry *ready_ff_find(PGRAPHGLState *r,
@@ -73,8 +73,8 @@ static void ready_ff_init(PGRAPHGLState *r)
         stage->gl_shader = 0;
         module_resolve_uniform_locs(stage);
     }
-    /* Fourteen skin/point groups; each has sixteen geometry and two direct
-     * tuples. Interpolation selects the matching already-linked stage. */
+    /* Each family's fourteen skin/point groups have sixteen geometry and two
+     * direct tuples. Interpolation selects the already-linked stage. */
     for (unsigned i = 0; i < GL_READY_FF_PIPELINE_COUNT; i++) {
         unsigned tuple = i % 18u, group = i / 18u;
         bool geometry = tuple < 16u;
@@ -101,7 +101,8 @@ static void ready_ff_init(PGRAPHGLState *r)
     }
     r->ready_ff.ready = true; /* Complete native coverage, not modules alone. */
 #ifdef XEMU_READY_VSH_DIAGNOSTICS
-    fprintf(stderr, "READY_FF initialized 56 ordinary stages and 252 validated tuples before guest execution\n");
+    fprintf(stderr, "READY_FF initialized %u ordinary stages and %u validated tuples before guest execution\n",
+            GL_READY_FF_STAGE_COUNT, GL_READY_FF_PIPELINE_COUNT);
 #endif
     return;
 unavailable:

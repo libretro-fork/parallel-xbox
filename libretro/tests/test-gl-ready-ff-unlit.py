@@ -112,6 +112,10 @@ def main():
     if idle.is_file() or 'GL_READY_FF_IDLE_LIGHTING' in header:
         assert idle.is_file(), 'Advertised idle-lighting coverage has no numerical fixture'
         subprocess.run([sys.executable,str(idle),str(root),cc],check=True)
+    if 'GL_READY_FF_LITERAL_LIGHTING' in header:
+        literal=root/'libretro/tests/test-gl-ready-ff-literal.py'
+        assert literal.is_file(), 'Advertised literal-lighting coverage has no numerical fixture'
+        subprocess.run([sys.executable,str(literal),str(root),cc],check=True)
 
 
 if __name__=='__main__':main()

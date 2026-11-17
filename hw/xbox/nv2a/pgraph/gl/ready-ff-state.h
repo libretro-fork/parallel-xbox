@@ -8,8 +8,10 @@
  * and interface prefix. z_perspective is not consumed by the vertex generator;
  * geometry still owns it. No persistent key is rewritten by this projection. */
 #define GL_READY_FF_IDLE_LIGHTING 1
-#define GL_READY_FF_STAGE_COUNT 56u
-#define GL_READY_FF_PIPELINE_COUNT 252u
+#define GL_READY_FF_LITERAL_LIGHTING 1
+#define GL_READY_FF_FAMILY_STAGES 56u
+#define GL_READY_FF_STAGE_COUNT (2u * GL_READY_FF_FAMILY_STAGES)
+#define GL_READY_FF_PIPELINE_COUNT (GL_READY_FF_STAGE_COUNT / 4u * 18u)
 
 static inline int ready_ff_state_index(const VshState *s, bool prefix)
 {
@@ -30,8 +32,25 @@ static inline int ready_ff_state_index(const VshState *s, bool prefix)
                          ff->specular_src == MATERIAL_COLOR_SRC_MATERIAL;
     for (unsigned i = 0; i < NV2A_MAX_LIGHTS && idle_lighting; i++)
         if (ff->light[i] != LIGHT_OFF) idle_lighting = false;
-    if (!register_driven && !unlit && !idle_lighting) return -1;
-    if ((unlit || idle_lighting) && !s->fixed_function.texgen_dynamic) {
+    /* Keep these controls literal: replacing them with uniform selects changes
+     * exact light accumulation on both tested drivers. The ordinary dynamic
+     * light loop and texgen still cover all their valid runtime values. */
+    bool literal_lighting = !ff->csv0c_dynamic && ff->lighting &&
+                            !ff->normalization && !ff->local_eye &&
+                            !ff->two_sided && s->specular_enable &&
+                            s->separate_specular && s->ignore_specular_alpha &&
+                            ff->ambient_src == MATERIAL_COLOR_SRC_MATERIAL &&
+                            ff->emission_src == MATERIAL_COLOR_SRC_MATERIAL &&
+                            ff->diffuse_src == MATERIAL_COLOR_SRC_MATERIAL &&
+                            ff->specular_src == MATERIAL_COLOR_SRC_MATERIAL;
+    if (!ff->light_dynamic) {
+        for (unsigned i = 0; i < NV2A_MAX_LIGHTS && literal_lighting; i++)
+            if ((unsigned)ff->light[i] > LIGHT_SPOT) literal_lighting = false;
+    }
+    if (!register_driven && !unlit && !idle_lighting && !literal_lighting)
+        return -1;
+    if ((unlit || idle_lighting || literal_lighting) &&
+        !s->fixed_function.texgen_dynamic) {
         for (unsigned t = 0; t < 4; t++)
             for (unsigned a = 0; a < 4; a++)
                 if ((unsigned)s->fixed_function.texgen[t][a] >
@@ -41,19 +60,31 @@ static inline int ready_ff_state_index(const VshState *s, bool prefix)
      * through the ordinary csv0cCtl,
      * texgenMode and texMatEnable locations. Fog must remain register-driven:
      * converting literal fog changes exact results on llvmpipe. */
-    return (((unsigned)s->fixed_function.skinning * 2u +
-             s->point_params_enable) * 2u + s->smooth_shading) * 2u + prefix;
+    unsigned index = (((unsigned)s->fixed_function.skinning * 2u +
+                       s->point_params_enable) * 2u + s->smooth_shading) * 2u + prefix;
+    /* Preserve existing ready owners when an older family already covers it. */
+    return index + (register_driven || unlit || idle_lighting ?
+                    0u : GL_READY_FF_FAMILY_STAGES);
 }
 
 /* Construct directly in the final module owner's key, not a queue snapshot. */
 static inline void ready_ff_state_init(VshState *s, unsigned index)
 {
     assert(index < GL_READY_FF_STAGE_COUNT);
+    bool literal_lighting = index >= GL_READY_FF_FAMILY_STAGES;
+    if (literal_lighting) index -= GL_READY_FF_FAMILY_STAGES;
     memset(s, 0, sizeof(*s));
     s->is_fixed_function = true;
     s->fog_dynamic = true;
-    s->fixed_function.csv0c_dynamic = true;
+    s->fixed_function.csv0c_dynamic = !literal_lighting;
     s->fixed_function.texgen_dynamic = true;
+    if (literal_lighting) {
+        s->fixed_function.lighting = true;
+        s->fixed_function.light_dynamic = true;
+        s->specular_enable = true;
+        s->separate_specular = true;
+        s->ignore_specular_alpha = true;
+    }
     index >>= 1; /* Prefix belongs to the generator options. */
     s->smooth_shading = index & 1u;
     index >>= 1;
