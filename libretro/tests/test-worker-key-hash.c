@@ -59,6 +59,7 @@ static void *counted_memset(void *p,int value,size_t n){
  return memset(p,value,n);
 }
 #define memset counted_memset
+#undef xxh3_64
 #define xxh3_64 counted_hash
 /* FUNCTIONS */
 #undef xxh3_64

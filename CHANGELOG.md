@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Keep hash-interception regression fixtures compatible with RetroArch’s XXH3 dispatch macros. Explicitly undefine the public macro before installing each test wrapper, retaining strict compiler warnings, real-hash helper calls and all numerical, collision, ownership and failure controls. Runtime hashing is unchanged.
+
+- Make GLSL and direct SPIR-V dynamic fixed-function local/spot light cutoffs reject NaN distances and ranges, matching the ordinary static path while retaining the inclusive boundary. Explicit NaN checks avoid an NVIDIA compiler transformation that defeats an inverted ordered comparison. GPU truth-table tests retain both paths and reject five incorrect guards. Refresh the GL binary-cache revision so old generated code cannot bypass the corrected cutoff. This is a correctness fix; broad prepared-lighting equivalence and performance qualification remain open.
+
 - Extend the disabled GL startup bank to all-material-sourced lighting with no active lights and already-dynamic fog. Reuse the same 56 ordinary stages and 252 native tuples, without new programs or reservations. Active lights, live light-mode controls, mixed material sources and literal fog keep their correct existing paths. Broad lit equivalence and cold-play latency remain unqualified.
 
 - Extend the disabled experimental GL fragment path to fixed-depth 2D shadow comparisons using its existing RGBA texture aliases and control uniforms. Prepare both interpolation variants before draws, with no new sampler owners or cache reservations. Unsupported float-filter shadow modes retain the correct existing path; full cold-play recovery and latency remain unqualified.

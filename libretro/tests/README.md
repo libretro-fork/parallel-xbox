@@ -4526,8 +4526,8 @@ output guards, and reference Zstandard checksum/truncation error recovery.
 Linux defaults to ASan/UBSan. `CHD_CODEC_CFLAGS`, `CHD_CODEC_WORK`,
 `CHD_CODEC_BINARY` and `CHD_CODEC_SKIP_RUN` support cross-compiled native tests.
 FLAC and Huffman dependencies are linked; FLAC audio/CD layouts are not covered
-by this fixture. Cooked DVD CHD mounting is covered separately below. See
-`libretro-common/CHD-UPSTREAM.txt` for the pin and remaining integration rules.
+by this fixture. Cooked DVD CHD mounting is covered separately below. The
+CHD reader is libretro-common's, changed in RetroArch first: see AGENTS.md.
 
 ### Whole-phase ATAPI PIO
 

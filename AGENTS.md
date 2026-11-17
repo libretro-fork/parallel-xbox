@@ -87,3 +87,28 @@ Each of these was a bug in at least one of the cemu, rpcs3, vita3k or xenia core
 - Libraries that pin themselves (statically linked OpenSSL) keep the core loaded after dlclose; build them so they do not.
   Exception: threads upstream itself never joins. QEMU's RCU, vCPU and nv2a threads are ended by standalone's exit(), and its atexit handlers stay registered, so this core pins itself in retro_init (RTLD_NODELETE, a pinned module on Windows); unloaded, those threads ran on unmapped code and RetroArch crashed on close. Everything that can be stopped and joined the way upstream does still is.
 - No downloads at run time; data files ship with the core.
+
+## libretro-common: RetroArch first
+
+`libretro-common/` is a copy of RetroArch's `libretro-common/`
+(https://github.com/libretro/RetroArch), file for file. No file there is
+ever edited in this core.
+
+- **Upstream first.** Anything the core needs changed in libretro-common
+  (a fix, a new function, a new mode of an existing one) is made in
+  RetroArch's `libretro-common/` first, as a patch against RetroArch,
+  with its test under `libretro-common/samples/`. Once RetroArch has it,
+  the core takes it by a resync. A core adaptation that is not a
+  libretro-common change goes in the core's own files.
+- **A resync is a copy, never a merge.** Every file here that RetroArch
+  has is replaced by RetroArch's, so a change made only here is deleted
+  by the next resync. Before one, compare the two: anything this copy has
+  that RetroArch's lacks goes upstream first.
+- **Bring in what the new files need.** A synced file that now needs
+  another (a new source, a new header) brings it along, and the new
+  source is added to every build that lists its neighbour: the
+  Makefiles, the Android and CMake builds, the test scripts.
+- **Follow moved declarations.** Where a function moved to another
+  header, every call site includes the new one. A clean build of the
+  core has no implicit-declaration warning: GCC 14 makes it an error, and
+  older compilers cut the returned pointer to an int.

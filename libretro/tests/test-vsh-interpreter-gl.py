@@ -100,6 +100,8 @@ def run(root, compiler, directory, mutation='', case=None):
 def main():
     root = Path(sys.argv[1]).resolve()
     compiler = sys.argv[2] if len(sys.argv) > 2 else 'cc'
+    subprocess.run([sys.executable, str(Path(__file__).with_name('test-light-range-gl.py')),
+                    str(root), compiler], check=True)
     with tempfile.TemporaryDirectory(prefix='vsh-interpreter-gl-') as temporary:
         directory = Path(temporary)
         positive = directory / 'positive'

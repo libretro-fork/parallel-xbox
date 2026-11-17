@@ -695,8 +695,9 @@ static LightTerms dynamic_light_terms(Context *c, uint32_t index, uint32_t mode,
     uint32_t distance=ext1(c,GLSLstd450Length,c->f,delta);
     uint32_t range_index=binary(c,SpvOpIAdd,c->i,index,integer_id(c, NV_IGRAPH_XF_LTC1_r0));
     uint32_t range=extract(c,lighting_uniform_at(c,L_RANGE,range_index),0);
-    /* Dynamic GLSL continues only for d > range: NaN must reach the body. */
-    uint32_t outside=binary(c,SpvOpFOrdGreaterThan,c->b,distance,range);
+    /* Match the static ordered inclusive cutoff and the GLSL NaN guards.
+     * Unordered greater-than rejects either NaN without extra instructions. */
+    uint32_t outside=binary(c,SpvOpFUnordGreaterThan,c->b,distance,range);
     uint32_t yes=id(c->w), no=id(c->w), range_merge=id(c->w);
     op(c->w,SpvOpSelectionMerge,2,range_merge,0u);op(c->w,SpvOpBranchConditional,3,outside,no,yes);
     op(c->w,SpvOpLabel,1,yes);
