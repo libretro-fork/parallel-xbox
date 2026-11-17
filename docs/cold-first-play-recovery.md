@@ -1,5 +1,35 @@
 # Cold-first-play recovery and regression prevention
 
+## Ready-fragment family adoption experiment, 2026-11-17
+
+The prepared-bank DOA3 cold and own-persistent-warm captures at 39720e5a24
+have zero draw-scoped shader/program compilation, linking or pipeline creation
+from boot through 600 live fight callbacks. Both preserve 599 guest Presents,
+599 completions and audio cadence. NGB and DOA3 external restores in fresh
+processes produce byte-identical parent/candidate images. These are private
+work-count and correctness results, not latency or recovery qualification;
+driver caches remain uncontrolled. Fight C malloc/calloc/realloc/free wrappers
+observe zero calls; 21,000 array-buffer orphan calls and driver allocations
+remain open. Vulkan's synchronous uncovered PSO paths also remain open.
+
+A further private capture attributes all four post-first-frame compiler
+submissions to gated dynamic-fragment families, not draw misses. Their keys
+predate the helper-liveness projection applied by the draw and therefore do
+not match the prepared fragment bank. When that bank is fully native-ready
+and the same projected state passes its coverage predicate, notify adoption
+using the restored exact family key instead of generating/compiling another
+program. Unsupported states and unavailable owners retain the existing path.
+This changes no shader source, uniform ABI, persistent key or cache capacity.
+It remains under the experimental renderer flag, disabled by default.
+
+The source-extracted regression exercises 131,072 available/unavailable,
+legacy/projected, unsupported-mode and exact-key cases and five deliberate
+faults. Existing job lends, source queues, dynamic vertex pairs and resident
+submission controls remain required. Native cold/warm recapture of this
+adoption change, full CI and physical-GPU tail comparisons remain pending.
+Current cold-first-play smoothness remains **BAD/regressed and unqualified**.
+
+
 ## Unlit controls in the existing startup bank, 2026-11-17
 
 A private cold-boot DOA3 capture identified nine actual draw-scoped compiler

@@ -2532,6 +2532,11 @@ static void comb_async_service(PGRAPHGLState *r, unsigned max_items)
         key.kind = GL_FRAGMENT_SHADER;
         key.psh.state = st;
         /* Gated combiners must reach adoption even if cached. */
+#ifdef XEMU_EXPERIMENTAL_READY_VSH
+        if (ready_psh_adopt_gate(r, &st)) {
+            continue;
+        }
+#endif
         fed |= gen_job_push(&key, gate, false);
     }
 

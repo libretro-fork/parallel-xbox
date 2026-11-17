@@ -144,6 +144,7 @@ jobs:
           python3 driver/libretro/tests/test-sibling-queue.py candidate cc 2>&1 | tee results/sibling-queue.log
           python3 driver/libretro/tests/test-gl-spec-preparation.py candidate cc 2>&1 | tee results/gl-spec-preparation.log
           python3 driver/libretro/tests/test-gl-resident-submit.py candidate cc 2>&1 | tee results/gl-resident-submit.log
+          python3 driver/libretro/tests/test-gl-ready-gate.py candidate cc 2>&1 | tee results/gl-ready-gate.log
           python3 driver/libretro/tests/test-gl-binding-pump.py candidate cc 2>&1 | tee results/gl-binding-pump.log
           python3 driver/libretro/tests/test-gl-ready-cover.py candidate cc 2>&1 | tee results/gl-ready-cover.log
           python3 driver/libretro/tests/test-gl-cover-projection.py candidate cc 2>&1 | tee results/gl-cover-projection.log

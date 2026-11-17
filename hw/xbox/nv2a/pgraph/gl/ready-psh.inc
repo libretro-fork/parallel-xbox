@@ -12,6 +12,22 @@ static ShaderModuleCacheEntry *ready_psh_find(PGRAPHGLState *r,
     return &r->ready_psh.stages[!!key->psh.state.smooth_shading];
 }
 
+/* The heuristic queues legacy family keys before the draw applies its
+ * helper-liveness projection. Adopt only when that same draw projection has
+ * a fully linked ready fragment; restore the family's exact key before the
+ * notification hashes it. The caller owns this dequeued metadata record. */
+static bool ready_psh_adopt_gate(PGRAPHGLState *r, PshState *state)
+{
+    if (!r->ready_psh.ready) return false;
+    unsigned depth_format = state->depth_format;
+    uint32_t controls[8];
+    state->depth_format |= DEPTH_FORMAT_HELPER_LIVENESS;
+    bool covered = pgraph_glsl_psh_ready_controls(state, controls);
+    state->depth_format = depth_format;
+    if (covered) pgraph_glsl_psh_dynamic_ready(state);
+    return covered;
+}
+
 static void ready_psh_invalidate(PGRAPHGLState *r, const ShaderBinding *binding)
 {
     if (r->ready_psh.uploaded_binding == binding)

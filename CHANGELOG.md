@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Experimental OpenGL prepared renderer: reuse a fully ready fragment for covered legacy family-adoption requests instead of submitting redundant native compiles. Preserve exact family keys and the correct unavailable/unsupported path. Disabled by default; shader-stutter recovery and Vulkan coverage remain open.
+
 - Let the disabled GL ready bank serve register-driven CSV lighting with literal texgen and texture-matrix controls. Reuse the existing prepared stages and complete native tuples, while rejecting unsupported literal modes. Rendering math, cache capacity, keys and defaults are unchanged; cold-play and latency qualification remain open.
 
 - Extend the disabled GL startup bank to material-sourced lighting with literal normal/eye/back-face and specular controls, while retaining dynamic light modes and texgen. Prepare 56 additional ordinary vertex stages and 252 complete native tuples using existing cache slots. Other lighting controls and literal fog keep their correct existing paths. Cold-play recovery and latency remain unqualified.
