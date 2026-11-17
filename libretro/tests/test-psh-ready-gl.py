@@ -108,11 +108,12 @@ def main():
         body=source[source.index('struct InputInfo {'):source.index('void pgraph_glsl_set_psh_uniform_values(')]
         header=function((r/'hw/xbox/nv2a/pgraph/glsl/common.c').read_text(encoding='utf-8'),'MString *pgraph_glsl_get_vtx_header(')
         generator=pre+header+'\n'+body
+        generator=generator.replace('#include "hw/xbox/nv2a/pgraph/glsl/psh-ready.inc"',(r/'hw/xbox/nv2a/pgraph/glsl/psh-ready.inc').read_text(encoding='utf-8'))
         geometry=Path(__file__).with_name('test-geom-dynamic-gl.c').read_text(encoding='utf-8')
         context=(function(geometry,'static void quiet_abort(')+'\n'+function(geometry,'static void init_gl(')).replace('Geometry GL device=', 'Fragment GL device=')
         driver=Path(__file__).with_suffix('.c').read_text(encoding='utf-8').replace('/* CONTEXT */',context)
         env=dict(os.environ,EGL_PLATFORM='surfaceless',LP_NUM_THREADS='1');env['PATH']=str(Path(shutil.which(args.cc) or args.cc).resolve().parent)+os.pathsep+env.get('PATH','')
-        for mutation in ['', 'depth', 'mode', 'target', 'volume', 'clip', 'alpha', 'combiner', 'helper', 'zero', 'final']:
+        for mutation in ['', 'depth', 'mode', 'target', 'volume', 'clip', 'alpha', 'combiner', 'helper', 'zero', 'final', 'shadow-compare', 'shadow-reference', 'shadow-rectangle']:
             code=driver
             emitted=generator
             if mutation=='zero':
@@ -120,6 +121,12 @@ def main():
                 assert emitted!=generator
             if mutation=='final':
                 emitted=emitted.replace('combFinal0!=0x130e0300u','combFinal0!=0x130e0300u&&combFinal0!=0x130f0300u').replace('(combFinal1&~128u)!=0x1c00u','(combFinal1&0xff7fu)!=0x1c00u')
+                assert emitted!=generator
+            if mutation.startswith('shadow-'):
+                replacement={'shadow-compare':('depth.x<ref','depth.x>ref'),
+                             'shadow-reference':('ref=clamp(p.z/p.w','ref=clamp(p.z'),
+                             'shadow-rectangle':('if((f&1u)!=0u)coord=','if(false)coord=')}[mutation]
+                emitted=emitted.replace(*replacement)
                 assert emitted!=generator
             (d/'generator.c').write_text(emitted,encoding='utf-8')
             change={'depth':'controls[0]^=1;','mode':'controls[1]=0;','target':'for(unsigned j=4;j<8;j++)controls[j]&=~2u;','volume':'for(unsigned j=4;j<8;j++)controls[j]&=~4u;','clip':'controls[0]^=32;','alpha':'glProgramUniform1ui(p,glGetUniformLocation(p,"alphaKillMask"),0);','combiner':'glProgramUniform1ui(p,glGetUniformLocation(p,"combCtl"),s->combiner_control?s->combiner_control-1:0);'}.get(mutation,'')
@@ -137,8 +144,16 @@ def main():
             else:sources += [r/'libretro-common/compat/compat_strl.c'];libs=['-lEGL','-lGL']
             subprocess.run(flags+list(map(str,sources))+['-Wl,--gc-sections','-lm',*libs,'-o',str(exe)],check=True,env=env)
             if not mutation:
+                with c.with_suffix('.shadow.log').open('w') as out:
+                    subprocess.run([str(exe),'--shadow-only'],env=env,stdout=out,stderr=subprocess.STDOUT,timeout=300,check=True)
+                shadow_log=c.with_suffix('.shadow.log').read_text(errors='replace')
+                assert 'PASS independent shadow oracle: 1544 depth/comparison probes, 12352 exact channels,' in shadow_log,shadow_log
+                print(shadow_log,end='',flush=True)
                 run_positive(exe,env,c.with_suffix('.log'))
                 result=subprocess.CompletedProcess([str(exe)],0)
+            elif mutation.startswith('shadow-'):
+                with c.with_suffix('.log').open('w') as out:
+                    result=subprocess.run([str(exe),'--shadow-only'],env=env,stdout=out,stderr=subprocess.STDOUT,timeout=300)
             else:
                 run_negative(exe,env,c.with_suffix('.log'))
                 result=subprocess.CompletedProcess([str(exe)],1)
@@ -146,6 +161,6 @@ def main():
             if not mutation:
                 print(log,end='',flush=True);assert result.returncode==0,(result.returncode,log)
             else:
-                assert result.returncode!=0 and 'fragment difference case=' in log,(mutation,result.returncode,log)
+                assert result.returncode!=0 and (('shadow oracle mismatch' in log or 'shadow coordinate oracle mismatch' in log) if mutation.startswith('shadow-') else 'fragment difference case=' in log),(mutation,result.returncode,log)
                 print('Required ready-fragment control rejected:',mutation,flush=True)
 if __name__=='__main__':main()

@@ -1157,3 +1157,25 @@ CPU-only fixtures exercise valid publication, absent/duplicate/out-of-range or
 identical-value witnesses, wrong exit, timeout and partial-spawn retirement.
 This changes scheduling only, with no renderer or corpus change. Shader/PSO
 cold-play recovery remains BAD/unqualified; this is not gameplay timing evidence.
+
+### Fixed-depth prepared GL shadows (2026-11-17, experimental)
+
+The prepared fragment source now covers shadow flag 1 on 2D PROJECT2D and
+PROJECT3D stages with all eight comparison functions. It samples the existing
+RGBA depth alias using sampler2D, honors rectangle normalization, selects D24
+before float metadata, and matches ordinary D16/D24/511.9375 depth scaling and
+reference clamping. Border adjustment is unused by ordinary shadow sampling and
+is cleared from these controls. Unsupported flags, volumes, cube shadows and
+invalid compare enums reject before any controls are published. Both native
+interpolation programs remain startup-owned; no sampler type, reservation,
+persistent cache schema, payload snapshot or default option changes.
+
+The original 1,308-case / 418,560-scalar fragment corpus and all ten faults remain.
+A separate independent CPU-truth oracle checks 1,544 shadow probes / 12,352 exact
+channels through both ordinary and prepared programs, including every stage,
+projection mode, comparison, rectangle coordinates and depth metadata priority.
+Three additional faults must expose wrong comparison, projective reference or
+rectangle normalization numerically. Existing owner/alias retirement and partial
+startup failure tests remain required. This is experimental coverage only:
+physical cold/warm gameplay, GPU execution cost, Vulkan and full draw readiness
+remain unqualified. The cold-play regression remains BAD/open.
