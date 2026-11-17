@@ -52,6 +52,51 @@ def run_positive(exe, env, log_path):
         assert marker in log,(marker,log)
     print(f'PASS full ready-fragment corpus: 1308 cases, {total} exact checks; {workers} independent contexts, one 300s deadline',flush=True)
 
+def run_negative(exe, env, log_path):
+    """Find a real numerical witness under the unchanged shared watchdog.
+
+    Partition the same complete corpus as the positive run. A witnessed fault
+    ends this negative control; all outstanding contexts are killed and joined.
+    Crashes, compiler errors, malformed ledgers and timeouts are never witnesses.
+    """
+    cpus=len(os.sched_getaffinity(0)) if hasattr(os,'sched_getaffinity') else (os.cpu_count() or 1)
+    workers=min(4,cpus)
+    ranges=[(1308*i//workers,1308*(i+1)//workers) for i in range(workers)]
+    children=[];pending=set();deadline=time.monotonic()+300;witness=False
+    try:
+        for index,(first,limit) in enumerate(ranges):
+            path=log_path.with_name(log_path.stem+'-'+str(index)+log_path.suffix)
+            stream=path.open('w')
+            try:child=subprocess.Popen([str(exe),'--range',str(first),str(limit)],env=env,stdout=stream,stderr=subprocess.STDOUT)
+            except BaseException:stream.close();raise
+            children.append((child,stream,path));pending.add(index)
+        while pending and not witness:
+            if time.monotonic()>=deadline:raise subprocess.TimeoutExpired(str(exe),300)
+            for index in list(pending):
+                child,stream,path=children[index];code=child.poll()
+                if code is None:continue
+                stream.flush();log=path.read_text(errors='replace');first,limit=ranges[index]
+                matches=re.findall(r'fragment difference case=(\d+) scalar=(\d+) old=([0-9a-f]{8}) new=([0-9a-f]{8})',log)
+                if code==1 and len(matches)==1:
+                    case,scalar,old,new=matches[0]
+                    assert first<=int(case)<limit and int(scalar)<320 and old!=new,(path,log)
+                    witness=True;break
+                if code:raise subprocess.CalledProcessError(code,child.args)
+                manifests=re.findall(r'PASS ready fragment: range=(\d+):(\d+) cases=(\d+) checked=(\d+) written=(\d+) discarded=(\d+),',log)
+                assert len(manifests)==1,(path,log)
+                a,b,c,n,w,d=map(int,manifests[0])
+                assert (a,b,c,n)==(first,limit,limit-first,(limit-first)*320),(path,log)
+                pending.remove(index)
+            if pending and not witness:time.sleep(.01)
+        assert witness,'negative control produced no numerical difference'
+    finally:
+        for child,stream,path in children:
+            if child.poll() is None:child.kill()
+        for child,stream,path in children:child.wait();stream.close()
+        with log_path.open('w') as out:
+            out.write(f'Negative corpus: {workers} independent contexts, 1308 cases, shared 300s deadline; retire siblings after numerical witness\n')
+            for child,stream,path in children:out.write(path.read_text(errors='replace'))
+
 def main():
     ap=argparse.ArgumentParser(description=__doc__);ap.add_argument('root',type=Path);ap.add_argument('cc',nargs='?',default='cc');ap.add_argument('--keep',type=Path);args=ap.parse_args();r=args.root.resolve()
     subprocess.run([sys.executable,str(Path(__file__).with_name('test-psh-ready-runner.py')),str(r),args.cc],check=True)
@@ -95,7 +140,8 @@ def main():
                 run_positive(exe,env,c.with_suffix('.log'))
                 result=subprocess.CompletedProcess([str(exe)],0)
             else:
-                with c.with_suffix('.log').open('w') as out: result=subprocess.run([str(exe)],env=env,stdout=out,stderr=subprocess.STDOUT,timeout=300)
+                run_negative(exe,env,c.with_suffix('.log'))
+                result=subprocess.CompletedProcess([str(exe)],1)
             log=c.with_suffix('.log').read_text(errors='replace')
             if not mutation:
                 print(log,end='',flush=True);assert result.returncode==0,(result.returncode,log)

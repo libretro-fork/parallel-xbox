@@ -72,4 +72,22 @@ with tempfile.TemporaryDirectory(prefix='ready-fragment-ledger-') as tmp:
             subprocess.Popen = original_popen
             setattr(os, affinity_name, original_affinity)
             runner.time = original_time
-print('PASS ready-fragment runner: 1/2/4/capped contexts, nine required ledger/failure controls; CPU-only metadata checks', flush=True)
+    for fault in ['', 'absent', 'exit', 'range', 'scalar', 'same', 'duplicate', 'timeout', 'spawn']:
+        started=[]
+        child_env=dict(env,READY_RUNNER_NEGATIVE=fault)
+        if fault=='timeout':
+            ticks=iter([0]+[301]*20)
+            runner.time=types.SimpleNamespace(monotonic=lambda:next(ticks),sleep=lambda value:None)
+        def launch(*args,**kwargs):
+            if fault=='spawn' and started:raise OSError('deliberate negative launch failure')
+            child=original_popen(*args,**kwargs);started.append(child);return child
+        subprocess.Popen=launch
+        try:
+            error=None
+            try:runner.run_negative(exe,child_env,d/f'negative-{fault or "valid"}.log')
+            except (AssertionError,subprocess.CalledProcessError,subprocess.TimeoutExpired,OSError) as failure:error=type(failure).__name__
+            assert bool(error)==bool(fault),(fault,error)
+            assert started and all(child.poll() is not None for child in started)
+        finally:
+            subprocess.Popen=original_popen;runner.time=original_time
+print('PASS ready-fragment runner: positive ledgers and negative numerical-witness validation; bounded contexts/watchdog and child retirement',flush=True)
