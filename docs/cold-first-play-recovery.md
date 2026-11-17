@@ -1223,3 +1223,28 @@ remain required. CPU checks reject every active light slot, dynamic light mode,
 each non-material source, invalid texgen and all existing unsupported boundaries.
 Broad literal lighting conversion is still rejected, not reclassified as passing.
 GPU latency, whole coverage and cold-play recovery remain BAD/unqualified.
+
+For `abacd323e7`, RTX 5090 and llvmpipe passed the supplementary 4,021,248
+exact checks and all three faults. The original native unlit corpus retained
+1,331,712 exact checks and all five faults. CPU source projection retained
+14,336 byte-identical source comparisons on current and historical headers;
+owner tests retained eight faults, partial failures and the same reservations.
+Historical candidates without the advertised capability retain their original
+full domains; advertised coverage with a missing supplementary fixture fails.
+
+The private DOA3 cold-boot trace recorded three draw-critical CompileShader
+sites rather than four. Their raw key hashes are the same three active-lit
+states as the parent; exactly one static all-OFF lit key disappeared, with no
+new key. Cold draw-pipeline creations fell from six to five. A fresh-process
+persistent-warm run retained one draw compilation and one draw-pipeline creation.
+Both runs preserved 600 fight callbacks / 599 guest Presents and completions,
+correct audio/video cadence, and zero fight shader/program/pipeline creation
+or C malloc/calloc/realloc/free. The 21,000 array-buffer orphan uploads remain.
+NGB and DOA3 external restores matched parent image bytes exactly. Private hooks
+were removed and coherent GL objects rebuilt before the image checks.
+
+These are correctness and work-count results only. Software-GPU validation ran
+concurrently, private instrumentation changes timing, driver-cache state is not
+controlled, and fight cameras are not paired. No frame-time or global allocation
+claim follows. Three cold active-lit misses, GPU cost, cold/warm latency recovery
+and Vulkan coverage remain open; experimental defaults remain disabled.
