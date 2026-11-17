@@ -1075,3 +1075,16 @@ Full prepared coverage, remaining synchronous misses, native first-use
 behavior on both renderers, cold/warm tail recovery and remaining gameplay
 allocations are still open. The overall cold-first-play regression stays
 **BAD/unqualified**.
+
+### Fragment fault-worker scheduling (2026-11-17)
+
+The ten existing fragment negative controls now search the same 1,308 cases in
+at most four independent contexts under one shared 300-second watchdog per
+control. A completed worker must report its exact range, case and scalar counts;
+a failing worker qualifies only with exit 1 and one in-range numerical mismatch
+whose old/new values differ. Crashes, malformed witnesses, all-pass runs and
+expired watchdogs fail. On a witness or failure, kill and join remaining children.
+CPU-only fixtures exercise valid publication, absent/duplicate/out-of-range or
+identical-value witnesses, wrong exit, timeout and partial-spawn retirement.
+This changes scheduling only, with no renderer or corpus change. Shader/PSO
+cold-play recovery remains BAD/unqualified; this is not gameplay timing evidence.

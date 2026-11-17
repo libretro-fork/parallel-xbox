@@ -24,6 +24,23 @@ int main(int argc, char **argv)
         sleep(60);
 #endif
     }
+    const char *negative = getenv("READY_RUNNER_NEGATIVE");
+    if (negative && !strcmp(negative, "timeout")) {
+#ifdef _WIN32
+        Sleep(60000);
+#else
+        sleep(60);
+#endif
+    }
+    if (negative && limit == 1308 && strcmp(negative, "absent")) {
+        if (!strcmp(negative, "exit")) return 17;
+        unsigned which = !strcmp(negative, "range") ? first - 1 : first;
+        unsigned scalar = !strcmp(negative, "scalar") ? 320 : 0;
+        const char *value = !strcmp(negative, "same") ? "00000000" : "3f800000";
+        fprintf(stderr, "fragment difference case=%u scalar=%u old=00000000 new=%s\n", which, scalar, value);
+        if (!strcmp(negative, "duplicate")) fprintf(stderr, "fragment difference case=%u scalar=0 old=00000000 new=3f800000\n", first);
+        return 1;
+    }
     if (!first && strcmp(fault, "oracle")) {
         puts("PASS independent half-plane/window/volume oracle:");
     }

@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Keep the complete fragment fault corpus within its existing CI watchdog by searching up to four independent ranges concurrently. Only a validated numerical mismatch rejects an injected fault; crashes, malformed output and timeouts fail the check. Join every remaining context when a witness is found. Rendering code, positive coverage and the 300-second budget are unchanged.
+
 - Compile the vertex partition fixture with the guard's real scheduling helper after its extraction into a function. Retain the independent 42,512-case coverage/balance oracle and lost-slot rejection control, including older inline guards. This fixes a contracts-link failure; runtime code and numerical corpora are unchanged.
 
 - Keep CPU source-owner checks and extended interpreter cases in their own test domains. They no longer inherit the direct Vulkan oracle's temporary-file dependency or its fixed 42,512-case bitmap. Preserve their complete original corpora, exact comparisons and fault controls; production renderer code is unchanged.
