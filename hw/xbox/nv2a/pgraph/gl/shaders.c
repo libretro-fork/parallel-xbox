@@ -43,7 +43,7 @@ static void spec_binding_cancel(PGRAPHGLState *r);
 
 /* xemu_version follows upstream, so fork-only generator changes need their
  * own binary-cache revision. Bump this when generated shader semantics change. */
-static const char shader_codegen_version[] = "specular-coefficients-1";
+static const char shader_codegen_version[] = "ordered-light-range-2";
 
 /* Deleting a program frees its GL name for reuse: drop any uniform cache
  * held against that name so a future program cannot inherit it. */

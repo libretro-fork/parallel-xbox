@@ -118,7 +118,9 @@ static void gen_dynamic_lights(MString *body, const VshState *state)
         "    float d = length(VP);\n"
         /* The XDK stamps 1e30 into the range register for directional
          * lights, pointless unless the silicon consumes the cutoff. */
-        "    if (d > lightLocalRange(i)) { continue; }\n"
+        /* Unlike an inverted <= comparison, explicit isnan guards retain
+         * the static path's ordered inclusive cutoff on NVIDIA GLSL too. */
+        "    if (isnan(d) || isnan(lightLocalRange(i)) || d > lightLocalRange(i)) { continue; }\n"
         "    VP = normalize(VP);\n"
         "    attenuation = 1.0 / (lightLocalAttenuation[i].x\n"
         "                           + lightLocalAttenuation[i].y * d\n"

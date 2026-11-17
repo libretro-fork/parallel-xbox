@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Make GLSL and direct SPIR-V dynamic fixed-function local/spot light cutoffs reject NaN distances and ranges, matching the ordinary static path while retaining the inclusive boundary. Explicit NaN checks avoid an NVIDIA compiler transformation that defeats an inverted ordered comparison. GPU truth-table tests retain both paths and reject five incorrect guards. Refresh the GL binary-cache revision so old generated code cannot bypass the corrected cutoff. This is a correctness fix; broad prepared-lighting equivalence and performance qualification remain open.
+
 - Keep the complete fragment fault corpus within its existing CI watchdog by searching up to four independent ranges concurrently. Only a validated numerical mismatch rejects an injected fault; crashes, malformed output and timeouts fail the check. Join every remaining context when a witness is found. Rendering code, positive coverage and the 300-second budget are unchanged.
 
 - Compile the vertex partition fixture with the guard's real scheduling helper after its extraction into a function. Retain the independent 42,512-case coverage/balance oracle and lost-slot rejection control, including older inline guards. This fixes a contracts-link failure; runtime code and numerical corpora are unchanged.

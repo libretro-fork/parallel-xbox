@@ -1088,3 +1088,64 @@ CPU-only fixtures exercise valid publication, absent/duplicate/out-of-range or
 identical-value witnesses, wrong exit, timeout and partial-spawn retirement.
 This changes scheduling only, with no renderer or corpus change. Shader/PSO
 cold-play recovery remains BAD/unqualified; this is not gameplay timing evidence.
+
+### Dynamic light-range ordering (2026-11-17)
+
+Broad literal-lighting conversion to the existing prepared CSV0_C source failed
+exact comparisons on RTX 5090 and llvmpipe, and remains excluded. An additional
+private domain retained all original lighting inputs while projecting dynamic
+fog onto both reference and candidate. This uncovered a concrete cutoff mismatch:
+static local/spot lights enter only when distance <= range; the dynamic loop's
+old distance > range rejection admits unordered comparisons. On NVIDIA, simply
+inverting <= still produces the wrong NaN result. Explicit isnan checks on both
+operands retain the ordered inclusive cutoff.
+
+The independent GPU predicate fixture compiles the actual emitted dynamic guard,
+retains the ordinary static predicate, and compares 144 IEEE input pairs against
+CPU truth using classification plus less-than/equality. It covers NaNs, infinity,
+signed zeros, finite boundaries and small/large finite values: 576 exact channels
+per positive path. Five incorrect guards must produce numerical mismatches.
+This fixes one semantic prerequisite for prepared lighting; it does not certify
+all lit stages, eliminate the four remaining cold misses or prove a speedup.
+Shader/PSO cold-play recovery remains BAD/unqualified.
+
+The range-guard fixture passed both actual predicates (1,152 exact channels)
+and all five numerical fault controls on RTX 5090 and llvmpipe. The complete
+existing 42,512-case GL interpreter corpus retained 69,379,584 comparisons per
+GPU. Its nine llvmpipe controls and eight applicable native controls also passed;
+the existing literal-fold-specific control remains llvmpipe-only, with LIT-result
+required on both. This does not certify the broader active-light conversion:
+the supplementary all-material domain still fails exact arithmetic checks.
+Default-core cold/warm gameplay, compiler/driver cost and remote CI qualification
+remain open for this candidate. No latency improvement is claimed.
+
+The GL binary-cache generator revision advances from specular-coefficients-1 to
+ordered-light-range-2, because the ordinary generated stage semantics changed.
+Old linked-program and separable-stage binaries reject through the existing
+version check; keys, seed recipes and cache format/layout are unchanged. Vulkan
+stores no corresponding generated SPIR-V binary cache here; its driver cache
+identifies newly supplied shader words by their content.
+
+The direct SPIR-V dynamic-light emitter uses unordered greater-than for rejection,
+matching the GLSL NaN guards and static ordered inclusive acceptance. This changes
+one comparison opcode, without growing emitted instruction or word counts. Both
+backends must change together: retaining the old ordered greater-than opcode would
+preserve the same unordered-input bug and break corrected cross-backend checks.
+
+Final normal-build qualification for this correctness fix: the two affected
+4,096-case direct-SPIR-V batches passed on both RTX 5090 and llvmpipe, each with
+13,369,344 exact scalar checks across both batches, zero differences and zero
+validation errors. Restoring the old SPIR-V comparison in a private one-case
+control produced 96 numerical differences with validation still enabled.
+All 39,056 standalone direct vertex modules passed spirv-val as well.
+
+Fresh-process NGB and DOA3 restores matched parent image bytes exactly in both
+OpenGL and Vulkan after rebuilding the default core with the final code.
+Eight default-core DOA3 runs covered parent/candidate cold and own-cache
+persistent-warm starts on each renderer. Every run preserved 600 fight callbacks,
+599 guest Presents/completions and correct audio/video cadence, with zero image
+readback allocations. The warm runs used only caches from their own cold runs.
+Unrelated native builds were active, so callback timings were deliberately not
+analyzed and isolated performance remains unqualified. This is a range/caching
+correctness fix, not shader-stutter recovery; the BAD/open recovery status and
+experimental shader-bank defaults are unchanged. Remote CI remains pending.
