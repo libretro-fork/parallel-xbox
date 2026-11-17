@@ -42,6 +42,7 @@ static ShaderSource *vk_module_spirv(const ShaderModuleCacheKey *key){(void)key;
 static ShaderModuleInfo *pgraph_vk_create_shader_module_from_spirv(PGRAPHVkState *r,ShaderSource *s){assert(!r->info.refs&&r->entry.node.hash==expected_hash);r->creates++;r->fallbacks+=s==&sources[2];r->info.source=s->id;return &r->info;}
 static void pgraph_vk_ref_shader_module(ShaderModuleInfo *m){m->refs++;}
 static void pgraph_vk_unref_shader_module(PGRAPHVkState *r,ShaderModuleInfo *m){(void)r;assert(m->refs);m->refs--;}
+#undef xxh3_64
 #define xxh3_64 counted_hash
 /* FUNCTIONS */
 #undef xxh3_64

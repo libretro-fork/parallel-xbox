@@ -6,6 +6,7 @@
 static bool boost,collision;
 static bool pgraph_gpu_boost_gl(void) {return boost;}
 static uint64_t fixture_hash(const uint8_t *p,size_t n,uint64_t seed __attribute__((unused))) {return collision?7:xxh3_64(p,n, 0);}
+#undef xxh3_64
 #define xxh3_64 fixture_hash
 typedef unsigned GLenum;
 #define GL_GEOMETRY_SHADER 0x8DD9

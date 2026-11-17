@@ -89,7 +89,9 @@ static uint64_t counted_pair(const void *a,size_t na,const void *b,size_t nb,uin
 #endif
  return xxh3_64_pair(a,na,b,nb,seed);
 }
+#undef xxh3_64_pair
 #define xxh3_64_pair counted_pair
+#undef xxh3_64
 #define xxh3_64 counted_hash
 /* FUNCTIONS */
 #undef xxh3_64

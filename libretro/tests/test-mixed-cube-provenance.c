@@ -42,6 +42,7 @@ static uint64_t tracked_hash(const uint8_t *data,size_t len,uint64_t seed __attr
  }
  return xxh3_64(data,len, 0);
 }
+#undef xxh3_64
 #define xxh3_64 tracked_hash
 static bool replace_next;
 static unsigned ram_uploads;

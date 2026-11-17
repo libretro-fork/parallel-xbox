@@ -82,6 +82,7 @@ static void pump_submit(LibJob *job) {
  assert(job->nmods==(with_geom?3:2) && job->mods[0]==&modules[0] && job->mods[job->nmods-1]==&modules[2]);
  submitted++;
 }
+#undef xxh3_64
 #define xxh3_64 checked_key_hash
 /* PRODUCTION */
 #undef xxh3_64

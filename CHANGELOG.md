@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Keep hash-interception regression fixtures compatible with RetroArch’s XXH3 dispatch macros. Explicitly undefine the public macro before installing each test wrapper, retaining strict compiler warnings, real-hash helper calls and all numerical, collision, ownership and failure controls. Runtime hashing is unchanged.
+
 - Make GLSL and direct SPIR-V dynamic fixed-function local/spot light cutoffs reject NaN distances and ranges, matching the ordinary static path while retaining the inclusive boundary. Explicit NaN checks avoid an NVIDIA compiler transformation that defeats an inverted ordered comparison. GPU truth-table tests retain both paths and reject five incorrect guards. Refresh the GL binary-cache revision so old generated code cannot bypass the corrected cutoff. This is a correctness fix; broad prepared-lighting equivalence and performance qualification remain open.
 
 - Keep the complete fragment fault corpus within its existing CI watchdog by searching up to four independent ranges concurrently. Only a validated numerical mismatch rejects an injected fault; crashes, malformed output and timeouts fail the check. Join every remaining context when a witness is found. Rendering code, positive coverage and the 300-second budget are unchanged.

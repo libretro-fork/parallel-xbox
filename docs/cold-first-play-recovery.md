@@ -1149,3 +1149,14 @@ Unrelated native builds were active, so callback timings were deliberately not
 analyzed and isolated performance remains unqualified. This is a range/caching
 correctness fix, not shader-stutter recovery; the BAD/open recovery status and
 experimental shader-bank defaults are unchanged. Remote CI remains pending.
+
+### XXH3 fixture interception after the RetroArch resync (2026-11-17)
+
+The refreshed public XXH3 header defines a function-like dispatch macro. The
+pipeline-ahead fixture and five other hash-count/provenance fixtures now undefine
+the imported macro immediately before installing their own scoped interceptor.
+Their real-hash helpers remain above that boundary, so helper calls still use
+the public implementation and the production sections still reach the checked
+wrappers. Strict -Werror, case counts, collision checks and fault controls are
+unchanged. No libretro-common file or runtime code changes. Cold-play recovery
+and its existing failed/unqualified performance status remain open.
