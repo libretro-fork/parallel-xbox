@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Tests: exercise the actual historical gated-fragment submission path when replaying revisions before prepared-family adoption; keep the new ready-owner and exact-key checks for revisions that implement it.
+
 - Experimental OpenGL prepared renderer: reuse a fully ready fragment for covered legacy family-adoption requests instead of submitting redundant native compiles. Preserve exact family keys and the correct unavailable/unsupported path. Disabled by default; shader-stutter recovery and Vulkan coverage remain open.
 
 - Let the disabled GL ready bank serve register-driven CSV lighting with literal texgen and texture-matrix controls. Reuse the existing prepared stages and complete native tuples, while rejecting unsupported literal modes. Rendering math, cache capacity, keys and defaults are unchanged; cold-play and latency qualification remain open.

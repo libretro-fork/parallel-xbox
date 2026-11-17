@@ -1,5 +1,18 @@
 # Cold-first-play recovery and regression prevention
 
+## Ready-gate replay contract, 2026-11-17
+
+The ready-family fixture now extracts the actual gated queue-submission block
+for every revision. Earlier revisions verify 131,072 legacy submissions and
+two rejecting controls; prepared revisions verify ready adoption, retained
+unsupported submissions, exact family metadata and five rejecting controls.
+This avoids demanding a helper from a revision before it existed. Missing
+new fixtures on a selected prepared revision remain failures. Runtime bytes
+are unchanged from 6192cd81b1; its private cold and own-seeds-warm captures
+show zero post-startup compiler calls through 600 fight callbacks, with the
+existing cadence checks. This is work attribution, not latency qualification.
+The shader-stutter regression and Vulkan readiness remain open.
+
 ## Ready-fragment family adoption experiment, 2026-11-17
 
 The prepared-bank DOA3 cold and own-persistent-warm captures at 39720e5a24
