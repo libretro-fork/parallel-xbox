@@ -48,6 +48,12 @@ static __attribute__((unused)) bool pgraph_is_texture_enabled(PGRAPHState *pg,un
 static unsigned sampled_texture_key_load(const uint8_t *key){(void)key;return 0;}
 static void sampled_texture_put(unsigned *pool,unsigned key,GLuint name){(void)pool;(void)key;for(unsigned i=0;i<8;i++)if(machine.pgraph.gl_renderer_state->ready_psh.aliases[i]==name)assert(!(machine.pgraph.gl_renderer_state->ready_psh.aliases_valid&(1u<<i)));for(unsigned i=0;i<12;i++)for(unsigned j=0;j<2;j++)if(bound[i][j]==name)bound[i][j]=0;}
 static void obj_pool_give(unsigned *pool,TextureBinding *b){(void)pool;assert(!b->refcnt);returned++;}
+#ifdef FIXTURE_READY_GATE
+static unsigned gate_notifications,gate_depth;
+void pgraph_glsl_psh_dynamic_ready(const PshState *state){
+ assert((unsigned)state->depth_format==gate_depth);gate_notifications++;
+}
+#endif
 /* SELECTOR */
 /* PRODUCTION */
 /* RETIREMENT */
@@ -65,6 +71,14 @@ int main(void){
   ready_psh_init(&r);assert(!r.ready_psh.ready&&!r.ready_psh.stages&&freed==2&&!source_live&&!alive[1]&&!alive[2]);assert(active==GL_TEXTURE0+3);
  }
  setup(&r,slots);ready_psh_init(&r);assert(r.ready_psh.ready&&r.ready_psh.stages==slots&&!freed&&!source_live&&created==2&&detached==2&&routes==24&&route_sum==132);
+#ifdef FIXTURE_READY_GATE
+ PshState gated={.combiner_dynamic=true},exact=gated;gate_depth=0;gate_notifications=0;
+ assert(ready_psh_adopt_gate(&r,&gated)&&gate_notifications==1&&!memcmp(&gated,&exact,sizeof(gated)));
+ r.ready_psh.ready=false;
+ assert(!ready_psh_adopt_gate(&r,&gated)&&gate_notifications==1&&!memcmp(&gated,&exact,sizeof(gated)));
+ r.ready_psh.ready=true;gated.shader_stage_program=31;exact=gated;
+ assert(!ready_psh_adopt_gate(&r,&gated)&&gate_notifications==1&&!memcmp(&gated,&exact,sizeof(gated)));
+#endif
  ShaderBinding a={.state.psh={.depth_format=DEPTH_FORMAT_HELPER_LIVENESS,.combiner_dynamic=true},.ready_psh=true,.gl_prog_fs=1},b=a;
  a.state.psh.shader_stage_program=1;b.state.psh.shader_stage_program=2;b.state.psh.dim_tex[0]=3;a.state.psh.dim_tex[0]=2;
  for(unsigned i=0;i<4;i++){a.state.psh.dim_tex[i]=i?2:a.state.psh.dim_tex[i];b.state.psh.dim_tex[i]=i?2:b.state.psh.dim_tex[i];}

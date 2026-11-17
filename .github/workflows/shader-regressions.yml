@@ -476,6 +476,11 @@ jobs:
         with:
           ref: ${{ matrix.commit }}
           filter: blob:none
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          path: driver
+          filter: blob:none
       - name: Install software GL headers
         run: |
           sudo apt-get update
@@ -484,7 +489,7 @@ jobs:
       - name: Check native fragment owners, aliases and partial startup failure
         run: |
           set -euo pipefail
-          python3 libretro/tests/test-ready-psh-owner.py . cc 2>&1 | tee results/fragment-owners.log
+          python3 driver/libretro/tests/test-ready-psh-owner.py . cc 2>&1 | tee results/fragment-owners.log
       - name: Compare ready fragments with ordinary color, depth and discard
         run: |
           set -euo pipefail

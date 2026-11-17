@@ -1,5 +1,21 @@
 # Cold-first-play recovery and regression prevention
 
+## Prepared fragment owner fixture, 2026-11-17
+
+The first replay caught an unused-function error under -Werror: the complete
+fragment owner include gained family adoption, but its isolated owner fixture
+never called that helper. Exercise covered adoption, unavailable owners and
+unsupported states while preserving the exact metadata key. Keep all 29
+startup failures and eleven existing ownership/alias/teardown mutations.
+Native Windows and Linux CPU fixtures pass for current and original 4ebf06d6d6
+sources. Replay uses the current owner fixture driver against each immutable
+revision, so the fix also verifies the originally failing revision without
+editing its runtime. No runtime or numerical comparison changes are involved.
+The complete CSV/texgen numerical and six fault-control rerun passed after the
+prior Windows temporary-file cleanup failure; retain that original failure
+separately. Full renderer CI and cold/warm latency qualification remain open.
+
+
 ## Ready-gate replay contract, 2026-11-17
 
 The ready-family fixture now extracts the actual gated queue-submission block

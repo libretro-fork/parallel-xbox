@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Tests: exercise prepared fragment-family adoption in the strict ownership fixture and use the current fixture driver for historical CI replay. Preserve every startup, alias and teardown fault control; renderer behavior is unchanged.
+
 - Tests: exercise the actual historical gated-fragment submission path when replaying revisions before prepared-family adoption; keep the new ready-owner and exact-key checks for revisions that implement it.
 
 - Experimental OpenGL prepared renderer: reuse a fully ready fragment for covered legacy family-adoption requests instead of submitting redundant native compiles. Preserve exact family keys and the correct unavailable/unsupported path. Disabled by default; shader-stutter recovery and Vulkan coverage remain open.

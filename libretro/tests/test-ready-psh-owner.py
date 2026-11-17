@@ -22,6 +22,8 @@ for signature in ['void pgraph_gl_tex_shadow_reset(', 'void pgraph_gl_tex_shadow
 surface=(r/'hw/xbox/nv2a/pgraph/gl/surface.c').read_text(encoding='utf-8')
 for signature in ['static void render_surface_to(', 'void render_surface_to_texture(', 'void pgraph_gl_render_cube_faces_to_texture(']:assert 'assert(texture_unit >= 0 && texture_unit < NV2A_MAX_TEXTURES);' in function(surface,signature)
 template=Path(__file__).with_suffix('.c').read_text(encoding='utf-8').replace('/* SELECTOR */',selector)
+if 'static bool ready_psh_adopt_gate(' in source:
+ template='#define FIXTURE_READY_GATE 1\n'+template
 env=dict(os.environ);env['PATH']=str(Path(shutil.which(cc) or cc).resolve().parent)+os.pathsep+env.get('PATH','')
 with tempfile.TemporaryDirectory(prefix='ready-psh-owner-') as tmp:
  d=Path(tmp);(d/'qemu').mkdir();(d/'qemu/osdep.h').write_text('#include <stdint.h>\n#include <stddef.h>\n#include <stdbool.h>\n#include <stdlib.h>\n');(d/'qemu/mstring.h').write_text('typedef struct MString MString;\n')
