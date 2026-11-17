@@ -1179,3 +1179,27 @@ rectangle normalization numerically. Existing owner/alias retirement and partial
 startup failure tests remain required. This is experimental coverage only:
 physical cold/warm gameplay, GPU execution cost, Vulkan and full draw readiness
 remain unqualified. The cold-play regression remains BAD/open.
+
+Validation for the fixed-depth shadow change (`c5eba42218`): RTX 5090 and
+llvmpipe both passed the original 418,560 exact scalar checks, independent
+12,352-channel shadow oracle and all thirteen injected faults. Native and Linux
+owner/alias tests retained all eleven failure controls. Two native owner
+generations each prepared 56 vertex stages and validated 252 full native tuples.
+NGB and DOA3 fresh-process external restores matched parent image bytes exactly.
+
+A private cold DOA3 boot through 600 fight callbacks captured four draw-scoped
+CompileShader sites, down from the unlit extension's six. All four raw key hashes
+are unchanged lit vertex states; exactly two fixed-depth fragment keys disappeared,
+with no new miss keys. The fresh-process persistent-warm run retained one boot
+draw compilation. Both runs had zero fight compilation/program/pipeline creation
+calls, no C malloc/calloc/realloc/free in those fight callbacks, and advanced 599
+guest Presents and completions with correct audio/video cadence. This does not
+cover OS/driver allocation: 21,000 array-buffer orphan uploads remain in each
+fight sample. Private hooks were removed and clean coherent GL objects rebuilt.
+
+This is work attribution, not a latency improvement or recovery qualification.
+Each run used a fresh private app profile; warm persistent caches came only from
+its own cold run. Driver cache state is uncontrolled and fight cameras are not
+paired. Private stack/key capture and allocator instrumentation alter timing.
+Four cold lit-stage misses, GPU shader cost, startup cost, repeatable latency
+and Vulkan ready coverage remain open. No default experimental flag was enabled.
