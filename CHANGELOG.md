@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Tests: select fixed-function-bank checks only after the bank exists in a historical revision, reject incomplete advertised banks and missing fixtures, and check VFS negotiation against that revision's public v6/v7 ABI. Keep original shader numerical and file-read corpora.
+
 - Tests: exercise prepared fragment-family adoption in the strict ownership fixture and use the current fixture driver for historical CI replay. Preserve every startup, alias and teardown fault control; renderer behavior is unchanged.
 
 - Tests: exercise the actual historical gated-fragment submission path when replaying revisions before prepared-family adoption; keep the new ready-owner and exact-key checks for revisions that implement it.

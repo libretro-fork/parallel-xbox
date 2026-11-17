@@ -1,5 +1,45 @@
 # Cold-first-play recovery and regression prevention
 
+## Replay capabilities and current qualification, 2026-11-17
+
+An older full replay exposed two additional historical mismatches: demanding
+FF-bank files from main revisions before the feature was introduced, and
+requiring VFS7 negotiation from the earlier VFS6 public ABI. Select the FF
+contracts explicitly by source capability. A partial/advertised implementation,
+missing stage contract or missing fixture remains a hard error. The standalone
+scope regression checks 258 presence/advertisement/missing-contract cases.
+Historical absence is recorded as historical, not a successful FF test; those
+revisions still run the unchanged original shader numerical/compiler suites.
+VFS expectations come from the public ABI's V7 identity definition, not from
+the tested negotiation implementation. Keep every offered version and all
+6,390 positional/short/EOF/decline/gap cases on both v6 and v7 source trees.
+Native Windows and Linux sanitizer checks pass for both real revisions.
+
+Twelve serial clean DOA3 headless runs retain boot, menu, fight entry and all
+600 fight callbacks per run. Cold fight p99 medians are 9.716 ms for main and
+10.262 ms for the prepared candidate; the fresh-boot camera/workload differs,
+so this is no matched-scene or display-latency qualification. No fight callback
+exceeds the frame budget. Startup callback cost is real and retained: roughly
+62-64 ms on main and 156-161 ms with the prepared bank. Physical driver cache
+state is uncontrolled; do not claim cold-driver-cache recovery.
+
+A longer, separately captured NGB restore reveals one reproducible pixel
+at (614,389), after 600 callbacks, changing from RGB (76,64,54) on main to
+(70,57,50) with the experiment. Three process pairs reproduce it. Private
+stage-selection controls and projection controls attribute it to the explicit
+helper-liveness projection, including ordinary shaders when prepared-stage
+selection is disabled. Full-ready vertex/geometry gating does not resolve it.
+Private depth precision/invariance/reciprocal variants also do not resolve it;
+none were imported. Source bytes were restored and coherent clean objects
+rebuilt after every probe. This difference remains OPEN, and the candidate is
+not rendering-equivalent at that longer checkpoint. Earlier 100-frame restore
+matches and full numerical corpora do not certify that broader claim.
+
+These changes affect tests and documentation only. The experimental runtime
+remains 6192cd81b1, flags remain disabled by default, and physical cold-play
+smoothness is still BAD/regressed and unqualified. Vulkan draw misses and
+21,000 GL array-buffer orphan calls per captured fight remain open work.
+
 ## Prepared fragment owner fixture, 2026-11-17
 
 The first replay caught an unused-function error under -Werror: the complete
