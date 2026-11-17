@@ -50,11 +50,11 @@ static int64_t read_at(struct retro_vfs_file_handle *f, void *dst,
 static struct retro_vfs_interface vfs = {
     .seek=seek_file, .read=read_file, .read_at=read_at
 };
-static unsigned offered, requests[2], requested;
+static unsigned offered, requests[3], requested;
 static bool environment(unsigned cmd, void *data)
 {
     struct retro_vfs_interface_info *info=data;
-    assert(cmd == RETRO_ENVIRONMENT_GET_VFS_INTERFACE && requested < 2);
+    assert(cmd == RETRO_ENVIRONMENT_GET_VFS_INTERFACE && requested < 3);
     requests[requested++]=info->required_interface_version;
     if (info->required_interface_version > offered) {
         info->iface = &vfs; /* A failed frontend may leave stale output. */
@@ -67,12 +67,15 @@ static bool environment(unsigned cmd, void *data)
 int main(void)
 {
     unsigned cases=0;
-    for (offered=0;offered<=6;offered++) {
+    for (offered=0;offered<=7;offered++) {
         struct retro_vfs_interface_info info;
         requested=0;
         assert(lr_vfs_negotiate(environment,&info)==(offered>=3));
-        assert(requests[0]==6);
-        if(offered<6)assert(requested==2 && requests[1]==3);
+        /* v7, then v6, then v3 */
+        assert(requests[0]==7);
+        if(offered==7)assert(requested==1);
+        if(offered==6)assert(requested==2 && requests[1]==6);
+        if(offered<6)assert(requested==3 && requests[1]==6 && requests[2]==3);
         assert(lr_vfs_positional_read(&info)==(offered>=6?read_at:NULL));
     }
     /* An older table ends before the v6 members. Do not read its tail. */
