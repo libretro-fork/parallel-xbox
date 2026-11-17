@@ -27,6 +27,11 @@
 
 typedef struct PGRAPHState PGRAPHState;
 
+/* OpenGL derivatives must include uncovered quad lanes even when the
+ * emulated depth/clip tests reject them. Also a source-capability contract
+ * used by historical shader regression drivers. No runtime option. */
+#define PGRAPH_GLSL_GL_DEFAULT_HELPERS 1
+
 enum PshDepthFormat {
     DEPTH_FORMAT_D24,
     DEPTH_FORMAT_D16,
@@ -35,9 +40,9 @@ enum PshDepthFormat {
     /* Sampling flag in the existing enum word; legacy keys/layout stay intact. */
     DEPTH_FORMAT_MASK = 3,
     DEPTH_FORMAT_UI_CLAMP = 1 << 8,
-    /* Explicit source semantics: keep lanes alive until all texture derivatives
-     * have been evaluated. Legacy keys retain eager kills. Experimental GL
-     * capture adds it only with ready native owners; old seeds stay unchanged. */
+    /* Explicit helper-preserving semantics for opt-in Vulkan sources and old
+     * GL keys. GL now preserves helpers for both values; its generator cache
+     * revision rejects the previous eager-kill binaries without changing keys. */
     DEPTH_FORMAT_HELPER_LIVENESS = 1 << 9,
 };
 

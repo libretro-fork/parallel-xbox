@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- OpenGL keeps helper lanes alive until texture sampling is complete, correcting mip selection at emulated depth-clip boundaries. Old GL program binaries are invalidated. Vulkan behavior is unchanged; shader-stutter recovery remains open.
+
 - Keep hash-interception regression fixtures compatible with RetroArch’s XXH3 dispatch macros. Explicitly undefine the public macro before installing each test wrapper, retaining strict compiler warnings, real-hash helper calls and all numerical, collision, ownership and failure controls. Runtime hashing is unchanged.
 
 - Make GLSL and direct SPIR-V dynamic fixed-function local/spot light cutoffs reject NaN distances and ranges, matching the ordinary static path while retaining the inclusive boundary. Explicit NaN checks avoid an NVIDIA compiler transformation that defeats an inverted ordered comparison. GPU truth-table tests retain both paths and reject five incorrect guards. Refresh the GL binary-cache revision so old generated code cannot bypass the corrected cutoff. This is a correctness fix; broad prepared-lighting equivalence and performance qualification remain open.
