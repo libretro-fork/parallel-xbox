@@ -14,10 +14,12 @@
 #define g_free free
 typedef struct GArray { unsigned len,cap;size_t size;void *data; } GArray;
 #define g_array_index(a,t,i) (((t *)(a)->data)[i])
-static GArray *g_array_new(bool a,bool b,size_t size){GArray *p=calloc(1,sizeof(*p));assert(p);p->size=size;return p;}
+static unsigned array_allocations;
+static GArray *g_array_new(bool a,bool b,size_t size){array_allocations++;GArray *p=calloc(1,sizeof(*p));assert(p);p->size=size;return p;}
 static void append(GArray *a,const void *p){if(a->len==a->cap){a->cap=a->cap?2*a->cap:8;a->data=realloc(a->data,a->size*a->cap);assert(a->data);}memcpy((char *)a->data+a->size*a->len++,p,a->size);}
 #define g_array_append_val(a,v) append(a,&(v))
 static void g_array_remove_index_fast(GArray *a,unsigned i){assert(i<a->len);a->len--;if(i!=a->len)memcpy((char *)a->data+i*a->size,(char *)a->data+a->len*a->size,a->size);}
+static void __attribute__((unused)) g_array_free(GArray *a,bool clear){assert(a);free(a->data);free(a);}
 static void array_free(GArray *a){if(a){free(a->data);free(a);}}
 /* TYPES */
 typedef struct PGRAPHVkState {
@@ -42,6 +44,7 @@ static int pump_state(PGRAPHState *pg,const ShaderState *st,const RenderPassStat
  abort();
 }
 /* PRODUCTION */
+/* REGISTRY TESTS */
 static void attachments(PGRAPHVkState *r,const RenderPassState *rp){
  struct{RenderPassState render_pass_state;}owned={*rp};const typeof(owned)*key=&owned;
  struct{VkPipelineDepthStencilStateCreateInfo ds;}value={0},*job=&value;
@@ -51,6 +54,7 @@ static void attachments(PGRAPHVkState *r,const RenderPassState *rp){
  assert(count==(rp->color_format!=VK_FORMAT_UNDEFINED));
  assert(!!job->ds.sType==(rp->zeta_format!=VK_FORMAT_UNDEFINED));
 }
+#define main original_corpus_main
 int main(void){
  _Static_assert(sizeof(void *)!=8||sizeof(PumpProgress)==sizeof(PumpProgressBefore),"cursor must fit existing 64-bit progress padding");
  unsigned cases=0;
@@ -84,4 +88,8 @@ int main(void){
   free(r.pump.state_hash);array_free(r.render_passes);
  }
  printf("Render-pass pump: %u bounded cold/ready/delayed/pressure, relocated-owner, capacity, fairness and key-owned attachment cases PASS; one format snapshot=%zu bytes, progress owner=%zu -> %zu bytes\n",cases,sizeof(RenderPassState),sizeof(PumpProgressBefore),sizeof(PumpProgress));
+ return 0;
 }
+
+#undef main
+int main(void){registry_cases();return original_corpus_main();}
