@@ -3,7 +3,10 @@
 from pathlib import Path
 import os,re,subprocess,sys,tempfile
 r=Path(sys.argv[1]).resolve();cc=sys.argv[2] if len(sys.argv)>2 else 'cc'
-draw=(r/'hw/xbox/nv2a/pgraph/vk/draw.c').read_text();shader=(r/'hw/xbox/nv2a/pgraph/vk/shaders.c').read_text();psh=(r/'hw/xbox/nv2a/pgraph/glsl/psh.c').read_text();h=(r/'hw/xbox/nv2a/pgraph/vk/renderer.h').read_text()
+revision=os.environ.get('PUMP_TEST_REVISION')
+def source(path):
+ return subprocess.check_output(['git','-C',str(r),'show',revision+':'+path],text=True) if revision else (r/path).read_text()
+draw=source('hw/xbox/nv2a/pgraph/vk/draw.c');shader=source('hw/xbox/nv2a/pgraph/vk/shaders.c');psh=source('hw/xbox/nv2a/pgraph/glsl/psh.c');h=source('hw/xbox/nv2a/pgraph/vk/renderer.h')
 def fn(s,name):
  m=re.search(r'^(?:static )?(?:bool|void|ShaderBinding \*) *'+name+r'\([^;{]*\)\s*\{',s,re.M);assert m,name
  end=s.index('{',m.start())+1;depth=1
@@ -12,11 +15,13 @@ def fn(s,name):
 types='\n'.join(re.search(r'typedef struct '+n+r' \{.*?\} '+n+r';',h,re.S)[0] for n in ('RenderPassState','PipelineKey','PipelineBinding'))
 parts='\n'.join([fn(psh,n) for n in ('psh_zero_alpha_fields','psh_zero_combiner_fields','pgraph_glsl_psh_canonicalize_dynamic')]+[fn(shader,n) for n in ('pgraph_vk_ready_shader_binding','pgraph_vk_use_ready_shader_binding')]+['static ShaderBinding *pgraph_vk_materialize_ready_shader_binding(PGRAPHVkState *r,const ShaderState *s,uint64_t h){return pgraph_vk_ready_shader_binding(r,s,h);}']+[fn(draw,n) for n in ('pipeline_ready','pipeline_use_ready_sibling')])
 create=fn(draw,'create_pipeline');prefix=create[:create.index('    /* The job holds')]
+registered='pump_register_render_pass(' in prefix
+assert registered==('static void pump_register_render_pass(' in draw),'Registry helper/caller mismatch'
 prefix+='    sync_calls++;sync_key=key;snode->pipeline=(VkPipeline)(uintptr_t)0x123;r->pipeline_binding=snode;\n}\n'
 assert create.index('pipeline_use_ready_sibling(pg, &key, hash)')<create.index('vkCreateGraphicsPipelines(')
 assert create.index('memcpy(&snode->key, &key, sizeof(key));')<create.index('pipeline_use_ready_sibling(pg, &key, hash)')
 assert 'pgraph_vk_ref_state_modules(' not in fn(draw,'pipeline_use_ready_sibling')
-code=Path(__file__).with_suffix('.c').read_text().replace('/* TYPES */',types).replace('/* PRODUCTION */',parts+'\n'+prefix)
+code=('#define HAVE_OBSERVED_PASS_REGISTRY '+str(int(registered))+'\n')+Path(__file__).with_suffix('.c').read_text().replace('/* TYPES */',types).replace('/* PRODUCTION */',parts+'\n'+prefix)
 env=os.environ.copy();env['PATH']=str(Path(cc).resolve().parent)+os.pathsep+env.get('PATH','')
 with tempfile.TemporaryDirectory(prefix='ready-pipeline-sibling-') as d:
  p=Path(d);(p/'qemu').mkdir();(p/'qemu/osdep.h').write_text('#include <stdint.h>\n#include <stdbool.h>\n#include <stddef.h>\n');(p/'qemu/mstring.h').write_text('typedef struct MString MString;\n')
@@ -35,6 +40,11 @@ with tempfile.TemporaryDirectory(prefix='ready-pipeline-sibling-') as d:
   ('retry not requested',code.replace('pg->program_data_dirty = true;','(void)pg;',1)),
   ('duplicate job queued',code.replace('if (!pump_full_in_flight(full_hash, key)) {','if (true) {',1)),
  ]
+ if registered:
+  controls += [
+   ('ordinary pass not forwarded to registry',code.replace('    pump_register_render_pass(r, &key.render_pass_state);','    (void)pump_register_render_pass;',1)),
+   ('wrong ordinary pass forwarded to registry',code.replace('pump_register_render_pass(r, &key.render_pass_state);','pump_register_render_pass(r, &(RenderPassState){0});',1)),
+  ]
  for name,mutant in controls:
   assert mutant!=code,name;src.write_text(mutant);subprocess.run(cmd,env=env,check=True)
   bad=subprocess.run([str(exe)],env=env,capture_output=True,timeout=60);assert bad.returncode==1 and b'FAIL ' in bad.stderr,name

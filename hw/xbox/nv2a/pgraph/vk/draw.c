@@ -340,7 +340,9 @@ void pgraph_vk_finalize_pipelines(PGRAPHState *pg)
 
     pump_quiesce(pg);
     for (unsigned i = 0; i < r->pump.n; i++) {
-        g_array_free(r->pump.retry[i], true);
+        if (r->pump.retry[i]) {
+            g_array_free(r->pump.retry[i], true);
+        }
     }
     g_free(r->pump.state_hash);
     /* Shader finalization releases the seed bank next. Retired progress
@@ -1857,20 +1859,39 @@ static void ahead_pre_state(const ShaderState *st,
 static int pump_state(PGRAPHState *pg, const ShaderState *st,
                       const RenderPassState *rp);
 
-/* The pass left bound at a flip need not cover earlier scene/overlay draws.
- * Borrow one native owner per flip; copy only its format metadata before
- * job filling can touch the render-pass array. No owner escapes this call. */
+/* Only ordinary draws and explicit shader prewarming identify useful pass
+ * recipes. Utility native owners must not consume this bounded registry. */
+static void pump_register_render_pass(PGRAPHVkState *r,
+                                      const RenderPassState *rp)
+{
+    if (!g_config.perf.shader_seeding || !r->dyn_cull_front ||
+        !r->dyn_blend || !r->dyn_vertex_input) {
+        return;
+    }
+    for (unsigned i = 0; i < r->pump.n; i++) {
+        if (!memcmp(&r->pump.rp[i], rp, sizeof(*rp))) {
+            return;
+        }
+    }
+    if (r->pump.n == ARRAY_SIZE(r->pump.rp)) {
+        return;
+    }
+    unsigned i = r->pump.n++;
+    r->pump.rp[i] = *rp;
+    r->pump.pos[i] = r->pump.rpos[i] = 0;
+    r->pump.retry[i] = NULL;
+}
+
+/* Copy the registered identity before job filling can touch native owners. */
 static bool pump_next_render_pass(PGRAPHVkState *r, RenderPassState *rp)
 {
-    if (!r->render_passes->len) {
+    if (!r->pump.n) {
         return false;
     }
-    if (r->pump.next_pass >= r->render_passes->len) {
+    if (r->pump.next_pass >= r->pump.n) {
         r->pump.next_pass = 0;
     }
-    const RenderPass *pass = &g_array_index(r->render_passes, RenderPass,
-                                           r->pump.next_pass++);
-    *rp = pass->state;
+    *rp = r->pump.rp[r->pump.next_pass++];
     return true;
 }
 
@@ -1908,16 +1929,7 @@ void pgraph_vk_libpump_step(PGRAPHState *pg)
             idx = i;
         }
     }
-    if (idx < 0) {
-        if (r->pump.n == ARRAY_SIZE(r->pump.rp)) {
-            return;
-        }
-        idx = r->pump.n++;
-        r->pump.rp[idx] = rp;
-        r->pump.pos[idx] = 0;
-        r->pump.rpos[idx] = 0;
-        r->pump.retry[idx] = g_array_new(FALSE, FALSE, sizeof(unsigned));
-    }
+    assert(idx >= 0);
     unsigned *pos = &r->pump.pos[idx];
     GArray *retry = r->pump.retry[idx];
     /* Bounded work per flip: a few states (module creation takes the words,
@@ -1937,6 +1949,10 @@ void pgraph_vk_libpump_step(PGRAPHState *pg)
     while (budget && checks && *pos < n) {
         checks--;
         if (!pgraph_vk_seed_spv_ready_hash(state_hash[*pos])) {
+            if (!retry) {
+                retry = r->pump.retry[idx] =
+                    g_array_new(FALSE, FALSE, sizeof(unsigned));
+            }
             g_array_append_val(retry, *pos);
             (*pos)++;
             continue;
@@ -1947,7 +1963,7 @@ void pgraph_vk_libpump_step(PGRAPHState *pg)
         (*pos)++;
         budget--;
     }
-    if (*pos >= n && retry->len && budget && checks) {
+    if (*pos >= n && retry && retry->len && budget && checks) {
         /* Round robin over the retry list, a bounded slice per flip; a
          * ready entry is pumped and swapped out. */
         unsigned *rpos = &r->pump.rpos[idx];
@@ -2070,6 +2086,7 @@ void pgraph_vk_prewarm_shaders(NV2AState *d)
 
     VkPrewarmState pipeline = {0};
     init_render_pass_state(pg, &pipeline.render_pass);
+    pump_register_render_pass(r, &pipeline.render_pass);
     ahead_pre_state(&state, &pipeline.raster, &pipeline.ia);
     pipeline.num_dynamic = ahead_dynamic_states(r, &state, pipeline.dynamic_states);
     pipeline.push_size = push_constant_size(r, &state);
@@ -2543,6 +2560,7 @@ static void create_pipeline(PGRAPHState *pg)
 
     PipelineKey key;
     init_pipeline_key(pg, &key);
+    pump_register_render_pass(r, &key.render_pass_state);
     pipeline_ahead(pg, &key);
     uint64_t hash = xxh3_64((void *)&key, sizeof(key), 0);
 

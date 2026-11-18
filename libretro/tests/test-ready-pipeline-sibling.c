@@ -26,6 +26,22 @@ unsigned pgraph_glsl_dynamic_gen=7;
 static unsigned sync_calls,fills,publishes,uniforms,touches,pipe_count;
 static PipelineKey active_key,sync_key;
 static ShaderBinding *full_binding,*selected;
+/* Registration behavior itself is exercised by test-render-pass-pump. This
+ * unit observes the typed dependency and exact pass forwarded by the actual
+ * create_pipeline prefix, without adding unrelated renderer owner mocks. */
+static unsigned registry_calls;
+#if HAVE_OBSERVED_PASS_REGISTRY
+static PGRAPHVkState *expected_registry_owner;
+static RenderPassState expected_registry_pass;
+static bool registry_pending;
+static void pump_register_render_pass(PGRAPHVkState *r,const RenderPassState *rp)
+{
+ assert(registry_pending&&r==expected_registry_owner&&rp);
+ assert(!memcmp(rp,&expected_registry_pass,sizeof(*rp)));
+ registry_pending=false;registry_calls++;
+}
+#endif
+
 static PipelineBinding pipes[8];static LibJob slot;
 static bool pgraph_gpu_boost_gl(void){return feature;}
 bool pgraph_glsl_need_geom(const GeomState *s){(void)s;return geometry;}
@@ -53,8 +69,16 @@ static void pgraph_vk_bind_textures(NV2AState *d){assert(d);}
 static void pgraph_vk_bind_shaders(PGRAPHState *pg){PGRAPHVkState *r=pg->vk_renderer_state;r->shader_bindings_changed=false;if(pg->program_data_dirty||r->sibling_retry){r->shader_binding=full_binding;pg->program_data_dirty=false;r->shader_bindings_changed=true;}}
 static bool check_pipeline_dirty(PGRAPHState *pg){return force_dirty||pg->vk_renderer_state->shader_bindings_changed;}
 static void pgraph_clear_dirty_reg_map(PGRAPHState *pg){(void)pg;}
-static void init_pipeline_key(PGRAPHState *pg,PipelineKey *key){*key=active_key;key->shader_state=pg->vk_renderer_state->shader_binding->state;}
-static void pipeline_ahead(PGRAPHState *pg,const PipelineKey *key){(void)pg;(void)key;}
+static void init_pipeline_key(PGRAPHState *pg,PipelineKey *key){*key=active_key;key->shader_state=pg->vk_renderer_state->shader_binding->state;
+#if HAVE_OBSERVED_PASS_REGISTRY
+ expected_registry_owner=pg->vk_renderer_state;expected_registry_pass=key->render_pass_state;registry_pending=true;
+#endif
+}
+static void pipeline_ahead(PGRAPHState *pg,const PipelineKey *key){(void)pg;(void)key;
+#if HAVE_OBSERVED_PASS_REGISTRY
+ assert(!registry_pending);
+#endif
+}
 /* This fixture models no completed queue entries; transfer/publication and
  * native owner release are checked by test-pipeline-completed-take.py. */
 static bool pump_take_pipeline(PGRAPHState *pg,PipelineBinding *binding,uint64_t hash,const PipelineKey *key) {
@@ -68,7 +92,7 @@ int main(void){
   PGRAPHVkState r={0};NV2AState d={.pgraph={.vk_renderer_state=&r}};PGRAPHState *pg=&d.pgraph;
   ShaderModuleInfo owners[3]={{1},{1},{1}},fbowners[3]={{1},{1},{1}};ShaderBinding full={0},fb={0};full_binding=&full;
   feature=bits&1;geometry=bits&32;collision=bits&64;full_queue=bits&8;inflight=bits&16;force_dirty=true;
-  pump_w_local=19;sync_calls=fills=publishes=uniforms=touches=pipe_count=0;memset(&slot,0,sizeof(slot));memset(&active_key,0,sizeof(active_key));
+  registry_calls=0;pump_w_local=19;sync_calls=fills=publishes=uniforms=touches=pipe_count=0;memset(&slot,0,sizeof(slot));memset(&active_key,0,sizeof(active_key));
   full.state.vsh.programmable.program_data[0][0]=gen;full.state.psh.combiner_control=gen+1;full.state.psh.alpha_test=true;full.state.psh.final_inputs_0=gen*91;full.state.psh.combiner_dynamic=!!(gen&16);
   full.vsh.module_info=&owners[0];full.geom.module_info=geometry?&owners[1]:NULL;full.psh.module_info=&owners[2];full.node.hash=xxh3_64((const uint8_t *)&full.state,sizeof(full.state), 0);r.shader_binding=&full;
   active_key.shader_state=full.state;active_key.render_pass_state.color_format=VK_FORMAT_R8G8B8A8_UNORM;active_key.render_pass_state.zeta_format=gen&1?VK_FORMAT_D16_UNORM:VK_FORMAT_UNDEFINED;active_key.regs[gen%9]=gen;active_key.binding_descriptions[0].stride=gen+16;active_key.attribute_descriptions[0].offset=gen%16;
@@ -80,6 +104,7 @@ int main(void){
   bool full_ready=bits&128;if(full_ready)add_pipe(&r,&original,true);
   bool use=!full_ready&&feature&&(bits&2)&&(bits&4)&&!(gen&(2|8|16|32|64))&&(!geometry||!(gen&4));
   create_pipeline(pg);
+  assert(registry_calls==HAVE_OBSERVED_PASS_REGISTRY);
   assert(sync_calls==(!full_ready&&!use));assert((pg->program_data_dirty||r.sibling_retry)==use);
   assert(uniforms==use&&touches==use);
   if(use){assert(r.shader_binding==&fb&&r.pipeline_binding&&r.pipeline_binding->pipeline);assert(!memcmp(&r.pipeline_binding->key,&projected,sizeof(projected)));assert(fills==(!full_queue&&!inflight)&&publishes==fills);

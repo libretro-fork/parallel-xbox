@@ -1,5 +1,58 @@
 # Cold-first-play recovery and regression prevention
 
+## Observed Vulkan render-pass scheduling, 2026-11-18 (qualification checkpoint)
+
+A private passive miss capture of `9632470d1b` reproduced all 51 cold and
+10 own-seeds-warm ordinary pipeline misses without dropped records. Both runs
+completed 600 fight callbacks, 599 guest presents/completions and the same guest
+time domain, with no fight C-allocator calls or shader/pipeline creation. These
+are work and identity observations, not presentation-latency recovery evidence;
+private driver-cache state remains uncontrolled. C-allocation counts cover
+wrapped direct/IAT calls, not C++/custom allocators or OS/driver storage.
+
+The cold run had no game seed states. Moving the seed service earlier cannot
+remove those 51 unknown-state misses. All ten warm misses were exact members of
+the 100-state seed bank, but their required color-only or color-plus-depth pass
+was not represented in the pump at the miss. The first pump slot instead held
+a native depth-only pass introduced by startup utility work. A shader seed is
+not a complete ready pipeline: the render-pass compatibility identity matters.
+
+The pump now records ordinary draw and explicitly requested shader-prewarm pass
+formats in its existing four slots. It does not admit a pass merely because a
+utility created its native owner. Genuine ordinary depth-only rendering remains
+eligible; this is consumer tracking, not a format blacklist. Admission copies
+the existing eight-byte format identity, deduplicates exact matches, declines
+a fifth distinct pass and allocates no retry storage. Empty seed banks may keep
+that metadata without scheduling jobs. Retry storage is created only when an
+unready state actually needs retrying, and teardown permits registered slots
+that were never pumped. The existing four-state/32-readiness-check budgets,
+completed-job drain, queue ownership and correct synchronous fallback remain.
+
+The observation is explicitly post-bind. Its passive query reads tracking and
+seen state without calling `vk_spec_phase` or `pgraph_vk_seed_spv_ready_hash`,
+which drain worker results and would perturb readiness. Exact key, shader and
+pass bytes are retained in bounded diagnostic-only storage; snapshots and
+profiling are absent from release builds. The private builder's argument-name
+collision interrupted its final cleanup check after source restoration; byte
+backups and exact HEAD/status were checked and a coherent clean rebuild was
+completed before either capture. That failed script run remains recorded.
+
+Native Windows and WSL contracts pass the original 19,824 cases on current
+and historical source, with 18 current and seven historical fault controls.
+The supplementary cases cover utility exclusion, real depth-only draws, late
+admission, capacity, disabled capabilities and registered-but-unpumped owners.
+The sibling owner fixture retains its 32,768 cases and ten historical controls;
+a typed registry observer adds two controls for exact pass forwarding. The
+first CI attempt exposed that missing fixture dependency; its failure is kept,
+and the strict compiler and original corpus are retained. Other extractors
+were audited. An older, unused prewarm-input oracle also fails on the parent
+and remains separately unqualified rather than rewritten into a new pass.
+Numerical CI, cold/warm API work, clean latency, image and lifecycle
+qualification remain required before delivery.
+This scheduling change does not provide an already-ready path for an unseen
+shader family or the first encounter with a new pass. Neither zero cold misses
+nor full shader-stutter recovery is claimed; the broader regression stays BAD/open.
+
 ## Bounded opt-in delivery, 2026-11-18
 
 The delivery uses a restart-only OpenGL Prepared Shaders core option, disabled by
