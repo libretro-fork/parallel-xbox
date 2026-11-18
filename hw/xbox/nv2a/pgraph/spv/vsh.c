@@ -1592,10 +1592,14 @@ static void emit(Writer *w, const VshState *state, SpvVshOptions opts)
     }
     op(w, SpvOpExtInstImport, 5, c.ext, 0x4c534c47u, 0x6474732eu, 0x3035342eu, 0u);
     op(w, SpvOpMemoryModel, 2, (uint32_t)SpvAddressingModelLogical, (uint32_t)SpvMemoryModelGLSL450);
-    unsigned interfaces = 16 + 13 + 2 + 1 + pc;
+    /* Uniform attributes are read from push/UBO storage by input(), never
+     * from c.inputs. Listing them here incorrectly requires vertex bindings. */
+    unsigned interfaces = 16 - pc_count + 13 + 2 + 1 + pc;
     word(w, ((5 + interfaces) << 16) | SpvOpEntryPoint);
     word(w, SpvExecutionModelVertex); word(w, c.main); word(w, 0x6e69616du); word(w, 0);
-    for (unsigned i = 0; i < 16; i++) { word(w, c.inputs[i]); }
+    for (unsigned i = 0; i < 16; i++) {
+        if (!(state->uniform_attrs & (1u << i))) { word(w, c.inputs[i]); }
+    }
     for (unsigned i = 0; i < 13; i++) { word(w, c.outputs[i]); }
     word(w, c.position); word(w, c.point_size); word(w, c.ubo);
     if (pc) { word(w, c.pc); }

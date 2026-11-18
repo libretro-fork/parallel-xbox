@@ -169,6 +169,20 @@ jobs:
           python3 driver/libretro/tests/test-throughput-gate.py 2>&1 | tee results/throughput-gate.log
           python3 driver/libretro/tests/test-shader-compile-gate.py 2>&1 | tee results/compiler-gate.log
           python3 driver/libretro/tests/test-cold-play-frame-gate.py candidate 2>&1 | tee results/cold-play-frame-gate.log
+      - name: Validate repaired vertex input interfaces
+        env:
+          COMMIT: ${{ matrix.commit }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if test -f candidate/libretro/tests/test-spv-vsh-input-interface.py; then
+            python3 driver/libretro/tests/test-spv-vsh-input-interface.py candidate cc 2>&1 | tee results/vsh-input-interface.log
+          elif test "$COMMIT" = "$GITHUB_SHA"; then
+            echo 'UNQUALIFIED: current revision lacks the vertex interface fixture'
+            exit 1
+          else
+            echo 'Historical revision predates the interface repair; its existing compiler corpus remains required.' | tee results/vsh-input-interface.log
+          fi
       - uses: actions/upload-artifact@v4
         if: always()
         with:

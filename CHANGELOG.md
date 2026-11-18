@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Vulkan direct vertex shaders no longer advertise attributes supplied through push constants or uniforms as vertex-buffer inputs. This fixes missing-input validation errors without changing shader calculations, seed formats or allocating dummy vertex buffers.
+
 - Vulkan prepares seeded pipelines only for render passes requested by ordinary draws or explicit shader prewarming, so utility-only passes no longer consume the existing four render-pass slots. The queue limits and correct uncovered-state rendering remain unchanged; CI fallback tests cover the new registration dependency.
 
 - Add Video > Prepared Shaders (Restart), an optional OpenGL startup mode for covered programmable/fixed-function vertices, geometry and fragments with complete validated native pipeline tuples. It is disabled by default: preparation adds startup work and can increase GPU cost. Unsupported states retain ordinary rendering, and first-use/restore stalls and broader shader-stutter recovery remain open.
