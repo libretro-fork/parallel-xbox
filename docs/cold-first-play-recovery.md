@@ -1,5 +1,268 @@
 # Cold-first-play recovery and regression prevention
 
+## Bounded opt-in delivery, 2026-11-18
+
+The delivery uses a restart-only OpenGL Prepared Shaders core option, disabled by
+default. The real frontend table, pending value, first-GL latch and all
+three startup admission blocks are exercised by five platform/build variants,
+100 wiring cases and nine fault controls on native Windows and WSL. The ordinary path remains available with full cache capacity; opt-in
+reserves the existing finite bank and initializes validated stages/tuples on
+supported SSO contexts. Neither mode changes guest clocks, audio or frame
+progress policy. Unsupported states and failed preparation retain correct
+ordinary rendering. Restart RetroArch to apply a different selection.
+
+Global default enablement was rejected for this delivery. Twelve clean DOA3
+boot-through-fight runs retain all 7,200 fight callbacks and show no fight
+callback over 16.683 ms. Cold p99 medians are 10.246 ms ordinary and 9.861 ms
+prepared; own-persistent-warm medians are 10.195 and 10.133 ms. Cameras/workloads
+vary across fresh boots and physical driver-cache state is uncontrolled, so
+these are not matched-scene or presentation-latency recovery results.
+
+Separate three-pair 8x restored-state runs retain every first restored callback.
+NGB median maxima are 102.110 ms ordinary versus 171.602 ms prepared; DOA3 arena
+is 87.894 versus 599.456 ms. Some later callback distributions improve, but those
+reproducible first-use/restore spikes are not discarded as warmup or accepted
+as global default recovery. Their driver/allocation attribution remains open.
+
+The private timestamp probe remains UNQUALIFIED: a 128-pair diagnostic ring lost
+128 candidate samples, and ordinary attribute-pointer displacement can produce
+different basevertex descriptors from different pre-restore host history. No
+sample loss, frame shifting, reordering or extra key normalization was accepted.
+A missing-finalizer measurement was also retained as failed instrumentation,
+not converted into a rendering failure or a performance pass. This partial data
+cannot establish permanent-interpreter GPU execution nonregression.
+
+The option makes the tested coverage accessible in normal libretro builds;
+it does not claim complete coverage, freedom from driver lazy work or a recovered
+cold-play baseline. BAD/open status and all remaining Vulkan and allocation work
+are preserved. Continue GPU cost and first-use attribution after this bounded
+main-branch delivery rather than expanding the bank before users can select it.
+
+## Rejected global-default candidate checkpoint, 2026-11-18
+
+The earlier global-default candidate enabled the existing prepared stages and
+complete pipeline tuples in normal builds. SSO capability and complete validated owner
+publication remain mandatory; unsupported state, missing interfaces and failed
+optional preparation keep the ordinary correct path. The legacy build-symbol
+names remain internal compatibility names, not runtime options. Developer-only
+`XEMU_DISABLE_READY_GL` suppresses implicit build enablement for comparison.
+This section supersedes the default-off statements in historical checkpoints.
+
+Programmable startup now verifies the actual 2,192-byte code buffer before
+publishing readiness, including nonzero program/buffer names and GL errors.
+The caller's binding is restored, partial owners retire, and finite own-error
+flags are reported and consumed after a clean-entry check. An incoming error is
+reported separately before creating owners. The original owner corpus, five
+selection/upload/invalidation faults and eviction ordering are retained. A
+separate startup fixture covers eighteen failure cases and thirteen deliberate
+faults under native/WSL UBSan. The default preprocessor contract covers twelve
+build variants, ten historical/partial-advertisement cases and five faults.
+
+The same finite error boundary now covers geometry, fragment, FF and complete
+pipeline preparation. Zero program names are rejected before link queries;
+resource, interface and publication errors run existing owner/LRU rollback and
+report/consume at most eight own error flags after a clean-entry precondition.
+An incoming error is reported separately and declines optional startup. All
+original owner cases and mutation controls remain; additional OOM+INVALID_VALUE,
+prior-error and publication controls pass on native Windows and WSL.
+
+Integrated fragment/shadow, full 42,512-case vertex/interpreter and procedural
+mip suites pass on NVIDIA and llvmpipe, including their original rejection
+controls. The finite FF compound logs retain all four complete domains and
+22 fault markers per driver; their host-interrupted outer wrapper completion
+status remains explicitly unqualified, rather than invented as exit zero.
+The separate full historical CI replay passed after its one compiler-stage
+sample was initially inconclusive (-0.2%, other stages passed); unchanged
+rerun thresholds/corpora and the failed report are retained. This does not
+substitute for the exact default candidate's runtime measurements or CI.
+
+That global-default candidate was not promoted. Its delivery checks were bounded:
+finish the integrated numerical suites, repeat the existing twelve clean runs
+against the corrected ordinary reference, and capture cold/warm native work in
+the exact default build. Permanent programmable-interpreter selection requires
+matched-scene execution-cost evidence; moving links to startup alone is not a
+performance qualification. Preserve every startup callback, the BAD/open status,
+unsupported-state fallback, Vulkan misses and observed GL buffer orphaning.
+
+## Corrected-reference integration, 2026-11-17
+
+The ordinary GL helper correction is integrated into the prepared renderer.
+The prior one-pixel NGB difference was independently traced to undefined texture
+derivatives after an early emulated depth discard in the ordinary reference.
+See [the analytic, GPU and retail evidence](gl-helper-mip-selection.md).
+Both experimental flags remain off. The integrated candidate still requires its
+own complete corrected-reference comparisons; earlier work counts and timings
+are not silently promoted to evidence for this new runtime.
+
+## Pre-integration replay and qualification, 2026-11-17
+
+An older full replay exposed two additional historical mismatches: demanding
+FF-bank files from main revisions before the feature was introduced, and
+requiring VFS7 negotiation from the earlier VFS6 public ABI. Select the FF
+contracts explicitly by source capability. A partial/advertised implementation,
+missing stage contract or missing fixture remains a hard error. The standalone
+scope regression checks 258 presence/advertisement/missing-contract cases.
+Historical absence is recorded as historical, not a successful FF test; those
+revisions still run the unchanged original shader numerical/compiler suites.
+VFS expectations come from the public ABI's V7 identity definition, not from
+the tested negotiation implementation. Keep every offered version and all
+6,390 positional/short/EOF/decline/gap cases on both v6 and v7 source trees.
+Native Windows and Linux sanitizer checks pass for both real revisions.
+
+Twelve serial clean DOA3 headless runs retain boot, menu, fight entry and all
+600 fight callbacks per run. Cold fight p99 medians are 9.716 ms for main and
+10.262 ms for the prepared candidate; the fresh-boot camera/workload differs,
+so this is no matched-scene or display-latency qualification. No fight callback
+exceeds the frame budget. Startup callback cost is real and retained: roughly
+62-64 ms on main and 156-161 ms with the prepared bank. Physical driver cache
+state is uncontrolled; do not claim cold-driver-cache recovery.
+
+A longer, separately captured NGB restore reveals one reproducible pixel
+at (614,389), after 600 callbacks, changing from RGB (76,64,54) on main to
+(70,57,50) with the experiment. Three process pairs reproduce it. Private
+stage-selection controls and projection controls attribute it to the explicit
+helper-liveness projection, including ordinary shaders when prepared-stage
+selection is disabled. Full-ready vertex/geometry gating does not resolve it.
+Private depth precision/invariance/reciprocal variants also do not resolve it;
+none were imported. Source bytes were restored and coherent clean objects
+rebuilt after every probe. At that captured revision the difference remained OPEN, and the candidate was
+not byte-equivalent at that longer checkpoint. The correction above now explains
+the old reference error; the integrated runtime still needs its own image run. Earlier 100-frame restore
+matches and full numerical corpora do not certify that broader claim.
+
+The pre-integration test/documentation changes used experimental runtime
+6192cd81b1. Both flags remain disabled by default, and physical cold-play
+smoothness is still BAD/regressed and unqualified. Vulkan draw misses and
+21,000 GL array-buffer orphan calls per captured fight remain open work.
+
+## Prepared fragment owner fixture, 2026-11-17
+
+The first replay caught an unused-function error under -Werror: the complete
+fragment owner include gained family adoption, but its isolated owner fixture
+never called that helper. Exercise covered adoption, unavailable owners and
+unsupported states while preserving the exact metadata key. Keep all 29
+startup failures and eleven existing ownership/alias/teardown mutations.
+Native Windows and Linux CPU fixtures pass for current and original 4ebf06d6d6
+sources. Replay uses the current owner fixture driver against each immutable
+revision, so the fix also verifies the originally failing revision without
+editing its runtime. No runtime or numerical comparison changes are involved.
+The complete CSV/texgen numerical and six fault-control rerun passed after the
+prior Windows temporary-file cleanup failure; retain that original failure
+separately. Full renderer CI and cold/warm latency qualification remain open.
+
+
+## Ready-gate replay contract, 2026-11-17
+
+The ready-family fixture now extracts the actual gated queue-submission block
+for every revision. Earlier revisions verify 131,072 legacy submissions and
+two rejecting controls; prepared revisions verify ready adoption, retained
+unsupported submissions, exact family metadata and five rejecting controls.
+This avoids demanding a helper from a revision before it existed. Missing
+new fixtures on a selected prepared revision remain failures. Runtime bytes
+are unchanged from 6192cd81b1; its private cold and own-seeds-warm captures
+show zero post-startup compiler calls through 600 fight callbacks, with the
+existing cadence checks. This is work attribution, not latency qualification.
+The shader-stutter regression and Vulkan readiness remain open.
+
+## Ready-fragment family adoption experiment, 2026-11-17
+
+The prepared-bank DOA3 cold and own-persistent-warm captures at 39720e5a24
+have zero draw-scoped shader/program compilation, linking or pipeline creation
+from boot through 600 live fight callbacks. Both preserve 599 guest Presents,
+599 completions and audio cadence. NGB and DOA3 external restores in fresh
+processes produce byte-identical parent/candidate images. These are private
+work-count and correctness results, not latency or recovery qualification;
+driver caches remain uncontrolled. Fight C malloc/calloc/realloc/free wrappers
+observe zero calls; 21,000 array-buffer orphan calls and driver allocations
+remain open. Vulkan's synchronous uncovered PSO paths also remain open.
+
+A further private capture attributes all four post-first-frame compiler
+submissions to gated dynamic-fragment families, not draw misses. Their keys
+predate the helper-liveness projection applied by the draw and therefore do
+not match the prepared fragment bank. When that bank is fully native-ready
+and the same projected state passes its coverage predicate, notify adoption
+using the restored exact family key instead of generating/compiling another
+program. Unsupported states and unavailable owners retain the existing path.
+This changes no shader source, uniform ABI, persistent key or cache capacity.
+It remains under the experimental renderer flag, disabled by default.
+
+The source-extracted regression exercises 131,072 available/unavailable,
+legacy/projected, unsupported-mode and exact-key cases and five deliberate
+faults. Existing job lends, source queues, dynamic vertex pairs and resident
+submission controls remain required. Native cold/warm recapture of this
+adoption change, full CI and physical-GPU tail comparisons remain pending.
+Current cold-first-play smoothness remains **BAD/regressed and unqualified**.
+
+
+## Unlit controls in the existing startup bank, 2026-11-17
+
+A private cold-boot DOA3 capture identified nine actual draw-scoped compiler
+calls, all through module-cache creation: seven literal fixed-function vertex
+keys and two fragment keys using fixed-depth shadow comparison. Three vertex
+keys are unlit, with fog already register-driven. The new predicate admits
+that semantic class through the existing 56 stages and 252 native tuples;
+it does not add programs, pipelines, cache capacity or descriptor copies.
+Literal texgen coordinates must be supported enums. Live normalization,
+specular flags, texgen and texture-matrix enables already upload through the
+ordinary CSV0_C/texgen uniform ABI. Keys and persistent schemas stay exact.
+
+Keep the complete original 33,232-case FF domain and its ordinary reference
+source in the new separable-GL fixture. Count 816 eligible cases with 1,331,712
+exact scalar checks and explicitly count the remaining outside-domain cases.
+Require point/skin/source and specular/matrix/fog uniform fault controls. These
+tests cover the new unlit class, not all fixed-function rendering. Existing
+full vertex, ownership, source-identity and fragment corpora remain required.
+
+The broader private prototype also converted literal fog. It passed native
+NVIDIA output checks but failed twelve exact fog channels on llvmpipe in the
+[4160,5120) batch. That conversion is rejected. The production predicate still
+requires register-driven fog; lit and literal-fog classes retain the correct
+existing fallback, and full coverage remains open. Native separable programs
+are checked explicitly rather than inferring production precision from
+monolithic-only output. No recovery or latency claim follows from numerical
+equivalence or fewer uncovered state classes.
+
+## Ordinary fixed-function startup bank experiment, 2026-11-17
+
+`XEMU_EXPERIMENTAL_READY_FF` requires the existing experimental prepared
+renderer flag `XEMU_EXPERIMENTAL_READY_VSH`; both remain disabled by default.
+The original class requires fixed-function vertices, register-driven fog, CSV0_C
+and texgen, and no packed, swizzled or uniform attributes. Seven skin modes,
+point parameters, interpolation and the stage-interface prefix require 56
+distinct **ordinary unchanged GLSL** sources. No universal lighting rewrite
+or new uniform ABI is introduced. Vertex z-perspective does not affect these
+sources; its geometry behavior remains in the geometry owner. Persistent
+keys, schema and capacities remain unchanged.
+
+The constructor writes directly into 56 final reserved module-key owners.
+It resolves their native programs and uniforms, then creates and validates
+252 complete VS/GS/FS tuples. These anchors borrow slots from the existing
+binding pool and use its native pipeline-owner index. Only completion of
+every tuple publishes vertex coverage. Preparation failure releases every
+partial native owner and returns all reserved slots; unsupported states keep
+the existing correct synchronous fallback. Ordinary borrowers retire before
+anchors, which retire before stage owners. Existing pool capacities remain
+50*1024 entries; the reservation reduces ordinary available entries instead
+of adding a second payload cache.
+
+CPU tests compare 14,336 ordinary source strings, reject unsupported inputs,
+check all 56 stages and 252 tuples, exercise 618 partial/unavailable failures
+and 50,400 borrow/release operations, and reject eight ownership/publication faults.
+Native RTX 5090 and software GL tests each prepare and retire two owner
+generations with all 252 actual complete tuples validated. Native tuple
+validation is not a numerical draw or gameplay test. Source identity avoids
+changing vertex math but cannot establish retail readiness counts, image
+equivalence through the integrated renderer or a latency improvement.
+
+A private prior DOA3 seed capture has 19 covered keys out of 49 fixed-function
+keys (81 total); these are unique descriptors, not draw or compilation counts.
+The other fixed-function classes, unsupported attributes and Vulkan remain
+uncovered. First-use source generation still allocates during startup; native
+driver allocation/copy behavior remains external. Gameplay allocations,
+fresh-process restoration, cold first fights, matched parent/warm tails and
+draw-critical compile counts require separate integrated validation. Current
+cold-play smoothness remains **BAD/unqualified**.
+
 ## Vertex guard dependency repair, 2026-11-17
 
 The CPU worker-partition fixture copied the actual guard after the scheduler
@@ -1160,3 +1423,170 @@ the public implementation and the production sections still reach the checked
 wrappers. Strict -Werror, case counts, collision checks and fault controls are
 unchanged. No libretro-common file or runtime code changes. Cold-play recovery
 and its existing failed/unqualified performance status remain open.
+
+### Fixed-depth prepared GL shadows (2026-11-17, experimental)
+
+The prepared fragment source now covers shadow flag 1 on 2D PROJECT2D and
+PROJECT3D stages with all eight comparison functions. It samples the existing
+RGBA depth alias using sampler2D, honors rectangle normalization, selects D24
+before float metadata, and matches ordinary D16/D24/511.9375 depth scaling and
+reference clamping. Border adjustment is unused by ordinary shadow sampling and
+is cleared from these controls. Unsupported flags, volumes, cube shadows and
+invalid compare enums reject before any controls are published. Both native
+interpolation programs remain startup-owned; no sampler type, reservation,
+persistent cache schema, payload snapshot or default option changes.
+
+The original 1,308-case / 418,560-scalar fragment corpus and all ten faults remain.
+A separate independent CPU-truth oracle checks 1,544 shadow probes / 12,352 exact
+channels through both ordinary and prepared programs, including every stage,
+projection mode, comparison, rectangle coordinates and depth metadata priority.
+Three additional faults must expose wrong comparison, projective reference or
+rectangle normalization numerically. Existing owner/alias retirement and partial
+startup failure tests remain required. This is experimental coverage only:
+physical cold/warm gameplay, GPU execution cost, Vulkan and full draw readiness
+remain unqualified. The cold-play regression remains BAD/open.
+
+Validation for the fixed-depth shadow change (`c5eba42218`): RTX 5090 and
+llvmpipe both passed the original 418,560 exact scalar checks, independent
+12,352-channel shadow oracle and all thirteen injected faults. Native and Linux
+owner/alias tests retained all eleven failure controls. Two native owner
+generations each prepared 56 vertex stages and validated 252 full native tuples.
+NGB and DOA3 fresh-process external restores matched parent image bytes exactly.
+
+A private cold DOA3 boot through 600 fight callbacks captured four draw-scoped
+CompileShader sites, down from the unlit extension's six. All four raw key hashes
+are unchanged lit vertex states; exactly two fixed-depth fragment keys disappeared,
+with no new miss keys. The fresh-process persistent-warm run retained one boot
+draw compilation. Both runs had zero fight compilation/program/pipeline creation
+calls, no C malloc/calloc/realloc/free in those fight callbacks, and advanced 599
+guest Presents and completions with correct audio/video cadence. This does not
+cover OS/driver allocation: 21,000 array-buffer orphan uploads remain in each
+fight sample. Private hooks were removed and clean coherent GL objects rebuilt.
+
+This is work attribution, not a latency improvement or recovery qualification.
+Each run used a fresh private app profile; warm persistent caches came only from
+its own cold run. Driver cache state is uncontrolled and fight cameras are not
+paired. Private stack/key capture and allocator instrumentation alter timing.
+Four cold lit-stage misses, GPU shader cost, startup cost, repeatable latency
+and Vulkan ready coverage remain open. No default experimental flag was enabled.
+
+### Material lighting with no active lights (2026-11-17, experimental)
+
+The existing 56-stage prepared FF bank now admits literal CSV0_C lighting when
+all four material sources are MATERIAL and all eight static lights are OFF.
+Live light-mode controls remain excluded because a zeroed key is not proof that
+its lightMode uniform is zero. Fog must already be dynamic; literal texgen enums
+are validated as before. No generated stage, owner reservation, cache schema,
+uniform ABI or default changes. Active and mixed-source lighting retain fallback.
+
+A supplementary dynamic-fog/material/no-light projection is applied to BOTH
+ordinary reference and prepared candidate while retaining all original case
+bodies and exact comparisons. The 33,232-case domain ledger contains 2,464
+eligible cases / 4,021,248 scalar checks; other cases are explicitly outside this
+additional class. Lighting-master, material-source and light-mode faults must
+produce numerical differences. The original unlit corpus and its five faults
+remain required. CPU checks reject every active light slot, dynamic light mode,
+each non-material source, invalid texgen and all existing unsupported boundaries.
+Broad literal lighting conversion is still rejected, not reclassified as passing.
+GPU latency, whole coverage and cold-play recovery remain BAD/unqualified.
+
+For `abacd323e7`, RTX 5090 and llvmpipe passed the supplementary 4,021,248
+exact checks and all three faults. The original native unlit corpus retained
+1,331,712 exact checks and all five faults. CPU source projection retained
+14,336 byte-identical source comparisons on current and historical headers;
+owner tests retained eight faults, partial failures and the same reservations.
+Historical candidates without the advertised capability retain their original
+full domains; advertised coverage with a missing supplementary fixture fails.
+
+The private DOA3 cold-boot trace recorded three draw-critical CompileShader
+sites rather than four. Their raw key hashes are the same three active-lit
+states as the parent; exactly one static all-OFF lit key disappeared, with no
+new key. Cold draw-pipeline creations fell from six to five. A fresh-process
+persistent-warm run retained one draw compilation and one draw-pipeline creation.
+Both runs preserved 600 fight callbacks / 599 guest Presents and completions,
+correct audio/video cadence, and zero fight shader/program/pipeline creation
+or C malloc/calloc/realloc/free. The 21,000 array-buffer orphan uploads remain.
+NGB and DOA3 external restores matched parent image bytes exactly. Private hooks
+were removed and coherent GL objects rebuilt before the image checks.
+
+These are correctness and work-count results only. Software-GPU validation ran
+concurrently, private instrumentation changes timing, driver-cache state is not
+controlled, and fight cameras are not paired. No frame-time or global allocation
+claim follows. Three cold active-lit misses, GPU cost, cold/warm latency recovery
+and Vulkan coverage remain open; experimental defaults remain disabled.
+
+### Literal material-lighting startup family (2026-11-17, experimental)
+
+Keeping the lighting controls literal avoids the exact arithmetic differences
+from converting material selectors into uniform-controlled selects. The new
+family uses the ordinary generator unchanged: lighting on; normalization, local
+eye and two-sided lighting off; all four color sources material; specular,
+separate specular and ignore-specular-alpha on. Light modes and texgen remain
+register-driven, and fog must already be dynamic. All seven skin modes, both
+point-parameter modes, interpolation variants and interface prefixes are
+prepared. Other control settings retain the correct existing path.
+
+The two families now occupy 112 stage entries and 504 native tuple entries
+borrowed from the existing 50*1024 module and binding pools. Pool capacities,
+cache keys, generator revision, uniform ABI and experimental defaults do not
+change. Every tuple must validate before either family is published; partial
+startup failure returns every borrowed slot. Existing generic owners retain
+priority for states they already cover. Queue and owner retirement rules are
+unchanged; no new runtime payload copies or worker waits are introduced.
+
+Before integration, independent supplementary probes retained all original
+33,232 FF case bodies while projecting the admitted literal controls and
+dynamic fog onto both reference and candidate. NVIDIA and llvmpipe each passed
+2,464 eligible recipes and 4,021,248 exact scalar checks. Converting those same
+controls into the older generic CSV source instead produced 3,171 NVIDIA
+differences and was rejected. No thresholds or original corpora were changed.
+
+The integrated fixture uses the actual classifier and canonical initializer,
+independent light/control packing and required numerical faults. Owner tests
+cover every stage creation/link and tuple creation/validation failure, both
+unavailable prerequisites, repeated borrowing and teardown. Native tuple,
+current-corpus, cold/warm gameplay, fresh-process restore and latency
+qualification must finish before delivery. The broader shader/PSO cold-play
+regression remains BAD/open; Vulkan and other lighting controls remain open.
+
+Initial integrated native checks passed: 28,672 source comparisons across
+112 distinct ordinary sources; 1,234 partial/unavailable rollback cases; two
+owner generations validating and retiring all 504 tuples each; and 4,021,248
+exact numerical channels with eight required faults rejected. The eye fault
+uses original unsaturated-curve cases 20016:20032; the later constant-curve
+interval did not exercise eye dependence and is not accepted as a witness.
+Integrated software-GPU and gameplay qualification remain pending.
+
+### Dynamic CSV with literal texgen (2026-11-17, experimental)
+
+After the literal material family eliminated the three observed GL draw
+compilations, a private cold DOA3 run still constructed two pipelines in draws:
+one during boot and one at fight entry before the counted live callbacks.
+Both had ready geometry and fragment stages, but their FF vertex recipes had
+dynamic CSV controls and literal texgen. The old eligibility predicate required
+both CSV and texgen to be dynamic, so these vertices used prewarmed exact modules
+and then constructed a native tuple in the draw. The diagnostic ff field means
+fixed-function, not readiness; a stage-module hit alone does not prove a ready
+complete tuple. This was a coverage gap, not evidence to alter publication
+gates or ignore the two calls as startup.
+
+The existing register-driven family now accepts valid literal texgen/matrix
+controls with independently packed uniforms. Invalid literal modes still reject.
+No program, tuple, reservation, key, generator revision or uniform ABI is added:
+the bank remains 112 ordinary stages and 504 fully validated tuples, with the
+experimental flags off by default. Literal fog remains outside this conversion.
+
+The supplementary corpus retains all original FF case bodies and the original
+raw CSV/light inputs, projects dynamic fog onto both paths, and independently
+packs the literal texgen controls. Private NVIDIA and llvmpipe probes each
+passed 400 new-domain recipes and 652,800 exact scalar comparisons. The
+integrated fixture uses the real classifier and requires numerical faults for
+point parameters, skinning, CSV, light modes, texgen and matrix enable. Original
+corpora, budgets and all older fault controls remain required. Integrated GPU,
+owner/lifecycle, cold/warm gameplay and latency qualification are still pending;
+shader/PSO cold-play recovery remains BAD/open.
+
+The integrated native classifier fixture passed all 652,800 positive channels
+and all six numerical faults. The source identity/unsupported-boundary and
+1,234-case owner rollback tests passed as well. Integrated software-GPU,
+cold/warm gameplay and performance qualification remain pending.

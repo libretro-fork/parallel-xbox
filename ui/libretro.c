@@ -43,6 +43,7 @@
 #include "data/xbox_hdd.qcow2.h"
 
 #include "ui/gl-dispatch.h"
+#include "hw/xbox/nv2a/pgraph/gl/ready-config.h"
 #ifndef _WIN32
 #include <dlfcn.h>
 #endif
@@ -116,6 +117,47 @@ static bool use_vulkan = false;
 static struct retro_rumble_interface rumble;
 /* Graphics API option: Vulkan unless set to OpenGL (read at load) */
 static bool opt_renderer_vulkan = true;
+
+/* Preparation is an opt-in startup/GPU-work tradeoff, not a live renderer
+ * change. The pinned GL machine cannot reload content safely; only process
+ * restart clears this latch. Pending frontend updates never mutate its value. */
+#if !defined(__ANDROID__) && !defined(XEMU_DISABLE_READY_GL)
+static struct {
+    bool pending;
+    bool latched;
+    bool enabled;
+} gl_prepared_shaders;
+#endif
+
+static void update_gl_prepared_shader_option(void)
+{
+#if !defined(__ANDROID__) && !defined(XEMU_DISABLE_READY_GL)
+    struct retro_variable var = { "xemu_gl_prepared_shaders", NULL };
+    gl_prepared_shaders.pending = environ_cb &&
+        environ_cb(RETRO_ENVIRONMENT_GET_VARIABLE, &var) && var.value &&
+        !strcmp(var.value, "enabled");
+#endif
+}
+
+static void latch_gl_prepared_shader_option(void)
+{
+#if !defined(__ANDROID__) && !defined(XEMU_DISABLE_READY_GL)
+    if (!use_vulkan && !gl_prepared_shaders.latched) {
+        gl_prepared_shaders.enabled = gl_prepared_shaders.pending;
+        gl_prepared_shaders.latched = true;
+    }
+#endif
+}
+
+bool pgraph_gl_prepared_shaders_enabled(void)
+{
+#if !defined(__ANDROID__) && !defined(XEMU_DISABLE_READY_GL)
+    return gl_prepared_shaders.enabled;
+#else
+    return false;
+#endif
+}
+
 static bool context_ready = false;
 static bool game_loaded = false;
 
@@ -1147,6 +1189,8 @@ static void update_variables(void)
 {
     struct retro_variable var;
 
+    update_gl_prepared_shader_option();
+
     get_option_string("xemu_bootrom_path", opt_bootrom_path, sizeof(opt_bootrom_path));
     get_option_string("xemu_bios_path", opt_bios_path, sizeof(opt_bios_path));
     get_option_string("xemu_hdd_path", opt_hdd_path, sizeof(opt_hdd_path));
@@ -1369,6 +1413,7 @@ static void update_variables(void)
 
 static void populate_config(const char *dvd_path)
 {
+    latch_gl_prepared_shader_option();
     LRLOG_INFO("[xemu] Populating g_config from core options\n");
 
     /* Set file paths in g_config */

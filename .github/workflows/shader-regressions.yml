@@ -122,7 +122,7 @@ jobs:
           set -euo pipefail
           export SPV_FAMILY_REQUIRE_IN_PROCESS=1
           mkdir -p results
-          for test in test-pipeline-key-clear test-pipeline-job-view test-pipeline-ahead-key test-pipeline-completion-service test-seed-lifetime test-pipeline-register-key test-surface-blend test-vk-recording-epoch test-inline-upload-writer test-inline-index-bounds test-vk-vertex-formats test-frame-completion test-block-memory test-gl-dynamic-pair test-glslgen-queue test-worker-drain test-vk-worker-modules test-shader-cache-handoff test-gl-disk-writer test-gl-module-export test-gl-stage-lifetime test-gl-program-namespace test-file-retained-view test-pipeline-cache-export test-shader-layout test-spv-prefix-view test-gpl-lookup-cache test-pipeline-layout-lends test-ready-pipeline-sibling test-ready-shader-binding test-render-pass-pump test-pending-key-lend test-shader-control-dirty test-spv-vsh test-spv-psh test-spv-display test-spv-utility test-s3tc-preparation test-s3tc-stream test-vk-ring-pressure test-vsh-constant-lend test-vsh-integer-lend test-vsh-layout-names test-seed-convolution test-seed-inplace test-seed-dictionary test-psh-uniform-map test-gl-helper-policy; do
+          for test in test-pipeline-key-clear test-pipeline-job-view test-pipeline-ahead-key test-pipeline-completion-service test-seed-lifetime test-pipeline-register-key test-surface-blend test-vk-recording-epoch test-inline-upload-writer test-inline-index-bounds test-vk-vertex-formats test-frame-completion test-block-memory test-gl-dynamic-pair test-glslgen-queue test-worker-drain test-vk-worker-modules test-shader-cache-handoff test-gl-disk-writer test-gl-module-export test-gl-stage-lifetime test-gl-program-namespace test-file-retained-view test-pipeline-cache-export test-shader-layout test-spv-prefix-view test-gpl-lookup-cache test-pipeline-layout-lends test-ready-pipeline-sibling test-ready-shader-binding test-render-pass-pump test-pending-key-lend test-shader-control-dirty test-spv-vsh test-spv-psh test-spv-display test-spv-utility test-s3tc-preparation test-s3tc-stream test-vk-ring-pressure test-vsh-constant-lend test-vsh-integer-lend test-vsh-layout-names test-seed-convolution test-seed-inplace test-seed-dictionary test-psh-uniform-map test-gl-helper-policy test-gl-ready-default test-gl-prepared-option test-ready-vsh-owner test-ready-vsh-startup; do
             python3 "driver/libretro/tests/$test.py" candidate cc 2>&1 | tee "results/$test.log"
           done
           python3 driver/libretro/tests/test-vfs-read-at.py candidate cc 2>&1 | tee results/vfs-read-at.log
@@ -144,6 +144,7 @@ jobs:
           python3 driver/libretro/tests/test-sibling-queue.py candidate cc 2>&1 | tee results/sibling-queue.log
           python3 driver/libretro/tests/test-gl-spec-preparation.py candidate cc 2>&1 | tee results/gl-spec-preparation.log
           python3 driver/libretro/tests/test-gl-resident-submit.py candidate cc 2>&1 | tee results/gl-resident-submit.log
+          python3 driver/libretro/tests/test-gl-ready-gate.py candidate cc 2>&1 | tee results/gl-ready-gate.log
           python3 driver/libretro/tests/test-gl-binding-pump.py candidate cc 2>&1 | tee results/gl-binding-pump.log
           python3 driver/libretro/tests/test-gl-ready-cover.py candidate cc 2>&1 | tee results/gl-ready-cover.log
           python3 driver/libretro/tests/test-gl-cover-projection.py candidate cc 2>&1 | tee results/gl-cover-projection.log
@@ -159,6 +160,12 @@ jobs:
           python3 driver/libretro/tests/test-shader-gpu-batch.py 2>&1 | tee results/gpu-batch.log
           python3 driver/libretro/tests/test-vsh-worker-partition.py candidate cc 2>&1 | tee results/vsh-worker-partition.log
           python3 driver/libretro/tests/test-vsh-derived-domains.py candidate 2>&1 | tee results/vsh-derived-domains.log
+          python3 driver/libretro/tests/test-shader-feature-scope.py 2>&1 | tee results/feature-scope-contract.log
+          ff_scope=$(python3 driver/libretro/tests/shader_feature_scope.py candidate | tee results/ff-scope.log)
+          if [ "$ff_scope" = present ]; then
+            python3 driver/libretro/tests/test-gl-ready-ff-owners.py candidate cc 2>&1 | tee results/gl-ready-ff-owners.log
+            python3 driver/libretro/tests/test-gl-ready-ff-source.py candidate cc 2>&1 | tee results/gl-ready-ff-source.log
+          fi
           python3 driver/libretro/tests/test-throughput-gate.py 2>&1 | tee results/throughput-gate.log
           python3 driver/libretro/tests/test-shader-compile-gate.py 2>&1 | tee results/compiler-gate.log
           python3 driver/libretro/tests/test-cold-play-frame-gate.py candidate 2>&1 | tee results/cold-play-frame-gate.log
@@ -289,6 +296,11 @@ jobs:
           set -euo pipefail
           mkdir -p results
           python3 driver/libretro/tests/test-gl-texture-shadow.py candidate cc 2>&1 | tee results/gl-texture-shadow.log
+          ff_scope=$(python3 driver/libretro/tests/shader_feature_scope.py candidate | tee results/ff-scope.log)
+          if [ "$ff_scope" = present ]; then
+            python3 driver/libretro/tests/test-gl-ready-ff-source.py candidate cc native 2>&1 | tee results/gl-ready-ff-native.log
+            LIBGL_ALWAYS_SOFTWARE=1 python3 driver/libretro/tests/test-gl-ready-ff-unlit.py candidate cc 2>&1 | tee results/gl-ready-ff-unlit.log
+          fi
           python3 driver/libretro/tests/test-gl-volume-compression.py candidate cc 2>&1 | tee results/gl-volume-compression.log
           python3 driver/libretro/tests/test-glslc-local-init.py candidate --cc cc 2>&1 | tee results/local-init.log
           python3 driver/libretro/tests/test-vsh-mul-select.py candidate --cc cc --validator spirv-val 2>&1 | tee results/vsh-mul-select.log
@@ -484,7 +496,7 @@ jobs:
       - name: Check native fragment owners, aliases and partial startup failure
         run: |
           set -euo pipefail
-          python3 libretro/tests/test-ready-psh-owner.py . cc 2>&1 | tee results/fragment-owners.log
+          python3 driver/libretro/tests/test-ready-psh-owner.py . cc 2>&1 | tee results/fragment-owners.log
       - name: Compare ready fragments with ordinary color, depth and discard
         run: |
           set -euo pipefail

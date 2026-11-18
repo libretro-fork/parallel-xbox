@@ -11,6 +11,22 @@
 #define GL_FRAGMENT_SHADER_BIT 4
 #define GL_VALIDATE_STATUS 5
 #define GL_FALSE 0
+
+#define GL_NO_ERROR 0
+static unsigned startup_error_flags;
+static bool startup_publication_error;
+static __attribute__((unused)) void startup_raise_error(unsigned error){
+#ifdef FIXTURE_CHECKED_STARTUP
+ assert(error>=0x500&&error<=0x507);startup_error_flags|=1u<<(error-0x500);
+#else
+ (void)error;
+#endif
+}
+static __attribute__((unused)) unsigned glGetError(void){
+ if(!startup_error_flags)return 0;
+ unsigned bit=(unsigned)__builtin_ctz(startup_error_flags);startup_error_flags&=~(1u<<bit);return 0x500+bit;
+}
+
 typedef unsigned GLuint;
 typedef int GLint;
 typedef struct { unsigned unused; } LruNode;
@@ -34,7 +50,7 @@ static GLuint programs[19][3];
 static void glGenProgramPipelines(int n,GLuint *name)
 {
     assert(n==1);unsigned i=++created;assert(i<=18);
-    *name=i==fail_create?0:i;if(*name)alive[i]=true;
+    *name=i==fail_create?0:i;if(*name)alive[i]=true;else startup_raise_error(0x505);
 }
 static void glDeleteProgramPipelines(int n,const GLuint *name)
 {
@@ -57,7 +73,7 @@ static void glValidateProgramPipeline(GLuint p)
 }
 static void glGetProgramPipelineiv(GLuint p,unsigned pname,GLint *valid)
 {
-    assert(pname==GL_VALIDATE_STATUS&&validated[p]);*valid=p!=fail_validate;
+    assert(pname==GL_VALIDATE_STATUS&&validated[p]);*valid=p!=fail_validate;if(startup_publication_error&&p==18){startup_raise_error(0x505);startup_raise_error(0x501);startup_raise_error(0x502);}
 }
 static void lru_add_free(unsigned *lru,LruNode *node)
 {
@@ -66,6 +82,7 @@ static void lru_add_free(unsigned *lru,LruNode *node)
 /* PRODUCTION */
 static void reset(PGRAPHGLState *r)
 {
+    startup_error_flags=0;startup_publication_error=false;
     memset(r,0,sizeof(*r));memset(slots,0,sizeof(slots));memset(borrowers,0,sizeof(borrowers));
     memset(alive,0,sizeof(alive));memset(validated,0,sizeof(validated));memset(programs,0,sizeof(programs));
     created=deleted=returned=fail_create=fail_validate=0;
@@ -101,10 +118,19 @@ int main(void)
             ready_pipelines_finalize(&r);assert(!r.ready_pipelines&&deleted==18);
             pipeline_owner_finalize(&r);
         }
+        assert(!startup_error_flags);
         ready_pipelines_finalize(&r);pipeline_owner_finalize(&r);
     }
     reset(&r);r.ready_pipelines=NULL;ready_pipelines_init(&r);ready_pipelines_finalize(&r);
     assert(!created&&!deleted&&!returned);pipeline_owner_finalize(&r);
+
+#ifdef FIXTURE_CHECKED_STARTUP
+    reset(&r);startup_raise_error(0x501);ready_pipelines_init(&r);
+    assert(!r.ready_pipelines&&!created&&!deleted&&returned==18&&!startup_error_flags);pipeline_owner_finalize(&r);
+    reset(&r);startup_publication_error=true;ready_pipelines_init(&r);
+    assert(!r.ready_pipelines&&!startup_error_flags&&returned==18&&deleted==created);pipeline_owner_finalize(&r);
+    puts("PASS pipeline checked startup: prior-error/no-owner rollback and multi-error final-tuple rejection");
+#endif
     puts("PASS 18 native tuples, 36000 draw acquisitions without creation, 36 partial failures, unavailable-stage rollback and teardown");
     return 0;
 }

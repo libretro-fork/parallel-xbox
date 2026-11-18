@@ -34,6 +34,11 @@ final=fixture.function(shader,'void pgraph_gl_finalize_shaders(')
 assert final.index('lru_flush(&r->shader_cache)')<final.index('ready_geom_finalize(r)')<final.index('g_free(r->shader_module_cache_entries)')
 eviction=fixture.function(shader,'static void shader_cache_entry_post_evict(')
 assert eviction.index('ready_geom_invalidate(r, binding)')<eviction.index('memset(&binding->state')
+if (Path(sys.argv[1])/'hw/xbox/nv2a/pgraph/gl/ready-config.h').is_file():
+    assert 'bool clean_entry = false;' in source, 'Advertised default preparation lacks checked startup safety'
+if 'bool clean_entry = false;' in source:
+    template='#define FIXTURE_CHECKED_STARTUP 1\n'+template
+
 env=dict(os.environ)
 env['PATH']=str(Path(shutil.which(cc) or cc).resolve().parent)+os.pathsep+env.get('PATH','')
 with tempfile.TemporaryDirectory(prefix='ready-geom-owners-') as temporary:
@@ -57,3 +62,15 @@ with tempfile.TemporaryDirectory(prefix='ready-geom-owners-') as temporary:
         assert before in source,name
         result=run(source.replace(before,after));assert result.returncode!=0,(name,result.stdout)
         print('Required geometry ownership control rejected:',name)
+
+    if 'bool clean_entry = false;' in source:
+        mutations=[
+            ('own startup errors retained', source.replace('i < 8;', 'i < 1;')),
+            ('prior startup error ignored', source.replace('if (error != GL_NO_ERROR) {','if (false) {',1)),
+            ('publication errors ignored',source.replace('(error = glGetError())','GL_NO_ERROR').replace('    error = glGetError();\n    if (error != GL_NO_ERROR) {','    error = GL_NO_ERROR;\n    if (error != GL_NO_ERROR) {')),
+        ]
+        for name,mutated in mutations:
+            assert mutated!=source,name
+            result=run(mutated)
+            assert result.returncode==1 and result.stderr,(name,result.returncode,result.stdout,result.stderr)
+            print('Required checked-startup fault rejected:',name,flush=True)

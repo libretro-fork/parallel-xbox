@@ -10,6 +10,22 @@
 #define GL_GEOMETRY_SHADER 0x8dd9
 #define GL_LINK_STATUS 0x8b82
 #define GL_FALSE 0
+
+#define GL_NO_ERROR 0
+static unsigned startup_error_flags;
+static bool startup_publication_error;
+static __attribute__((unused)) void startup_raise_error(unsigned error){
+#ifdef FIXTURE_CHECKED_STARTUP
+ assert(error>=0x500&&error<=0x507);startup_error_flags|=1u<<(error-0x500);
+#else
+ (void)error;
+#endif
+}
+static __attribute__((unused)) unsigned glGetError(void){
+ if(!startup_error_flags)return 0;
+ unsigned bit=(unsigned)__builtin_ctz(startup_error_flags);startup_error_flags&=~(1u<<bit);return 0x500+bit;
+}
+
 typedef unsigned GLuint;
 typedef int GLint;
 /* TYPES */
@@ -30,7 +46,7 @@ typedef struct {
 } PGRAPHGLState;
 typedef struct {char text[8];} MString;
 static unsigned sources,allocations,created,deleted,alive,writes,ordinal,shader_deletes;
-static int fail_stage=-1;
+static int fail_stage=-1,fail_create_stage=-1;
 static struct {bool alive,linked,attached;int values[4];} programs[20000];
 static PGRAPHGLState *current;
 static ShaderModuleCacheEntry *ready_geom_find(PGRAPHGLState*,const ShaderModuleCacheKey*);
@@ -46,17 +62,18 @@ static GLuint pgraph_gl_separable_program(unsigned kind,const char *source,GLuin
     assert(kind==GL_GEOMETRY_SHADER && sources==1 && !strcmp(source,"shader"));
     ShaderModuleCacheKey key={.kind=GL_GEOMETRY_SHADER,.geom={.state={.primitive_mode=PRIM_TYPE_LINES}}};
     assert(!current->ready_geom.ready&&!ready_geom_find(current,&key));
+    if((int)ordinal==fail_create_stage){ordinal++;*shader=0;startup_raise_error(0x505);startup_raise_error(0x501);return 0;}
     GLuint id=++created;assert(id<20000);programs[id].alive=programs[id].attached=true;
     programs[id].linked=(int)ordinal!=fail_stage;ordinal++;alive++;*shader=id;return id;
 }
 static void glDetachShader(GLuint p,GLuint shader){assert(p==shader&&programs[p].alive&&programs[p].linked&&programs[p].attached);programs[p].attached=false;}
-static void glDeleteShader(GLuint shader){assert(shader&&programs[shader].alive);shader_deletes++;}
+static void glDeleteShader(GLuint shader){if(!shader)return;assert(programs[shader].alive);shader_deletes++;}
 static void glGetProgramiv(GLuint p,unsigned which,GLint *value)
 {assert(programs[p].alive&&which==GL_LINK_STATUS);*value=programs[p].linked;}
 static void delete_program(PGRAPHGLState *r,GLuint p)
 {assert(r==current&&programs[p].alive);programs[p].alive=programs[p].attached=false;alive--;deleted++;}
 static void module_resolve_uniform_locs(ShaderModuleCacheEntry *s)
-{assert(s->key.kind==GL_GEOMETRY_SHADER&&programs[s->gl_stage_program].linked);}
+{assert(s->key.kind==GL_GEOMETRY_SHADER&&programs[s->gl_stage_program].linked);if(startup_publication_error){startup_raise_error(0x505);startup_raise_error(0x501);startup_raise_error(0x502);}}
 static GLint glGetUniformLocation(GLuint p,const char *name)
 {assert(programs[p].alive&&!strcmp(name,"gsControl"));return p%GEOM_DYNAMIC_VARIANTS==2?-1:(int)p;}
 static void glProgramUniform4iv(GLuint p,GLint loc,int count,const int *values)
@@ -68,6 +85,7 @@ static unsigned pgraph_glsl_ui_clamp_stage(const unsigned *stage){return *stage;
 static ShaderModuleCacheEntry pool[128];
 static void setup(PGRAPHGLState *r)
 {
+    startup_error_flags=0;startup_publication_error=false;fail_create_stage=-1;
     memset(r,0,sizeof(*r));memset(pool,0,sizeof(pool));ordinal=0;current=r;
     r->ready_geom.stages=pool;
     for(unsigned i=GEOM_DYNAMIC_VARIANTS;i<128;i++)lru_add_free(&r->shader_module_cache,&pool[i].node);
@@ -125,11 +143,24 @@ int main(void)
      * all 128 original slots and the existing correct specialized path. */
     for(unsigned failure=0;failure<GEOM_DYNAMIC_VARIANTS;failure++){
         setup(&r);fail_stage=failure;ready_geom_init(&r);
-        assert(!r.ready_geom.ready&&!r.ready_geom.stages&&!alive&&!sources);
+        assert(!r.ready_geom.ready&&!r.ready_geom.stages&&!alive&&!sources&&!startup_error_flags);
         assert(r.shader_module_cache.free_count==128);
         for(unsigned j=0;j<128;j++)assert(pool[j].node.free);
         ready_geom_finalize(&r);
     }
+
+#ifdef FIXTURE_CHECKED_STARTUP
+    setup(&r);fail_stage=-1;unsigned old_created=created;startup_raise_error(0x501);ready_geom_init(&r);
+    assert(!r.ready_geom.ready&&!r.ready_geom.stages&&created==old_created&&!alive&&!sources&&!startup_error_flags&&r.shader_module_cache.free_count==128);
+    for(unsigned failure=0;failure<GEOM_DYNAMIC_VARIANTS;failure++){
+        setup(&r);fail_create_stage=(int)failure;ready_geom_init(&r);
+        assert(!r.ready_geom.ready&&!r.ready_geom.stages&&!alive&&!sources&&!startup_error_flags&&r.shader_module_cache.free_count==128);
+        ready_geom_finalize(&r);
+    }
+    setup(&r);startup_publication_error=true;ready_geom_init(&r);
+    assert(!r.ready_geom.ready&&!r.ready_geom.stages&&!alive&&!sources&&!startup_error_flags&&r.shader_module_cache.free_count==128);
+    puts("PASS geometry checked startup: all zero-program positions, incoming error and multi-error publication rollback preserve the fixed pool");
+#endif
     assert(created==deleted&&created==shader_deletes);
     printf("PASS: %u native geometry owners, fixed pool capacity, all partial-init failures, bounded uniform transport, strip switching, invalidation and teardown\n",GEOM_DYNAMIC_VARIANTS);
     return 0;

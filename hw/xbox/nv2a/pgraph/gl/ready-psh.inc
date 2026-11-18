@@ -12,6 +12,22 @@ static ShaderModuleCacheEntry *ready_psh_find(PGRAPHGLState *r,
     return &r->ready_psh.stages[!!key->psh.state.smooth_shading];
 }
 
+/* The heuristic queues legacy family keys before the draw applies its
+ * helper-liveness projection. Adopt only when that same draw projection has
+ * a fully linked ready fragment; restore the family's exact key before the
+ * notification hashes it. The caller owns this dequeued metadata record. */
+static bool ready_psh_adopt_gate(PGRAPHGLState *r, PshState *state)
+{
+    if (!r->ready_psh.ready) return false;
+    unsigned depth_format = state->depth_format;
+    uint32_t controls[8];
+    state->depth_format |= DEPTH_FORMAT_HELPER_LIVENESS;
+    bool covered = pgraph_glsl_psh_ready_controls(state, controls);
+    state->depth_format = depth_format;
+    if (covered) pgraph_glsl_psh_dynamic_ready(state);
+    return covered;
+}
+
 static void ready_psh_invalidate(PGRAPHGLState *r, const ShaderBinding *binding)
 {
     if (r->ready_psh.uploaded_binding == binding)
@@ -50,6 +66,14 @@ static void ready_psh_init(PGRAPHGLState *r)
     if (!r->ready_psh.stages) return;
     assert(!r->ready_psh.ready);
     ShaderModuleCacheEntry *reserved = r->ready_psh.stages;
+    bool clean_entry = false;
+    unsigned error = glGetError();
+    if (error != GL_NO_ERROR) {
+        fprintf(stderr, "Prepared fragment initialization declined: prior GL error 0x%x\n", error);
+        goto unavailable;
+    }
+    clean_entry = true;
+
     GLint units;
     glGetIntegerv(GL_MAX_TEXTURE_IMAGE_UNITS, &units);
     if (units < 12) goto unavailable;
@@ -70,6 +94,7 @@ static void ready_psh_init(PGRAPHGLState *r)
                                       mstring_get_str(source), &stage->gl_shader);
         mstring_unref(source);
         glDeleteShader(stage->gl_shader);
+        if (!stage->gl_stage_program) goto unavailable;
     }
     for (unsigned i = 0; i < 2; i++) {
         ShaderModuleCacheEntry *stage = &reserved[i];
@@ -96,12 +121,24 @@ static void ready_psh_init(PGRAPHGLState *r)
             }
         }
     }
+    error = glGetError();
+    if (error != GL_NO_ERROR) {
+        fprintf(stderr, "Prepared fragment initialization failed: GL error 0x%x\n", error);
+        goto unavailable;
+    }
     r->ready_psh.ready = true; /* Complete native links and bindings, not modules alone. */
 #ifdef XEMU_READY_VSH_DIAGNOSTICS
     fprintf(stderr, "READY_PSH initialized 2 native fragments from existing module slots\n");
 #endif
     return;
 unavailable:
+    /* Only errors from this optional initialization, never incoming errors.
+     * Bound cleanup even if a broken/lost context keeps reporting a flag. */
+    if (clean_entry) for (unsigned i = 0; i < 8; i++) {
+        error = glGetError();
+        if (error == GL_NO_ERROR) break;
+        fprintf(stderr, "Prepared fragment initialization failed: GL error 0x%x\n", error);
+    }
 #ifdef XEMU_READY_VSH_DIAGNOSTICS
     fprintf(stderr, "READY_PSH unavailable; retaining exact shader path\n");
 #endif

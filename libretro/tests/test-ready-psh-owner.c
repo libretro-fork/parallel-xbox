@@ -11,6 +11,22 @@
 typedef unsigned GLuint,GLenum;typedef int GLint;
 enum { GL_FALSE,GL_FRAGMENT_SHADER,GL_ACTIVE_TEXTURE,GL_MAX_TEXTURE_IMAGE_UNITS,
        GL_LINK_STATUS,GL_TEXTURE_1D,GL_TEXTURE_2D,GL_TEXTURE_3D,GL_TEXTURE_CUBE_MAP,GL_TEXTURE0=100,GL_TEXTURE4=104 };
+
+#define GL_NO_ERROR 0
+static unsigned startup_error_flags;
+static bool startup_publication_error;
+static __attribute__((unused)) void startup_raise_error(unsigned error){
+#ifdef FIXTURE_CHECKED_STARTUP
+ assert(error>=0x500&&error<=0x507);startup_error_flags|=1u<<(error-0x500);
+#else
+ (void)error;
+#endif
+}
+static __attribute__((unused)) unsigned glGetError(void){
+ if(!startup_error_flags)return 0;
+ unsigned bit=(unsigned)__builtin_ctz(startup_error_flags);startup_error_flags&=~(1u<<bit);return 0x500+bit;
+}
+
 typedef struct ShaderModuleCacheKey {GLenum kind;struct {PshState state;GenPshGlslOptions glsl_opts;}psh;} ShaderModuleCacheKey;
 typedef struct ShaderModuleCacheEntry {unsigned node;ShaderModuleCacheKey key;GLuint gl_stage_program,gl_shader;} ShaderModuleCacheEntry;
 typedef struct ShaderBinding {struct {PshState psh;}state;GLuint gl_prog_fs;bool ready_psh;} ShaderBinding;
@@ -25,13 +41,13 @@ typedef struct PGRAPHState {PGRAPHGLState *gl_renderer_state;bool enabled[4];}PG
 static struct {PGRAPHState pgraph;}machine,*g_nv2a=&machine;
 typedef void *gpointer;
 struct MString {unsigned tag;};static MString sources[2];
-static unsigned source_live,created,alive[3],attached[3],freed,queries,loc_fail,link_fail,units,detached,routes,route_sum;
+static unsigned source_live,created,alive[3],attached[3],freed,queries,loc_fail,link_fail,units,detached,routes,route_sum,fail_program;
 static unsigned active,bound[12][2],binds,uploads,returned;
 static uint32_t uniform_values[3][8];
 MString *pgraph_glsl_gen_psh_ready(const PshState *s,GenPshGlslOptions opts){assert(opts.locations);assert(s->depth_format&DEPTH_FORMAT_HELPER_LIVENESS);source_live++;return &sources[!!s->smooth_shading];}
 static void mstring_unref(MString *s){assert(s && source_live);source_live--;}
 static const char *mstring_get_str(MString *s){assert(s);return "";}
-static GLuint pgraph_gl_separable_program(GLenum kind,const char *text,GLuint *shader){(void)text;assert(kind==GL_FRAGMENT_SHADER);GLuint p=++created;assert(p<=2);alive[p]=attached[p]=1;*shader=p+10;return p;}
+static GLuint pgraph_gl_separable_program(GLenum kind,const char *text,GLuint *shader){(void)text;assert(kind==GL_FRAGMENT_SHADER);GLuint p=++created;assert(p<=2);*shader=p+10;if(p==fail_program){startup_raise_error(0x505);startup_raise_error(0x501);return 0;}alive[p]=attached[p]=1;return p;}
 static void glDeleteShader(GLuint sh){assert(sh==11||sh==12);}
 static void delete_program(PGRAPHGLState *r,GLuint p){(void)r;assert(p && alive[p]);alive[p]=attached[p]=0;}
 static void glGetIntegerv(GLenum name,GLint *out){*out=name==GL_MAX_TEXTURE_IMAGE_UNITS?units:active;}
@@ -41,17 +57,24 @@ static void glGetProgramiv(GLuint p,GLenum name,GLint *out){assert(name==GL_LINK
 static void glDetachShader(GLuint p,GLuint sh){assert(alive[p]&&attached[p]&&sh==p+10);attached[p]=0;detached++;}
 static void module_resolve_uniform_locs(ShaderModuleCacheEntry *s){assert(alive[s->gl_stage_program]&&!attached[s->gl_stage_program]);}
 static GLint glGetUniformLocation(GLuint p,const char *name){assert(alive[p]&&name);return ++queries==loc_fail?-1:1;}
-static void glProgramUniform1i(GLuint p,GLint loc,int unit){assert(alive[p]&&loc>=0&&unit>=0&&unit<12);routes++;route_sum+=unit;}
+static void glProgramUniform1i(GLuint p,GLint loc,int unit){assert(alive[p]&&loc>=0&&unit>=0&&unit<12);routes++;route_sum+=unit;if(startup_publication_error&&routes==24){startup_raise_error(0x505);startup_raise_error(0x501);startup_raise_error(0x502);}}
 static void glProgramUniform4uiv(GLuint p,GLint loc,int count,const uint32_t *v){assert(alive[p]&&loc>=0&&count==2);memcpy(uniform_values[p],v,32);uploads++;}
 static __attribute__((unused)) void lru_add_free(unsigned *cache,unsigned *node){(void)cache;assert(node);freed++;}
 static __attribute__((unused)) bool pgraph_is_texture_enabled(PGRAPHState *pg,unsigned unit){return pg->enabled[unit];}
 static unsigned sampled_texture_key_load(const uint8_t *key){(void)key;return 0;}
 static void sampled_texture_put(unsigned *pool,unsigned key,GLuint name){(void)pool;(void)key;for(unsigned i=0;i<8;i++)if(machine.pgraph.gl_renderer_state->ready_psh.aliases[i]==name)assert(!(machine.pgraph.gl_renderer_state->ready_psh.aliases_valid&(1u<<i)));for(unsigned i=0;i<12;i++)for(unsigned j=0;j<2;j++)if(bound[i][j]==name)bound[i][j]=0;}
 static void obj_pool_give(unsigned *pool,TextureBinding *b){(void)pool;assert(!b->refcnt);returned++;}
+#ifdef FIXTURE_READY_GATE
+static unsigned gate_notifications,gate_depth;
+void pgraph_glsl_psh_dynamic_ready(const PshState *state){
+ assert((unsigned)state->depth_format==gate_depth);gate_notifications++;
+}
+#endif
 /* SELECTOR */
 /* PRODUCTION */
 /* RETIREMENT */
 static void setup(PGRAPHGLState *r,ShaderModuleCacheEntry slots[2]){
+ startup_error_flags=0;startup_publication_error=false;fail_program=0;
  memset(r,0,sizeof(*r));memset(slots,0,sizeof(*slots)*2);memset(bound,0,sizeof(bound));memset(alive,0,sizeof(alive));memset(attached,0,sizeof(attached));memset(uniform_values,0,sizeof(uniform_values));
  memset(&machine,0,sizeof(machine));machine.pgraph.gl_renderer_state=r;r->ready_psh.stages=slots;
  source_live=created=freed=queries=loc_fail=link_fail=detached=routes=route_sum=binds=uploads=returned=0;units=16;active=GL_TEXTURE0+3;
@@ -65,6 +88,14 @@ int main(void){
   ready_psh_init(&r);assert(!r.ready_psh.ready&&!r.ready_psh.stages&&freed==2&&!source_live&&!alive[1]&&!alive[2]);assert(active==GL_TEXTURE0+3);
  }
  setup(&r,slots);ready_psh_init(&r);assert(r.ready_psh.ready&&r.ready_psh.stages==slots&&!freed&&!source_live&&created==2&&detached==2&&routes==24&&route_sum==132);
+#ifdef FIXTURE_READY_GATE
+ PshState gated={.combiner_dynamic=true},exact=gated;gate_depth=0;gate_notifications=0;
+ assert(ready_psh_adopt_gate(&r,&gated)&&gate_notifications==1&&!memcmp(&gated,&exact,sizeof(gated)));
+ r.ready_psh.ready=false;
+ assert(!ready_psh_adopt_gate(&r,&gated)&&gate_notifications==1&&!memcmp(&gated,&exact,sizeof(gated)));
+ r.ready_psh.ready=true;gated.shader_stage_program=31;exact=gated;
+ assert(!ready_psh_adopt_gate(&r,&gated)&&gate_notifications==1&&!memcmp(&gated,&exact,sizeof(gated)));
+#endif
  ShaderBinding a={.state.psh={.depth_format=DEPTH_FORMAT_HELPER_LIVENESS,.combiner_dynamic=true},.ready_psh=true,.gl_prog_fs=1},b=a;
  a.state.psh.shader_stage_program=1;b.state.psh.shader_stage_program=2;b.state.psh.dim_tex[0]=3;a.state.psh.dim_tex[0]=2;
  for(unsigned i=0;i<4;i++){a.state.psh.dim_tex[i]=i?2:a.state.psh.dim_tex[i];b.state.psh.dim_tex[i]=i?2:b.state.psh.dim_tex[i];}
@@ -87,5 +118,17 @@ int main(void){
  r.ready_psh.aliases_valid=0;memset(bound,0,sizeof(bound));ready_psh_upload(&machine.pgraph,&a);assert(bound[4][0]==42&&active==GL_TEXTURE0+3);
  ready_psh_finalize(&r);assert(!r.ready_psh.stages&&!r.ready_psh.ready&&!r.ready_psh.aliases_bound&&!alive[1]&&!alive[2]&&active==GL_TEXTURE0+3);for(unsigned i=4;i<12;i++)for(unsigned j=0;j<2;j++)assert(!bound[i][j]);
  ready_psh_finalize(&r);
+
+#ifdef FIXTURE_CHECKED_STARTUP
+ setup(&r,slots);startup_raise_error(0x501);ready_psh_init(&r);
+ assert(!r.ready_psh.ready&&!r.ready_psh.stages&&!created&&!queries&&freed==2&&!source_live&&!startup_error_flags);
+ for(unsigned program=1;program<=2;program++){
+  setup(&r,slots);fail_program=program;ready_psh_init(&r);
+  assert(!r.ready_psh.ready&&!r.ready_psh.stages&&!alive[1]&&!alive[2]&&freed==2&&!source_live&&!startup_error_flags);
+ }
+ setup(&r,slots);startup_publication_error=true;ready_psh_init(&r);
+ assert(!r.ready_psh.ready&&!r.ready_psh.stages&&!alive[1]&&!alive[2]&&freed==2&&!source_live&&!startup_error_flags);
+ puts("PASS fragment checked startup: prior-error/no-owner rollback, each zero program and multi-error publication failure");
+#endif
  puts("PASS native fragment owners: 29 startup failures, exact slot return, binding invalidation, per-program controls, disabled aliases, identical-name/CPU-slot reuse, external invalidation and teardown");
 }

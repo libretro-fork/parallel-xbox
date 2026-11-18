@@ -10,10 +10,11 @@
 #undef assert
 #define assert(x) do { if (!(x)) { fprintf(stderr,"ready owner:%d: %s\n",__LINE__,#x); _Exit(1); } } while (0)
 #define ARRAY_SIZE(a) (sizeof(a)/sizeof((a)[0]))
-typedef unsigned GLuint;
+typedef unsigned GLuint, GLenum;
 typedef int GLint;
 enum { GL_VERTEX_SHADER=1, GL_FALSE=0, GL_LINK_STATUS=2,
        GL_UNIFORM_BUFFER=3, GL_UNIFORM_BUFFER_BINDING=4, GL_STREAM_DRAW=5,
+       GL_NO_ERROR=0, GL_BUFFER_SIZE=6,
        NV2A_MAX_TRANSFORM_PROGRAM_LENGTH=136,
        VSH_INTERPRETER_FLAGS_OFFSET=136*16, VSH_INTERPRETER_BUFFER_SIZE=136*16+16 };
 #define GL_INVALID_INDEX (~0u)
@@ -41,6 +42,7 @@ static bool validation_ok=true;
 static inline bool pgraph_spv_vsh_supported(const VshState *s,SpvVshOptions options)
 { assert(s&&options.preserve_float32&&!options.ubo_binding);return validation_ok; }
 static bool gl_sso_enabled(void) { return sso; }
+static __attribute__((unused)) GLenum glGetError(void) { return GL_NO_ERROR; }
 static MString *pgraph_glsl_gen_vsh_interpreter_dynamic(const VshState *s, GenVshGlslOptions o)
 { assert(o.locations); MString *m=malloc(sizeof(*m));assert(m);owners++;
   snprintf(m->text,sizeof(m->text),"%u",(s->smooth_shading?2:0)|o.prefix_outputs);return m; }
@@ -72,6 +74,8 @@ static void glBindBuffer(unsigned target,GLuint value)
 static void glBufferData(unsigned target,size_t size,const void *ptr,unsigned usage)
 { assert(target==GL_UNIFORM_BUFFER&&bound==90&&size==VSH_INTERPRETER_BUFFER_SIZE&&!ptr&&usage==GL_STREAM_DRAW);
   memset(storage,0xa5,sizeof(storage)); }
+static __attribute__((unused)) void glGetBufferParameteriv(unsigned target,unsigned parameter,GLint *size)
+{ assert(target==GL_UNIFORM_BUFFER&&parameter==GL_BUFFER_SIZE&&bound==90&&buffer_alive);*size=VSH_INTERPRETER_BUFFER_SIZE; }
 static void glBindBufferBase(unsigned target,unsigned binding,GLuint buffer)
 { assert(target==GL_UNIFORM_BUFFER&&!binding&&buffer==90&&buffer_alive); }
 static void glBufferSubData(unsigned target,size_t offset,size_t size,const void *ptr)

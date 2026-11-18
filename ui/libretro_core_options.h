@@ -214,6 +214,22 @@ struct retro_core_option_v2_definition option_defs_us[] = {
         },
         "vulkan"
     },
+#if !defined(__ANDROID__) && !defined(XEMU_DISABLE_READY_GL)
+    {
+        "xemu_gl_prepared_shaders",
+        "Prepared Shaders (Restart)",
+        NULL,
+        "Prepare covered OpenGL shaders before gameplay to reduce first-use compilation stalls. Increases startup time and can increase GPU work. Unsupported states retain normal rendering. Restart RetroArch to apply.",
+        NULL,
+        "video",
+        {
+            { "disabled", "Disabled" },
+            { "enabled",  "Enabled" },
+            { NULL, NULL },
+        },
+        "disabled"
+    },
+#endif
     /* 16:9 by default, unlike standalone's dashboard setting: the core is for
      * computers, whose displays are 16:9 nearly always, and no one should
      * have to go to the dashboard first (NNshi) */

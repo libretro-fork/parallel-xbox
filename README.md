@@ -4,9 +4,17 @@ ParaLLEl Xbox is a [libretro](https://www.libretro.com/) core of [xemu](https://
 
 The emulator is upstream's: this repository follows [xemu-project/xemu](https://github.com/xemu-project/xemu) and adds the libretro frontend in `ui/libretro.c`. It holds the core only; upstream's standalone UI, packaging and CI are not part of it (the paths are listed in `.upstream-excluded`). The version the core reports is upstream's, with the upstream commit it is merged to (`upstream.version`). The core is currently on xemu 0.8.136-53, commit 478b4f4961 of 28 September 2026.
 
+Video > Prepared Shaders (Restart) optionally prepares covered OpenGL shader
+stages and complete pipeline tuples before gameplay. It is disabled by default:
+preparation adds startup work, and generic shaders can cost more GPU time.
+Restart RetroArch after changing it. Unsupported states and failed preparation
+keep the ordinary renderer. See [coverage and qualification](docs/cold-first-play-recovery.md).
+Vulkan misses, allocation work and the broader cold-play stutter regression
+remain open.
+
 ## Downloads
 
-The core is built by libretro's buildbot for Windows and Linux (x86_64, aarch64), and is installed from RetroArch: Online Updater > Core Downloader. Every push to the `libretro` branch is also built in [Actions](https://github.com/WizzardSK/xemu-libretro/actions/workflows/libretro.yml), macOS (Apple Silicon, Intel) and Android (arm64-v8a, x86_64) included; the builds are the artifacts of a run, and downloading them needs a GitHub login.
+The core is built by libretro's buildbot for Windows and Linux (x86_64, aarch64), and is installed from RetroArch: Online Updater > Core Downloader. Every push to the `libretro` branch is also built in [Actions](https://github.com/libretro-fork/parallel-xbox/actions/workflows/libretro.yml), macOS (Apple Silicon, Intel) and Android (arm64-v8a, x86_64) included; the builds are the artifacts of a run, and downloading them needs a GitHub login.
 
 - **Linux:** `parallel_xbox_libretro.so`; put it into RetroArch's `cores` folder. A glibc build, it does not load into a musl frontend.
 - **macOS:** `parallel_xbox_libretro.dylib` and the folder `parallel_xbox_libretro_libs`; put both into RetroArch's `cores` folder.

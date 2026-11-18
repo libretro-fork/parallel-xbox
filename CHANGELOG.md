@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Add Video > Prepared Shaders (Restart), an optional OpenGL startup mode for covered programmable/fixed-function vertices, geometry and fragments with complete validated native pipeline tuples. It is disabled by default: preparation adds startup work and can increase GPU cost. Unsupported states retain ordinary rendering, and first-use/restore stalls and broader shader-stutter recovery remain open.
+
+- Share identical native OpenGL stage tuples through bounded owner records, including ordinary rendering. Keep existing cache capacities; validate optional resource creation before publication and return partial owners and reserved slots on failure. Preserve original ownership/numerical tests and add frontend latch, startup-error and historical-replay controls.
+
 - OpenGL keeps helper lanes alive until texture sampling is complete, correcting mip selection at emulated depth-clip boundaries. Old GL program binaries are invalidated. Vulkan behavior is unchanged; shader-stutter recovery remains open.
 
 - Keep hash-interception regression fixtures compatible with RetroArch’s XXH3 dispatch macros. Explicitly undefine the public macro before installing each test wrapper, retaining strict compiler warnings, real-hash helper calls and all numerical, collision, ownership and failure controls. Runtime hashing is unchanged.

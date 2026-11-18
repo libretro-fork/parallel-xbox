@@ -81,3 +81,9 @@ Shader/PSO cold-first-play smoothness remains **BAD and regressed**. Existing
 synchronous misses, Vulkan draw-path PSO creation, GL coverage gaps and observed
 buffer orphaning remain open. This correctness change does not certify recovery
 or allocation-free gameplay.
+
+The optional prepared renderer integrates this correction. Its runtime option
+is disabled by default; compiled support is available in normal builds. Its full shadow numerical controls and the new default-policy
+helper fault are both retained. Fresh corrected-reference comparisons must use
+this integrated source; older one-pixel mismatch evidence is explained by the
+ordinary sampling bug, rather than waived as an acceptable difference.

@@ -46,6 +46,12 @@
 #include "constants.h"
 #include "texture-recycle.h"
 
+#include "ready-config.h"
+
+#ifdef XEMU_EXPERIMENTAL_READY_FF
+#include "ready-ff-state.h"
+#endif
+
 /* Composition parameters stay on the render thread. A published ticket
  * identifies an already-composed display image rather than a live surface. */
 typedef struct DispPvideo {
@@ -471,6 +477,13 @@ typedef struct PGRAPHGLState {
 #ifdef XEMU_EXPERIMENTAL_READY_VSH
     ShaderBinding *pipeline_owners[GL_PIPELINE_OWNER_BUCKETS];
     ShaderBinding *ready_pipelines; /* 18 slots borrowed from the binding pool. */
+#ifdef XEMU_EXPERIMENTAL_READY_FF
+    struct {
+        ShaderModuleCacheEntry *stages; /* 56 existing module slots. */
+        ShaderBinding *pipelines; /* 252 existing binding slots. */
+        bool ready; /* Published only after all complete tuples validate. */
+    } ready_ff;
+#endif
     uint64_t pipeline_owner_created, pipeline_owner_reused; /* Diagnostic writes only. */
     /* Four finite GL interface variants; not members of the persistent LRU. */
     struct {

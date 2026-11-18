@@ -22,6 +22,13 @@ for signature in ['void pgraph_gl_tex_shadow_reset(', 'void pgraph_gl_tex_shadow
 surface=(r/'hw/xbox/nv2a/pgraph/gl/surface.c').read_text(encoding='utf-8')
 for signature in ['static void render_surface_to(', 'void render_surface_to_texture(', 'void pgraph_gl_render_cube_faces_to_texture(']:assert 'assert(texture_unit >= 0 && texture_unit < NV2A_MAX_TEXTURES);' in function(surface,signature)
 template=Path(__file__).with_suffix('.c').read_text(encoding='utf-8').replace('/* SELECTOR */',selector)
+if 'static bool ready_psh_adopt_gate(' in source:
+ template='#define FIXTURE_READY_GATE 1\n'+template
+if (Path(sys.argv[1])/'hw/xbox/nv2a/pgraph/gl/ready-config.h').is_file():
+    assert 'bool clean_entry = false;' in source, 'Advertised default preparation lacks checked startup safety'
+if 'bool clean_entry = false;' in source:
+    template='#define FIXTURE_CHECKED_STARTUP 1\n'+template
+
 env=dict(os.environ);env['PATH']=str(Path(shutil.which(cc) or cc).resolve().parent)+os.pathsep+env.get('PATH','')
 with tempfile.TemporaryDirectory(prefix='ready-psh-owner-') as tmp:
  d=Path(tmp);(d/'qemu').mkdir();(d/'qemu/osdep.h').write_text('#include <stdint.h>\n#include <stddef.h>\n#include <stdbool.h>\n#include <stdlib.h>\n');(d/'qemu/mstring.h').write_text('typedef struct MString MString;\n')
@@ -35,3 +42,15 @@ with tempfile.TemporaryDirectory(prefix='ready-psh-owner-') as tmp:
   target=retire if is_retire else source;assert before in target,name
   result=run(source if is_retire else target.replace(before,after),target.replace(before,after) if is_retire else retire);assert result.returncode==86 and b'Assertion' in result.stderr,(name,result.stdout,result.stderr)
   print('Required fragment owner control rejected:',name,flush=True)
+
+ if 'bool clean_entry = false;' in source:
+     mutations=[
+         ('own startup errors retained', source.replace('i < 8;', 'i < 1;')),
+         ('prior startup error ignored', source.replace('if (error != GL_NO_ERROR) {','if (false) {',1)),
+         ('publication errors ignored',source.replace('(error = glGetError())','GL_NO_ERROR').replace('    error = glGetError();\n    if (error != GL_NO_ERROR) {','    error = GL_NO_ERROR;\n    if (error != GL_NO_ERROR) {')),
+     ]
+     for name,mutated in mutations:
+         assert mutated!=source,name
+         result=run(mutated,retire)
+         assert result.returncode==86 and result.stderr,(name,result.returncode,result.stdout,result.stderr)
+         print('Required checked-startup fault rejected:',name,flush=True)

@@ -35,6 +35,15 @@ static void ready_geom_init(PGRAPHGLState *r)
 {
     if (!r->ready_geom.stages) return; /* No SSO: nothing was reserved. */
     assert(!r->ready_geom.ready);
+    ShaderModuleCacheEntry *reserved = r->ready_geom.stages;
+    bool clean_entry = false;
+    unsigned error = glGetError();
+    if (error != GL_NO_ERROR) {
+        fprintf(stderr, "Prepared geometry initialization declined: prior GL error 0x%x\n", error);
+        goto unavailable;
+    }
+    clean_entry = true;
+
     memset(r->ready_geom.controls_valid, 0, sizeof(r->ready_geom.controls_valid));
 #ifdef XEMU_READY_VSH_DIAGNOSTICS
     r->ready_geom.covered_binds = r->ready_geom.control_uploads = 0;
@@ -52,6 +61,7 @@ static void ready_geom_init(PGRAPHGLState *r)
         mstring_unref(source);
         stage->gl_shader = shader;
         glDeleteShader(shader);
+        if (!stage->gl_stage_program) goto unavailable;
     }
     /* Submit the finite set first. Driver compiler parallelism is unchanged;
      * no guest draw can reach these owners until every link has completed. */
@@ -60,14 +70,8 @@ static void ready_geom_init(PGRAPHGLState *r)
         GLint linked = GL_FALSE;
         glGetProgramiv(stage->gl_stage_program, GL_LINK_STATUS, &linked);
         if (!linked) {
-            fprintf(stderr, "Experimental ready geometry stage unavailable\n");
-            ShaderModuleCacheEntry *reserved = r->ready_geom.stages;
-            ready_geom_finalize(r);
-            /* Startup failed before publication. Restore every reserved slot
-             * to the normal LRU, with its original capacity and exact path. */
-            for (unsigned j = 0; j < GEOM_DYNAMIC_VARIANTS; j++)
-                lru_add_free(&r->shader_module_cache, &reserved[j].node);
-            return;
+            fprintf(stderr, "Prepared geometry stage unavailable\n");
+            goto unavailable;
         }
         glDetachShader(stage->gl_stage_program, stage->gl_shader);
         stage->gl_shader = 0; /* Release finished compiler objects before gameplay. */
@@ -76,11 +80,29 @@ static void ready_geom_init(PGRAPHGLState *r)
         r->ready_geom.control_locs[i] =
             glGetUniformLocation(stage->gl_stage_program, "gsControl");
     }
+    error = glGetError();
+    if (error != GL_NO_ERROR) {
+        fprintf(stderr, "Prepared geometry initialization failed: GL error 0x%x\n", error);
+        goto unavailable;
+    }
     r->ready_geom.ready = true; /* All native stages linked before guest work. */
 #ifdef XEMU_READY_VSH_DIAGNOSTICS
     fprintf(stderr, "READY_GEOM initialized %u native stages from existing module slots\n",
             GEOM_DYNAMIC_VARIANTS);
 #endif
+    return;
+unavailable:
+    /* Only errors from this optional initialization, never incoming errors.
+     * Bound cleanup even if a broken/lost context keeps reporting a flag. */
+    if (clean_entry) for (unsigned i = 0; i < 8; i++) {
+        error = glGetError();
+        if (error == GL_NO_ERROR) break;
+        fprintf(stderr, "Prepared geometry initialization failed: GL error 0x%x\n", error);
+    }
+    ready_geom_finalize(r);
+    /* Startup failed before publication: restore every original module slot. */
+    for (unsigned j = 0; j < GEOM_DYNAMIC_VARIANTS; j++)
+        lru_add_free(&r->shader_module_cache, &reserved[j].node);
 }
 
 static void ready_geom_upload(PGRAPHGLState *r, const ShaderBinding *binding)

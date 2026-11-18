@@ -16,6 +16,14 @@ static void ready_pipelines_init(PGRAPHGLState *r)
 {
     ShaderBinding *reserved = r->ready_pipelines;
     if (!reserved) return;
+    bool clean_entry = false;
+    unsigned error = glGetError();
+    if (error != GL_NO_ERROR) {
+        fprintf(stderr, "Prepared pipeline initialization declined: prior GL error 0x%x\n", error);
+        goto unavailable;
+    }
+    clean_entry = true;
+
     if (!r->ready_vsh.ready || !r->ready_geom.ready || !r->ready_psh.ready)
         goto unavailable;
     for (unsigned i = 0; i < 18; i++) {
@@ -34,7 +42,9 @@ static void ready_pipelines_init(PGRAPHGLState *r)
         glValidateProgramPipeline(anchor->gl_pipeline);
         GLint valid = GL_FALSE;
         glGetProgramPipelineiv(anchor->gl_pipeline, GL_VALIDATE_STATUS, &valid);
-        if (!valid) {
+        if (!valid || (error = glGetError()) != GL_NO_ERROR) {
+            if (error != GL_NO_ERROR)
+                fprintf(stderr, "Prepared pipeline tuple failed: GL error 0x%x\n", error);
             /* Not indexed yet: release this failed native owner directly. */
             glDeleteProgramPipelines(1, &anchor->gl_pipeline);
             anchor->gl_pipeline = 0;
@@ -47,6 +57,13 @@ static void ready_pipelines_init(PGRAPHGLState *r)
 #endif
     return;
 unavailable:
+    /* Only errors from this optional initialization, never incoming errors.
+     * Bound cleanup even if a broken/lost context keeps reporting a flag. */
+    if (clean_entry) for (unsigned i = 0; i < 8; i++) {
+        error = glGetError();
+        if (error == GL_NO_ERROR) break;
+        fprintf(stderr, "Prepared pipeline initialization failed: GL error 0x%x\n", error);
+    }
     ready_pipelines_finalize(r);
     for (unsigned i = 0; i < 18; i++)
         lru_add_free(&r->shader_cache, &reserved[i].node);

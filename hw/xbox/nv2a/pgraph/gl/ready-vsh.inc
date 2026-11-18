@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: LGPL-2.1-or-later */
-/* Experimental native programmable cover. This is a stage-readiness probe,
- * not complete graphics pipeline coverage. Ordinary cache identities and disk
- * formats remain unchanged. Enable only in a separately rebuilt test core. */
+/* Prepared native programmable cover. Stage readiness is not proof of complete
+ * graphics pipeline coverage. Ordinary cache identities and disk formats stay
+ * unchanged; unsupported or unavailable preparation keeps the exact path. */
 static ShaderModuleCacheEntry *ready_vsh_find(PGRAPHGLState *r,
                                              const ShaderModuleCacheKey *key)
 {
@@ -51,6 +51,15 @@ static void ready_vsh_init(PGRAPHGLState *r)
 {
     if (!gl_sso_enabled()) return;
     assert(!r->ready_vsh.ready && !r->ready_vsh.code_buffer);
+    /* A dirty incoming error belongs to the caller: report it explicitly and
+     * decline optional preparation rather than silently draining or blaming
+     * it on the code-buffer allocation below. No native owners exist yet. */
+    GLenum error = glGetError();
+    if (error != GL_NO_ERROR) {
+        fprintf(stderr, "Prepared vertex initialization declined: prior GL error 0x%x\n",
+                error);
+        return;
+    }
 #ifdef XEMU_READY_VSH_DIAGNOSTICS
     r->ready_vsh.covered_binds = r->ready_vsh.code_uploads = 0;
 #endif
@@ -66,37 +75,57 @@ static void ready_vsh_init(PGRAPHGLState *r)
             GL_VERTEX_SHADER, mstring_get_str(source), &shader);
         mstring_unref(source);
         glDeleteShader(shader); /* Program retains it until its last consumer. */
+        if (!stage->gl_stage_program) goto unavailable;
         GLint linked = GL_FALSE;
         glGetProgramiv(stage->gl_stage_program, GL_LINK_STATUS, &linked);
         if (!linked) {
-            char log[2048];
+            char log[2048] = {0};
             glGetProgramInfoLog(stage->gl_stage_program, sizeof(log), NULL, log);
-            fprintf(stderr, "Experimental ready vertex stage unavailable: %s\n", log);
-            ready_vsh_finalize(r);
-            return; /* Keep the existing correct specialized path. */
+            fprintf(stderr, "Prepared vertex stage unavailable: %s\n", log);
+            goto unavailable; /* Keep the existing correct specialized path. */
         }
         glDetachShader(stage->gl_stage_program, shader); /* Linked executable survives. */
         GLuint block = glGetUniformBlockIndex(stage->gl_stage_program, "XvsCode");
         if (block == GL_INVALID_INDEX) {
-            fprintf(stderr, "Experimental ready vertex stage lacks its code block\n");
-            ready_vsh_finalize(r);
-            return;
+            fprintf(stderr, "Prepared vertex stage lacks its code block\n");
+            goto unavailable;
         }
         glUniformBlockBinding(stage->gl_stage_program, block, 0);
         module_resolve_uniform_locs(stage);
     }
-    GLint previous;
+    GLint previous = 0, storage_size = 0;
     glGetIntegerv(GL_UNIFORM_BUFFER_BINDING, &previous);
     glGenBuffers(1, &r->ready_vsh.code_buffer);
+    if (!r->ready_vsh.code_buffer) goto unavailable;
     glBindBuffer(GL_UNIFORM_BUFFER, r->ready_vsh.code_buffer);
     glBufferData(GL_UNIFORM_BUFFER, VSH_INTERPRETER_BUFFER_SIZE, NULL,
                  GL_STREAM_DRAW);
+    glGetBufferParameteriv(GL_UNIFORM_BUFFER, GL_BUFFER_SIZE, &storage_size);
     glBindBuffer(GL_UNIFORM_BUFFER, previous);
+    error = glGetError();
+    if (error != GL_NO_ERROR || storage_size != VSH_INTERPRETER_BUFFER_SIZE) {
+        fprintf(stderr, "Prepared vertex storage unavailable: size=%d GL error=0x%x\n",
+                storage_size, error);
+        goto unavailable;
+    }
     r->ready_vsh.uploaded_binding = NULL;
     r->ready_vsh.ready = true; /* Owner-only publication, before guest execution. */
 #ifdef XEMU_READY_VSH_DIAGNOSTICS
     fprintf(stderr, "READY_VSH initialized 4 native stages before guest execution\n");
 #endif
+    return;
+unavailable:
+    /* A failed native creation can set OOM and subsequent calls on name zero
+     * can also set INVALID_VALUE. These errors are ours: entry was clean.
+     * Report and consume the finite GL error flags so the exact fallback does
+     * not inherit a stale optional-initialization error. Never spin on a lost
+     * or broken context that keeps reporting an error. */
+    for (unsigned i = 0; i < 8; i++) {
+        error = glGetError();
+        if (error == GL_NO_ERROR) break;
+        fprintf(stderr, "Prepared vertex initialization failed: GL error 0x%x\n", error);
+    }
+    ready_vsh_finalize(r);
 }
 
 static void ready_vsh_upload(PGRAPHGLState *r, const ShaderBinding *binding)

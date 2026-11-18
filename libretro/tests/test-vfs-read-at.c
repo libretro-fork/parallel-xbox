@@ -71,11 +71,18 @@ int main(void)
         struct retro_vfs_interface_info info;
         requested=0;
         assert(lr_vfs_negotiate(environment,&info)==(offered>=3));
+#ifdef RETRO_VFS_IDENTITY_REGULAR
         /* v7, then v6, then v3 */
         assert(requests[0]==7);
         if(offered==7)assert(requested==1);
         if(offered==6)assert(requested==2 && requests[1]==6);
         if(offered<6)assert(requested==3 && requests[1]==6 && requests[2]==3);
+#else
+        /* Historical public ABI has v6, then v3; never infer from the tested function. */
+        assert(requests[0]==6);
+        if(offered>=6)assert(requested==1);
+        else assert(requested==2 && requests[1]==3);
+#endif
         assert(lr_vfs_positional_read(&info)==(offered>=6?read_at:NULL));
     }
     /* An older table ends before the v6 members. Do not read its tail. */
