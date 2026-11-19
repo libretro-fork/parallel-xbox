@@ -104,3 +104,15 @@ const char *xemu_vk_load_dispatch(PFN_vkGetInstanceProcAddr resolver,
     const char *missing = xemu_vk_load_instance(resolver, instance);
     return missing ? missing : xemu_vk_load_device(device);
 }
+
+bool xemu_vk_shader_object_dispatch_ready(const VkPhysicalDeviceFeatures *enabled)
+{
+    if (!enabled) return false;
+#define XEMU_VK_SO_PROC(name) if (!name) return false;
+#define XEMU_VK_SO_FEATURE_PROC(feature, name) \
+    if (enabled->feature && !name) return false;
+#include "vk-shader-object-procs.inc"
+#undef XEMU_VK_SO_PROC
+#undef XEMU_VK_SO_FEATURE_PROC
+    return true;
+}

@@ -193,6 +193,25 @@ MString *pgraph_glsl_gen_psh(const PshState *state, GenPshGlslOptions opts);
 MString *pgraph_glsl_gen_psh_ready(const PshState *state, GenPshGlslOptions opts);
 bool pgraph_glsl_psh_ready_controls(const PshState *state, uint32_t controls[8]);
 
+/* Bounded Vulkan 2D-float prepared source. Admission needs the original raw
+ * words; recheck active live inputs when a canonical dynamic key is reused.
+ * Failed controls calls leave output unchanged. The 32-byte fsControl suffix
+ * is reflected in the ordinary FS UBO; PshUniformValues is unchanged. */
+bool pgraph_glsl_psh_ready_vk2d_combiner_eligible(
+    uint32_t control, const uint32_t rgb[8], const uint32_t alpha[8]);
+bool pgraph_glsl_psh_ready_vk2d_program_eligible(
+    uint32_t control, const uint32_t rgb[8], const uint32_t alpha[8],
+    const uint32_t rgb_out[8], const uint32_t alpha_out[8],
+    uint32_t final0, uint32_t final1);
+/* Static texture/depth family only: compose with the CURRENT live program
+ * predicate on every draw, never a canonical key's erased program words. */
+bool pgraph_glsl_psh_ready_vk2d_static_controls(const PshState *state,
+                                              uint32_t controls[8]);
+bool pgraph_glsl_psh_ready_vk2d_controls(const PshState *raw,
+                                       uint32_t controls[8]);
+MString *pgraph_glsl_gen_psh_ready_vk2d(const PshState *raw,
+                                      GenPshGlslOptions opts);
+
 void pgraph_glsl_set_psh_uniform_values(PGRAPHState *pg,
                                         const PshUniformLocs locs,
                                         PshUniformValues *values);

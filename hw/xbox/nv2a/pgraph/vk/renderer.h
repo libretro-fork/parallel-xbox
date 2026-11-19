@@ -83,6 +83,7 @@ typedef struct PipelineKey {
     uint32_t regs[9];
     VkVertexInputBindingDescription binding_descriptions[NV2A_VERTEXSHADER_ATTRIBUTES];
     VkVertexInputAttributeDescription attribute_descriptions[NV2A_VERTEXSHADER_ATTRIBUTES];
+    uint32_t prepared_vertex; /* zero ordinary; explicit prepared bank identity */
 } PipelineKey;
 
 typedef struct PipelineBinding {
@@ -193,7 +194,12 @@ typedef struct ShaderModuleInfo {
     int refcnt;
     /* Unique in this renderer, including after a driver handle is reused. */
     uint64_t identity;
-    VkShaderModule module;
+    VkShaderModule module; /* native PSO/utility owner, zero for shader objects */
+    VkShaderEXT shader_object;
+    VkShaderStageFlagBits stage;
+    struct ShaderModuleInfo *object_gpu_next;
+    uint32_t object_retire_after;
+    bool object_gpu_ref;
     ShaderLayouts *layouts;
     ShaderUniformLayout uniforms;
     ShaderUniformLayout push_constants;
@@ -205,22 +211,42 @@ typedef struct ShaderModuleInfo {
     VkDeviceSize uniform_staged_offset;
     uint64_t uniform_staged_epoch;
     bool uniform_staged_valid;
+    uint16_t ready_vertex_index; /* bank slot+1, zero for ordinary modules */
+    uint8_t ready_geometry_index; /* finite GS slot+1, zero for ordinary owners */
+    uint8_t ready_fragment_index; /* finite 2D FS slot+1, zero for ordinary owners */
 } ShaderModuleInfo;
+
+enum VkReadyVertexKind { VK_READY_VERTEX_NONE, VK_READY_VERTEX_PROGRAMMABLE, VK_READY_VERTEX_FF };
+#define VK_READY_VERTEX_VERSION 2u
+#define VK_READY_VERTEX_STAGES 120u
+#define VK_READY_GEOMETRY_STAGES 16u
+#define VK_READY_GEOMETRY_VERSION 1u
+#define VK_READY_GEOMETRY_BYTES 32u
+#define VK_READY_FRAGMENT_STAGES 4u
+#define VK_READY_FRAGMENT_VERSION 1u
+#define VK_READY_FRAGMENT_OFFSET 1616u
+#define VK_READY_FRAGMENT_BYTES 32u
+#define VK_READY_FRAGMENT_TOTAL 1648u
 
 typedef struct ShaderModuleCacheKey {
     VkShaderStageFlagBits kind;
+    uint32_t native_kind; /* 0 VkShaderModule, 1 VkShaderEXT; never persistent pointers */
     union {
         struct {
+            uint16_t ready_kind, ready_version;
+            bool ready_float32;
             VshState state;
             GenVshGlslOptions glsl_opts;
         } vsh;
         struct {
             GeomState state;
             GenGeomGlslOptions glsl_opts;
+            uint16_t ready_kind, ready_version;
         } geom;
         struct {
             PshState state;
             GenPshGlslOptions glsl_opts;
+            uint16_t ready_kind, ready_version;
         } psh;
     };
 } ShaderModuleCacheKey;
@@ -233,6 +259,9 @@ typedef struct ShaderModuleCacheEntry {
 
 typedef struct ShaderBinding {
     LruNode node;
+    bool ready_vertex_route; /* independent of the unmodified guest state */
+    bool ready_fragment_route;
+    bool shader_object_route;
     ShaderState state;
     struct {
         ShaderModuleInfo *module_info;
@@ -893,22 +922,52 @@ typedef struct PGRAPHVkState {
     bool shader_bindings_changed;
     bool use_push_constants_for_uniform_attrs;
 
+    struct {
+        bool enabled, failed, draw, rendering, bound;
+        VkPhysicalDeviceFeatures features; /* actual frontend-enabled features */
+        ShaderModuleInfo *gpu_owners;
+        unsigned live_objects;
+    } shader_objects;
+    struct {
+        bool ready, route;
+        ShaderModuleCacheEntry *stages; /* reserved inside the existing pool */
+        struct {
+            uint32_t values[NV2A_VERTEXSHADER_ATTRIBUTES][4];
+            uint16_t mask, count;
+            bool valid;
+            int code_loc, flags_loc;
+            VkDeviceSize suffix_offset, upload_extent;
+        } payload[VK_READY_VERTEX_STAGES];
+    } ready_vertex;
+    /* Immutable descriptor ABI, retained even if optional preparation declines. */
+    bool has_gs_ubo_binding;
+    struct {
+        bool ready;
+        ShaderModuleCacheEntry *stages;
+        /* No native object or allocation: renderer-owned absent-GS upload. */
+        ShaderModuleInfo zero_uniform;
+        uint32_t zero_values[VK_READY_GEOMETRY_BYTES / 4];
+    } ready_geometry;
+    struct {
+        bool ready, route;
+        ShaderModuleCacheEntry *stages; /* four existing pool positions */
+    } ready_fragment;
     Lru shader_module_cache;
     uint64_t next_shader_module_identity; /* render-thread cache owner only */
     ShaderModuleCacheEntry *shader_module_cache_entries;
 
     // FIXME: Merge these into a structure
-    size_t uniform_buffer_offsets[2];
+    size_t uniform_buffer_offsets[3];
     VkBuffer descriptor_uniform_buffer;
-    VkDeviceSize descriptor_uniform_sizes[2];
-    uint8_t uniforms_changed; /* bit 0: vertex UBO, bit 1: fragment UBO */
+    VkDeviceSize descriptor_uniform_sizes[3];
+    uint8_t uniforms_changed; /* bit 0: vertex, bit 1: fragment, bit 2: geometry */
     /* Tracked uniforms (shaders.c): canonical packed values belong to each
      * module; epochs invalidate their sources and staged snapshots. Stage
      * selection changes resolve the new modules' immutable upload offsets. */
     VshUniformSource vsh_uni_src;
     uint64_t uniform_epoch;
     uint64_t uniform_upload_epoch;
-    const ShaderModuleInfo *uni_last_pushed[2];
+    const ShaderModuleInfo *uni_last_pushed[3];
 
     VkQueryPool query_pool;
     int max_queries_in_flight;
@@ -1204,6 +1263,23 @@ void pgraph_vk_invalidate_bound_textures(PGRAPHState *pg, hwaddr addr, hwaddr si
 void pgraph_vk_trim_texture_cache(PGRAPHState *pg);
 
 // shaders.c
+#include "ready-config.h"
+ShaderModuleInfo *pgraph_vk_create_shader_object_from_spirv(PGRAPHVkState *r,
+                                       VkShaderStageFlagBits stage, ShaderSource *source,
+                                       bool optional);
+void pgraph_vk_shader_object_use(PGRAPHVkState *r, ShaderModuleInfo *module);
+void pgraph_vk_shader_objects_retire(PGRAPHVkState *r);
+void pgraph_vk_shader_objects_disable(PGRAPHState *pg);
+bool pgraph_vk_prepared_vertex_supported(PGRAPHVkState *r);
+ShaderModuleInfo *pgraph_vk_create_optional_vertex_module(PGRAPHVkState *r, const char *glsl, bool preserve_float32);
+ShaderModuleInfo *pgraph_vk_create_optional_geometry_module(PGRAPHVkState *r, const char *glsl);
+ShaderModuleInfo *pgraph_vk_create_optional_fragment_module(PGRAPHVkState *r, const char *glsl);
+VkDeviceSize pgraph_vk_reserve_buffer(PGRAPHState *pg, int index, VkDeviceSize size,
+                                      VkDeviceAddress alignment, void **destination);
+uint32_t pgraph_vk_ready_vertex_identity(const ShaderModuleInfo *module);
+VkDeviceSize pgraph_vk_ready_vertex_upload_extent(PGRAPHVkState *r, ShaderModuleInfo *module);
+void pgraph_vk_ready_vertex_upload(PGRAPHState *pg, ShaderModuleInfo *module, void *destination);
+void pgraph_vk_ready_vertex_input(PGRAPHState *pg);
 void pgraph_vk_init_shaders(PGRAPHState *pg);
 void pgraph_vk_finalize_shaders(PGRAPHState *pg);
 void pgraph_vk_shader_seed_writeback(PGRAPHState *pg);
@@ -1232,6 +1308,8 @@ void pgraph_vk_ref_state_modules(PGRAPHVkState *r, const ShaderState *st,
 #define VSH_UBO_BINDING 0
 #define PSH_UBO_BINDING 1
 #define PSH_TEX_BINDING 2
+/* Leave bindings 2..13 available for three typed sampler namespaces. */
+#define GSH_UBO_BINDING (PSH_TEX_BINDING + 3 * NV2A_MAX_TEXTURES)
 
 // reports.c
 void pgraph_vk_init_reports(PGRAPHState *pg);

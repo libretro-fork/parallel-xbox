@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Add Video > Prepared Shaders (Vulkan, Restart), an experimental option that prepares covered native shader objects before drawing. It is disabled by default, adds startup work and may increase GPU work. Unsupported devices, failed preparation and uncovered states retain ordinary rendering; shader-stutter recovery remains open.
+
+- Share 120 covered logical vertex variants through 60 native owners, and prepare 16 geometry and four float-2D fragment families inside the existing module-cache budget. Constant inputs and bounded geometry/fragment controls share the existing uniform storage; references retain native objects through their last CPU and GPU consumer.
+
+- Use dynamic-rendering attachment views without unused classic framebuffer creation, and reuse unchanged shader bindings and dynamic state within a command recording. Utilities, new recordings and fallback restore the required state. Preserve existing regression corpora and add live-admission, rollback, ownership, namespace and validated numerical coverage; missing fixtures fail their applicable checks.
+
 - Vulkan direct vertex shaders no longer advertise attributes supplied through push constants or uniforms as vertex-buffer inputs. This fixes missing-input validation errors without changing shader calculations, seed formats or allocating dummy vertex buffers.
 
 - Vulkan prepares seeded pipelines only for render passes requested by ordinary draws or explicit shader prewarming, so utility-only passes no longer consume the existing four render-pass slots. The queue limits and correct uncovered-state rendering remain unchanged; CI fallback tests cover the new registration dependency.

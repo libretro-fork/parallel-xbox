@@ -43,7 +43,8 @@ typedef struct XemuLibretroVk {
     bool queue_shared;
     VkQueue frontend_queue;
 
-    /* What the device was made with */
+    /* Core-requested enabled base features. The frontend wrapper preserves
+     * these; queried hardware support alone must never populate this record. */
     VkPhysicalDeviceFeatures features;
     bool custom_border_color;
     bool memory_budget;
@@ -54,6 +55,11 @@ typedef struct XemuLibretroVk {
     bool pipeline_library;
     bool host_query_reset;
     bool shader_demote;
+    /* Optional object route: true only for a requested, enabled device
+     * feature with its complete required command set. The base feature
+     * flags above describe enabled geometry/depthClamp/etc, not support. */
+    bool shader_object;
+    bool dynamic_rendering;
 } XemuLibretroVk;
 
 /* The frontend's context is set up (context_reset has run): the renderer

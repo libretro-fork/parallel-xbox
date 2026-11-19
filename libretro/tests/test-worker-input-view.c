@@ -14,6 +14,11 @@ static unsigned compiles,notifications,reads;
 static size_t copied,start;
 static bool active,borrow;
 static ShaderState expected;
+#ifdef FIXTURE_NATIVE_TARGET
+#define VK_SPEC_RING 128u
+static unsigned vk_spec_native_kind[VK_SPEC_RING],vk_spec_native_read;
+static unsigned expected_native_kind,initial_native_read,vk_spec_requested_native_kind;
+#endif
 static unsigned char filler[32768];
 static void retro_eventcount_notify(int *event) {assert(event==&vk_spec_idle_ec && !active);assert(retro_atomic_load_acquire_int(&vk_spec_inflight)==0);notifications++;}
 static size_t observed_begin(retro_spsc_t *q,const void **ptr) {assert(!active);active=true;return retro_spsc_read_begin(q,ptr);}
@@ -26,7 +31,14 @@ static void observed_end(retro_spsc_t *q,size_t bytes) {
     active=false;retro_spsc_read_end(q,bytes);
 }
 static size_t observed_read(retro_spsc_t *q,void *out,size_t bytes) {assert(!active);reads++;size_t n=retro_spsc_read(q,out,bytes);copied+=n;return n;}
-static void vk_spec_compile_state(const ShaderState *state) {
+static void vk_spec_compile_state(const ShaderState *state
+#ifdef FIXTURE_NATIVE_TARGET
+                                 ,unsigned native_kind
+#endif
+                                 ) {
+#ifdef FIXTURE_NATIVE_TARGET
+    assert(native_kind==expected_native_kind && native_kind!=vk_spec_requested_native_kind);
+#endif
     assert(!retro_atomic_load_acquire_int(&vk_spec_cancel));compiles++;
     assert(!memcmp(state,&expected,sizeof(expected)));
     assert(retro_atomic_load_acquire_int(&vk_spec_inflight)==1);
@@ -50,6 +62,14 @@ static void position(size_t offset) {
     retro_atomic_size_init(&vk_spec_in.head,offset);retro_atomic_size_init(&vk_spec_in.tail,offset);
     vk_spec_in.cached_head=vk_spec_in.cached_tail=offset;start=offset;
     compiles=notifications=reads=0;copied=0;active=false;
+#ifdef FIXTURE_NATIVE_TARGET
+    /* Exercise metadata ring wrap and unsigned counter wrap independently
+     * of the byte-ring position. The live route changes after enqueue. */
+    vk_spec_native_read=initial_native_read=(unsigned)offset+UINT32_MAX-127u;
+    expected_native_kind=(unsigned)(offset>>2)&1u;
+    vk_spec_native_kind[vk_spec_native_read%VK_SPEC_RING]=expected_native_kind;
+    vk_spec_requested_native_kind=expected_native_kind^1u;
+#endif
     retro_atomic_store_release_int(&vk_spec_inflight,1);
 }
 int main(void) {
@@ -66,6 +86,9 @@ int main(void) {
         size_t rest=vk_spec_in.capacity-sizeof(expected);assert(retro_spsc_write(&vk_spec_in,filler,rest)==rest);
         borrow=vk_spec_in.capacity-offset>=sizeof(expected) && (uintptr_t)(storage+offset)%_Alignof(ShaderState)==0;
         assert(vk_spec_process_input());
+#ifdef FIXTURE_NATIVE_TARGET
+        assert(vk_spec_native_read==initial_native_read+1u);
+#endif
         assert(compiles==!cancel && notifications==1 && !active);
         assert(copied==(borrow?0:sizeof(expected)) && reads==!borrow);
         assert(retro_atomic_load_relaxed_size(&vk_spec_in.tail)==offset+sizeof(expected));
@@ -75,6 +98,9 @@ int main(void) {
         position(vk_spec_in.capacity-9);retro_atomic_store_release_int(&vk_spec_cancel,0);
         assert(retro_spsc_write(&vk_spec_in,&expected,bytes)==bytes);
         assert(!vk_spec_process_input() && !compiles && !notifications && !reads && !copied && !active);
+#ifdef FIXTURE_NATIVE_TARGET
+        assert(vk_spec_native_read==initial_native_read);
+#endif
         assert(retro_atomic_load_relaxed_size(&vk_spec_in.tail)==start);cases++;
     }
     retro_spsc_free(&vk_spec_in);

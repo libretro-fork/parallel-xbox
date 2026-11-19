@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: LGPL-2.1-or-later */
 #ifndef XEMU_VK_DISPATCH_H
 #define XEMU_VK_DISPATCH_H
+#include <stdbool.h>
 
 /* No Vulkan loader linkage or OS library discovery in the core. */
 #ifndef VK_NO_PROTOTYPES
@@ -37,4 +38,5 @@ const char *xemu_vk_load_device(VkDevice device);
 const char *xemu_vk_load_dispatch(PFN_vkGetInstanceProcAddr resolver,
                                   VkInstance instance, VkDevice device);
 void xemu_vk_clear_dispatch(void);
+bool xemu_vk_shader_object_dispatch_ready(const VkPhysicalDeviceFeatures *enabled);
 #endif

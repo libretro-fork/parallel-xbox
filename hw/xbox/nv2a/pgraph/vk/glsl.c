@@ -242,6 +242,102 @@ ShaderModuleInfo *pgraph_vk_create_shader_module_from_spirv(PGRAPHVkState *r,
     return info;
 }
 
+/* Unlinked stage objects share exactly the renderer's descriptor layout and
+ * supported vertex push range. Source words are a synchronous creation lend. */
+ShaderModuleInfo *pgraph_vk_create_shader_object_from_spirv(PGRAPHVkState *r,
+                                     VkShaderStageFlagBits stage,
+                                     ShaderSource *source, bool optional)
+{
+    assert(source); /* immutable native_kind may outlive optional route publication */
+    VkPushConstantRange push = { .stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
+        .offset = 0, .size = NV2A_VERTEXSHADER_ATTRIBUTES * 4 * sizeof(float) };
+    VkShaderCreateInfoEXT ci = {
+        .sType = VK_STRUCTURE_TYPE_SHADER_CREATE_INFO_EXT,
+        .stage = stage,
+        .nextStage = stage == VK_SHADER_STAGE_VERTEX_BIT ?
+            VK_SHADER_STAGE_FRAGMENT_BIT |
+              (r->shader_objects.features.geometryShader ? VK_SHADER_STAGE_GEOMETRY_BIT : 0) :
+            stage == VK_SHADER_STAGE_GEOMETRY_BIT ? VK_SHADER_STAGE_FRAGMENT_BIT : 0,
+        .codeType = VK_SHADER_CODE_TYPE_SPIRV_EXT,
+        .codeSize = source->num_words * sizeof(uint32_t), .pCode = source->words,
+        .pName = "main", .setLayoutCount = 1, .pSetLayouts = &r->descriptor_set_layout,
+        .pushConstantRangeCount = r->use_push_constants_for_uniform_attrs ? 1 : 0,
+        .pPushConstantRanges = &push,
+    };
+    VkShaderEXT object = VK_NULL_HANDLE;
+    VkResult status = vkCreateShadersEXT(r->device, 1, &ci, NULL, &object);
+    if (status != VK_SUCCESS || object == VK_NULL_HANDLE) {
+        if (object) vkDestroyShaderEXT(r->device, object, NULL);
+        fprintf(stderr, "nv2a: shader-object stage %u unavailable (%d); ordinary route retained\n",
+                stage, status);
+        pgraph_vk_shader_source_unref(source);
+        if (!optional) r->shader_objects.failed = true;
+        return NULL;
+    }
+    ShaderModuleInfo *info = alloc_shader_module_info(source->layouts);
+    assert(r->next_shader_module_identity != UINT64_MAX);
+    info->identity = ++r->next_shader_module_identity;
+    info->shader_object = object; info->stage = stage;
+    info->layouts = source->layouts;
+    if (info->layouts) retro_atomic_fetch_add_int(&info->layouts->refs, 1);
+    pgraph_vk_shader_source_unref(source);
+    r->shader_objects.live_objects++;
+    return info;
+}
+
+/* Optional startup preparation is all-or-nothing. Compilation/native creation
+ * failure releases its temporary owners and preserves the ordinary renderer. */
+ShaderModuleInfo *pgraph_vk_create_optional_vertex_module(PGRAPHVkState *r,
+                                                          const char *glsl, bool preserve_float32)
+{
+    GlslcOptions opts = { .spirv_1_6 = pgraph_vk_spirv_1_6,
+                          .preserve_float32 = preserve_float32,
+                          .emit_layout = true, .module_prefix_words = 256 };
+    GlslcResult result = {0};
+    if (!glslc_compile(GLSLC_STAGE_VERTEX, glsl, &opts, &result)) {
+        fprintf(stderr, "nv2a: prepared vertex unavailable: %s\n", result.error);
+        glslc_result_free_words(&result);
+        free(result.uniforms.members);
+        free(result.push_constants.members);
+        return NULL;
+    }
+    assert(r->shader_objects.enabled);
+    return pgraph_vk_create_shader_object_from_spirv(r, VK_SHADER_STAGE_VERTEX_BIT,
+                                 pgraph_vk_shader_source_take(&result), true);
+}
+
+/* Startup-only finite geometry preparation transfers final words/layouts. */
+ShaderModuleInfo *pgraph_vk_create_optional_geometry_module(PGRAPHVkState *r,
+                                                            const char *glsl)
+{
+    GlslcOptions opts = { .spirv_1_6 = pgraph_vk_spirv_1_6, .emit_layout = true };
+    GlslcResult result = {0};
+    if (!glslc_compile(GLSLC_STAGE_GEOMETRY, glsl, &opts, &result)) {
+        fprintf(stderr, "nv2a: prepared geometry unavailable: %s\n", result.error);
+        glslc_result_free_words(&result);
+        free(result.uniforms.members); free(result.push_constants.members);
+        return NULL;
+    }
+    return pgraph_vk_create_shader_object_from_spirv(r, VK_SHADER_STAGE_GEOMETRY_BIT,
+                                  pgraph_vk_shader_source_take(&result), true);
+}
+
+/* Startup-only finite fragment preparation transfers the final source owner. */
+ShaderModuleInfo *pgraph_vk_create_optional_fragment_module(PGRAPHVkState *r,
+                                                            const char *glsl)
+{
+    GlslcOptions opts = { .spirv_1_6 = pgraph_vk_spirv_1_6, .emit_layout = true };
+    GlslcResult result = {0};
+    if (!glslc_compile(GLSLC_STAGE_FRAGMENT, glsl, &opts, &result)) {
+        fprintf(stderr, "nv2a: prepared fragment unavailable: %s\n", result.error);
+        glslc_result_free_words(&result);
+        free(result.uniforms.members); free(result.push_constants.members);
+        return NULL;
+    }
+    return pgraph_vk_create_shader_object_from_spirv(r, VK_SHADER_STAGE_FRAGMENT_BIT,
+                                  pgraph_vk_shader_source_take(&result), true);
+}
+
 ShaderModuleInfo *pgraph_vk_create_shader_module_from_glsl(
     PGRAPHVkState *r, VkShaderStageFlagBits stage, const char *glsl)
 {
@@ -291,6 +387,39 @@ void pgraph_vk_destroy_shader_module(PGRAPHVkState *r, ShaderModuleInfo *info)
 {
     assert(info->refcnt == 0);
     pgraph_vk_shader_layouts_unref(info->layouts);
-    vkDestroyShaderModule(r->device, info->module, NULL);
+    assert(!info->object_gpu_ref);
+    if (info->shader_object) {
+        vkDestroyShaderEXT(r->device, info->shader_object, NULL);
+        assert(r->shader_objects.live_objects);
+        r->shader_objects.live_objects--;
+    }
+    if (info->module) vkDestroyShaderModule(r->device, info->module, NULL);
     g_free(info);
+}
+
+/* One intrusive reference per owner covers all recorded/submitted consumers.
+ * The open ONE_TIME_SUBMIT recording belongs to the next submission serial. */
+void pgraph_vk_shader_object_use(PGRAPHVkState *r, ShaderModuleInfo *module)
+{
+    assert(module && module->shader_object && r->in_command_buffer);
+    module->object_retire_after = r->submit_count + 1;
+    if (!module->object_gpu_ref) {
+        pgraph_vk_ref_shader_module(module);
+        module->object_gpu_ref = true;
+        module->object_gpu_next = r->shader_objects.gpu_owners;
+        r->shader_objects.gpu_owners = module;
+    }
+}
+
+void pgraph_vk_shader_objects_retire(PGRAPHVkState *r)
+{
+    ShaderModuleInfo **link = &r->shader_objects.gpu_owners;
+    while (*link) {
+        ShaderModuleInfo *module = *link;
+        if ((int32_t)(module->object_retire_after - r->settled_submit) <= 0) {
+            *link = module->object_gpu_next;
+            module->object_gpu_next = NULL; module->object_gpu_ref = false;
+            pgraph_vk_unref_shader_module(r, module);
+        } else link = &module->object_gpu_next;
+    }
 }

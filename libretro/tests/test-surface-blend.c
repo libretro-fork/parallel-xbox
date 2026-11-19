@@ -15,12 +15,17 @@
 #define nv2a_profile_inc_counter(...) ((void)0)
 typedef struct {unsigned value;} ShaderState;
 typedef struct {unsigned format;} RenderPassState;
-typedef struct {bool clear;RenderPassState render_pass_state;ShaderState shader_state;VkVertexInputBindingDescription binding_descriptions[16];VkVertexInputAttributeDescription attribute_descriptions[16];uint32_t regs[9];} PipelineKey;
+typedef struct {bool clear;RenderPassState render_pass_state;ShaderState shader_state;VkVertexInputBindingDescription binding_descriptions[16];VkVertexInputAttributeDescription attribute_descriptions[16];uint32_t regs[9];unsigned prepared_vertex;} PipelineKey;
 typedef struct {unsigned unused;} Lru, LruNode;
 typedef struct {LruNode node;PipelineKey key;VkPipelineLayout layout;VkPipeline pipeline;unsigned draw_time;bool has_dynamic_line_width;} PipelineBinding;
-typedef struct {ShaderState state;} ShaderBinding;
+typedef struct {unsigned index;} ShaderModuleInfo;
+typedef struct {bool shader_object_route;ShaderState state;struct {const ShaderModuleInfo *module_info;}vsh;} ShaderBinding;
+/* This blend corpus exercises the ordinary route; complete prepared key
+ * identities are checked independently by test-pipeline-key-clear. */
+static inline unsigned pgraph_vk_ready_vertex_identity(const ShaderModuleInfo*m){return m?m->index:0;}
 typedef struct {
-    PipelineBinding *pipeline_binding;ShaderBinding *shader_binding;bool shader_bindings_changed,texture_bindings_changed,ahead_valid;
+    PipelineBinding *pipeline_binding;ShaderBinding *shader_binding;bool shader_bindings_changed,texture_bindings_changed,ahead_valid,pipeline_binding_changed;
+    struct {bool enabled,draw;VkPhysicalDeviceFeatures features;} shader_objects;
     bool dyn_blend,dyn_cull_front,dyn_vertex_input;VkCommandBuffer command_buffer;
     unsigned num_active_vertex_binding_descriptions,num_active_vertex_attribute_descriptions;
     VkVertexInputBindingDescription vertex_binding_descriptions[16];VkVertexInputAttributeDescription vertex_attribute_descriptions[16];

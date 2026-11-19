@@ -14,6 +14,10 @@ s=source.read_text(encoding='utf-8')
 a=s.index('static void vk_spec_compile_state(');b=s.index('{',a)+1;d=1
 while d:d+=(s[b]=='{')-(s[b]=='}');b+=1
 current=s[a:b].replace('static void','__attribute__((noinline)) static void',1)
+typed_native = 'unsigned native_kind' in current
+if typed_native:
+ current=current.replace('vk_spec_compile_state(', 'typed_compile_state(', 1)
+ current+='\nstatic void vk_spec_compile_state(const ShaderState *st){typed_compile_state(st,prepared[0].native_kind);}'
 reference=Path(__file__).with_name('worker-direct-reference.h').read_text(encoding='utf-8').replace('vk_spec_compile_state(', 'reference_state(').replace('static void','__attribute__((noinline)) static void',1)
 if '--copy-control' in sys.argv[3:]:
  current=reference.replace('reference_state(', 'vk_spec_compile_state(')
@@ -22,6 +26,8 @@ h=(repo/'hw/xbox/nv2a/pgraph/vk/renderer.h').read_text(encoding='utf-8');key=re.
 glsl=(repo/'hw/xbox/nv2a/pgraph/vk/glsl.h').read_text(encoding='utf-8')
 source_type='typedef struct ShaderLayouts ShaderLayouts;\n'+re.search(r'typedef struct ShaderSource \{.*?\} ShaderSource;',glsl,re.S)[0]
 code=Path(__file__).with_suffix('.c').read_text(encoding='utf-8-sig').replace('/* SOURCE */',source_type).replace('/* KEY */',key).replace('/* RECORD */',record).replace('/* FUNCTIONS */',reference+'\n'+current)
+if typed_native:
+ code=code.replace(' for(unsigned trial=0;trial<20000;trial++){',' for(unsigned k=0;k<3;k++)prepared[k].native_kind=0;\n for(unsigned trial=0;trial<20000;trial++){')
 env=os.environ.copy();env['PATH']=str(Path(cc).resolve().parent)+os.pathsep+env.get('PATH','')
 with tempfile.TemporaryDirectory(prefix='worker-direct-') as tmp:
  p=Path(tmp);(p/'qemu').mkdir();(p/'qemu/osdep.h').write_bytes(b'#include <stdint.h>\n#include <stdbool.h>\n#include <stddef.h>\n');(p/'qemu/mstring.h').write_bytes(b'typedef struct MString MString;\n');(p/'test.c').write_bytes(code.encode())

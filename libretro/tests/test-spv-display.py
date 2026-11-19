@@ -20,6 +20,7 @@ def run(r,cc,folder,generate):
     env=dict(os.environ);env['PATH']=str(Path(cc).resolve().parent)+os.pathsep+env.get('PATH','')
     source=(r/'hw/xbox/nv2a/pgraph/vk/glsl.c').read_text()
     code=Path(__file__).with_suffix('.c').read_text().replace('/* PRODUCTION */','\n'.join(function(source,n) for n in ['pgraph_vk_create_static_shader_module','pgraph_vk_destroy_shader_module']))
+    if 'info->shader_object' in function(source,'pgraph_vk_destroy_shader_module'):code='#define FIXTURE_NATIVE_OBJECTS 1\n'+code
     errors=(r/'libretro/tests/test-spv-geom.c').read_text();a=errors.index('#ifdef _WIN32\nstatic void quiet_test_abort');b=errors.index('int line_tests(',a)
     code=code.replace('/* QUIET ERRORS */',errors[a:b]);(folder/'test.c').write_text(code)
     exe=folder/('test.exe' if os.name=='nt' else 'test')

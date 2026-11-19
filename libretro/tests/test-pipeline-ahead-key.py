@@ -155,12 +155,26 @@ int main(void) {
  printf("Pipeline ahead: %u actual-layout/XXH3/poisoned-slot/module-order/drain-release/backpressure/caller-lifetime cases PASS\n",cases);
 }
 '''.replace('/* KEY */',key).replace('/* RENDER PASS */',render_pass).replace('/* PRODUCTION */',ready+'\n'+flight_fn+'\n'+fn)
+# A speculative job uses ordinary owners even when the current draw is prepared.
+# Retain every original byte/collision case while modelling that explicit field.
+prepared_namespace = 'prepared_vertex' in key
+if prepared_namespace:
+ code = code.replace('memcpy(&expected.shader_state,&r.ahead_state,sizeof(r.ahead_state));',
+                     'memcpy(&expected.shader_state,&r.ahead_state,sizeof(r.ahead_state));expected.prepared_vertex=0;',1)
 with tempfile.TemporaryDirectory(prefix='pipeline-ahead-key-') as tmp:
  d=Path(tmp);(d/'qemu').mkdir();(d/'qemu/osdep.h').write_bytes(b'#include <stdint.h>\n#include <stdbool.h>\n#include <stddef.h>\n');(d/'qemu/mstring.h').write_bytes(b'typedef struct MString MString;\n');c=d/'test.c';c.write_text(code);exe=d/('test.exe' if os.name=='nt' else 'test')
  env=os.environ.copy();env['PATH']=str(Path(cc).resolve().parent)+os.pathsep+env.get('PATH','')
  command=[cc,'-std=gnu11','-O2','-Wall','-Wextra','-Werror','-I'+str(d),'-I'+str(r),'-I'+str(r/'include'),'-I'+str(r/'libretro-common/include'),'-I'+str(r/'deps/vulkan-headers'),*shlex.split(os.environ.get('PIPELINE_AHEAD_CFLAGS','')),str(c),str(r/'libretro-common/encodings/encoding_xxh3.c'),'-o',str(exe)]
  subprocess.run(command,check=True,env=env)
  subprocess.run([str(exe)],check=True,env=env,timeout=30)
+ if prepared_namespace:
+  ordinary = 'key->prepared_vertex = 0;'
+  assert ordinary in fn
+  mutant = fn.replace(ordinary,'key->prepared_vertex = draw_key->prepared_vertex;',1)
+  c.write_text(code.replace(fn,mutant,1));subprocess.run(command,check=True,env=env)
+  rejected=subprocess.run([str(exe)],capture_output=True,env=env,timeout=30)
+  assert rejected.returncode and b'FAIL line' in rejected.stderr,'prepared draw namespace leaked into ordinary ahead job'
+  print('Required negative control rejected: prepared draw marker reused by ordinary ahead job')
  # Compile the old protocol error: work still in flight falsely becomes ready.
  flight=re.search(r'if \(pump_full_in_flight\(hash, key\)\) \{.*?\n    \}',fn,re.S)
  assert flight and 'pgraph_vk_spec_pipeline_queued' in flight[0]

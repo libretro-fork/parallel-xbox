@@ -15,6 +15,8 @@ functions='\n'.join(fn.replace('static void','__attribute__((noinline)) static v
 h=(repo/'hw/xbox/nv2a/pgraph/vk/renderer.h').read_text()
 types='\n'.join(re.search(r'typedef struct '+name+r' \{.*?\} '+name+r';',h,re.S)[0] for name in ['RenderPassState','PipelineKey'])
 code=Path(__file__).with_suffix('.c').read_text().replace('/* TYPES */',types).replace('/* FUNCTIONS */',functions)
+prepared='prepared_vertex' in types
+code='#define HAVE_PREPARED_VERTEX '+str(int(prepared))+'\n'+code
 env=os.environ.copy();env['PATH']=str(Path(cc).resolve().parent)+os.pathsep+env.get('PATH','')
 with tempfile.TemporaryDirectory(prefix='pipeline-key-clear-') as tmp:
  p=Path(tmp);(p/'qemu').mkdir()
@@ -26,3 +28,12 @@ with tempfile.TemporaryDirectory(prefix='pipeline-key-clear-') as tmp:
   flags=['-DCHECKED','-fsanitize=undefined','-fsanitize-undefined-trap-on-error'] if checked else []
   subprocess.run([cc,'-O2','-std=gnu11','-Wall','-Wextra','-Werror',*flags,'-I'+str(p),'-I'+str(repo),'-I'+str(repo/'deps/vulkan-headers'),str(p/'test.c'),'-o',str(exe)],env=env,check=True)
   subprocess.run([str(exe)],env=env,check=True,timeout=120)
+  if checked and prepared:
+   needle='pgraph_vk_ready_vertex_identity(\n        r->shader_binding->vsh.module_info)'
+   assert needle in current
+   mutant=code.replace(needle,'0',1);(p/'test.c').write_text(mutant)
+   subprocess.run([cc,'-O2','-std=gnu11','-Wall','-Wextra','-Werror',*flags,'-I'+str(p),'-I'+str(repo),'-I'+str(repo/'deps/vulkan-headers'),str(p/'test.c'),'-o',str(exe)],env=env,check=True)
+   bad=subprocess.run([str(exe)],env=env,capture_output=True,timeout=120)
+   assert bad.returncode and b'Assertion' in bad.stderr,'prepared vertex identity omission escaped'
+   print('Required negative control rejected: prepared vertex key identity omitted')
+   (p/'test.c').write_text(code)

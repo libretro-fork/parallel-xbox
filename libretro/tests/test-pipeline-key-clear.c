@@ -10,7 +10,10 @@
 #include <vulkan/vulkan.h>
 #include "hw/xbox/nv2a/pgraph/glsl/shaders.h"
 /* TYPES */
-struct ShaderBinding { ShaderState state; };
+typedef struct { unsigned index; } ShaderModuleInfo;
+struct ShaderBinding { ShaderState state; struct {const ShaderModuleInfo *module_info;} vsh; };
+static const ShaderModuleInfo ordinary_module={0};
+static inline unsigned pgraph_vk_ready_vertex_identity(const ShaderModuleInfo *m){assert(m);return m->index;}
 typedef struct {
  struct ShaderBinding *shader_binding;bool dyn_vertex_input;
  VkVertexInputBindingDescription vertex_binding_descriptions[16];
@@ -33,7 +36,8 @@ static uint32_t rng=0x731abc24;
 static uint32_t random_value(void){rng^=rng<<13;rng^=rng>>17;rng^=rng<<5;return rng;}
 static void correctness(void){
  struct ShaderBinding shader;
- for(size_t i=0;i<sizeof(shader);i++)((uint8_t*)&shader)[i]=(uint8_t)random_value();
+ for(size_t i=0;i<sizeof(shader.state);i++)((uint8_t*)&shader.state)[i]=(uint8_t)random_value();
+ shader.vsh.module_info=&ordinary_module;
  PGRAPHVkState r={.shader_binding=&shader};PGRAPHState pg={&r};
  for(unsigned trial=0;trial<100000;trial++){
   struct {uint8_t before[31];PipelineKey key;uint8_t after[17];} a,b;
@@ -41,7 +45,7 @@ static void correctness(void){
   r.dyn_vertex_input=trial&1;
   r.num_active_vertex_binding_descriptions=random_value()%17;
   r.num_active_vertex_attribute_descriptions=random_value()%17;
-  ((uint8_t*)&shader)[random_value()%sizeof(shader)]=(uint8_t)random_value();
+  ((uint8_t*)&shader.state)[random_value()%sizeof(shader.state)]=(uint8_t)random_value();
   for(unsigned i=0;i<16;i++){
    r.vertex_binding_descriptions[i]=(VkVertexInputBindingDescription){i,random_value(),random_value()&1};
    r.vertex_attribute_descriptions[i]=(VkVertexInputAttributeDescription){i,random_value()%16,VK_FORMAT_R32_SFLOAT,random_value()};
@@ -64,10 +68,22 @@ static void correctness(void){
  }
  puts("100000 whole-key byte, source-state, guard and clear-byte checks passed (dynamic/static input; independent 0..16 binding/attribute counts)");
 }
+#if HAVE_PREPARED_VERTEX
+static void prepared_identity(void){
+ ShaderModuleInfo module={0};struct ShaderBinding shader={.vsh.module_info=&module};
+ PGRAPHVkState r={.shader_binding=&shader,.dyn_vertex_input=true};PGRAPHState pg={&r};
+ for(unsigned id=1;id<=120;id++){
+  PipelineKey a,b;module.index=id;reference(&pg,&a);current(&pg,&b);
+  assert(a.prepared_vertex==0&&b.prepared_vertex==id);
+  b.prepared_vertex=0;assert(!memcmp(&a,&b,sizeof(a)));
+ }
+ puts("Prepared vertex key namespace: all120 bank identities remain separate; other bytes unchanged");
+}
+#endif
 #ifndef CHECKED
 static volatile uint32_t sink;
 static double run(unsigned which,unsigned dyn,unsigned count){
- struct ShaderBinding shader;memset(&shader,0x37,sizeof(shader));
+ struct ShaderBinding shader;memset(&shader,0x37,sizeof(shader));shader.vsh.module_info=&ordinary_module;
  PGRAPHVkState r={.shader_binding=&shader,.dyn_vertex_input=dyn,.num_active_vertex_binding_descriptions=count,.num_active_vertex_attribute_descriptions=count};
  memset(r.vertex_binding_descriptions,0x74,sizeof(r.vertex_binding_descriptions));memset(r.vertex_attribute_descriptions,0x15,sizeof(r.vertex_attribute_descriptions));
  PGRAPHState pg={&r};PipelineKey key;
@@ -78,7 +94,11 @@ static double run(unsigned which,unsigned dyn,unsigned count){
  return ((b.tv_sec-a.tv_sec)*1e9+b.tv_nsec-a.tv_nsec)/2000000;
 }
 #endif
-int main(void){correctness();printf("key=%zu shader=%zu prefix=%zu suffix=%zu\n",sizeof(PipelineKey),sizeof(ShaderState),offsetof(PipelineKey,shader_state),sizeof(PipelineKey)-offsetof(PipelineKey,shader_state)-sizeof(ShaderState));
+int main(void){correctness();
+#if HAVE_PREPARED_VERTEX
+ prepared_identity();
+#endif
+printf("key=%zu shader=%zu prefix=%zu suffix=%zu\n",sizeof(PipelineKey),sizeof(ShaderState),offsetof(PipelineKey,shader_state),sizeof(PipelineKey)-offsetof(PipelineKey,shader_state)-sizeof(ShaderState));
 #ifndef CHECKED
  for(unsigned rep=0;rep<5;rep++)for(unsigned dyn=0;dyn<2;dyn++)for(unsigned count=0;count<=16;count+=8){double t[2];
  for(unsigned k=0;k<2;k++){unsigned w=k^(rep&1);t[w]=run(w,dyn,count);}

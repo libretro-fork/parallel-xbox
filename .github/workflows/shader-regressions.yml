@@ -24,6 +24,7 @@ jobs:
       native_pipelines: ${{ steps.revisions.outputs.native_pipelines }}
       query_reports: ${{ steps.revisions.outputs.query_reports }}
       cache_modes: ${{ steps.revisions.outputs.cache_modes }}
+      vk_ready_vertices: ${{ steps.revisions.outputs.vk_ready_vertices }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -79,6 +80,13 @@ jobs:
                    if git('ls-tree', '--name-only', commit, '--', mode_path) == mode_path]
           if not modes:
               modes = [after]
+          vertex_path = 'hw/xbox/nv2a/pgraph/vk/ready-vertex.inc'
+          vertices = [commit for commit in commits
+                      if git('ls-tree', '--name-only', commit, '--', vertex_path) == vertex_path]
+          if not vertices:
+              vertices = [after]  # Missing current coverage/fixtures never becomes a pass.
+          if len(vertices)*5 > 256:
+              raise SystemExit('Unqualified: prepared vertex matrix exceeds 256 jobs')
           software = [dict(**row, suite=suite) for row in rows for suite in ['utilities', 'vertex']+['fragment-'+str(i) for i in range(8)]]
           if len(software) > 256:
               raise SystemExit('Unqualified: software matrix exceeds 256 jobs; split this push')
@@ -89,6 +97,7 @@ jobs:
               f.write('native_pipelines='+json.dumps(dict(commit=native))+'\n')
               f.write('query_reports='+json.dumps(dict(commit=reports))+'\n')
               f.write('cache_modes='+json.dumps(dict(commit=modes))+'\n')
+              f.write('vk_ready_vertices='+json.dumps(dict(commit=vertices, domain=['original','unlit','idle','literal','csv-texgen']))+'\n')
           with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as f:
               f.write('Every new commit in this push is compared, not just its tip.\n\n')
               f.write('Pinned accepted reference: '+(accepted or '**UNQUALIFIED: not configured; parent comparison only**')+'\n\n')
@@ -614,10 +623,89 @@ jobs:
           name: gl-cache-mode-${{ matrix.commit }}
           path: results/
 
+  vk-ready-vertex:
+    name: Vulkan prepared vertex (${{ matrix.commit }}, ${{ matrix.domain }})
+    needs: revisions
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.revisions.outputs.vk_ready_vertices) }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ matrix.commit }}
+          filter: blob:none
+      - name: Install software Vulkan and validation tools
+        run: |
+          sudo apt-get -qy update
+          sudo apt-get -qy install build-essential libvulkan-dev libvulkan1 mesa-vulkan-drivers vulkan-validationlayers spirv-tools
+      - name: Select the installed software ICD
+        run: |
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+          paths = sorted(Path('/usr/share/vulkan/icd.d').glob('lvp_icd*.json'))
+          if not paths:
+              raise SystemExit('UNQUALIFIED: software Vulkan ICD missing')
+          with open(os.environ['GITHUB_ENV'], 'a') as stream:
+              stream.write('VK_ICD_FILENAMES='+str(paths[0])+'\n')
+          PY
+      - name: Check production startup, owners, input routing and uploads
+        if: matrix.domain == 'original'
+        run: |
+          set -euo pipefail
+          mkdir -p results
+          git fetch --no-tags --depth=1 origin 14be393b8da075543c435573c7b95100e0a2e769
+          python3 libretro/tests/test-glslc-float-controls.py . cc --keep results/float-controls 2>&1 | tee results/float-controls.log
+          python3 libretro/tests/test-vk-ready-vertex.py . cc 2>&1 | tee results/owners-inputs.log
+          if grep -q "60 native owners" hw/xbox/nv2a/pgraph/vk/ready-vertex.inc; then
+            python3 libretro/tests/test-vk-ready-prefix-alias.py . cc --keep results/prefix-alias 2>&1 | tee results/prefix-alias.log
+          fi
+          python3 libretro/tests/test-vk-dispatch.py . cc 2>&1 | tee results/dispatch.log
+          python3 libretro/tests/test-vk-shader-object-negotiate.py . cc 2>&1 | tee results/negotiation.log
+          python3 libretro/tests/test-vk-shader-object-owners.py . cc 2>&1 | tee results/shader-object-owners.log
+          python3 libretro/tests/test-vk-shader-object-state.py . cc 2>&1 | tee results/shader-object-state.log
+          if grep -q "Dynamic rendering consumes attachment views directly" hw/xbox/nv2a/pgraph/vk/draw.c; then
+            python3 libretro/tests/test-vk-dynamic-framebuffer.py . cc 2>&1 | tee results/dynamic-framebuffer.log
+          fi
+          python3 libretro/tests/test-vk-prepared-option.py . cc 2>&1 | tee results/option.log
+          python3 libretro/tests/test-vk-ready-route.py . cc 2>&1 | tee results/routes.log
+          if test -f hw/xbox/nv2a/pgraph/vk/ready-geometry.inc; then
+            python3 libretro/tests/test-vk-ready-geometry.py . cc 2>&1 | tee results/geometry-owners.log
+            python3 libretro/tests/test-vk-geometry-descriptors.py . cc 2>&1 | tee results/geometry-descriptors.log
+          fi
+      - name: Compare original recipes and reject required numerical faults
+        run: |
+          set -euo pipefail
+          unset NO_VALIDATION
+          mkdir -p results
+          python3 libretro/tests/test-vk-ready-ff-gpu.py . cc --domain '${{ matrix.domain }}' --keep results/fixture 2>&1 | tee results/numerical.log
+      - name: Validate bounded Vulkan fragment source, owners and pixels
+        if: matrix.domain == 'original'
+        run: |
+          set -euo pipefail
+          unset NO_VALIDATION
+          if grep -q 'pgraph_glsl_gen_psh_ready_vk2d' hw/xbox/nv2a/pgraph/glsl/psh.h; then
+            mkdir -p results/fragment-baseline
+            git show 14be393b8da075543c435573c7b95100e0a2e769:hw/xbox/nv2a/pgraph/glsl/psh.c > results/fragment-baseline/psh.c
+            git show 14be393b8da075543c435573c7b95100e0a2e769:hw/xbox/nv2a/pgraph/glsl/psh-ready.inc > results/fragment-baseline/psh-ready.inc
+            python3 libretro/tests/test-vk-ready-fragment-controls.py . cc --baseline results/fragment-baseline --keep results/fragment-controls 2>&1 | tee results/fragment-controls.log
+            if test -f hw/xbox/nv2a/pgraph/vk/ready-fragment.inc; then
+              python3 libretro/tests/test-vk-ready-fragment-owners.py . cc --keep results/fragment-owners 2>&1 | tee results/fragment-owners.log
+            fi
+            python3 libretro/tests/test-vk-ready-fragment.py . cc --workers 2 --keep results/fragment-gpu 2>&1 | tee results/fragment-gpu.log
+          fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: vk-ready-vertex-${{ matrix.commit }}-${{ matrix.domain }}
+          path: results/
+
   shader-gate:
     name: Shader and PSO required gate
     if: always()
-    needs: [revisions, contracts, compilation, software-gpu, interpreter-gpu, interpreter-dynamic-gpu, geometry-ready-gpu, fragment-ready-gpu, native-pipeline-ready, gl-report-reuse, gl-cache-mode]
+    needs: [revisions, contracts, compilation, software-gpu, interpreter-gpu, interpreter-dynamic-gpu, geometry-ready-gpu, fragment-ready-gpu, native-pipeline-ready, gl-report-reuse, gl-cache-mode, vk-ready-vertex]
     runs-on: ubuntu-24.04
     steps:
       - name: Require every revision and reference job to pass

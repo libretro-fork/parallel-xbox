@@ -939,6 +939,8 @@ static void init_pipeline_key(PGRAPHState *pg, PipelineKey *key)
     }
 
     pipeline_reg_values(pg, key->regs);
+    key->prepared_vertex = pgraph_vk_ready_vertex_identity(
+        r->shader_binding->vsh.module_info);
 }
 
 /* Line widths are set per draw where the device has wide lines. */
@@ -1515,7 +1517,7 @@ static void pipeline_land(PGRAPHState *pg, LibJob *job)
     } else {
         vkDestroyPipeline(r->device, job->result, NULL);
     }
-    pgraph_vk_spec_pipeline_landed(job->state_hash);
+    if (!job->key.prepared_vertex) pgraph_vk_spec_pipeline_landed(job->state_hash);
 }
 
 /* A draw may have needed the library before its optional worker job landed.
@@ -1605,7 +1607,7 @@ static bool pump_take_pipeline(PGRAPHState *pg, PipelineBinding *binding,
             binding->has_dynamic_line_width = job->has_dynamic_line_width;
             binding->draw_time = pg->draw_time;
             job->result = VK_NULL_HANDLE;
-            pgraph_vk_spec_pipeline_landed(job->state_hash);
+            if (!job->key.prepared_vertex) pgraph_vk_spec_pipeline_landed(job->state_hash);
             return true;
         }
     }
@@ -1907,6 +1909,7 @@ void pgraph_vk_libpump_step(PGRAPHState *pg)
     if (pipe_started && pump_d != pump_w_local) {
         pump_drain(pg);
     }
+    if (r->shader_objects.enabled) return; /* objects never queue native graphics PSOs */
     /* A seeded complete key is predictable only when all register and
      * vertex-input dimensions are dynamic. GPL is not required. */
     if (!g_config.perf.shader_seeding || !r->dyn_cull_front ||
@@ -2064,7 +2067,7 @@ void pgraph_vk_prewarm_shaders(NV2AState *d)
     PGRAPHState *pg = &d->pgraph;
     PGRAPHVkState *r = pg->vk_renderer_state;
 
-    if (!r || !r->pipeline_library || !r->dyn_cull_front ||
+    if (!r || r->shader_objects.enabled || !r->pipeline_library || !r->dyn_cull_front ||
         !r->dyn_vertex_input || !r->device || !r->color_binding) {
         return;
     }
@@ -2393,7 +2396,7 @@ static int pump_state(PGRAPHState *pg, const ShaderState *st,
     }
     job->mods[job->nmods++] = psh;
     pump_submit(job);
-    pgraph_vk_spec_pipeline_queued(job->state_hash);
+    if (!job->key.prepared_vertex) pgraph_vk_spec_pipeline_queued(job->state_hash);
     return 1;
 }
 
@@ -2424,6 +2427,7 @@ static void pipeline_ahead(PGRAPHState *pg, const PipelineKey *draw_key)
     memcpy((char *)key + after_shader, (const char *)draw_key + after_shader,
            sizeof(*key) - after_shader);
     memcpy(&key->shader_state, &r->ahead_state, sizeof(ShaderState));
+    key->prepared_vertex = 0; /* ordinary ahead modules, independent of current draw route */
     uint64_t hash = xxh3_64((const uint8_t *)key, sizeof(*key), 0);
     if (pipeline_ready(r, hash, key)) {
         pgraph_vk_spec_pipeline_landed(r->ahead_hash);
@@ -2513,7 +2517,7 @@ static bool pipeline_use_ready_sibling(PGRAPHState *pg, PipelineKey *key,
             }
             job->mods[job->nmods++] = psh;
             pump_submit(job);
-            pgraph_vk_spec_pipeline_queued(job->state_hash);
+            if (!job->key.prepared_vertex) pgraph_vk_spec_pipeline_queued(job->state_hash);
             r->sibling_ticket = pump_w_local - 1;
             r->sibling_generation = pgraph_glsl_dynamic_gen;
             r->sibling_retry = true;
@@ -2544,6 +2548,16 @@ static void create_pipeline(PGRAPHState *pg)
 
     pgraph_vk_bind_textures(d);
     pgraph_vk_bind_shaders(pg);
+    r->shader_objects.draw = r->shader_objects.enabled &&
+        r->shader_binding && r->shader_binding->shader_object_route;
+    if (r->shader_objects.draw) {
+        /* Binding and uniform updates consumed dirty registers above, just
+         * as on the ordinary path. Keep unchanged draws out of recapture. */
+        pgraph_clear_dirty_reg_map(pg);
+        r->pipeline_binding_changed = false;
+        NV2A_VK_DGROUP_END();
+        return;
+    }
 
     // FIXME: If nothing was dirty, don't even try creating the key or hashing.
     //        Just use the same pipeline.
@@ -2646,7 +2660,8 @@ static void push_vertex_attr_values(PGRAPHState *pg)
 {
     PGRAPHVkState *r = pg->vk_renderer_state;
 
-    if (!r->use_push_constants_for_uniform_attrs) {
+    if (r->shader_binding->vsh.module_info->ready_vertex_index ||
+        !r->use_push_constants_for_uniform_attrs) {
         return;
     }
 
@@ -2659,7 +2674,9 @@ static void push_vertex_attr_values(PGRAPHState *pg)
                              values, &num_uniform_attrs);
 
     if (num_uniform_attrs > 0) {
-        vkCmdPushConstants(r->command_buffer, r->pipeline_binding->layout,
+        VkPipelineLayout layout = r->shader_objects.draw ?
+            create_pipeline_layout(r, &r->shader_binding->state) : r->pipeline_binding->layout;
+        vkCmdPushConstants(r->command_buffer, layout,
                            VK_SHADER_STAGE_VERTEX_BIT, 0,
                            num_uniform_attrs * 4 * sizeof(float),
                            &values);
@@ -2670,17 +2687,22 @@ static void bind_descriptor_sets(PGRAPHState *pg)
 {
     PGRAPHVkState *r = pg->vk_renderer_state;
     assert(r->descriptor_set_index >= r->descriptor_set_base + 1);
-    /* Vulkan orders dynamic offsets by binding number: VS, then PS. */
-    assert(VSH_UBO_BINDING < PSH_UBO_BINDING);
+    /* The optional geometry descriptor is last in binding-number order.
+     * Its ABI survives a pressure decline to ordinary native pipelines. */
+    assert(VSH_UBO_BINDING < PSH_UBO_BINDING && PSH_UBO_BINDING < GSH_UBO_BINDING);
     assert(r->uniform_buffer_offsets[0] <= UINT32_MAX);
     assert(r->uniform_buffer_offsets[1] <= UINT32_MAX);
     uint32_t offsets[] = { r->uniform_buffer_offsets[0],
-                           r->uniform_buffer_offsets[1] };
+                           r->uniform_buffer_offsets[1],
+                           r->uniform_buffer_offsets[2] };
+    assert(!r->has_gs_ubo_binding || r->uniform_buffer_offsets[2] <= UINT32_MAX);
 
+    VkPipelineLayout layout = r->shader_objects.draw ?
+        create_pipeline_layout(r, &r->shader_binding->state) : r->pipeline_binding->layout;
     vkCmdBindDescriptorSets(r->command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                            r->pipeline_binding->layout, 0, 1,
+                            layout, 0, 1,
                             &r->descriptor_sets[r->descriptor_set_index - 1],
-                            ARRAY_SIZE(offsets), offsets);
+                            r->has_gs_ubo_binding ? 3 : 2, offsets);
 }
 
 static void begin_query(PGRAPHVkState *r)
@@ -2763,6 +2785,15 @@ static void sync_staging_buffers(PGRAPHState *pg, VkCommandBuffer cmd)
             dst_access_mask = VK_ACCESS_UNIFORM_READ_BIT;
             dst_stage_mask = VK_PIPELINE_STAGE_VERTEX_SHADER_BIT |
                              VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+            if (r->has_gs_ubo_binding) {
+                /* The descriptor ABI outlives a later route decline. */
+                dst_stage_mask |= VK_PIPELINE_STAGE_GEOMETRY_SHADER_BIT;
+            }
+            if (b_dst->usage & VK_BUFFER_USAGE_VERTEX_BUFFER_BIT) {
+                /* Recorded consumers survive a later optional-route decline. */
+                dst_access_mask |= VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT;
+                dst_stage_mask |= VK_PIPELINE_STAGE_VERTEX_INPUT_BIT;
+            }
             break;
         default:
             assert(0);
@@ -2818,6 +2849,8 @@ static void flush_memory_buffer(PGRAPHState *pg)
     }
 }
 
+#include "shader-object.inc"
+
 static void begin_render_pass(PGRAPHState *pg)
 {
     PGRAPHVkState *r = pg->vk_renderer_state;
@@ -2831,6 +2864,11 @@ static void begin_render_pass(PGRAPHState *pg)
                  vp_height = pg->surface_binding_dim.height;
     pgraph_apply_scaling_factor(pg, &vp_width, &vp_height);
 
+    if (r->shader_objects.draw && !pg->clearing) {
+        shader_objects_begin_rendering(pg, vp_width, vp_height);
+        return;
+    }
+    shader_objects_unbind(r);
     assert(r->framebuffer != VK_NULL_HANDLE);
 
     VkRenderPassBeginInfo render_pass_begin_info = {
@@ -2881,7 +2919,10 @@ static void end_render_pass(PGRAPHVkState *r)
             vk_cost_close_recorded_queries(r);
             xemu_cost_backend_interrupt();
         }
-        vkCmdEndRenderPass(r->command_buffer);
+        if (r->shader_objects.rendering) {
+            vkCmdEndRendering(r->command_buffer);
+            r->shader_objects.rendering = false;
+        } else vkCmdEndRenderPass(r->command_buffer);
         r->in_render_pass = false;
     }
 }
@@ -3320,6 +3361,7 @@ void pgraph_vk_slot_retired(PGRAPHState *pg, int slot)
         r->settled_submit = r->slot_submit[slot];
     }
     trash_drain_retired(r);
+    pgraph_vk_shader_objects_retire(r);
 
 }
 
@@ -3396,6 +3438,7 @@ void pgraph_vk_wait_all_slots(PGRAPHVkState *r)
     }
     r->settled_submit = r->submit_count;
     trash_drain_retired(r);
+    pgraph_vk_shader_objects_retire(r);
 
 }
 
@@ -3533,7 +3576,7 @@ static void emit_dynamic_state(PGRAPHState *pg, bool force)
     pgraph_argb_pack32_to_rgba_float(blendcolor, blend_constant);
     vkCmdSetBlendConstants(cmd, blend_constant);
 
-    if (r->dyn_cull_front) {
+    if (r->dyn_cull_front || r->shader_objects.draw) {
         VkCullModeFlags cull = VK_CULL_MODE_NONE;
         if (setupraster & NV_PGRAPH_SETUPRASTER_CULLENABLE) {
             uint32_t cull_face =
@@ -3548,7 +3591,7 @@ static void emit_dynamic_state(PGRAPHState *pg, bool force)
                                  VK_FRONT_FACE_CLOCKWISE);
     }
 
-    if (r->dyn_blend) {
+    if (r->dyn_blend || r->shader_objects.draw) {
         VkColorComponentFlags write_mask = color_write_mask(control_0);
         vkCmdSetColorWriteMaskEXT(cmd, 0, 1, &write_mask);
 
@@ -3573,7 +3616,7 @@ static void emit_dynamic_state(PGRAPHState *pg, bool force)
         vkCmdSetColorBlendEquationEXT(cmd, 0, 1, &eq);
     }
 
-    if (r->dyn_cull_front) {
+    if (r->dyn_cull_front || r->shader_objects.draw) {
         bool depth_test = control_0 & NV_PGRAPH_CONTROL_0_ZENABLE;
         bool stencil_test = control_1 & NV_PGRAPH_CONTROL_1_STENCIL_TEST_ENABLE;
         uint32_t zfunc = GET_MASK(control_0, NV_PGRAPH_CONTROL_0_ZFUNC);
@@ -3582,7 +3625,8 @@ static void emit_dynamic_state(PGRAPHState *pg, bool force)
         vkCmdSetDepthWriteEnableEXT(
             cmd, !!(control_0 & NV_PGRAPH_CONTROL_0_ZWRITEENABLE));
         vkCmdSetDepthCompareOpEXT(cmd, pgraph_depth_func_vk_map[zfunc]);
-        vkCmdSetDepthBoundsTestEnableEXT(cmd, VK_FALSE);
+        if (!r->shader_objects.draw || r->shader_objects.features.depthBounds)
+            vkCmdSetDepthBoundsTestEnableEXT(cmd, VK_FALSE);
         vkCmdSetStencilTestEnableEXT(cmd, stencil_test);
         if (stencil_test) {
             uint32_t sfunc =
@@ -3632,6 +3676,10 @@ static void emit_dynamic_state(PGRAPHState *pg, bool force)
 static void emit_dynamic_vertex_input(PGRAPHState *pg)
 {
     PGRAPHVkState *r = pg->vk_renderer_state;
+    if (!pg->clearing && r->shader_binding->vsh.module_info->ready_vertex_index) {
+        pgraph_vk_ready_vertex_input(pg);
+        return;
+    }
     int nb = r->num_active_vertex_binding_descriptions;
     int na = r->num_active_vertex_attribute_descriptions;
 
@@ -3757,6 +3805,7 @@ static void begin_pre_draw(PGRAPHState *pg)
     assert(!r->color_binding || r->color_binding->initialized);
     assert(!r->zeta_binding || r->zeta_binding->initialized);
 
+    if (pg->clearing) r->shader_objects.draw = false;
     VkRenderPass render_pass;
     if (pg->clearing && !clear_needs_color_draw(r)) {
         RenderPassState state;
@@ -3768,12 +3817,19 @@ static void begin_pre_draw(PGRAPHState *pg)
         } else {
             create_pipeline(pg);
         }
-        render_pass = r->pipeline_binding->render_pass;
+        if (r->shader_objects.draw) {
+            /* Dynamic rendering consumes attachment views directly. The null
+             * sentinel also forces a compatible classic framebuffer lookup
+             * when a utility or ordinary draw follows this scope. */
+            render_pass = VK_NULL_HANDLE;
+        } else render_pass = r->pipeline_binding->render_pass;
     }
 
     bool render_pass_dirty = render_pass != r->render_pass;
 
-    if (r->framebuffer_dirty || render_pass_dirty) {
+    bool scope_changed = r->in_render_pass &&
+        r->shader_objects.rendering != (r->shader_objects.draw && !pg->clearing);
+    if (r->framebuffer_dirty || render_pass_dirty || scope_changed) {
         pgraph_vk_ensure_not_in_render_pass(pg);
     }
     if (render_pass_dirty) {
@@ -3784,14 +3840,14 @@ static void begin_pre_draw(PGRAPHState *pg)
      * ensure it again after, and look up a framebuffer retired meanwhile. */
     pgraph_vk_ensure_command_buffer(pg);
     if (r->framebuffer_dirty) {
-        create_frame_buffer(pg);
+        if (!r->shader_objects.draw) create_frame_buffer(pg);
         r->framebuffer_dirty = false;
     }
     if (!pg->clearing) {
         pgraph_vk_update_descriptor_sets(pg);
     }
     pgraph_vk_ensure_command_buffer(pg);
-    if (r->framebuffer == VK_NULL_HANDLE) {
+    if (!r->shader_objects.draw && r->framebuffer == VK_NULL_HANDLE) {
         create_frame_buffer(pg);
     }
 }
@@ -3880,6 +3936,12 @@ static void begin_draw(PGRAPHState *pg)
         return;
     }
 
+    if (r->shader_objects.draw) {
+        shader_objects_bind_draw(pg);
+        r->in_draw = true;
+        return;
+    }
+    shader_objects_unbind(r);
     if (must_bind_pipeline) {
         nv2a_profile_inc_counter(NV2A_PROF_PIPELINE_BIND);
         vkCmdBindPipeline(r->command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,

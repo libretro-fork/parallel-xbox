@@ -15,7 +15,7 @@ def function(name):
  return s[m.start():end]
 upload=function('pgraph_vk_update_descriptor_sets')
 upload=upload[:upload.index('    assert(r->descriptor_set_index <')]+ '    r->descriptor_set_index++;\n}'
-upload=upload.replace('    VkWriteDescriptorSet descriptor_writes[2 + NV2A_MAX_TEXTURES];','')
+upload=re.sub(r'^    VkWriteDescriptorSet descriptor_writes\[\d+ \+ NV2A_MAX_TEXTURES\];', '', upload, flags=re.M)
 code=Path(__file__).with_suffix('.c').read_text().replace('/* PRODUCTION */',function('uniform_snapshot_valid')+'\n'+upload+'\n'+function('update_shader_uniforms_tracked'))
 env=os.environ.copy();env['PATH']=str(Path(cc).resolve().parent)+os.pathsep+env.get('PATH','')
 with tempfile.TemporaryDirectory(prefix='uniform-stage-',dir=repo.parent) as directory:

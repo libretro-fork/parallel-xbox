@@ -70,6 +70,11 @@ static void pgraph_vk_init(NV2AState *d, Error **errp)
         return;
     }
 
+    PGRAPHVkState *r = pg->vk_renderer_state;
+    r->shader_objects.enabled = pgraph_vk_prepared_vertex_enabled() &&
+        xemu_libretro_vk.shader_object && xemu_libretro_vk.dynamic_rendering &&
+        xemu_vk_shader_object_dispatch_ready(&xemu_libretro_vk.features);
+    r->shader_objects.features = xemu_libretro_vk.features;
     pgraph_vk_init_command_buffers(pg);
     pgraph_vk_init_buffers(d);
     pgraph_vk_init_surfaces(pg);
@@ -91,6 +96,13 @@ static void pgraph_vk_finalize(NV2AState *d)
 {
     PGRAPHState *pg = &d->pgraph;
 
+    if (pg->vk_renderer_state->shader_objects.gpu_owners) {
+        /* Submit any open one-time recording and reuse existing slot fences;
+         * no whole-device wait or new retirement primitive is introduced. */
+        pgraph_vk_finish(pg, VK_FINISH_REASON_FLUSH);
+        pgraph_vk_shader_objects_retire(pg->vk_renderer_state);
+        assert(!pg->vk_renderer_state->shader_objects.gpu_owners);
+    }
     pgraph_vk_finalize_display(pg);
     pgraph_vk_finalize_unswizzle(pg);
     pgraph_vk_finalize_compute(pg);

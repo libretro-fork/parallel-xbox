@@ -64,6 +64,9 @@ static ShaderModuleInfo *pgraph_vk_create_shader_module_from_spirv(PGRAPHVkState
     }
     assert(false);return NULL;
 }
+#ifdef FIXTURE_NATIVE_OBJECTS
+static ShaderModuleInfo *pgraph_vk_create_shader_object_from_spirv(PGRAPHVkState *r,VkShaderStageFlagBits stage,ShaderSource *source,bool optional){(void)r;(void)stage;(void)source;(void)optional;assert(!"Ordinary pre-raster request entered object factory");return NULL;}
+#endif
 static ShaderSource *vk_spec_compile_module(const ShaderModuleCacheKey *key,uint64_t hash) {
     assert(in_worker && key->kind!=VK_SHADER_STAGE_FRAGMENT_BIT);
     assert(hash==xxh3_64((const uint8_t *)key,sizeof(*key), 0));

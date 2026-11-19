@@ -26,10 +26,10 @@ typedef struct ShaderUniformLayout {
     const ShaderUniform *uniforms; size_t num_uniforms,total_size; void *allocation;
 } ShaderUniformLayout;
 typedef struct ShaderModuleInfo {
-    int refcnt; uint64_t identity,module; void *layouts;
+    int refcnt; bool object_gpu_ref; uint64_t shader_object; uint64_t identity,module; void *layouts;
     ShaderUniformLayout uniforms,push_constants;
 } ShaderModuleInfo;
-typedef struct PGRAPHVkState {uint64_t next_shader_module_identity;int device;} PGRAPHVkState;
+typedef struct PGRAPHVkState {uint64_t next_shader_module_identity;int device;struct {unsigned live_objects;} shader_objects;} PGRAPHVkState;
 static const uint32_t *expected_words;
 static size_t expected_word_count;
 static uint64_t pgraph_vk_create_shader_module_from_words(PGRAPHVkState *r,const uint32_t *words,size_t count)
@@ -40,6 +40,9 @@ static uint64_t pgraph_vk_create_shader_module_from_words(PGRAPHVkState *r,const
 static void pgraph_vk_shader_layouts_unref(void *layouts){assert(!layouts);}
 static void vkDestroyShaderModule(int device,uint64_t module,void *allocator)
 {(void)device;assert(module && !allocator);module_destructions++;}
+#ifdef FIXTURE_NATIVE_OBJECTS
+static void vkDestroyShaderEXT(int device,uint64_t object,void *allocator){(void)device;(void)object;(void)allocator;abort();}
+#endif
 /* PRODUCTION */
 /* QUIET ERRORS */
 

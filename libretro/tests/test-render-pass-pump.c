@@ -24,6 +24,7 @@ static void array_free(GArray *a){if(a){free(a->data);free(a);}}
 /* TYPES */
 typedef struct PGRAPHVkState {
  bool device,dyn_cull_front,dyn_blend,dyn_vertex_input,color_binding,zeta_binding;
+ struct {bool enabled;} shader_objects;
  GArray *render_passes;RenderPassState live;
  PumpProgress pump;
 } PGRAPHVkState;

@@ -55,6 +55,10 @@ int main(void){unsigned cases=0;uint32_t random=13;
   unsigned prefix=trial&8?63:trial%4;pump_d=trial&1?UINT32_MAX-trial/2:trial;pump_w_local=pump_d+prefix+1;pump_r=pump_d+prefix+(mode!=1);pipe_started=mode!=2;
   LibJob *job=&pump_jobs[(pump_d+prefix)%PUMP_RING];job->full=kind==2;job->frag=kind==1;
   unsigned char *bytes=(unsigned char *)&job->key;for(unsigned i=0;i<sizeof(job->key);i++){random=random*1664525u+1013904223u;bytes[i]=random>>24;}
+#ifdef FIXTURE_PREPARED_PSO
+  /* Preserve every RNG byte above, then exercise both valid marker domains. */
+  job->key.prepared_vertex=trial&1?(trial%120)+1:0;
+#endif
   job->hash=779;job->state_hash=992;job->result=(VkPipeline)(uintptr_t)(mode==3?0:123);job->layout=(VkPipelineLayout)(uintptr_t)311;job->ci.renderPass=(VkRenderPass)(uintptr_t)455;job->has_dynamic_line_width=true;
   ShaderModuleInfo owner={.refs=1};job->mods[0]=&owner;job->nmods=1;
   PipelineKey key;memcpy(&key,&job->key,sizeof(key));GplPreKey pre;memcpy(&pre,&job->pre_key,sizeof(pre));GplFragKey frag;memcpy(&frag,&job->frag_key,sizeof(frag));
@@ -69,8 +73,12 @@ int main(void){unsigned cases=0;uint32_t random=13;
   bool expected=pipe_started&&pump_r==pump_w_local&&job->result&&mode!=4&&mode!=5&&mode!=6&&mode!=7&&!(mode==8&&kind!=2);
   bool taken=kind==2?pump_take_pipeline(&pg,&binding,hash,&key):pump_take_library(&r,kind==1,hash,query)!=VK_NULL_HANDLE;
   CHECK(taken==expected&&pump_d==start&&owner.refs==1&&releases==0);
-  CHECK(stores==(expected&&kind!=2)&&markers==(expected&&kind==2));
-  if(expected){CHECK(!job->result);if(kind==2){CHECK(binding.pipeline==(VkPipeline)(uintptr_t)123&&binding.layout==job->layout&&binding.render_pass==job->ci.renderPass&&binding.has_dynamic_line_width&&binding.draw_time==771&&marker==992);}
+  bool expected_marker=expected&&kind==2;
+#ifdef FIXTURE_PREPARED_PSO
+  expected_marker=expected_marker&&!job->key.prepared_vertex;
+#endif
+  CHECK(stores==(expected&&kind!=2)&&markers==expected_marker);
+  if(expected){CHECK(!job->result);if(kind==2){CHECK(binding.pipeline==(VkPipeline)(uintptr_t)123&&binding.layout==job->layout&&binding.render_pass==job->ci.renderPass&&binding.has_dynamic_line_width&&binding.draw_time==771&&marker==(expected_marker?992u:0u));}
    CHECK(!(kind==2?pump_take_pipeline(&pg,&binding,hash,&key):pump_take_library(&r,kind==1,hash,query)!=VK_NULL_HANDLE));
   }else if(kind==2)CHECK(!memcmp(&binding,&before,sizeof(binding)));
   /* Poison the query: neither native owner nor the queue retains it. */
@@ -81,6 +89,7 @@ int main(void){unsigned cases=0;uint32_t random=13;
  printf("Completed pipeline take: %u native-key/publication/type/collision/owner/drain/wrap cases PASS\n",cases);
 }
 '''.replace('/* TYPES */',types).replace('/* PRODUCTION */',parts)
+if '!job->key.prepared_vertex' in parts:code='#define FIXTURE_PREPARED_PSO 1\n'+code
 if 'S3tcPipelineJob' in job:
  extra=r"""
  for(unsigned full=0;full<2;full++)for(unsigned frag=0;frag<2;frag++){

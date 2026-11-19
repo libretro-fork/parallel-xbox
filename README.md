@@ -9,8 +9,15 @@ stages and complete pipeline tuples before gameplay. It is disabled by default:
 preparation adds startup work, and generic shaders can cost more GPU time.
 Restart RetroArch after changing it. Unsupported states and failed preparation
 keep the ordinary renderer. See [coverage and qualification](docs/cold-first-play-recovery.md).
-Vulkan misses, allocation work and the broader cold-play stutter regression
-remain open.
+Video > Prepared Shaders (Vulkan, Restart) separately enables an experimental
+shader-object draw route on compatible Vulkan devices and prepares covered
+vertex, geometry and bounded float-2D fragment stages. It is also disabled by default and requires restarting
+RetroArch. Unsupported devices and failed startup preparation keep the ordinary
+renderer. Uncovered fragment and geometry stages can still be created on demand;
+allocation work and the broader cold-play stutter regression remain open.
+In the qualified DOA3 boot-through-fight comparison, enabling it raised mean
+fight callback time by 4.54% and boot maxima from about 67 ms to 303-305 ms.
+It reduces covered compilation work; it is not yet a throughput or smoothness fix.
 
 ## Downloads
 

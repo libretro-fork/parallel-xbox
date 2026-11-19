@@ -28,8 +28,13 @@
 #define NV2A_PROF_SHADER_BIND_NOTDIRTY 2
 typedef struct ShaderModuleInfo ShaderModuleInfo;
 /* TYPES */
-typedef struct {Lru shader_cache;ShaderBinding entry,initial,*shader_binding;bool shader_bindings_changed,ahead_valid,sibling_retry;ShaderState ahead_state;uint64_t ahead_hash;} PGRAPHVkState;
-struct PGRAPHState {PGRAPHVkState *vk_renderer_state;};
+typedef struct {Lru shader_cache;ShaderBinding entry,initial,*shader_binding;bool shader_bindings_changed,ahead_valid,sibling_retry;ShaderState ahead_state;uint64_t ahead_hash;struct {bool route;} ready_vertex;struct {bool enabled,failed;} shader_objects;unsigned uniforms_changed;struct {bool valid;} vi_last;} PGRAPHVkState;
+struct PGRAPHState {PGRAPHVkState *vk_renderer_state;bool program_data_dirty;};
+/* This fixture compares the unchanged ordinary hash/copy schedules. Prepared
+ * mode and pressure transitions have their own owner/route fixtures. */
+static bool vk_ready_vertex_route(PGRAPHState *pg){assert(!pg->vk_renderer_state->ready_vertex.route&&!pg->vk_renderer_state->shader_objects.enabled);return false;}
+static void pgraph_vk_shader_objects_disable(PGRAPHState *pg){(void)pg;abort();}
+bool pgraph_glsl_need_geom(const GeomState *state){(void)state;abort();}
 /* These historical hash/copy schedules have no outstanding worker job.
  * test-pending-key-lend exercises the real retry/lend path separately. Fail
  * if a schedule accidentally enters it instead of silently modeling a miss. */
@@ -124,7 +129,7 @@ static void view_callbacks(void){
  free(r);puts("10000 actual view callbacks: complete owned bytes, prefix/tail collision rejection and expired borrowed scratch pass");
 }
 static void correctness(void){
- PGRAPHVkState *a=setup(),*b=setup();PGRAPHState pa={a},pb={b};
+ PGRAPHVkState *a=setup(),*b=setup();PGRAPHState pa={.vk_renderer_state=a},pb={.vk_renderer_state=b};
  for(size_t i=0;i<sizeof(requested);i++)((uint8_t*)&requested)[i]=(uint8_t)random_value();
  for(unsigned trial=0;trial<100000;trial++){
   ((uint8_t*)&requested)[random_value()%sizeof(requested)]=(uint8_t)random_value();requested.psh.alpha_dynamic=(trial&1)!=0;
@@ -159,7 +164,7 @@ static double bench(bool current,unsigned mode){
  PGRAPHVkState *r=shared_bench;
  lru_init(&r->shader_cache);r->shader_cache.init_node=init_entry;r->shader_cache.compare_nodes=compare_entry;
  lru_add_free(&r->shader_cache,&r->entry.node);
- PGRAPHState pg={r};memset(&requested,0,sizeof(requested));requested.psh.alpha_dynamic=false;
+ PGRAPHState pg={.vk_renderer_state=r};memset(&requested,0,sizeof(requested));requested.psh.alpha_dynamic=false;
  dirty=true;canonical=mode!=6;seen_request=mode==0;seen_sibling=mode!=5;
  request_phase=mode==3||mode==8?VK_SPEC_ADOPTED:mode==4?1:mode==7?VK_SPEC_PIPE_LANDED:0;
  sibling_phase=mode==5?0:VK_SPEC_ADOPTED;requested.psh.alpha_dynamic=mode==8;hashes();

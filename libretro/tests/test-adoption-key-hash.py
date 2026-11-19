@@ -19,6 +19,7 @@ h=(repo/'hw/xbox/nv2a/pgraph/vk/renderer.h').read_text(encoding='utf-8')
 types='\n'.join(re.search(r'typedef struct '+name+r' \{.*?\} '+name+r';',h,re.S)[0] for name in ['ShaderModuleCacheKey','ShaderModuleCacheEntry'])
 types+='\n'+re.search(r'typedef struct VkSpecDone \{.*?\} VkSpecDone;',s,re.S)[0]
 code=Path(__file__).with_suffix('.c').read_text().replace('/* TYPES */',types).replace('/* FUNCTIONS */',functions)
+if 'pgraph_vk_create_shader_object_from_spirv' in functions:code='#define FIXTURE_NATIVE_OBJECTS 1\n'+code
 env=os.environ.copy();env['PATH']=str(Path(cc).resolve().parent)+os.pathsep+env.get('PATH','')
 with tempfile.TemporaryDirectory(prefix='adoption-key-hash-') as tmp:
  p=Path(tmp);(p/'qemu').mkdir();(p/'qemu/osdep.h').write_text('#include <stdint.h>\n#include <stdbool.h>\n#include <stddef.h>\n');(p/'qemu/mstring.h').write_text('typedef struct MString MString;\n');(p/'test.c').write_text(code)

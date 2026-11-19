@@ -15,7 +15,7 @@
 #define PSH_TEX_BINDING 2
 typedef struct ShaderModuleInfo { unsigned refs; } ShaderModuleInfo;
 typedef struct ShaderBinding {
-    LruNode node; ShaderState state;
+    LruNode node; bool ready_vertex_route,ready_fragment_route,shader_object_route; ShaderState state;
     struct { ShaderModuleInfo *module_info; } vsh,geom,psh;
 } ShaderBinding;
 /* TYPES */
@@ -23,10 +23,17 @@ typedef struct PGRAPHVkState {
     Lru shader_cache,shader_module_cache;
     ShaderBinding *shader_binding;
     bool use_push_constants_for_uniform_attrs;
+    struct { bool route; } ready_vertex;
+    struct { bool route; } ready_fragment;
+    struct { bool enabled; } shader_objects;
 } PGRAPHVkState;
 static bool geometry,collisions;
 static unsigned uniforms,ordinary,evictions;
 static ShaderModuleInfo *initial[3],*module_owner;
+/* Preserve the exact ordinary resident-module corpus. Prepared FS admission
+ * and owners are exercised separately; entering that route here is a defect. */
+static inline ShaderModuleInfo *vk_ready_fragment_find(PGRAPHVkState*r,const PshState*state)
+{(void)state;assert(!r->ready_fragment.route);return NULL;}
 static uint64_t xxh3_64(const uint8_t *p,size_t n, uint64_t seed __attribute__((unused))) {
     if(collisions)return 1;
     uint64_t h=1469598103934665603ull;while(n--)h=(h^*p++)*1099511628211ull;return h;

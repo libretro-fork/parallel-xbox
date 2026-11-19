@@ -38,7 +38,7 @@ with tempfile.TemporaryDirectory(prefix='ready-shader-binding-') as d:
         ('missing vertex owner reference',code.replace('pgraph_vk_ref_shader_module(input.vsh);','(void)input.vsh;',1)),
         ('missing fragment owner reference',code.replace('pgraph_vk_ref_shader_module(input.psh);','(void)input.psh;',1)),
         ('missing geometry owner reference',code.replace('pgraph_vk_ref_shader_module(input.geom);','(void)input.geom;',1)),
-        ('incomplete exact cache entry reused',code.replace('if (node->hash == hash &&\n            !memcmp', 'if (false && node->hash == hash &&\n            !memcmp',1)),
+        ('incomplete exact cache entry reused',code.replace('if (node->hash == hash &&', 'if (false && node->hash == hash &&',1)),
         ('cache state borrowed beyond publication',code.replace('memcpy(&binding->state, input->state, sizeof(binding->state));','memset(&binding->state, 0, sizeof(binding->state));',1)),
         ('uniform locations not prepared',code.replace('update_shader_uniform_locs(binding);','(void)update_shader_uniform_locs;',1)),
         ('current binding evicted under pressure',code.replace('!r->shader_cache.num_free ||','false ||',1)),

@@ -327,7 +327,9 @@ void pgraph_vk_init_buffers(NV2AState *d)
     r->storage_buffers[BUFFER_UNIFORM] = (StorageBuffer){
         .alloc_info = device_alloc_create_info,
         .usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT |
-                 VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+                 VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT |
+                 (pgraph_vk_prepared_vertex_supported(r) ?
+                    VK_BUFFER_USAGE_VERTEX_BUFFER_BIT : 0),
         .buffer_size = 16 * 1024 * 1024,
     };
 
@@ -549,4 +551,21 @@ VkDeviceSize pgraph_vk_append_to_buffer(PGRAPHState *pg, int index, void **data,
     }
 
     return starting_offset;
+}
+
+/* A single final staging reservation lets prepared uniforms and their compact
+ * constant suffix be written directly, with one alignment boundary. */
+VkDeviceSize pgraph_vk_reserve_buffer(PGRAPHState *pg, int index,
+                                      VkDeviceSize size,
+                                      VkDeviceAddress alignment,
+                                      void **destination)
+{
+    assert(index == BUFFER_UNIFORM_STAGING);
+    assert(pgraph_vk_buffer_has_space_for(pg, index, size, alignment));
+    StorageBuffer *b = &pg->vk_renderer_state->storage_buffers[index];
+    VkDeviceSize offset = ROUND_UP(b->buffer_offset, alignment);
+    assert(b->mapped && offset <= b->buffer_size && size <= b->buffer_size - offset);
+    *destination = b->mapped + offset;
+    b->buffer_offset = offset + size;
+    return offset;
 }

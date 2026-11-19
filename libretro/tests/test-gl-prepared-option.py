@@ -28,7 +28,13 @@ assert update.count('update_gl_prepared_shader_option();')==1
 assert populate.count('latch_gl_prepared_shader_option();')==1
 assert load.index('use_vulkan = want_vulkan;')<load.index('populate_config(opt_dvd_path);')<load.index('emu_started_once = true;')
 assert 'if (emu_started_once && !emu_started_vulkan)' in load and 'restart RetroArch to load another game' in load
-ui_code=ui[ui.index('/* Preparation is an opt-in startup/GPU-work tradeoff'):ui.index('static bool context_ready',ui.index('/* Preparation is an opt-in startup/GPU-work tradeoff'))]
+start=ui.index('/* Preparation is an opt-in startup/GPU-work tradeoff')
+end=ui.index('static bool context_ready',start)
+vk_start=ui.find('#if !defined(__ANDROID__) && !defined(XEMU_DISABLE_READY_VK)',start,end)
+# Keep the GL unit's original contract separate from the independent Vulkan latch.
+ui_code=ui[start:vk_start if vk_start>=0 else end]
+assert 'update_vk_prepared_vertex_option' not in ui_code
+
 shader=(root/'hw/xbox/nv2a/pgraph/gl/shaders.c').read_text();init=function(shader,'void pgraph_gl_init_shaders(')
 predicate=re.search(r'const bool prepare = [^;]+;',init)[0]
 starts=[m.start() for m in re.finditer(r'if \(prepare\) \{',init)];assert len(starts)==3

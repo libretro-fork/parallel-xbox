@@ -10,12 +10,13 @@
 #define BUFFER_UNIFORM_STAGING 0
 #define BUFFER_UNIFORM 0
 #define VK_FINISH_REASON_NEED_BUFFER_SPACE 1
+#define VK_READY_GEOMETRY_BYTES 32
 typedef uint64_t VkDeviceSize;
 typedef struct {size_t total_size;void *allocation;} ShaderUniformLayout;
-typedef struct ShaderModuleInfo {ShaderUniformLayout uniforms;VkDeviceSize uniform_staged_offset;uint64_t uniform_staged_epoch;bool uniform_staged_valid;} ShaderModuleInfo;
+typedef struct ShaderModuleInfo {unsigned ready_vertex_index,ready_fragment_index;ShaderUniformLayout uniforms;VkDeviceSize uniform_staged_offset;uint64_t uniform_staged_epoch;bool uniform_staged_valid;} ShaderModuleInfo;
 typedef struct {struct{ShaderModuleInfo *module_info;int uniform_locs[1];}vsh,psh;struct{int vsh;}state;} ShaderBinding;
 typedef struct {size_t buffer_offset,buffer_size;uint64_t buffer;} StorageBuffer;
-typedef struct {StorageBuffer storage_buffers[1];uint64_t uniform_upload_epoch;unsigned uniforms_changed;bool shader_bindings_changed,texture_bindings_changed;int descriptor_sets[32],descriptor_set_index,descriptor_set_base;ShaderBinding *shader_binding;struct{struct{size_t minUniformBufferOffsetAlignment;}limits;}device_props;size_t uniform_buffer_offsets[2];uint64_t descriptor_uniform_buffer;VkDeviceSize descriptor_uniform_sizes[2];const ShaderModuleInfo *uni_last_pushed[2];struct{int values;}vsh_uni_src;uint8_t gpu[512];unsigned copies[2],finishes;} PGRAPHVkState;
+typedef struct {StorageBuffer storage_buffers[1];uint64_t uniform_upload_epoch;unsigned uniforms_changed;bool shader_bindings_changed,texture_bindings_changed,has_gs_ubo_binding;int descriptor_sets[32],descriptor_set_index,descriptor_set_base;ShaderBinding *shader_binding;struct{struct{size_t minUniformBufferOffsetAlignment;}limits;}device_props;size_t uniform_buffer_offsets[3];uint64_t descriptor_uniform_buffer;VkDeviceSize descriptor_uniform_sizes[3];const ShaderModuleInfo *uni_last_pushed[3];struct{int values;}vsh_uni_src;uint8_t gpu[512];unsigned copies[2],finishes;} PGRAPHVkState;
 typedef struct {PGRAPHVkState *vk_renderer_state;} PGRAPHState;
 typedef int PshUniformValues;
 static const int VshUniformInfo[1]={0},PshUniformInfo[1]={0};
@@ -33,6 +34,27 @@ static void pgraph_vk_finish(PGRAPHState*p,int reason)
 {PGRAPHVkState*r=p->vk_renderer_state;r->finishes++;r->storage_buffers[0].buffer_offset=0;r->descriptor_set_index=r->descriptor_set_base=0;memset(r->gpu,0xcd,sizeof(r->gpu));}
 static size_t pgraph_vk_append_to_buffer(PGRAPHState*p,int index,void**data,VkDeviceSize*sizes,size_t n,size_t align)
 {assert(n==1);PGRAPHVkState*r=p->vk_renderer_state;StorageBuffer*b=&r->storage_buffers[index];size_t at=ROUND_UP(b->buffer_offset,align);assert(at+sizes[0]<=b->buffer_size);memcpy(r->gpu+at,data[0],sizes[0]);b->buffer_offset=at+sizes[0];r->copies[data[0]==r->shader_binding->psh.module_info->uniforms.allocation]++;return at;}
+/* This fixture retains the ordinary upload corpus. The prepared transport's
+ * actual owner/writer/rotation paths are checked by test-vk-ready-vertex. These
+ * typed dependencies reject accidental entry into that separate route. */
+static inline VkDeviceSize pgraph_vk_ready_vertex_upload_extent(PGRAPHVkState*r,ShaderModuleInfo*m)
+{assert(!m->ready_vertex_index);return m->uniforms.total_size;}
+static inline VkDeviceSize pgraph_vk_reserve_buffer(PGRAPHState*p,int i,VkDeviceSize size,VkDeviceSize align,void**destination)
+{assert(false);return 0;}
+static inline void pgraph_vk_ready_vertex_upload(PGRAPHState*p,ShaderModuleInfo*m,void*destination)
+{assert(false);}
+static inline bool vk_ready_vertex_parameters(PGRAPHState*p,ShaderBinding*b)
+{assert(!b->vsh.module_info->ready_vertex_index);return false;}
+/* This ordinary-stage corpus must not enter the separately tested prepared
+ * FS owner/suffix route. Keep its actual typed dependency and assert it dormant. */
+static inline bool vk_ready_fragment_parameters(const ShaderBinding*b)
+{assert(!b->psh.module_info->ready_fragment_index);return false;}
+/* Retain this fixture's ordinary two-stage corpus. The separate prepared-GS
+ * transport fixture exercises its third offset, snapshots and fallback ABI. */
+static inline ShaderModuleInfo *vk_ready_geometry_uniform_owner(PGRAPHVkState*r,ShaderBinding*b)
+{static ShaderModuleInfo unused;assert(!r->has_gs_ubo_binding);return &unused;}
+static inline bool vk_ready_geometry_parameters(PGRAPHState*p,ShaderBinding*b)
+{assert(!p->vk_renderer_state->has_gs_ubo_binding);return false;}
 /* PRODUCTION */
 static uint32_t seed=17;
 static uint32_t rnd(void){seed^=seed<<13;seed^=seed>>17;seed^=seed<<5;return seed;}

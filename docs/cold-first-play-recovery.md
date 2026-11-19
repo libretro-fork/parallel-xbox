@@ -1643,3 +1643,227 @@ The integrated native classifier fixture passed all 652,800 positive channels
 and all six numerical faults. The source identity/unsupported-boundary and
 1,234-case owner rollback tests passed as well. Integrated software-GPU,
 cold/warm gameplay and performance qualification remain pending.
+
+### Vulkan constant-input coverage investigation (2026-11-18)
+
+A typed inspection of the complete bounded cold-miss capture found 51 vertex
+recipes: 25 fixed-function and 26 programmable. All have constant inputs; none
+uses compressed or swizzled inputs. The ten own-seeds-warm misses likewise
+contain constant inputs (three fixed-function and seven programmable). Removing
+only the constant-input mask on an inspection copy makes all 25 cold and all
+three warm fixed-function recipes eligible for the existing prepared family.
+This classifies a coverage gap; it does not establish image equivalence, pipeline
+readiness or a latency improvement.
+
+A separate Vulkan input probe checked all sixteen input locations, compact
+varying bindings and one shared zero-stride constant binding. Its 216 cases
+cover 36 masks, two buffer slices and three data sets. The 9,216 finite and
+signed-zero lane comparisons passed on validated llvmpipe; wrong offset, stride,
+slice and mask controls were all rejected. An RTX 5090 matched those values and
+controls, but its missing validation layer leaves that run explicitly
+unqualified for validation. Exotic values also matched in these probes; they
+are observations, not portable support. The probe owns and fences its complete
+fixture buffers, so it does not qualify production upload lifetime, allocation
+cost, full PSOs or gameplay. The shader/PSO regression remains BAD/open.
+
+The feature branch integrates this investigation behind the separate restart-only
+`xemu_vk_prepared_vertex` option (now displayed as Video > Prepared Shaders
+(Vulkan, Restart)), disabled by default. Its qualification is pending. The first prototype
+prepared eight programmable and 112 finite-family fixed-function native vertex
+modules before guest execution, reserving slots from the existing module-cache
+budget. That module-only prototype remains held and is being replaced by the
+shader-object draw route described below. Neither prototype establishes ready
+coverage for every geometry or fragment stage.
+
+Constant inputs occupy a compact suffix in the same existing uniform-buffer
+allocation, outside the reflected shader descriptor range. A single aligned
+staging reservation owns uniforms and suffix together; final buffer/slice
+selection must happen after descriptor updates that can rotate backing storage.
+The same submission retirement protects both uniform and vertex-input consumers.
+Exact mask/count/value changes and upload epochs must invalidate the extended
+snapshot, including A/B/A owner reuse and fresh-process restores. A bounded
+per-prepared-module identity shadow is necessary for comparison without reading
+write-combined staging memory; it is not a second full shader or program payload.
+
+Only supported finite constant values may select this route. Rechecking each
+draw and separating ordinary/prepared binding identity prevents unchanged guest
+shader keys from retaining a prepared module after values become NaN or infinity.
+Unsupported state and failed optional preparation retain ordinary correct draws;
+those ordinary shader/PSO misses remain tracked violations. Integrated numerical,
+ownership, partial-failure, image and cold/warm gameplay tests must finish before
+delivery. No frame-time, allocation-free or cold-play recovery claim follows from
+preparing native vertex modules alone.
+
+The programmable bank distinguishes both interface/interpolation modes and the
+ordinary floating-point execution target. All fixed-function and point-enabled
+programmable stages preserve signed zero, infinity and NaN; non-point
+programmable stages retain their ordinary target. The compiler emits these modes
+directly into its final SPIR-V owner. Finite constant-input checks cannot replace
+this distinction: vertex RAM and intermediate arithmetic can contain exotic
+values too. The 120 stages still consume the existing module-pool budget.
+
+Initial module-only native smoke runs complete 600 fight callbacks and 599 guest
+Presents/completions each, with no fight callback deadline misses, for empty
+application caches and own-learned seeds. They do not qualify latency: CPU
+contracts overlapped these runs, driver caches are uncontrolled, and boot
+callbacks reached about 401 ms and 269 ms respectively. Those startup stalls are a
+potential regression requiring native PSO/stage attribution before delivery.
+The feature remains held on its branch; steady-fight samples cannot waive the
+cold-start target. All five fixed-function software-GPU domains subsequently
+passed their original ledgers and fault controls. Eight separate fresh-process
+image captures matched the parent in Ninja Gaiden Black and DOA3's arena.
+Neither result qualifies cold-play latency.
+
+Private attribution subsequently recorded native full-pipeline creations taking
+205–278 ms, involving both programmable and fixed-function prepared vertices.
+The driver cache could not be controlled reliably; later repeats were warm even
+after the private application-cache setting was restored. These observations
+establish real first-use pipeline stalls, not their internal driver cause or a
+repeatable cold-cache performance baseline. Every temporary application profile
+was removed and its absence checked independently.
+
+The subsequent implementation uses `VK_EXT_shader_object` and dynamic
+rendering. Preparing a `VkShaderModule` alone is insufficient: an object draw
+must bind compatible compiled objects for every participating shader stage and
+set the required dynamic state. Shader objects also need ownership through the
+last recorded and submitted GPU consumer; the module's immediate CPU-reference
+retirement is insufficient. Existing classic render-pass utility draws must
+retain correct attachment synchronization when switching rendering scopes.
+
+A bounded private VS/FS feasibility probe passed core and synchronization
+validation on llvmpipe. Its two visible uniform snapshots matched the classic
+pipeline path byte for byte; legal wrong-stride and wrong-snapshot controls
+produced numerical mismatches with zero validation errors. The RTX 5090 matched
+the same images and SPIR-V, but its missing validation layer remains unqualified.
+A second bounded probe enabled the core's geometry, depth-clamp and point-size
+features and drew through its generated geometry shader, then explicitly
+unbound geometry for the next triangle. Both uniform snapshots again matched
+the classic pipeline byte for byte under llvmpipe core and synchronization
+validation. A legal stale-geometry fault changed the image and was rejected;
+the native GPU matched all images and controls with validation still
+unqualified. These probes do not qualify production resource lifetime, retail
+gameplay or first-draw latency. The broader regression remains BAD/open.
+
+Both frozen native probes were subsequently rerun with an official Khronos
+portable Windows validation layer. Core and synchronization validation were
+enabled, both positive image comparisons passed, and all five legal numerical
+faults were rejected with zero validation errors. Earlier missing-layer results
+remain retained as unqualified runs; the new validated replays do not qualify
+retail performance or production attachment coverage.
+
+Initial native retail validation at the shader-object implementation checkpoint
+matched parent images in Ninja Gaiden Black and DOA3's arena. It also exposed the
+parent's direct-SPIR-V input-interface defect: uniform-supplied attributes were
+still listed as vertex inputs. Ninja Gaiden Black's exact fallback objects
+reported the same missing-input errors. DOA3's prepared route reported none in
+that capture. The separate interface repair passed its full compiler, numerical and native
+validation gates and was pushed as `873b366e90ab3b9c1a96932021c8f6d471fc265b`; both
+build and shader/PSO CI passed. Matching images alone could not waive those
+earlier API errors.
+
+The initial shader-object checkpoint retained the renderer's render-pass/framebuffer
+metadata lookup even though a normal shader-object draw uses dynamic rendering.
+First encounters could therefore allocate otherwise unused native render
+passes or framebuffers. The later update below removes that lookup for normal
+dynamic draws while retaining attachment changes and classic utility ownership.
+Avoiding normal graphics-pipeline creation alone is not allocation-free play.
+
+### Vulkan shader-object coverage checkpoint (2026-11-19)
+
+The integrated optional route now prepares 80 native objects: 60 vertex owners
+serve all 120 logical prefix variants, with 16 geometry and four bounded
+float-2D fragment owners. All 140 logical reservations stay inside the existing
+module-cache capacity. The label is Prepared Shaders (Vulkan, Restart); the saved
+`xemu_vk_prepared_vertex` key and disabled default are retained.
+
+Geometry uses binding 14 and 32 bytes in the existing uniform upload storage.
+That third dynamic-offset ABI remains valid after startup failure or permanent
+ordinary fallback. Geometry reads are included in transfer visibility. Fragment
+controls append 32 bytes at offset 1616 in the existing fragment UBO, for a
+1648-byte range; all 27 ordinary member layouts are unchanged. Four actual
+floating-2D texture views are required, including inactive stages. Live active
+combiner inputs, outputs and final selectors are checked independently of cached
+or canonicalized state. Unsupported raw programs, formats and modes retain the
+correct ordinary path. A fresh state captured on a dirty-free route edge is
+rechecked before its namespace is published.
+
+The fragment domain preserves the original eager/helper policy. Unconditional
+legal 2D samples followed by boolean OpSelect avoid the software-driver lane
+mismatch found with runtime sampling branches. Earlier failures are retained;
+no helper flag, numerical tolerance or original case was changed to accept them.
+General-stage pseudo-register differences in the existing ordinary interpreter
+remain unresolved; this domain declines unproved selectors rather than adding a
+fetch branch or claiming Xbox hardware behavior from OpenGL documentation.
+
+Separate source-bound NVIDIA and llvmpipe fragment checks each passed 6144
+positive recipes, 3840 retained negative admissions and six numerical fault
+controls, with 491520 exact color/depth comparisons and zero core/synchronization
+validation errors. The original adversarial recipes remain explicit negative
+admissions; legal final-sum recipes form an additional labelled domain. CPU
+checks retain 5120 independent ordinary GL/Vulkan source comparisons against the
+unchanged published `14be393b8da075543c435573c7b95100e0a2e769` sources, plus eight
+validated SPIR-V outputs. Source/arithmetic proof does not establish native
+object lifetime or cold-play performance.
+
+Separate actual geometry-object comparisons cover all 16 families: each backend
+passed 180 recipes and four numerical faults, with 26542080 exact raw-uint lane
+comparisons and zero core/synchronization validation errors. The original 160
+nonempty recipes remain intact; 20 additional culling contexts explicitly account
+for legitimately empty output. Test-only uniform declaration lowering for the
+ordinary wide-line reference is recorded; this is a finite numerical ledger,
+not a production wide-line performance claim.
+
+All six combined native retail captures matched the original NGB and DOA3 arena
+images with validation enabled and zero reported errors. The existing 52-test
+CPU sweep retained its initial three typed-fixture failures; unchanged full
+vertex and fragment compiler corpora passed, and corrected adapters passed
+native/WSL replays against current and historical source. Original controls and
+watchdogs were retained. Additional upload and prepared-route adapters were
+checked separately. This is repaired qualification, not a claim the first
+sweep was green.
+
+Two private boot-through-fight captures recorded 80 startup objects plus nine
+remaining draw-time fragment creations, compared with 35 draw-time fragments
+before bounded fragment coverage. Both recorded zero draw-time vertex,
+geometry, full graphics-pipeline and framebuffer creations, and all 89 created
+objects were destroyed. Twenty malloc and 24 calloc calls remain in the scoped
+first-encounter setup; no allocation-free claim follows. Each profile completed
+600 fight callbacks and 599 guest present/completion increments. These are
+capture-global work counts only: independently exchanged counters cannot provide
+an exact per-callback join. The earlier warm callback-closure failure and its
+adjacent-bucket explanation remain unqualified, not relabelled as timing proof.
+
+Startup cost remains open. An earlier geometry-only release comparison measured
+about 290-297 ms boot maxima against 67 ms for the ordinary renderer, with a
+2.28% mean fight callback overhead. A separate instrumented fresh capture spent
+about 743 ms creating the four fragment objects, versus 10.6 ms in its own-seed
+repeat; the private driver cache was uncontrolled. Those diagnostic windows are
+not release latency measurements and cannot establish a cause for all stalls.
+The final combined release comparison used eight isolated fresh-process runs
+(two trials, ordinary/prepared, app-cache-empty/own-seeds), with no builds,
+correctness workers, diagnostics or readbacks running. Fight callback means were
+8077.721 us ordinary and 8444.777 us enabled: a reproducible 4.54% cost, not
+measurement noise or a throughput improvement. Enabled p99 values were
+10566/9596/9810/10110 us versus 9262/9611/9324/9603 us; maxima were
+11809/10654/10242/10825 us versus 10092/10750/9904/10214 us. All eight runs
+retained 600 fight callbacks, 599 present/completion increments and zero fight
+deadline misses. Every bootstrap sample was retained: enabled boot maxima were
+302837-304685 us against 66621-67875 us ordinary. Driver-cache state remains
+uncontrolled and fresh boots are not a frame-identical camera comparison.
+
+The enabled performance gate therefore remains FAILED; no recovery, default-on
+or smoother-play recommendation follows. This is experimental, default-OFF
+coverage infrastructure. The original stutter and allocation goals remain open,
+including the nine actual draw-time fragment misses and utility coverage.
+Do not turn prepared object counts, a loaded checkpoint or these image results
+into a smoothness or zero-miss claim.
+
+A separate default-OFF check retained four fresh app-cache-empty processes in
+ABBA order against ordinary `873b366e`: mean fight callback time was 8096.647 us
+candidate versus 8085.631 us parent (+0.136%, within the observed run spread;
+individual pairs +0.284% and -0.012%). Candidate boot maxima were 66990/66919 us
+versus 67329/67459 us; p99 values 9257/9784 us versus 9509/9333 us and maxima
+10107/11120 us versus 11554/10203 us. All four retained 600 fight callbacks,
+599 present/completion increments, correct audio cadence, zero fight deadline
+misses and zero readbacks. This qualifies ordinary-default nonregression for
+this bounded workload, not universal performance or physical driver-cold play.

@@ -490,7 +490,12 @@ static MString *pgraph_glsl_gen_geom_impl(const GeomState *state,
                                state->smooth_shading, false, false, false);
 
     if (dynamic) {
-        mstring_append(output, "uniform ivec4 gsControl;\n");
+        if (opts.vulkan) {
+            mstring_append_fmt(output,
+                "layout(binding=%u,std140) uniform ReadyGsUniforms {\n"
+                "ivec4 gsControl;vec2 gsSurfaceSize;float gsLineWidth;int gsKeepWinding;\n};\n",
+                opts.control_ubo_binding);
+        } else mstring_append(output, "uniform ivec4 gsControl;\n");
     }
 
     if (dynamic) {
@@ -711,9 +716,7 @@ static MString *pgraph_glsl_gen_geom_impl(const GeomState *state,
          * since the hardware never culls a line. */
         mstring_append_fmt(
             output,
-            "uniform vec2 gsSurfaceSize;\n"
-            "uniform float gsLineWidth;\n"
-            "uniform int gsKeepWinding;\n"
+            "%s"
             "void emit_wide_vertex(int index, mat4 pz, vec4 pos) {\n"
             "  gl_Position = pos;\n"
             "  gl_PointSize = %s;\n"
@@ -757,6 +760,8 @@ static MString *pgraph_glsl_gen_geom_impl(const GeomState *state,
             "  emit_wide_vertex(i1, pz, vec4((s1 - off) * p1.w, p1.zw));\n"
             "  EndPrimitive();\n"
             "}\n",
+            dynamic && opts.vulkan ? "" :
+                "uniform vec2 gsSurfaceSize;\nuniform float gsLineWidth;\nuniform int gsKeepWinding;\n",
             dynamic ? "g_PointSize(index)" : "gl_in[index].gl_PointSize",
             provoking_index, provoking_index, provoking_index, provoking_index,
             dynamic ? "g_Position(i0)" : "gl_in[i0].gl_Position",

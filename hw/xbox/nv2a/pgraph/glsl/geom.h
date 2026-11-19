@@ -44,6 +44,7 @@ typedef struct GenGeomGlslOptions {
     bool vulkan;
     bool locations;
     uint8_t ui_clamp_stage; /* 0 off, 1..4: one atlas stage; key padding */
+    uint8_t control_ubo_binding; /* Dynamic Vulkan GS only; explicit source ABI. */
 } GenGeomGlslOptions;
 
 void pgraph_glsl_set_geom_state(PGRAPHState *pg, GeomState *geom);

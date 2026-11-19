@@ -44,6 +44,7 @@
 
 #include "ui/gl-dispatch.h"
 #include "hw/xbox/nv2a/pgraph/gl/ready-config.h"
+#include "hw/xbox/nv2a/pgraph/vk/ready-config.h"
 #ifndef _WIN32
 #include <dlfcn.h>
 #endif
@@ -54,6 +55,7 @@
 #endif
 #include <libretro_vulkan.h>
 #include "hw/xbox/nv2a/pgraph/vk/libretro_shared.h"
+#include "libretro/vk-shader-object.h"
 #include "libretro_core_options.h"
 #include "libretro-state.h"
 #include "xemu-settings.h"
@@ -155,6 +157,48 @@ bool pgraph_gl_prepared_shaders_enabled(void)
     return gl_prepared_shaders.enabled;
 #else
     return false;
+#endif
+}
+
+#if !defined(__ANDROID__) && !defined(XEMU_DISABLE_READY_VK)
+static struct { bool pending, latched, enabled; } vk_prepared_vertex;
+#endif
+static void update_vk_prepared_vertex_option(void)
+{
+#if !defined(__ANDROID__) && !defined(XEMU_DISABLE_READY_VK)
+    struct retro_variable var = { "xemu_vk_prepared_vertex", NULL };
+    vk_prepared_vertex.pending = environ_cb &&
+        environ_cb(RETRO_ENVIRONMENT_GET_VARIABLE, &var) && var.value &&
+        !strcmp(var.value, "enabled");
+#endif
+}
+static void latch_vk_prepared_vertex_option(void)
+{
+#if !defined(__ANDROID__) && !defined(XEMU_DISABLE_READY_VK)
+    if (use_vulkan && !vk_prepared_vertex.latched) {
+        vk_prepared_vertex.enabled = vk_prepared_vertex.pending;
+        vk_prepared_vertex.latched = true;
+    }
+#endif
+}
+bool pgraph_vk_prepared_vertex_enabled(void)
+{
+#if !defined(__ANDROID__) && !defined(XEMU_DISABLE_READY_VK)
+    return vk_prepared_vertex.enabled;
+#else
+    return false;
+#endif
+}
+
+/* Device negotiation itself selects Vulkan, including when a frontend invokes
+ * it before context_reset or emulation-thread configuration. */
+static void latch_vk_prepared_vertex_device_option(void)
+{
+#if !defined(__ANDROID__) && !defined(XEMU_DISABLE_READY_VK)
+    if (!vk_prepared_vertex.latched) {
+        vk_prepared_vertex.enabled = vk_prepared_vertex.pending;
+        vk_prepared_vertex.latched = true;
+    }
 #endif
 }
 
@@ -497,9 +541,14 @@ static bool xemu_vk_make_device(struct retro_vulkan_context *context,
     memset(&xemu_libretro_vk, 0, sizeof(xemu_libretro_vk));
     if (!p_vkEnumeratePhysicalDevices || !p_vkGetPhysicalDeviceFeatures ||
         !p_vkGetPhysicalDeviceQueueFamilyProperties ||
-        !p_vkEnumerateDeviceExtensionProperties || !p_vkCreateDevice || !p_vkGetDeviceProcAddr) {
+        !p_vkEnumerateDeviceExtensionProperties || !p_vkCreateDevice || !p_vkGetDeviceProcAddr ||
+        !p_vkGetPhysicalDeviceProperties) {
         return false;
     }
+
+    update_vk_prepared_vertex_option();
+    latch_vk_prepared_vertex_device_option();
+    const bool shader_object_requested = pgraph_vk_prepared_vertex_enabled();
 
     if (gpu == VK_NULL_HANDLE) {
         uint32_t n = 1;
@@ -507,6 +556,10 @@ static bool xemu_vk_make_device(struct retro_vulkan_context *context,
             return false;
         }
     }
+
+    VkPhysicalDeviceProperties props;
+    p_vkGetPhysicalDeviceProperties(gpu, &props);
+    const uint32_t api = MIN(xemu_vk_instance_api_version, props.apiVersion);
 
     /* One queue for graphics, compute and, if there is a surface, present */
     uint32_t qcount = 0;
@@ -545,6 +598,7 @@ static bool xemu_vk_make_device(struct retro_vulkan_context *context,
     enum {
         EXT_CUSTOM_BORDER, EXT_MEMORY_BUDGET, EXT_EDS, EXT_EDS3,
         EXT_VERTEX_INPUT, EXT_PIPELINE_LIBRARY, EXT_GPL, EXT_HOST_MEMORY,
+        EXT_SHADER_OBJECT,
     };
     static const char *const own_exts[] = {
         [EXT_CUSTOM_BORDER] = VK_EXT_CUSTOM_BORDER_COLOR_EXTENSION_NAME,
@@ -555,6 +609,7 @@ static bool xemu_vk_make_device(struct retro_vulkan_context *context,
         [EXT_VERTEX_INPUT] = VK_EXT_VERTEX_INPUT_DYNAMIC_STATE_EXTENSION_NAME,
         [EXT_PIPELINE_LIBRARY] = VK_KHR_PIPELINE_LIBRARY_EXTENSION_NAME,
         [EXT_GPL] = VK_EXT_GRAPHICS_PIPELINE_LIBRARY_EXTENSION_NAME,
+        [EXT_SHADER_OBJECT] = VK_EXT_SHADER_OBJECT_EXTENSION_NAME,
     };
     bool own_ext_enabled[G_N_ELEMENTS(own_exts)] = { false };
     const char **exts = g_new0(const char *, num_required_exts + G_N_ELEMENTS(own_exts));
@@ -563,6 +618,10 @@ static bool xemu_vk_make_device(struct retro_vulkan_context *context,
         exts[nexts++] = required_exts[i];
     }
     for (unsigned i = 0; i < G_N_ELEMENTS(own_exts); i++) {
+        if (i == EXT_SHADER_OBJECT && (!shader_object_requested ||
+            api < VK_API_VERSION_1_3 || !p_vkGetPhysicalDeviceFeatures2)) {
+            continue;
+        }
         bool listed = false;
         for (uint32_t j = 0; j < nexts; j++) {
             listed |= !strcmp(exts[j], own_exts[i]);
@@ -628,11 +687,12 @@ static bool xemu_vk_make_device(struct retro_vulkan_context *context,
      * (pgraph/vk/instance.c): an extension alone does not promise its
      * features. Without them every new state compiled a whole pipeline on
      * the draw path, the shader stutter NNshi measured against standalone. */
-    VkPhysicalDeviceProperties props;
-    p_vkGetPhysicalDeviceProperties(gpu, &props);
-    const uint32_t api = MIN(xemu_vk_instance_api_version, props.apiVersion);
+    VkPhysicalDeviceShaderObjectFeaturesEXT shader_object_q = {
+        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_OBJECT_FEATURES_EXT,
+    };
     VkPhysicalDeviceExtendedDynamicStateFeaturesEXT eds_q = {
         .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_EXTENDED_DYNAMIC_STATE_FEATURES_EXT,
+        .pNext = own_ext_enabled[EXT_SHADER_OBJECT] ? &shader_object_q : NULL,
     };
     VkPhysicalDeviceExtendedDynamicState3FeaturesEXT eds3_q = {
         .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_EXTENDED_DYNAMIC_STATE_3_FEATURES_EXT,
@@ -663,6 +723,9 @@ static bool xemu_vk_make_device(struct retro_vulkan_context *context,
         p_vkGetPhysicalDeviceFeatures2(gpu, &features2_q);
     }
     const bool shader_demote = query_v13 && v13_q.shaderDemoteToHelperInvocation;
+    const bool shader_object = shader_object_requested &&
+        own_ext_enabled[EXT_SHADER_OBJECT] && query_v13 &&
+        shader_object_q.shaderObject && v13_q.dynamicRendering;
     const bool host_query_reset = api >= VK_API_VERSION_1_2 && hqr_q.hostQueryReset;
     const bool dyn_cull_front = opt_vk_dynamic && own_ext_enabled[EXT_EDS] &&
                                 eds_q.extendedDynamicState;
@@ -713,11 +776,20 @@ static bool xemu_vk_make_device(struct retro_vulkan_context *context,
     }
     VkPhysicalDeviceVulkan13Features v13_features = {
         .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES,
-        .shaderDemoteToHelperInvocation = VK_TRUE,
+        .shaderDemoteToHelperInvocation = shader_demote,
+        .dynamicRendering = shader_object,
     };
-    if (shader_demote) {
+    if (shader_demote || shader_object) {
         v13_features.pNext = next;
         next = &v13_features;
+    }
+    VkPhysicalDeviceShaderObjectFeaturesEXT shader_object_features = {
+        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_OBJECT_FEATURES_EXT,
+        .shaderObject = VK_TRUE,
+    };
+    if (shader_object) {
+        shader_object_features.pNext = next;
+        next = &shader_object_features;
     }
     VkPhysicalDeviceHostQueryResetFeatures hqr_features = {
         .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_HOST_QUERY_RESET_FEATURES,
@@ -798,6 +870,9 @@ static bool xemu_vk_make_device(struct retro_vulkan_context *context,
     xemu_libretro_vk.pipeline_library = pipeline_library;
     xemu_libretro_vk.host_query_reset = host_query_reset;
     xemu_libretro_vk.shader_demote = shader_demote;
+    xemu_libretro_vk.dynamic_rendering = shader_object;
+    xemu_libretro_vk.shader_object = shader_object &&
+        xemu_vk_shader_object_procs_ready(device, p_vkGetDeviceProcAddr, &features);
     xemu_libretro_vk.active = true;
 
     LRLOG_INFO("[xemu] Vulkan: device shared with the frontend (negotiation %s), queue family %u (%s), %u extensions\n",
@@ -806,6 +881,9 @@ static bool xemu_vk_make_device(struct retro_vulkan_context *context,
     LRLOG_INFO("[xemu] Vulkan: dynamic state cull/front %d, blend %d, vertex input %d | pipeline library %d | host query reset %d | shader demote %d\n",
                dyn_cull_front, dyn_blend, dyn_vertex_input, pipeline_library,
                host_query_reset, shader_demote);
+    LRLOG_INFO("[xemu] Vulkan: shader objects %d | dynamic rendering %d (requested %d)\n",
+               xemu_libretro_vk.shader_object, xemu_libretro_vk.dynamic_rendering,
+               shader_object_requested);
     return true;
 }
 
@@ -1190,6 +1268,7 @@ static void update_variables(void)
     struct retro_variable var;
 
     update_gl_prepared_shader_option();
+    update_vk_prepared_vertex_option();
 
     get_option_string("xemu_bootrom_path", opt_bootrom_path, sizeof(opt_bootrom_path));
     get_option_string("xemu_bios_path", opt_bios_path, sizeof(opt_bios_path));
@@ -1414,6 +1493,7 @@ static void update_variables(void)
 static void populate_config(const char *dvd_path)
 {
     latch_gl_prepared_shader_option();
+    latch_vk_prepared_vertex_option();
     LRLOG_INFO("[xemu] Populating g_config from core options\n");
 
     /* Set file paths in g_config */
@@ -2702,6 +2782,7 @@ RETRO_API bool retro_load_game(const struct retro_game_info *game)
 
     use_vulkan = want_vulkan;
     if (use_vulkan) {
+        latch_vk_prepared_vertex_option();
         /* The negotiation interface's version the frontend knows: one that
          * cannot say (older than the query) knows v1 alone, and some of
          * those refused an interface of a version other than theirs */

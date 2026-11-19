@@ -16,6 +16,7 @@ code = r'''
 #include <stdlib.h>
 typedef struct {
     bool device, pipeline_library, dyn_cull_front, dyn_blend, dyn_vertex_input, color_binding, zeta_binding;
+    struct {bool enabled;} shader_objects;
 } PGRAPHVkState;
 typedef struct { PGRAPHVkState *vk_renderer_state; } PGRAPHState;
 static bool pipe_started;
@@ -48,6 +49,9 @@ int main(void) {
     puts("Pipeline completion: 2048 renderer/device/GPL/dynamic/attachment/worker/option/idle cases PASS");
 }
 '''
+if 'r->shader_objects.enabled' in prefix:
+    code=code.replace('bits < 2048','bits < 4096').replace('.zeta_binding=bits&1024}', '.zeta_binding=bits&1024,.shader_objects={.enabled=bits&2048}}').replace('unsigned expected_pump=alive &&', 'unsigned expected_pump=!(bits&2048) && alive &&').replace('2048 renderer/', '4096 renderer/shader-object/')
+env=os.environ.copy();env['PATH']=str(Path(cc).resolve().parent)+os.pathsep+env.get('PATH','')
 with tempfile.TemporaryDirectory(prefix='pipeline-completion-') as folder:
     folder = Path(folder)
     fixture = folder / 'test.c'
@@ -56,21 +60,29 @@ with tempfile.TemporaryDirectory(prefix='pipeline-completion-') as folder:
                '-fsanitize=undefined', '-fsanitize-undefined-trap-on-error',
                str(fixture), '-o', str(executable)]
     fixture.write_text(code.replace('/* PRODUCTION */', prefix))
-    subprocess.run(command, check=True)
-    subprocess.run([str(executable)], check=True, timeout=30)
+    subprocess.run(command,env=env, check=True)
+    subprocess.run([str(executable)],env=env, check=True, timeout=30)
     # Reintroduce the old misplaced GPL guard. The no-GPL case must catch it.
     old = 'if (pipe_started && pump_d != pump_w_local) {'
     assert prefix.count(old) == 1
     mutant = prefix.replace(old, 'if (pipe_started && pump_d != pump_w_local && r->pipeline_library) {')
     fixture.write_text(code.replace('/* PRODUCTION */', mutant))
-    subprocess.run(command, check=True)
-    result = subprocess.run([str(executable)], capture_output=True, timeout=30)
+    subprocess.run(command,env=env, check=True)
+    result = subprocess.run([str(executable)],env=env, capture_output=True, timeout=30)
     assert result.returncode == 1 and b'FAIL completion' in result.stderr
     print('Required negative control rejected: GPL-only completion servicing')
 
     for name,mutant in [('GPL-only seed preparation',prefix.replace('!g_config.perf.shader_seeding ||','!g_config.perf.shader_seeding || !r->pipeline_library ||',1)),('depth-only preparation skipped',prefix.replace('(!r->color_binding && !r->zeta_binding)','!r->color_binding',1))]:
         assert mutant!=prefix,name
-        fixture.write_text(code.replace('/* PRODUCTION */',mutant));subprocess.run(command,check=True)
-        bad=subprocess.run([str(executable)],capture_output=True,timeout=30)
+        fixture.write_text(code.replace('/* PRODUCTION */',mutant));subprocess.run(command,env=env,check=True)
+        bad=subprocess.run([str(executable)],env=env,capture_output=True,timeout=30)
         assert bad.returncode==1 and b'FAIL completion' in bad.stderr,name
         print('Required negative control rejected:',name)
+
+    if 'r->shader_objects.enabled' in prefix:
+        mutant=prefix.replace('if (r->shader_objects.enabled) return;', 'if (false) return;',1)
+        assert mutant!=prefix
+        fixture.write_text(code.replace('/* PRODUCTION */',mutant));subprocess.run(command,env=env,check=True)
+        bad=subprocess.run([str(executable)],env=env,capture_output=True,timeout=30)
+        assert bad.returncode==1 and b'FAIL completion' in bad.stderr
+        print('Required negative control rejected: shader-object route queues graphics PSOs')

@@ -625,6 +625,7 @@ struct PixelShader {
     GenPshGlslOptions opts;
     const PshState *state;
     bool ready; /* Experimental generator mode, never a persistent key field. */
+    bool ready_vk2d; /* Bounded Vulkan mode, not a persistent key field. */
 
     int num_stages, flags;
     struct PSStageInfo stage[8];
@@ -1502,7 +1503,7 @@ static void emit_dynamic_combiner(struct PixelShader *ps, MString *preflight)
         case 9: init = "t1"; break;
         case 10: init = "t2"; break;
         case 11: init = "t3"; break;
-        case 12: init = ps->ready || ps->tex_modes[0] != PS_TEXTUREMODES_NONE ?
+        case 12: init = ps->ready || ps->ready_vk2d || ps->tex_modes[0] != PS_TEXTUREMODES_NONE ?
                         "vec4(0.0, 0.0, 0.0, t0.a)" : "vec4(0.0, 0.0, 0.0, 1.0)";
             break;
         default: init = "vec4(0.0)"; break;
@@ -1917,6 +1918,7 @@ static MString* psh_convert(struct PixelShader *ps)
     }
 
     if (ps->opts.vulkan) {
+        if (ps->ready_vk2d) mstring_append(preflight, "uvec4 fsControl[2];\n");
         mstring_append(preflight, "};\n");
     }
 
@@ -2144,7 +2146,9 @@ static MString* psh_convert(struct PixelShader *ps)
 
     bool color_key_comparator_defined = false;
 
-    if (ps->ready) {
+    if (ps->ready_vk2d) {
+        psh_ready_vk2d_textures(ps,preflight,vars);
+    } else if (ps->ready) {
         psh_ready_textures(ps,preflight,vars);
     } else for (int i = 0; i < 4; i++) {
 
@@ -2753,6 +2757,32 @@ MString *pgraph_glsl_gen_psh_ready(const PshState *state, GenPshGlslOptions opts
     PshState canonical = { .smooth_shading=state->smooth_shading,
                            .combiner_dynamic=true, .alpha_dynamic=true };
     struct PixelShader ps = { .opts=opts, .state=&canonical, .ready=true };
+    return psh_convert(&ps);
+}
+
+/* The raw combiner and alpha values remain in the ordinary uniform block.
+ * Four source variants cover smooth/flat and each original helper policy. */
+MString *pgraph_glsl_gen_psh_ready_vk2d(const PshState *state,
+                                      GenPshGlslOptions opts)
+{
+    uint32_t controls[8];
+    if (!opts.vulkan ||
+        !pgraph_glsl_psh_ready_vk2d_controls(state, controls)) {
+        return NULL;
+    }
+    PshState canonical = {
+        .smooth_shading = state->smooth_shading,
+        .depth_format = state->depth_format & DEPTH_FORMAT_HELPER_LIVENESS,
+        .surface_zeta_format = NV097_SET_SURFACE_FORMAT_ZETA_Z24S8,
+        .depth_clipping = true,
+        .combiner_dynamic = true,
+        .alpha_dynamic = true,
+    };
+    struct PixelShader ps = {
+        .opts = opts,
+        .state = &canonical,
+        .ready_vk2d = true,
+    };
     return psh_convert(&ps);
 }
 

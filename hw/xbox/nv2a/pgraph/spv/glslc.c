@@ -4987,6 +4987,10 @@ static void emit_header(C *c, Header *m)
     /* capabilities */
     header_op(m, SpvOpCapability, 1);
     header_put(m, SpvCapabilityShader);
+    if (c->opts.preserve_float32) {
+        header_op(m, SpvOpCapability, 1);
+        header_put(m, SpvCapabilitySignedZeroInfNanPreserve);
+    }
     if (c->stage == GLSLC_STAGE_GEOMETRY) {
         header_op(m, SpvOpCapability, 1);
         header_put(m, SpvCapabilityGeometry);
@@ -5027,6 +5031,12 @@ static void emit_header(C *c, Header *m)
         header_append(m, &c->entry_iface);
     }
     /* execution modes */
+    if (c->opts.preserve_float32) {
+        header_op(m, SpvOpExecutionMode, 3);
+        header_put(m, c->main_id);
+        header_put(m, SpvExecutionModeSignedZeroInfNanPreserve);
+        header_put(m, 32);
+    }
     switch (c->stage) {
     case GLSLC_STAGE_FRAGMENT:
         header_op(m, SpvOpExecutionMode, 2);

@@ -19,6 +19,7 @@ typedef struct {unsigned refs,source;} ShaderModuleInfo;
 typedef struct {
  Lru shader_module_cache;ShaderModuleCacheEntry entry;ShaderModuleInfo info;
  unsigned creates,fallbacks;
+ struct { bool failed; } shader_objects;
 } PGRAPHVkState;
 static uint64_t fixture_simd;
 uint64_t cpu_features_get(void){return fixture_simd;}
@@ -40,6 +41,9 @@ static unsigned order_storage[3]={0,1,2},*vk_spec_ready_order=order_storage,vk_s
 static ShaderSource *vk_spec_ready_take_at(unsigned i){unsigned slot=vk_spec_ready_order[i];ShaderSource *s=vk_spec_ready[slot].spirv;vk_spec_ready[slot].spirv=NULL;memmove(&order_storage[i],&order_storage[i+1],(--vk_spec_ready_n-i)*sizeof(unsigned));return s;}
 static ShaderSource *vk_module_spirv(const ShaderModuleCacheKey *key){(void)key;return &sources[2];}
 static ShaderModuleInfo *pgraph_vk_create_shader_module_from_spirv(PGRAPHVkState *r,ShaderSource *s){assert(!r->info.refs&&r->entry.node.hash==expected_hash);r->creates++;r->fallbacks+=s==&sources[2];r->info.source=s->id;return &r->info;}
+#ifdef FIXTURE_NATIVE_OBJECTS
+static ShaderModuleInfo *pgraph_vk_create_shader_object_from_spirv(PGRAPHVkState *r,VkShaderStageFlagBits stage,ShaderSource *s,bool optional){(void)r;(void)stage;(void)s;(void)optional;assert(!"Ordinary adoption corpus entered object factory");return NULL;}
+#endif
 static void pgraph_vk_ref_shader_module(ShaderModuleInfo *m){m->refs++;}
 static void pgraph_vk_unref_shader_module(PGRAPHVkState *r,ShaderModuleInfo *m){(void)r;assert(m->refs);m->refs--;}
 #undef xxh3_64

@@ -20,7 +20,7 @@ code=r'''
 #define TRUE true
 #define CHECK(x) do{if(!(x)){fprintf(stderr,"FAIL seed lifetime line=%d\n",__LINE__);_Exit(1);}}while(0)
 typedef struct {unsigned generation;} GArray;
-typedef struct {unsigned seed_writeback_complete;} PGRAPHVkState;
+typedef struct {unsigned seed_writeback_complete;struct {bool enabled;} shader_objects;} PGRAPHVkState;
 typedef struct {PGRAPHVkState *vk_renderer_state;} PGRAPHState;
 static struct {struct {bool shader_seeding;} perf;} g_config;
 static bool vk_seed_done,tag,quiesced,pipeline_quiesced;

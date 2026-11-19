@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: LGPL-2.1-or-later */
 #include "vk_dispatch.h"
+#include "vk-shader-object.h"
 #include <assert.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -47,6 +48,31 @@ int main(void)
     assert(instance_calls && device_calls && !global_calls);
     assert((PFN_vkVoidFunction)vkCreateImage == target_a);
     assert((PFN_vkVoidFunction)vkCmdSetCullModeEXT == target_a);
+
+    VkPhysicalDeviceFeatures features = {0};
+    assert(xemu_vk_shader_object_procs_ready(expected_device, device_proc, &features));
+    assert(xemu_vk_shader_object_dispatch_ready(&features));
+#define XEMU_VK_SO_PROC(name) \
+    missing_name = #name; \
+    assert(!xemu_vk_shader_object_procs_ready(expected_device, device_proc, &features)); \
+    xemu_vk_load_dispatch(instance_proc, expected_instance, expected_device); \
+    assert(!xemu_vk_shader_object_dispatch_ready(&features)); \
+    missing_name = NULL; \
+    assert(!xemu_vk_load_dispatch(instance_proc, expected_instance, expected_device));
+#define XEMU_VK_SO_FEATURE_PROC(feature, name) \
+    missing_name = #name; \
+    assert(xemu_vk_shader_object_procs_ready(expected_device, device_proc, &features)); \
+    features.feature = VK_TRUE; \
+    assert(!xemu_vk_shader_object_procs_ready(expected_device, device_proc, &features)); \
+    assert(!xemu_vk_load_dispatch(instance_proc, expected_instance, expected_device)); \
+    assert(!xemu_vk_shader_object_dispatch_ready(&features)); \
+    features.feature = VK_FALSE; \
+    assert(xemu_vk_shader_object_dispatch_ready(&features)); \
+    missing_name = NULL; \
+    assert(!xemu_vk_load_dispatch(instance_proc, expected_instance, expected_device));
+#include "vk-shader-object-procs.inc"
+#undef XEMU_VK_SO_PROC
+#undef XEMU_VK_SO_FEATURE_PROC
 
     generation = 1;
     expected_instance = (VkInstance)(uintptr_t)3;

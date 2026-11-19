@@ -14,10 +14,11 @@
 #define GL_READY_FF_STAGE_COUNT (2u * GL_READY_FF_FAMILY_STAGES)
 #define GL_READY_FF_PIPELINE_COUNT (GL_READY_FF_STAGE_COUNT / 4u * 18u)
 
-static inline int ready_ff_state_index(const VshState *s, bool prefix)
+static inline int ready_ff_state_index_inputs(const VshState *s, bool prefix,
+                                               bool resolved_uniform_inputs)
 {
     if (!s->is_fixed_function || !s->fog_dynamic ||
-        s->compressed_attrs || s->uniform_attrs || s->swizzle_attrs ||
+        s->compressed_attrs || (s->uniform_attrs && !resolved_uniform_inputs) || s->swizzle_attrs ||
         s->const_attrs_dynamic || (unsigned)s->fixed_function.skinning > 6)
         return -1;
     bool register_driven = s->fixed_function.csv0c_dynamic;
@@ -64,6 +65,11 @@ static inline int ready_ff_state_index(const VshState *s, bool prefix)
     /* Preserve existing ready owners when an older family already covers it. */
     return index + (register_driven || unlit || idle_lighting ?
                     0u : GL_READY_FF_FAMILY_STAGES);
+}
+
+static inline int ready_ff_state_index(const VshState *s, bool prefix)
+{
+    return ready_ff_state_index_inputs(s, prefix, false);
 }
 
 /* Construct directly in the final module owner's key, not a queue snapshot. */

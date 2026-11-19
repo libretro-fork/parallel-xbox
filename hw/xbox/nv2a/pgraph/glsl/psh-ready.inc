@@ -143,3 +143,122 @@ static void psh_ready_textures(struct PixelShader *ps, MString *preflight, MStri
     }
     (void)ps;
 }
+
+bool pgraph_glsl_psh_ready_vk2d_combiner_eligible(
+    uint32_t control, const uint32_t rgb[8], const uint32_t alpha[8])
+{
+    unsigned count = control & 255u;
+    if (count > 8) return false;
+    for (unsigned stage = 0; stage < count; stage++) {
+        const uint32_t words[2] = { rgb[stage], alpha[stage] };
+        for (unsigned family = 0; family < 2; family++) {
+            for (unsigned input = 0; input < 4; input++) {
+                unsigned reg = (words[family] >> (8 * input)) & 15u;
+                /* Reserved registers and final-only pseudo-registers have
+                 * no proved general-stage interpreter equivalent. */
+                if (reg == 6 || reg == 7 || reg >= 14) return false;
+            }
+        }
+    }
+    return true;
+}
+
+/* Bounded Vulkan float-2D family. All four descriptors are statically used;
+ * the caller must admit and retain four compatible float-2D views, including
+ * inactive stages. No implicit texture instruction is enclosed by a runtime
+ * mode/rect branch: boolean mix lowers to OpSelect, preserving the eager-kill
+ * lane behavior of the ordinary source. The existing helper policy is kept. */
+/* Final pseudo-registers remain supported only in the proved RGB inputs.
+ * These checks decline unproved raw shapes; they do not redefine guest data. */
+bool pgraph_glsl_psh_ready_vk2d_program_eligible(
+    uint32_t control, const uint32_t rgb[8], const uint32_t alpha[8],
+    const uint32_t rgb_out[8], const uint32_t alpha_out[8],
+    uint32_t final0, uint32_t final1)
+{
+    if (!(final0 | final1) ||
+        !pgraph_glsl_psh_ready_vk2d_combiner_eligible(control, rgb, alpha)) {
+        return false;
+    }
+    for (unsigned stage = 0; stage < (control & 255u); stage++) {
+        const uint32_t words[2] = { rgb_out[stage], alpha_out[stage] };
+        for (unsigned family = 0; family < 2; family++) {
+            for (unsigned output = 0; output < 3; output++) {
+                unsigned reg = (words[family] >> (4 * output)) & 15u;
+                if (reg == 1 || reg == 2 || reg == 6 || reg == 7 || reg >= 14) {
+                    return false;
+                }
+            }
+        }
+    }
+    for (unsigned input = 0; input < 4; input++) {
+        unsigned byte = (final0 >> (8 * input)) & 255u, reg = byte & 15u;
+        if (reg == 6 || reg == 7 || (reg >= 14 && (byte & 16u))) return false;
+    }
+    if (((final0 >> 24) & 15u) == 14u) return false;
+    for (unsigned input = 1; input < 4; input++) {
+        unsigned reg = (final1 >> (8 * input)) & 15u;
+        if (reg == 6 || reg == 7 || reg >= 14) return false;
+    }
+    return true;
+}
+
+bool pgraph_glsl_psh_ready_vk2d_static_controls(const PshState *s,
+                                              uint32_t controls[8])
+{
+    if ((s->depth_format & ~DEPTH_FORMAT_HELPER_LIVENESS) != DEPTH_FORMAT_D24 ||
+        s->surface_zeta_format != NV097_SET_SURFACE_FORMAT_ZETA_Z24S8 ||
+        !s->depth_clipping || s->z_perspective || s->window_clip_exclusive ||
+        s->point_sprite ||
+        (s->shader_stage_program & ~0xfffffu) || s->g8b8_mip_flags ||
+        s->g8b8_mip_clamp_u || s->g8b8_mip_clamp_v || s->g8b8_mip_mirror)
+        return false;
+    for (unsigned i=0;i<4;i++) {
+        unsigned mode=(s->shader_stage_program>>(5*i))&31;
+        /* The first bounded domain intentionally declines passthrough and
+         * clip-plane modes pending numerical proof, as well as typed aliases. */
+        if ((mode != PS_TEXTUREMODES_NONE && mode != PS_TEXTUREMODES_PROJECT2D) ||
+            s->tex_cubemap[i] || s->shadow_map[i] || s->tex_x8y24[i] ||
+            s->g8b8_signed[i] || s->conv_tex[i] || s->border_adjust[i] ||
+            s->colorkey_mode[i] ||
+            (mode==PS_TEXTUREMODES_PROJECT2D && s->dim_tex[i]!=2) ||
+            (mode==PS_TEXTUREMODES_NONE && (s->rect_tex[i] ||
+                                          (s->dim_tex[i]!=0 && s->dim_tex[i]!=2))))
+            return false;
+    }
+    /* No output is published until the entire input has been accepted. */
+    uint32_t packed[8]={0,s->shader_stage_program,0,0,0,0,0,0};
+    for(unsigned i=0;i<4;i++)packed[4+i]=s->rect_tex[i]?1u:0u;
+    memcpy(controls,packed,sizeof(packed));
+    return true;
+}
+
+bool pgraph_glsl_psh_ready_vk2d_controls(const PshState *s,
+                                       uint32_t controls[8])
+{
+    uint32_t packed[8];
+    if (s->combiner_dynamic ||
+        !pgraph_glsl_psh_ready_vk2d_program_eligible(
+            s->combiner_control, s->rgb_inputs, s->alpha_inputs,
+            s->rgb_outputs, s->alpha_outputs,
+            s->final_inputs_0, s->final_inputs_1) ||
+        !pgraph_glsl_psh_ready_vk2d_static_controls(s, packed)) {
+        return false;
+    }
+    memcpy(controls, packed, sizeof(packed));
+    return true;
+}
+
+static void psh_ready_vk2d_textures(struct PixelShader*ps,MString*preflight,MString*vars){
+ for(unsigned i=0;i<4;i++){
+  mstring_append_fmt(preflight,"layout(binding = %d) uniform sampler2D texSamp%u;\n",ps->opts.tex_binding+i,i);
+  mstring_append_fmt(vars,
+   "uint vkMode%u=(fsControl[0].y>>%uu)&31u;\n"
+   "vec3 vkTp%u=pT%u.xyw;\n"
+   "vec2 vkNorm%u=vkTp%u.xy/(vec2(textureSize(texSamp%u,0))/texScale[%u]);\n"
+   "vkTp%u.xy=mix(vkTp%u.xy,vkNorm%u,bvec2((fsControl[1][%u]&1u)!=0u));\n"
+   "vec4 vkSample%u=texture(texSamp%u,vkTp%u.xy/max(vkTp%u.z,1e-15));\n"
+   "vec4 t%u=mix(vec4(0.0,0.0,0.0,1.0),vkSample%u,bvec4(vkMode%u==1u));\n"
+   "if(vkMode%u==1u&&(alphaKillMask&%uu)!=0u&&t%u.a==0.0){%s}\n",
+   i,5*i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,1u<<i,i,psh_kill_statement(ps));
+ }
+}

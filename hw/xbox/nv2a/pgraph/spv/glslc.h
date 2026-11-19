@@ -31,6 +31,10 @@ typedef struct GlslcOptions {
     bool spirv_1_6;
     /* Export host parameter layouts; fixed shaders do not need them. */
     bool emit_layout;
+    /* Host must support shaderSignedZeroInfNanPreserveFloat32. Emit the
+     * capability and execution mode directly in the final header, matching
+     * the direct vertex emitter without cloning the assembled word payload. */
+    bool preserve_float32;
     /* Optional front space for assembly without moving the function stream.
      * Nonzero callers release words with glslc_result_free_words(). */
     size_t module_prefix_words;

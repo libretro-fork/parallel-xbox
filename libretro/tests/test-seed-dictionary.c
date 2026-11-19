@@ -17,7 +17,9 @@
 #include <assert.h>
 #define VK_SHADER_STAGE_GEOMETRY_BIT 8
 static bool pgraph_vk_spirv_1_6;
-typedef struct { unsigned kind;struct { GeomState state;GenGeomGlslOptions glsl_opts; } geom; } ShaderModuleCacheKey;
+/* The bundled dictionary contains ordinary keys; keep their ready namespace
+ * zero while executing the actual ordinary geometry selectors. */
+typedef struct { unsigned kind;struct { GeomState state;GenGeomGlslOptions glsl_opts;uint8_t ready_kind,ready_version; } geom; } ShaderModuleCacheKey;
 /* SELECTORS */
 #define CHECK(x,message) do { if(!(x)){fprintf(stderr,"seed dictionary: %s\n",message);return false;} } while(0)
 static uint32_t u32(const uint8_t *p){uint32_t n;memcpy(&n,p,sizeof(n));return n;}

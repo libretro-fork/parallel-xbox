@@ -11,11 +11,17 @@ s=(repo/'hw/xbox/nv2a/pgraph/vk/shaders.c').read_text(encoding='utf-8')
 a=s.index('static void vk_spec_compile_state(');b=s.index('{',a)+1;d=1
 while d:d+=(s[b]=='{')-(s[b]=='}');b+=1
 current=s[a:b].replace('static void','__attribute__((noinline)) static void',1)
+typed_native = 'unsigned native_kind' in current
+if typed_native:
+ current=current.replace('vk_spec_compile_state(', 'typed_compile_state(', 1)
+ current+='\nstatic void vk_spec_compile_state(const ShaderState *st){typed_compile_state(st,prepared[0].native_kind);}'
 reference_name='worker-record-clear-reference.h' if '--clear-baseline' in sys.argv[3:] else 'worker-key-hash-reference.h'
 reference=Path(__file__).with_name(reference_name).read_text().replace('vk_spec_compile_state(', 'reference_state(').replace('vk_spec_compile_module(', 'vk_spec_compile_module(' if '--clear-baseline' in sys.argv[3:] else 'reference_module(').replace('static void','__attribute__((noinline)) static void',1)
 record=re.search(r'typedef struct VkSpecDone \{.*?\} VkSpecDone;',s,re.S)[0]
 h=(repo/'hw/xbox/nv2a/pgraph/vk/renderer.h').read_text(encoding='utf-8');key=re.search(r'typedef struct ShaderModuleCacheKey \{.*?\} ShaderModuleCacheKey;',h,re.S)[0]
 code=Path(__file__).with_suffix('.c').read_text().replace('/* KEY */',key).replace('/* RECORD */',record).replace('/* FUNCTIONS */',reference+'\n'+current)
+if typed_native:
+ code=code.replace('  module_count=2+(trial&1);', '  for(unsigned k=0;k<3;k++)prepared[k].native_kind=trial&1;\n  module_count=2+(trial&1);')
 env=os.environ.copy();env['PATH']=str(Path(cc).resolve().parent)+os.pathsep+env.get('PATH','')
 with tempfile.TemporaryDirectory(prefix='worker-key-hash-') as tmp:
  p=Path(tmp);(p/'qemu').mkdir();(p/'qemu/osdep.h').write_text('#include <stdint.h>\n#include <stdbool.h>\n#include <stddef.h>\n');(p/'qemu/mstring.h').write_text('typedef struct MString MString;\n');(p/'test.c').write_text(code)

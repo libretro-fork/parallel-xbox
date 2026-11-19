@@ -16,6 +16,7 @@ assert 'vk_pre_' not in fn('shader_module_cache_entry_init')
 assert 'vk_module_spirv' not in fn('shader_module_cache_entry_init_pre')
 assert fn('vk_spec_quiesce').index('vk_pre_owner = NULL;') < fn('vk_spec_quiesce').index('retro_atomic_store_release_int(&vk_spec_cancel, 1);')
 code=Path(__file__).with_suffix('.c').read_text().replace('/* TYPES */',types).replace('/* GLOBALS */',globals).replace('/* PRODUCTION */',parts)
+if 'pgraph_vk_create_shader_object_from_spirv' in parts:code='#define FIXTURE_NATIVE_OBJECTS 1\n'+code
 env=os.environ.copy();env['PATH']=str(Path(cc).resolve().parent)+os.pathsep+env.get('PATH','')
 with tempfile.TemporaryDirectory(prefix='pre-module-worker-') as d:
     p=Path(d);(p/'qemu').mkdir();(p/'qemu/osdep.h').write_text('#include <stdint.h>\n#include <stdbool.h>\n#include <stddef.h>\n');(p/'qemu/mstring.h').write_text('typedef struct MString MString;\n')

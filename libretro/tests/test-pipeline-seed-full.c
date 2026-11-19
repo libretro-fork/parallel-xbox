@@ -15,7 +15,8 @@
 #define ARRAY_SIZE(a) ((int)(sizeof(a)/sizeof(*(a))))
 #define QEMU_BUILD_BUG_ON(x) _Static_assert(!(x),"key layout")
 /* TYPES */
-typedef struct { ShaderState state; } ShaderBinding;
+typedef struct { ShaderState state; struct {const void *module_info;} vsh; } ShaderBinding;
+static inline unsigned pgraph_vk_ready_vertex_identity(const void *owner){assert(!owner);return 0;}
 typedef struct { unsigned refs; } ShaderModuleInfo;
 typedef struct {PipelineKey key;uint64_t hash,state_hash;bool full;ShaderModuleInfo *mods[3];unsigned nmods;} LibJob;
 typedef struct {
@@ -48,7 +49,7 @@ static uint32_t random32(void){rng^=rng<<13;rng^=rng>>17;rng^=rng<<5;return rng;
 int main(void){
     unsigned cases=0;
     for(unsigned n=0;n<1024;n++)for(unsigned bits=0;bits<16;bits++){
-        ShaderBinding binding;for(size_t i=0;i<sizeof(binding.state);i++)((uint8_t *)&binding.state)[i]=(uint8_t)random32();
+        ShaderBinding binding={0};for(size_t i=0;i<sizeof(binding.state);i++)((uint8_t *)&binding.state)[i]=(uint8_t)random32();
         PGRAPHVkState r={.dyn_cull_front=true,.dyn_blend=true,.dyn_vertex_input=true,.shader_binding=&binding,.rp={(VkFormat)(n%7),(VkFormat)(n%3)}};
         for(unsigned i=0;i<9;i++)r.raw[i]=random32();
         memset(r.vertex_binding_descriptions,0x5a,sizeof(r.vertex_binding_descriptions));

@@ -12,6 +12,7 @@
 #define TRUE true
 #define ARRAY_SIZE(a) (sizeof(a)/sizeof((a)[0]))
 #include "hw/xbox/nv2a/pgraph/spv/glslc.h"
+/* TYPED NATIVE */
 /* SOURCE TYPES */
 static retro_atomic_int_t live_sources, source_allocations;
 static void *tracked_source_alloc(size_t n) { void *p=calloc(1,n); assert(p); retro_atomic_fetch_add_int(&live_sources,1); retro_atomic_fetch_add_int(&source_allocations,1); return p; }
@@ -19,9 +20,9 @@ static void *tracked_source_alloc(size_t n) { void *p=calloc(1,n); assert(p); re
 static void g_free(void *p) { if(p) { free(p); retro_atomic_fetch_sub_int(&live_sources,1); } }
 /* SOURCE FUNCTIONS */
 /* MODULE TYPES */
-typedef struct { unsigned device;uint64_t next_shader_module_identity; } PGRAPHVkState;
+typedef struct { unsigned device;uint64_t next_shader_module_identity;struct {unsigned live_objects;} shader_objects; } PGRAPHVkState;
 typedef struct {
- int refcnt; uint64_t identity;unsigned module; ShaderLayouts *layouts;
+ int refcnt; uint64_t identity;unsigned module; bool object_gpu_ref; unsigned shader_object; ShaderLayouts *layouts;
  ShaderUniformLayout uniforms,push_constants;
 } ShaderModuleInfo;
 static const uint32_t *expected_words;
@@ -29,8 +30,15 @@ static unsigned pgraph_vk_create_shader_module_from_words(PGRAPHVkState *r,const
 { (void)r; assert(words==expected_words && count==16); return 7; }
 static void vkDestroyShaderModule(unsigned device,unsigned module,void *allocator)
 { (void)device; assert(module==7 && !allocator); }
+#ifdef FIXTURE_NATIVE_OBJECTS
+static void vkDestroyShaderEXT(unsigned device,unsigned object,void *allocator){(void)device;(void)object;(void)allocator;abort();}
+#endif
 /* MODULE FUNCTIONS */
-typedef struct {unsigned kind,id,len,opts[4];} ShaderModuleCacheKey;
+typedef struct {unsigned kind,id,len,opts[4];
+#ifdef FIXTURE_NATIVE_TARGET
+unsigned native_kind;
+#endif
+} ShaderModuleCacheKey;
 typedef struct {unsigned id;} ShaderState;
 typedef ShaderModuleCacheKey MString;
 static bool pgraph_vk_spirv_1_6,pgraph_vk_preserve_float32,vk_spec_push_constants,force_collision;
