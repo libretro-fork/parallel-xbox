@@ -28,11 +28,12 @@
 #define NV2A_PROF_SHADER_BIND_NOTDIRTY 2
 typedef struct ShaderModuleInfo ShaderModuleInfo;
 /* TYPES */
-typedef struct {Lru shader_cache;ShaderBinding entry,initial,*shader_binding;bool shader_bindings_changed,ahead_valid,sibling_retry;ShaderState ahead_state;uint64_t ahead_hash;struct {bool route;} ready_vertex;struct {bool enabled,failed;} shader_objects;unsigned uniforms_changed;struct {bool valid;} vi_last;} PGRAPHVkState;
+typedef struct {Lru shader_cache;ShaderBinding entry,initial,*shader_binding;bool shader_bindings_changed,ahead_valid,sibling_retry;ShaderState ahead_state;uint64_t ahead_hash;struct {bool route;} ready_vertex,ready_fragment;struct {bool enabled,failed;} shader_objects;unsigned uniforms_changed;struct {bool valid;} vi_last;} PGRAPHVkState;
 struct PGRAPHState {PGRAPHVkState *vk_renderer_state;bool program_data_dirty;};
 /* This fixture compares the unchanged ordinary hash/copy schedules. Prepared
  * mode and pressure transitions have their own owner/route fixtures. */
 static bool vk_ready_vertex_route(PGRAPHState *pg){assert(!pg->vk_renderer_state->ready_vertex.route&&!pg->vk_renderer_state->shader_objects.enabled);return false;}
+static bool vk_ready_fragment_route(PGRAPHState *pg,const PshState *state){(void)state;assert(!pg->vk_renderer_state->ready_fragment.route&&!pg->vk_renderer_state->shader_objects.enabled);return false;}
 static void pgraph_vk_shader_objects_disable(PGRAPHState *pg){(void)pg;abort();}
 bool pgraph_glsl_need_geom(const GeomState *state){(void)state;abort();}
 /* These historical hash/copy schedules have no outstanding worker job.

@@ -1,9 +1,16 @@
 /* SPDX-License-Identifier: GPL-2.0-or-later */
 #define VK_NO_PROTOTYPES
 #include "vk-query-fixture.h"
+/* CAPABILITIES */
 typedef struct {bool safe,available,active,pending_reset;unsigned scope;uint64_t samples;} Slot;
 static Slot slots[1024];static unsigned pass_id;static bool game_active,cost_active,stats_active;
 static PGRAPHVkState *state;
+static bool physical_dynamic;
+static unsigned dynamic_begins,dynamic_ends,object_binds;
+static inline void shader_objects_begin_rendering(PGRAPHState*pg,unsigned width,unsigned height){PGRAPHVkState*r=pg->vk_renderer_state;assert(r==state&&r->shader_objects.draw&&!pg->clearing&&!r->in_render_pass&&!physical_dynamic&&width==8&&height==8);physical_dynamic=true;pass_id++;dynamic_begins++;r->shader_objects.rendering=r->in_render_pass=true;}
+static inline void shader_objects_unbind(PGRAPHVkState*r){assert(r==state&&!physical_dynamic&&!r->shader_objects.rendering);r->shader_objects.bound=false;}
+static inline void shader_objects_bind_draw(PGRAPHState*pg){PGRAPHVkState*r=pg->vk_renderer_state;assert(r==state&&physical_dynamic&&r->in_render_pass&&r->shader_objects.rendering&&r->shader_objects.draw&&!pg->clearing);r->shader_objects.bound=true;object_binds++;}
+static inline void vkCmdEndRendering(VkCommandBuffer cmd){assert(physical_dynamic&&state->shader_objects.rendering&&state->in_render_pass&&!cost_active&&!stats_active);if(game_active)assert(!state->query_in_render_pass);physical_dynamic=false;dynamic_ends++;}
 static void vkResetQueryPool(VkDevice device,VkQueryPool pool,uint32_t first,uint32_t count) {
     assert(state->host_query_reset && pool==state->query_pool && count==1 && slots[first].safe);
     slots[first].available=false;slots[first].samples=0;
@@ -29,10 +36,10 @@ static void vkCmdEndQuery(VkCommandBuffer cmd,VkQueryPool pool,uint32_t index) {
     else {assert(stats_active);stats_active=false;}
 }
 static void vkCmdBeginRenderPass(VkCommandBuffer cmd,const VkRenderPassBeginInfo *info,VkSubpassContents contents) {
-    assert(!state->in_render_pass);pass_id++;
+    assert(!state->in_render_pass&&!physical_dynamic);pass_id++;
 }
 static void vkCmdEndRenderPass(VkCommandBuffer cmd) {
-    assert(state->in_render_pass && !cost_active && !stats_active);
+    assert(state->in_render_pass && !physical_dynamic && !cost_active && !stats_active);
     if(game_active) assert(!state->query_in_render_pass);
 }
 static void vkCmdBindPipeline(VkCommandBuffer cmd,VkPipelineBindPoint point,VkPipeline pipeline) {assert(state->in_render_pass);}
@@ -70,4 +77,30 @@ int main(void) {
     }
     printf("query scope: %u host/device-reset, cost-model, pass-break, clear/disable and recycled-result workloads passed\n",cases);
     puts("237 consecutive query windows: 237 render passes -> 1 with host query reset");
+#if HAVE_SHADER_OBJECT_SCOPE
+    unsigned dynamic_cases=0;
+    for(unsigned host=0;host<2;host++)for(unsigned cost=0;cost<2;cost++)for(unsigned color=0;color<2;color++)for(unsigned repeat=0;repeat<8;repeat++){
+        memset(slots,0,sizeof(slots));for(unsigned j=0;j<1024;j++){slots[j].safe=true;slots[j].available=true;}
+        PGRAPHVkState r={0};PipelineBinding pipeline={0};state=&r;
+        r.query_pool=(VkQueryPool)(uintptr_t)1;r.cost_stats_pool=(VkQueryPool)(uintptr_t)2;r.cost_occl_pool=(VkQueryPool)(uintptr_t)3;
+        r.host_query_reset=host;r.in_command_buffer=true;r.max_queries_in_flight=1024;r.pipeline_binding=&pipeline;r.pipeline_binding_changed=true;r.framebuffer=(VkFramebuffer)(uintptr_t)1;r.cost_pending_slot=-1;r.cost_pools_reset=cost;r.shader_objects.draw=true;
+        NV2AState d={.pgraph={.vk_renderer_state=&r,.surface_scale_factor=1,.surface_binding_dim={8,8},.surface_shape={0,0,8,8},.zpass_pixel_count_enable=true}};
+        cost_model=cost;cost_slots=interruptions=0;xemu_cost_q_open=false;memset(counters,0,sizeof(counters));game_active=cost_active=stats_active=physical_dynamic=false;pass_id=dynamic_begins=dynamic_ends=object_binds=0;
+        if(cost){r.cost_pending_slot=cost_slots++;r.cost_pending_samples=true;xemu_cost_q_open=true;}
+        begin_draw(&d.pgraph);draw_triangle(&d.pgraph);end_draw(&d.pgraph);
+        r.new_query_needed=true;begin_draw(&d.pgraph);draw_triangle(&d.pgraph);end_draw(&d.pgraph);
+        end_render_pass(&r);if(r.query_in_flight)end_query(&r);
+        assert(dynamic_begins==(host?1u:2u)&&dynamic_ends==dynamic_begins&&object_binds==2&&!physical_dynamic);
+        /* A utility clear interrupts dynamic rendering and restores classic
+         * scope; the following game draw must return to a new dynamic scope. */
+        r.shader_objects.draw=false;d.pgraph.clearing=true;d.pgraph.zpass_pixel_count_enable=false;r.pipeline_binding_changed=true;
+        r.color_binding=color?(void*)(uintptr_t)1:NULL;r.clear_parameter=NV097_CLEAR_SURFACE_COLOR&-NV097_CLEAR_SURFACE_COLOR;
+        begin_draw(&d.pgraph);if(color)draw_triangle(&d.pgraph);end_draw(&d.pgraph);assert(!r.in_render_pass&&!physical_dynamic);
+        r.shader_objects.draw=true;d.pgraph.clearing=false;d.pgraph.zpass_pixel_count_enable=true;r.new_query_needed=true;
+        begin_draw(&d.pgraph);draw_triangle(&d.pgraph);end_draw(&d.pgraph);end_render_pass(&r);if(r.query_in_flight)end_query(&r);
+        uint64_t total=0;for(int j=0;j<r.num_queries_in_flight;j++){assert(!slots[j].active);total+=slots[j].samples;}
+        assert(total==192&&object_binds==3&&dynamic_begins==dynamic_ends&&!physical_dynamic&&!game_active&&!cost_active&&!stats_active&&!r.cost_recording);dynamic_cases++;
+    }
+    printf("dynamic query scope: %u host/device reset, cost, SO/classic-clear/SO and explicit dynamic-end schedules passed\n",dynamic_cases);
+#endif
 }

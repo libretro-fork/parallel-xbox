@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Repair renderer regression fixtures for prepared shaders: staging visibility, rendering/query scopes, native-owner retirement and ordinary binding decisions. Preserve existing corpora and check geometry visibility after a prepared route is disabled.
+
 - Add Video > Prepared Shaders (Vulkan, Restart), an experimental option that prepares covered native shader objects before drawing. It is disabled by default, adds startup work and may increase GPU work. Unsupported devices, failed preparation and uncovered states retain ordinary rendering; shader-stutter recovery remains open.
 
 - Share 120 covered logical vertex variants through 60 native owners, and prepare 16 geometry and four float-2D fragment families inside the existing module-cache budget. Constant inputs and bounded geometry/fragment controls share the existing uniform storage; references retain native objects through their last CPU and GPU consumer.

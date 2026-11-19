@@ -10,14 +10,20 @@
 #define VK_TRUE 1
 #define VK_FINISH_REASON_EAGER 11
 #define VK_CHECK(s) assert((s)==VK_SUCCESS)
-typedef struct {unsigned slot,eager_draw_count;bool in_command_buffer,slot_fence_pending[2];unsigned slot_main[2],slot_sync[2],slot_fence[2],slot_submit[2],settled_submit,submit_count;int device,reuse_wait_us;struct{unsigned w,w_end[2];}frame_gpu;}PGRAPHVkState;
+/* CAPABILITIES */
+typedef struct {unsigned slot,eager_draw_count;bool in_command_buffer,slot_fence_pending[2];unsigned slot_main[2],slot_sync[2],slot_fence[2],slot_submit[2],settled_submit,submit_count;int device,reuse_wait_us;struct{unsigned w,w_end[2];}frame_gpu;bool object_live;unsigned object_last_use,objects_destroyed;}PGRAPHVkState;
 typedef struct {PGRAPHVkState*vk_renderer_state;}PGRAPHState;
 static unsigned polls,waits,retirements,resolves,submits,clock_now,drops,pool_flushes,teardowns;
-static void lr_gpu_ram_drop(uintptr_t cmd){(void)cmd;drops++;}
+static bool track_owner;static unsigned owner_drops,owner_last_slot;
+static void lr_gpu_ram_drop(uintptr_t cmd){if(track_owner){assert(cmd==100||cmd==101||cmd==110||cmd==111);unsigned slot=(cmd-100)/10,part=(cmd-100)%10;owner_drops|=1u<<(slot*2+part);}drops++;}
 static int status[2];static bool drain_expected,draining;static unsigned waited_fence;
 static int vkGetFenceStatus(int device,unsigned fence){assert(device==9&&fence<2);polls++;return status[fence];}
 static int vkWaitForFences(int device,unsigned count,unsigned*fence,unsigned all,uint64_t timeout){assert(device==9&&count==1&&*fence<2&&all==1&&timeout==UINT64_MAX);if(draining)assert(!drops&&!retirements&&!resolves);waited_fence=*fence;waits++;status[*fence]=0;return 0;}
 static void trash_drain_retired(PGRAPHVkState*r){assert(drain_expected);retirements++;(void)r;}
+/* Actual owner destruction is tested by the SO owner fixture. This typed
+ * consumer observes the slot's command-drop/serial/trash ordering and holds
+ * one owner until its last recorded use has a completion proof. */
+static inline void pgraph_vk_shader_objects_retire(PGRAPHVkState*r){assert(retirements);if(track_owner&&r->object_live&&(int32_t)(r->object_last_use-r->settled_submit)<=0){unsigned mask=3u<<(owner_last_slot*2);assert((owner_drops&mask)==mask);r->object_live=false;r->objects_destroyed++;}}
 static void pgraph_vk_image_pool_flush(PGRAPHVkState*r){(void)r;pool_flushes++;}
 static void pgraph_vk_finish(PGRAPHState*pg,unsigned why){
  PGRAPHVkState*r=pg->vk_renderer_state;assert(why==11&&r->in_command_buffer);
@@ -145,4 +151,16 @@ int main(void){
  printf("PASS: %u eager completion-proof schedules, rollover and unavailable fences\n",eager_proof_cases);
  printf("PASS: %u settle-poll schedules, completion proofs, same-queue coverage, rollover, partial retirement and recording-safe teardown\n",settle_cases);
  printf("PASS: %u eager, %u serial-proof, %u allocation-retry and %u full-drain schedules\n",cases,serial_cases,retry_cases,drain_cases);
+#if HAVE_SHADER_OBJECT_RETIRE
+ unsigned owner_cases=0;
+ for(unsigned last=0;last<2;last++)for(unsigned wrap=0;wrap<2;wrap++){
+  uint32_t serial=wrap?0:100;PGRAPHVkState q={.device=9,.slot=last,.slot_fence={0,1},.slot_main={100,110},.slot_sync={101,111},.slot_fence_pending={true,true},.in_command_buffer=true,.object_live=true,.object_last_use=serial,.submit_count=serial,.settled_submit=serial-2};PGRAPHState p={.vk_renderer_state=&q};
+  q.slot_submit[last]=serial;q.slot_submit[last^1]=serial-1;status[last]=VK_NOT_READY;status[last^1]=VK_SUCCESS;
+  polls=waits=retirements=resolves=drops=0;drain_expected=track_owner=true;owner_last_slot=last;owner_drops=0;
+  pgraph_vk_settle_poll(&p);assert(q.object_live&&!q.objects_destroyed&&q.slot_fence_pending[last]&&!q.slot_fence_pending[last^1]);
+  status[last]=VK_SUCCESS;pgraph_vk_settle_poll(&p);assert(!q.object_live&&q.objects_destroyed==1&&!q.slot_fence_pending[last]&&owner_drops==15&&!waits);
+  pgraph_vk_settle_poll(&p);assert(q.objects_destroyed==1);pgraph_vk_wait_all_slots(&q);assert(q.objects_destroyed==1);track_owner=false;owner_cases++;
+ }
+ printf("PASS: %u SO last-consumer command-drop/serial/trash/retirement and duplicate-finalization schedules\n",owner_cases);
+#endif
 }
